@@ -136,6 +136,7 @@
             };
           suites = with profiles; rec {
             base = [core.nixos users.nixos users.root];
+            base = [core.nixos users.cjv users.root];
           };
         };
       };
