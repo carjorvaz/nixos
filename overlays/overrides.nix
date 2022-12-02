@@ -14,6 +14,9 @@ channels: final: prev: {
     signal-desktop
     starship
     deploy-rs
+    rnote
+    brave
+    mattermost-desktop
     ;
 
   haskellPackages =
