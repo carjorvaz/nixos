@@ -29,17 +29,7 @@
 
   users.mutableUsers = true; # TODO hashed passwords
 
-  time.timeZone = "Europe/Lisbon";
   documentation.man.generateCaches = true;
-
-  programs = {
-    neovim = {
-      enable = true;
-      viAlias = true;
-      vimAlias = true;
-      defaultEditor = lib.mkDefault true;
-    };
-  };
 
   environment.systemPackages = with pkgs; [
     wget
