@@ -11,7 +11,6 @@
     });
   in {
     enable = true;
-    defaultEditor = true;
     package = ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
       (epkgs: [ epkgs.vterm epkgs.pdf-tools ]));
   };
