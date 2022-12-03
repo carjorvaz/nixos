@@ -189,13 +189,6 @@
       };
     };
 
-
-    openssh = {
-      enable = true;
-      passwordAuthentication = false;
-      kbdInteractiveAuthentication = false;
-    };
-
     # nebula.networks."Rome" = {
     #   enable = true;
     #   ca = "/persist/nebula/ca.crt";
@@ -223,9 +216,5 @@
       autoScrub.enable = true;
       # autoSnapshot.enable = true;
     };
-
-    fwupd.enable = true;
-
   };
-
 }
