@@ -119,7 +119,8 @@
           };
           suites = with profiles; rec {
             base = [ core.nixos users.cjv users.root locale zsh ];
-            desktop = base ++ [ emacs pipewire rnl resolved printing scanning ];
+            desktop = base
+              ++ [ emacs pipewire rnl resolved printing scanning adb ];
             laptop = base ++ desktop ++ [ gallus iwd ];
           };
         };
