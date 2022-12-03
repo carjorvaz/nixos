@@ -192,7 +192,6 @@
 
   # TODO distributed builds
 
-  networking.hostId = "b60d3eae";
   networking.firewall.enable = false;
 
   programs.adb.enable = true;

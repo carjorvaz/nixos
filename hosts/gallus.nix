@@ -8,11 +8,9 @@
   boot.kernelModules = [ "kvm-intel" "acpi_call"];
   boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
   boot.extraModulePackages = with config.boot.kernelPackages; [ acpi_call ];
-  boot.supportedFilesystems = [ "zfs" ];
 
-  networking.useDHCP = lib.mkDefault true;
-  powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
-  hardware.video.hidpi.enable = lib.mkDefault true;
+  boot.supportedFilesystems = [ "zfs" ];
+  networking.hostId = "b60d3eae";
 
   fileSystems."/" = {
     device = "zroot/local/root";
@@ -49,6 +47,10 @@
     cpu.intel.updateMicrocode = true;
     sensor.iio.enable = true;
   };
+
+  networking.useDHCP = lib.mkDefault true;
+  powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
+  hardware.video.hidpi.enable = lib.mkDefault true;
 
   # TODO intel hardware acceleration profile module
   boot.initrd.kernelModules = [ "i915" ];
