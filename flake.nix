@@ -130,7 +130,7 @@
               rnl
               scanning
             ];
-            laptop = desktop ++ [ gallus iwd battery ];
+            laptop = desktop ++ [ iwd battery ];
           };
         };
       };
