@@ -135,8 +135,8 @@
               users = digga.lib.rakeLeaves ./users;
             };
           suites = with profiles; rec {
-            base = [core.nixos users.cjv users.root];
             laptop = base ++ [ gallus rnl ];
+            base = [ core.nixos users.cjv users.root locale ];
           };
         };
       };
