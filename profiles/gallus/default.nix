@@ -37,9 +37,8 @@
       enable = true;
       viAlias = true;
       vimAlias = true;
-      # defaultEditor = true;
+      defaultEditor = lib.mkDefault true;
     };
-
   };
 
   environment.systemPackages = with pkgs; [
