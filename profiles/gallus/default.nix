@@ -231,25 +231,7 @@
   networking.hostId = "b60d3eae";
   networking.firewall.enable = false;
 
-  i18n = {
-    defaultLocale = "en_US.utf8";
-    extraLocaleSettings = {
-      LC_ADDRESS = "pt_PT.utf8";
-      LC_IDENTIFICATION = "pt_PT.utf8";
-      LC_MEASUREMENT = "pt_PT.utf8";
-      LC_MONETARY = "pt_PT.utf8";
-      LC_NAME = "pt_PT.utf8";
-      LC_NUMERIC = "pt_PT.utf8";
-      LC_PAPER = "pt_PT.utf8";
-      LC_TELEPHONE = "pt_PT.utf8";
-      LC_TIME = "pt_PT.utf8";
-    };
-  };
-
   programs.adb.enable = true;
-
-  networking.wireless.iwd.enable = true;
-  networking.networkmanager.wifi.backend = "iwd";
 
   services = {
     xserver = {
@@ -377,18 +359,6 @@
       package = ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
         (epkgs: [ epkgs.vterm epkgs.pdf-tools ]));
     };
-  };
-
-  # Enable PipeWire.
-  hardware.pulseaudio.enable = false;
-  security.rtkit.enable = true;
-  services.pipewire = {
-    enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
-    # If you want to use JACK applications, uncomment this
-    #jack.enable = true;
   };
 
   hardware = {

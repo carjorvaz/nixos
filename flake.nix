@@ -119,7 +119,7 @@
           };
           suites = with profiles; rec {
             base = [ core.nixos users.cjv users.root locale ];
-            laptop = base ++ [ gallus rnl iwd ];
+            laptop = base ++ [ gallus rnl iwd pipewire ];
           };
         };
       };
