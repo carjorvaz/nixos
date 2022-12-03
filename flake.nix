@@ -118,7 +118,7 @@
             users = digga.lib.rakeLeaves ./users;
           };
           suites = with profiles; rec {
-            base = [ core.nixos users.cjv users.root locale zsh neovim ];
+            base = [ core.nixos users.cjv users.root locale zsh neovim zfs ];
             desktop = base ++ [
               bootloader
               emacs
@@ -130,7 +130,7 @@
               rnl
               scanning
             ];
-            laptop = base ++ desktop ++ [ gallus iwd ];
+            laptop = desktop ++ [ gallus iwd battery ];
           };
         };
       };

@@ -1,15 +1,6 @@
 { config, lib, pkgs, ... }:
 
 {
-  powerManagement.powertop.enable = true;
-  services = {
-    power-profiles-daemon.enable = true;
-    udev.extraRules = ''
-      SUBSYSTEM=="power_supply",ENV{POWER_SUPPLY_ONLINE}=="0",RUN+="${pkgs.power-profiles-daemon}/bin/powerprofilesctl set balanced"
-      SUBSYSTEM=="power_supply",ENV{POWER_SUPPLY_ONLINE}=="1",RUN+="${pkgs.power-profiles-daemon}/bin/powerprofilesctl set performance"
-    '';
-  };
-
   users.mutableUsers = true; # TODO hashed passwords
   documentation.man.generateCaches = true;
 
@@ -160,54 +151,4 @@
   #     fzf.enable = true;
   #   };
   # };
-
-  # TODO distributed builds
-
-  networking.firewall.enable = false;
-
-  services.xserver = {
-    layout = "us";
-    xkbOptions = "ctrl:nocaps compose:prsc";
-    xkbVariant = "altgr-intl";
-
-    libinput = {
-      enable = true;
-
-      # Disable mouse acceleration.
-      mouse.accelProfile = "flat";
-
-      touchpad = {
-        disableWhileTyping = true;
-        naturalScrolling = true;
-      };
-    };
-
-    # nebula.networks."Rome" = {
-    #   enable = true;
-    #   ca = "/persist/nebula/ca.crt";
-    #   cert = "/persist/nebula/trajan.crt";
-    #   key = "/persist/nebula/trajan.key";
-    #   lighthouses = [ "192.168.100.1" ];
-    #   staticHostMap = { "192.168.100.1" = [ "185.194.217.74:4242" ]; };
-    #   firewall = {
-    #     inbound = [{
-    #       port = "any";
-    #       proto = "any";
-    #       host = "any";
-    #     }];
-
-    #     outbound = [{
-    #       port = "any";
-    #       proto = "any";
-    #       host = "any";
-    #     }];
-    #   };
-    # };
-
-    zfs = {
-      trim.enable = true;
-      autoScrub.enable = true;
-      # autoSnapshot.enable = true;
-    };
-  };
 }
