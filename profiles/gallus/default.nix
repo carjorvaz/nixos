@@ -1,12 +1,6 @@
 { config, lib, pkgs, ... }:
 
 {
-  # TODO plymouth module
-  boot = {
-    plymouth.enable = true;
-    initrd.systemd.enable = true;
-  };
-
   powerManagement.powertop.enable = true;
   services = {
     power-profiles-daemon.enable = true;
@@ -16,19 +10,7 @@
     '';
   };
 
-  # TODO migrar módulos cjv (para já, copiar só)
-  boot.loader = {
-    efi.canTouchEfiVariables = true;
-
-    systemd-boot = {
-      enable = true;
-      editor = false;
-      configurationLimit = 10;
-    };
-  };
-
   users.mutableUsers = true; # TODO hashed passwords
-
   documentation.man.generateCaches = true;
 
   environment.systemPackages = with pkgs; [
