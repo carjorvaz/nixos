@@ -1,16 +1,61 @@
-{ config, pkgs, suites, ... }:
+{ config, pkgs, lib, suites, ... }:
 
 {
   imports = suites.laptop;
 
+  boot.initrd.availableKernelModules =
+    [ "xhci_pci" "nvme" "usb_storage" "sd_mod" ];
+  boot.kernelModules = [ "kvm-intel" "acpi_call"];
   boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
-  boot.kernelModules = [ "acpi_call" ];
   boot.extraModulePackages = with config.boot.kernelPackages; [ acpi_call ];
+  boot.supportedFilesystems = [ "zfs" ];
+
+  networking.useDHCP = lib.mkDefault true;
+  powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
+  hardware.video.hidpi.enable = lib.mkDefault true;
+
+  fileSystems."/" = {
+    device = "zroot/local/root";
+    fsType = "zfs";
+    options = [ "zfsutil" ];
+  };
+
+  fileSystems."/boot" = {
+    device = "/dev/disk/by-uuid/23BD-94D0";
+    fsType = "vfat";
+  };
+
+  fileSystems."/nix" = {
+    device = "zroot/local/nix";
+    fsType = "zfs";
+    options = [ "zfsutil" ];
+  };
+
+  fileSystems."/home" = {
+    device = "zroot/safe/home";
+    fsType = "zfs";
+    options = [ "zfsutil" ];
+  };
+
+  fileSystems."/persist" = {
+    device = "zroot/safe/persist";
+    fsType = "zfs";
+    options = [ "zfsutil" ];
+    neededForBoot = true;
+  };
 
   hardware = {
     enableRedistributableFirmware = true;
     cpu.intel.updateMicrocode = true;
     sensor.iio.enable = true;
+  };
+
+  # TODO intel hardware acceleration profile module
+  boot.initrd.kernelModules = [ "i915" ];
+  environment.variables.VDPAU_DRIVER = "va_gl";
+  hardware.opengl = {
+    enable = true;
+    extraPackages = with pkgs; [ vaapiIntel libvdpau-va-gl intel-media-driver ];
   };
 
   services = {
@@ -22,7 +67,6 @@
     '';
   };
 
-  # Fix touchscreen after resume from suspend.
   systemd.services.activate-touch-hack = {
     description = "Touch wake Thinkpad X1 Yoga 3rd gen hack";
     wantedBy = [
@@ -42,14 +86,5 @@
         /bin/sh -c "echo '\\_SB.PCI0.LPCB.EC._Q2A'  > /proc/acpi/call"
       '';
     };
-  };
-
-  # TODO intel hardware acceleration profile module
-  # Intel GPU
-  boot.initrd.kernelModules = [ "i915" ];
-  environment.variables.VDPAU_DRIVER = "va_gl";
-  hardware.opengl = {
-    enable = true;
-    extraPackages = with pkgs; [ vaapiIntel libvdpau-va-gl intel-media-driver ];
   };
 }
