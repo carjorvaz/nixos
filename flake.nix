@@ -2,8 +2,10 @@
   description = "A highly structured configuration database.";
 
   nixConfig.extra-experimental-features = "nix-command flakes";
-  nixConfig.extra-substituters = "https://nrdxp.cachix.org https://nix-community.cachix.org";
-  nixConfig.extra-trusted-public-keys = "nrdxp.cachix.org-1:Fc5PSqY2Jm1TrWfm88l6cvGWwz3s93c6IOifQWnhNW4= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=";
+  nixConfig.extra-substituters =
+    "https://nrdxp.cachix.org https://nix-community.cachix.org";
+  nixConfig.extra-trusted-public-keys =
+    "nrdxp.cachix.org-1:Fc5PSqY2Jm1TrWfm88l6cvGWwz3s93c6IOifQWnhNW4= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=";
 
   inputs = {
     flake-compat = {
@@ -51,53 +53,38 @@
     nixos-generators.url = "github:nix-community/nixos-generators";
   };
 
-  outputs = {
-    self,
-    digga,
-    nixos,
-    home,
-    nixos-hardware,
-    nur,
-    agenix,
-    nvfetcher,
-    deploy,
-    nixpkgs,
-    ...
-  } @ inputs:
-    digga.lib.mkFlake
-    {
+  outputs = { self, digga, nixos, home, nixos-hardware, nur, agenix, nvfetcher
+    , deploy, nixpkgs, ... }@inputs:
+    digga.lib.mkFlake {
       inherit self inputs;
 
-      channelsConfig = {allowUnfree = true;};
+      channelsConfig = { allowUnfree = true; };
 
       channels = {
         nixos = {
-          imports = [(digga.lib.importOverlays ./overlays)];
-          overlays = [];
+          imports = [ (digga.lib.importOverlays ./overlays) ];
+          overlays = [ ];
         };
         nixpkgs-darwin-stable = {
-          imports = [(digga.lib.importOverlays ./overlays)];
+          imports = [ (digga.lib.importOverlays ./overlays) ];
           overlays = [
             # TODO: restructure overlays directory for per-channel overrides
             # `importOverlays` will import everything under the path given
             (channels: final: prev:
               {
                 inherit (channels.latest) mas;
-              }
-              // prev.lib.optionalAttrs true {})
+              } // prev.lib.optionalAttrs true { })
           ];
         };
-        latest = {};
+        latest = { };
       };
 
-      lib = import ./lib {lib = digga.lib // nixos.lib;};
+      lib = import ./lib { lib = digga.lib // nixos.lib; };
 
       sharedOverlays = [
         (final: prev: {
           __dontExport = true;
-          lib = prev.lib.extend (lfinal: lprev: {
-            our = self.lib;
-          });
+          lib = prev.lib.extend (lfinal: lprev: { our = self.lib; });
         })
 
         nur.overlay
@@ -111,9 +98,9 @@
         hostDefaults = {
           system = "x86_64-linux";
           channelName = "nixos";
-          imports = [(digga.lib.importExportableModules ./modules)];
+          imports = [ (digga.lib.importExportableModules ./modules) ];
           modules = [
-            {lib.our = self.lib;}
+            { lib.our = self.lib; }
             digga.nixosModules.bootstrapIso
             digga.nixosModules.nixConfig
             home.nixosModules.home-manager
@@ -121,22 +108,18 @@
           ];
         };
 
-        imports = [(digga.lib.importHosts ./hosts)];
+        imports = [ (digga.lib.importHosts ./hosts) ];
         hosts = {
-          /*
-           set host-specific properties here
-           */
-          NixOS = {};
+          # set host-specific properties here
+          NixOS = { };
         };
         importables = rec {
-          profiles =
-            digga.lib.rakeLeaves ./profiles
-            // {
-              users = digga.lib.rakeLeaves ./users;
-            };
+          profiles = digga.lib.rakeLeaves ./profiles // {
+            users = digga.lib.rakeLeaves ./users;
+          };
           suites = with profiles; rec {
-            laptop = base ++ [ gallus rnl ];
             base = [ core.nixos users.cjv users.root locale ];
+            laptop = base ++ [ gallus rnl iwd ];
           };
         };
       };
@@ -145,42 +128,34 @@
         hostDefaults = {
           system = "x86_64-darwin";
           channelName = "nixpkgs-darwin-stable";
-          imports = [(digga.lib.importExportableModules ./modules)];
+          imports = [ (digga.lib.importExportableModules ./modules) ];
           modules = [
-            {lib.our = self.lib;}
+            { lib.our = self.lib; }
             digga.darwinModules.nixConfig
             home.darwinModules.home-manager
             agenix.nixosModules.age
           ];
         };
 
-        imports = [(digga.lib.importHosts ./hosts/darwin)];
+        imports = [ (digga.lib.importHosts ./hosts/darwin) ];
         hosts = {
-          /*
-           set host-specific properties here
-           */
-          Mac = {};
+          # set host-specific properties here
+          Mac = { };
         };
         importables = rec {
-          profiles =
-            digga.lib.rakeLeaves ./profiles
-            // {
-              users = digga.lib.rakeLeaves ./users;
-            };
-          suites = with profiles; rec {
-            base = [core.darwin users.darwin];
+          profiles = digga.lib.rakeLeaves ./profiles // {
+            users = digga.lib.rakeLeaves ./users;
           };
+          suites = with profiles; rec { base = [ core.darwin users.darwin ]; };
         };
       };
 
       home = {
-        imports = [(digga.lib.importExportableModules ./users/modules)];
-        modules = [];
+        imports = [ (digga.lib.importExportableModules ./users/modules) ];
+        modules = [ ];
         importables = rec {
           profiles = digga.lib.rakeLeaves ./users/profiles;
-          suites = with profiles; rec {
-            base = [direnv git];
-          };
+          suites = with profiles; rec { base = [ direnv git ]; };
         };
         users = {
           # TODO: does this naming convention still make sense with darwin support?
@@ -198,8 +173,8 @@
           # it could just be left to the developer to determine what's
           # appropriate. after all, configuring these hm users is one of the
           # first steps in customizing the template.
-          nixos = {suites, ...}: {imports = suites.base;};
-          darwin = {suites, ...}: {imports = suites.base;};
+          nixos = { suites, ... }: { imports = suites.base; };
+          darwin = { suites, ... }: { imports = suites.base; };
         }; # digga.lib.importers.rakeLeaves ./users/hm;
       };
 
@@ -207,11 +182,10 @@
 
       # TODO: similar to the above note: does it make sense to make all of
       # these users available on all systems?
-      homeConfigurations =
-        digga.lib.mergeAny
+      homeConfigurations = digga.lib.mergeAny
         (digga.lib.mkHomeConfigurations self.darwinConfigurations)
         (digga.lib.mkHomeConfigurations self.nixosConfigurations);
 
-      deploy.nodes = digga.lib.mkDeployNodes self.nixosConfigurations {};
+      deploy.nodes = digga.lib.mkDeployNodes self.nixosConfigurations { };
     };
 }
