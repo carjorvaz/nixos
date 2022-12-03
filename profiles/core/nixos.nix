@@ -1,16 +1,5 @@
-{
-  config,
-  lib,
-  pkgs,
-  self,
-  ...
-}: {
-  imports = [
-    ./common.nix
-  ];
-
-  # This is just a representation of the nix default
-  nix.settings.system-features = [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
+{ config, lib, pkgs, modulesPath, self, ... }: {
+  imports = [ (modulesPath + "/installer/scan/not-detected.nix") ./common.nix ];
 
   environment = {
     # Selection of sysadmin tools that can come in handy
@@ -22,8 +11,7 @@
       utillinux
     ];
 
-    shellAliases = let
-      ifSudo = lib.mkIf config.security.sudo.enable;
+    shellAliases = let ifSudo = lib.mkIf config.security.sudo.enable;
     in {
       # nix
       nrb = ifSudo "sudo nixos-rebuild";
@@ -44,15 +32,20 @@
   };
 
   fonts.fontconfig.defaultFonts = {
-    monospace = ["DejaVu Sans Mono for Powerline"];
-    sansSerif = ["DejaVu Sans"];
+    monospace = [ "DejaVu Sans Mono for Powerline" ];
+    sansSerif = [ "DejaVu Sans" ];
   };
 
   nix = {
     # Improve nix store disk usage
-    settings.auto-optimise-store = true;
     optimise.automatic = true;
-    settings.allowed-users = [ "@wheel" ];
+    settings = {
+      auto-optimise-store = true;
+      allowed-users = [ "@wheel" ];
+
+      # This is just a representation of the nix default
+      system-features = [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
+    };
   };
 
   programs.bash = {
