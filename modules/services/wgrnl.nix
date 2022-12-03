@@ -33,7 +33,7 @@ in {
         wireguardPeers = [{
           wireguardPeerConfig = {
             PublicKey = "g08PXxMmzC6HA+Jxd+hJU0zJdI6BaQJZMgUrv2FdLBY=";
-            Endpoint = "hagrid.rnl.tecnico.ulisboa.pt:34266";
+            Endpoint = "193.136.164.211:34266";
             AllowedIPs = [
               # public RNL-operated ranges
               "193.136.164.0/24"
