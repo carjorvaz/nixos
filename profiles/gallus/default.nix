@@ -281,12 +281,4 @@
       extraBackends = [ pkgs.sane-airscan ];
     };
   };
-
-  virtualisation = {
-    libvirtd.enable = true;
-    spiceUSBRedirection.enable = true;
-
-    # virtualbox.host.enable = true;
-    # waydroid.enable = true; # STATE: initial waydroid setup; check their website
-  };
 }
