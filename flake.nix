@@ -118,7 +118,7 @@
             users = digga.lib.rakeLeaves ./users;
           };
           suites = with profiles; rec {
-            base = [ core.nixos users.cjv users.root locale ];
+            base = [ core.nixos users.cjv users.root locale zsh ];
             laptop = base ++ [ gallus rnl iwd pipewire ];
           };
         };

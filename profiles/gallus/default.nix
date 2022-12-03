@@ -163,42 +163,6 @@
     blackbox-terminal
   ];
 
-  programs = {
-    zsh = {
-      enable = true;
-
-      vteIntegration = true;
-      enableBashCompletion = true;
-      autosuggestions.enable = true;
-      syntaxHighlighting.enable = true;
-
-      setOptions =
-        [ "HIST_IGNORE_DUPS" "SHARE_HISTORY" "HIST_FCNTL_LOCK" "EMACS" ];
-
-      shellInit = ''
-        # Completion based on man pages
-        zstyle ':completion:*:manuals'    separate-sections true
-        zstyle ':completion:*:manuals.*'  insert-sections   true
-        zstyle ':completion:*:man:*'      menu yes select
-
-        # Delete words like bash
-        autoload -U select-word-style
-        select-word-style bash
-      '';
-
-      shellAliases = {
-        update = "sudo nixos-rebuild switch --flake ~/Documents/Code/dotfiles";
-        upgrade =
-          "cd ~/Documents/Code/dotfiles && nix flake update && sudo nixos-rebuild boot --flake ~/Documents/Code/dotfiles";
-      };
-    };
-
-    starship.enable = true;
-  };
-
-  environment.pathsToLink = [ "/share/zsh" ]; # For zsh completion
-  users.defaultUserShell = pkgs.zsh;
-
   # home-manager.users.root.programs = {
   #   zsh.enable = true;
   #   fzf.enable = true;
