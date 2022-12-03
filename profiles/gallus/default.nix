@@ -220,17 +220,6 @@
       };
     };
 
-    # Enable CUPS to print documents.
-    printing = {
-      enable = true;
-      drivers = [
-        pkgs.canon-cups-ufr2
-        pkgs.cups-bjnp
-        pkgs.gutenprint
-        pkgs.gutenprintBin
-      ];
-    };
-
     # Enable network scanning.
     avahi = {
       enable = true;
