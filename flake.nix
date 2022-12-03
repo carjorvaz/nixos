@@ -119,8 +119,17 @@
           };
           suites = with profiles; rec {
             base = [ core.nixos users.cjv users.root locale zsh neovim ];
-            desktop = base
-              ++ [ emacs pipewire rnl resolved printing scanning bootloader fwupd ];
+            desktop = base ++ [
+              bootloader
+              emacs
+              fwupd
+              gnome
+              pipewire
+              printing
+              resolved
+              rnl
+              scanning
+            ];
             laptop = base ++ desktop ++ [ gallus iwd ];
           };
         };

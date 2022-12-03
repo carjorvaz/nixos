@@ -165,27 +165,20 @@
 
   networking.firewall.enable = false;
 
-  services = {
-    xserver = {
+  services.xserver = {
+    layout = "us";
+    xkbOptions = "ctrl:nocaps compose:prsc";
+    xkbVariant = "altgr-intl";
+
+    libinput = {
       enable = true;
 
-      displayManager.gdm.enable = true;
-      desktopManager.gnome.enable = true;
+      # Disable mouse acceleration.
+      mouse.accelProfile = "flat";
 
-      layout = "us";
-      xkbOptions = "ctrl:nocaps compose:prsc";
-      xkbVariant = "altgr-intl";
-
-      libinput = {
-        enable = true;
-
-        # Disable mouse acceleration.
-        mouse.accelProfile = "flat";
-
-        touchpad = {
-          disableWhileTyping = true;
-          naturalScrolling = true;
-        };
+      touchpad = {
+        disableWhileTyping = true;
+        naturalScrolling = true;
       };
     };
 
