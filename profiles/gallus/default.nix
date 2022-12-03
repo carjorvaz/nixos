@@ -27,6 +27,8 @@
     };
   };
 
+  users.mutableUsers = true; # TODO hashed passwords
+
   time.timeZone = "Europe/Lisbon";
   documentation.man.generateCaches = true;
 
@@ -55,9 +57,9 @@
     whois
     neofetch
     html-tidy
-    unstable.brave
-    unstable.discord
-    unstable.mattermost-desktop
+    brave
+    discord
+    mattermost-desktop
     ripgrep
     sqlite # Needed for org-roam.
     cmake
@@ -95,7 +97,6 @@
     drawing
     foliate
     pdfslicer
-    python-with-my-packages
     black
     nodePackages.pyright
     python310Packages.pygments # needed for code syntax highlighting in LaTeX
@@ -134,7 +135,7 @@
     aspellDicts.en-science
     aspellDicts.en-computers
     hunspell
-    unstable.rnote
+    rnote
     xournalpp
     powertop
     waypipe
@@ -171,13 +172,8 @@
       autosuggestions.enable = true;
       syntaxHighlighting.enable = true;
 
-      setOptions = [
-        "HIST_IGNORE_DUPS"
-        "SHARE_HISTORY"
-        "HIST_FCNTL_LOCK"
-        "EMACS"
-
-      ];
+      setOptions =
+        [ "HIST_IGNORE_DUPS" "SHARE_HISTORY" "HIST_FCNTL_LOCK" "EMACS" ];
 
       shellInit = ''
         # Completion based on man pages
@@ -235,7 +231,7 @@
   networking.wg-quick.interfaces.wgrnl = let wgrnlFwmark = "765";
   in {
     address = [ "192.168.20.32/24" "fd92:3315:9e43:c490::32/64" ];
-    privateKeyFile = /persist/secrets/wireguard/privatekey;
+    privateKeyFile = "/persist/secrets/wireguard/privatekey";
     table = wgrnlFwmark;
     postUp = ''
       ${pkgs.wireguard-tools}/bin/wg set wgrnl fwmark ${wgrnlFwmark}
@@ -312,7 +308,6 @@
 
   networking.wireless.iwd.enable = true;
   networking.networkmanager.wifi.backend = "iwd";
-
 
   services = {
     xserver = {
