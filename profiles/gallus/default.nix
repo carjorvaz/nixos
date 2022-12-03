@@ -231,12 +231,6 @@
       ];
     };
 
-    # STATE: librewolf, stremio, rnote; GNOME Software faz auto-update
-    # STATE: add flathub
-    # flatpak.enable = true;
-
-    # nextdns.enable = true; # TODO confirmar/apagar
-
     # Enable network scanning.
     avahi = {
       enable = true;
@@ -271,27 +265,6 @@
     #   };
     # };
 
-    # dnscrypt-proxy2 = {
-    #   enable = true;
-    #   settings = {
-    #     ipv6_servers = true;
-    #     require_dnssec = true;
-
-    #     sources.public-resolvers = {
-    #       urls = [
-    #         "https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md"
-    #         "https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md"
-    #       ];
-    #       cache_file = "/var/lib/dnscrypt-proxy2/public-resolvers.md";
-    #       minisign_key =
-    #         "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
-    #     };
-
-    #     # You can choose a specific set of servers from https://github.com/DNSCrypt/dnscrypt-resolvers/blob/master/v3/public-resolvers.md
-    #     server_names = [ "cloudflare" ];
-    #   };
-    # };
-
     zfs = {
       trim.enable = true;
       autoScrub.enable = true;
@@ -306,21 +279,6 @@
         DNS=1.1.1.1 1.0.0.1 2606:4700:4700::1111 2606:4700:4700::1001
         Domains=~.
       '';
-    };
-
-    emacs = let
-      myEmacs = pkgs.emacs-gtk.overrideAttrs (attrs: {
-        # I don't want emacs.desktop file because I only use
-        # emacsclient.
-        postInstall = (attrs.postInstall or "") + ''
-          rm $out/share/applications/emacs.desktop
-        '';
-      });
-    in {
-      enable = true;
-      defaultEditor = true;
-      package = ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
-        (epkgs: [ epkgs.vterm epkgs.pdf-tools ]));
     };
   };
 
