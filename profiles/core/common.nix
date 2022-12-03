@@ -1,15 +1,10 @@
-{
-  self,
-  config,
-  lib,
-  pkgs,
-  ...
-}: let
+{ self, config, lib, pkgs, ... }:
+let
   inherit (lib) fileContents;
   inherit (pkgs.stdenv.hostPlatform) isDarwin;
 in {
   # Sets nrdxp.cachix.org binary cache which just speeds up some builds
-  imports = [../cachix];
+  imports = [ ../cachix ];
 
   environment = {
     # Selection of sysadmin tools that can come in handy
@@ -38,8 +33,7 @@ in {
     # starship.toml has sane defaults that can be changed there
     shellInit = ''
       export STARSHIP_CONFIG=${
-        pkgs.writeText "starship.toml"
-        (fileContents ./starship.toml)
+        pkgs.writeText "starship.toml" (fileContents ./starship.toml)
       }
     '';
 
@@ -87,7 +81,7 @@ in {
     };
   };
 
-  fonts.fonts = with pkgs; [powerline-fonts dejavu_fonts];
+  fonts.fonts = with pkgs; [ powerline-fonts dejavu_fonts ];
 
   nix = {
     # Improve nix store disk usage
