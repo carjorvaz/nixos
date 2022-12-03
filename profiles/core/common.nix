@@ -94,10 +94,10 @@ in {
     gc.automatic = true;
 
     # Prevents impurities in builds
-    useSandbox = true;
+    settings.sandbox = true;
 
     # Give root user and wheel group special Nix privileges.
-    trustedUsers = ["root" "@wheel"];
+    settings.trusted-users = [ "root" "@wheel" ];
 
     # Generally useful nix option defaults
     extraOptions = ''

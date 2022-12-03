@@ -10,7 +10,7 @@
   ];
 
   # This is just a representation of the nix default
-  nix.systemFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
+  nix.settings.system-features = [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
 
   environment = {
     # Selection of sysadmin tools that can come in handy
@@ -50,9 +50,9 @@
 
   nix = {
     # Improve nix store disk usage
-    autoOptimiseStore = true;
+    settings.auto-optimise-store = true;
     optimise.automatic = true;
-    allowedUsers = ["@wheel"];
+    settings.allowed-users = [ "@wheel" ];
   };
 
   programs.bash = {
