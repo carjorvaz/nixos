@@ -136,7 +136,7 @@
             };
           suites = with profiles; rec {
             base = [core.nixos users.cjv users.root];
-            laptop = base ++ [ profiles.gallus ];
+            laptop = base ++ [ gallus rnl ];
           };
         };
       };
