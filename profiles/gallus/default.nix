@@ -194,8 +194,6 @@
 
   networking.firewall.enable = false;
 
-  programs.adb.enable = true;
-
   services = {
     xserver = {
       enable = true;
@@ -220,11 +218,6 @@
       };
     };
 
-    # Enable network scanning.
-    avahi = {
-      enable = true;
-      nssmdns = true;
-    };
 
     openssh = {
       enable = true;
@@ -264,10 +257,4 @@
 
   };
 
-  hardware = {
-    sane = {
-      enable = true;
-      extraBackends = [ pkgs.sane-airscan ];
-    };
-  };
 }
