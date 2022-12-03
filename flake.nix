@@ -121,7 +121,7 @@
           ];
         };
 
-        imports = [(digga.lib.importHosts ./hosts/nixos)];
+        imports = [(digga.lib.importHosts ./hosts)];
         hosts = {
           /*
            set host-specific properties here
