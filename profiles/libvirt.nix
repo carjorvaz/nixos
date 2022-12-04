@@ -7,4 +7,9 @@
   };
 
   users.users.cjv.extraGroups = [ "libvirtd" ];
+
+  environment.systemPackages = with pkgs; [
+    virt-manager
+    spice-gtk # Needed for USB redirection in VMs.
+  ];
 }

@@ -17,4 +17,10 @@
       LC_TIME = "pt_PT.utf8";
     };
   };
+
+  environment.systemPackages = with pkgs; [
+    aspell
+    (aspellWithDicts (ds: with ds; [ en en-computers en-science pt_PT ]))
+    hunspell
+  ];
 }

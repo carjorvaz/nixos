@@ -10,6 +10,7 @@ in {
     # Selection of sysadmin tools that can come in handy
     systemPackages = with pkgs; [
       alejandra
+      bashmount
       binutils
       coreutils
       curl
@@ -18,14 +19,20 @@ in {
       fd
       git
       bottom
+      htop
       jq
       manix
       moreutils
+      neofetch
       nix-index
       nmap
+      pstree
       ripgrep
       skim
       tealdeer
+      trash-cli
+      unzip
+      wget
       whois
     ];
 
