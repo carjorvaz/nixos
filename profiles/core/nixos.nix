@@ -68,4 +68,6 @@
   documentation.man.generateCaches = true;
 
   users.mutableUsers = true; # TODO hashed passwords
+
+  zramSwap.enable = true;
 }
