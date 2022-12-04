@@ -32,11 +32,6 @@
     };
   };
 
-  fonts.fontconfig.defaultFonts = {
-    monospace = [ "DejaVu Sans Mono for Powerline" ];
-    sansSerif = [ "DejaVu Sans" ];
-  };
-
   nix = {
     # Improve nix store disk usage
     optimise.automatic = true;
