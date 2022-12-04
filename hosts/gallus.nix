@@ -1,7 +1,7 @@
 { config, pkgs, lib, suites, ... }:
 
 {
-  imports = suites.laptop;
+  imports = suites.gallus;
 
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "nvme" "usb_storage" "sd_mod" ];
@@ -52,7 +52,6 @@
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
   hardware.video.hidpi.enable = lib.mkDefault true;
 
-  # TODO intel hardware acceleration profile module
   boot.initrd.kernelModules = [ "i915" ];
   environment.variables.VDPAU_DRIVER = "va_gl";
   hardware.opengl = {
