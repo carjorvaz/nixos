@@ -106,7 +106,7 @@
               scanning
             ];
             laptop = desktop ++ [ iwd battery ];
-            gallus = laptop ++ [ rnl ];
+            gallus = laptop ++ [ rnl wireshark ];
           };
         };
       };
