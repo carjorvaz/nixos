@@ -18,5 +18,6 @@
   environment.systemPackages = with pkgs; [
     hugo # ox-hugo
     sqlite # org-roam
+    nixfmt
   ];
 }
