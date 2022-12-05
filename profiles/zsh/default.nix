@@ -4,7 +4,6 @@
   programs = {
     zsh = {
       enable = true;
-
       vteIntegration = true;
       enableBashCompletion = true;
       autosuggestions.enable = true;
@@ -31,25 +30,30 @@
   environment.pathsToLink = [ "/share/zsh" ]; # For zsh completion
   users.defaultUserShell = pkgs.zsh;
 
-  home-manager.users.cjv = {
-    programs = {
-      zsh = {
-        enable = true;
-        enableAutosuggestions = true;
-        enableCompletion = true;
-        enableSyntaxHighlighting = true;
-        enableVteIntegration = true;
-        autocd = true;
-        defaultKeymap = "emacs";
+  home-manager.users = let
+    zshConfig = {
+      programs = {
+        zsh = {
+          enable = true;
+          enableAutosuggestions = true;
+          enableCompletion = true;
+          enableSyntaxHighlighting = true;
+          enableVteIntegration = true;
+          autocd = true;
+          defaultKeymap = "emacs";
 
-        history = {
-          expireDuplicatesFirst = true;
-          extended = true;
-          ignoreDups = true;
+          history = {
+            expireDuplicatesFirst = true;
+            extended = true;
+            ignoreDups = true;
+          };
         };
-      };
 
-      fzf.enable = true;
+        fzf.enable = true;
+      };
     };
+  in {
+    cjv = zshConfig;
+    root = zshConfig;
   };
 }

@@ -7,5 +7,5 @@
     extraGroups = [ "wheel" ];
   };
 
-  home-manager.users.cjv.home.stateVersion = "22.05";
+  home-manager.users.cjv.home.stateVersion = "22.11";
 }
