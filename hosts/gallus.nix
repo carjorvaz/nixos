@@ -68,26 +68,5 @@
     '';
   };
 
-  systemd.services.activate-touch-hack = {
-    description = "Touch wake Thinkpad X1 Yoga 3rd gen hack";
-    wantedBy = [
-      "suspend.target"
-      "hibernate.target"
-      "hybrid-sleep.target"
-      "suspend-then-hibernate.target"
-    ];
-    after = [
-      "suspend.target"
-      "hibernate.target"
-      "hybrid-sleep.target"
-      "suspend-then-hibernate.target"
-    ];
-    serviceConfig = {
-      ExecStart = ''
-        /bin/sh -c "echo '\\_SB.PCI0.LPCB.EC._Q2A'  > /proc/acpi/call"
-      '';
-    };
-  };
-
   system.stateVersion = "22.05";
 }
