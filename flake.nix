@@ -41,10 +41,15 @@
     nixos-hardware.url = "github:nixos/nixos-hardware";
 
     nixos-generators.url = "github:nix-community/nixos-generators";
+
+    impermanence.url = "github:nix-community/impermanence/master";
+
+    simple-nixos-mailserver.url =
+      "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-22.11";
   };
 
   outputs = { self, digga, nixos, home, nixos-hardware, nur, agenix, nvfetcher
-    , deploy, nixpkgs, ... }@inputs:
+    , deploy, impermanence, nixpkgs, ... }@inputs:
     digga.lib.mkFlake {
       inherit self inputs;
 
@@ -84,6 +89,7 @@
             digga.nixosModules.nixConfig
             home.nixosModules.home-manager
             agenix.nixosModules.age
+            impermanence.nixosModule
           ];
         };
 
@@ -94,7 +100,8 @@
             users = digga.lib.rakeLeaves ./users;
           };
           suites = with profiles; rec {
-            base = [ core.nixos users.cjv users.root locale neovim ssh zfs zsh ];
+            base =
+              [ core.nixos users.cjv users.root locale neovim ssh zfs zsh ];
             desktop = base ++ [
               bootloader
               emacs
@@ -105,7 +112,10 @@
               resolved
               scanning
             ];
-            laptop = desktop ++ [ iwd battery ];
+            laptop = desktop ++ [ battery iwd ];
+            server = base ++ [ ];
+
+            batatus = server ++ [ ghostMafalda mail nextcloud nginx ];
             gallus = laptop ++ [ distributedBuilds rnl ];
           };
         };
