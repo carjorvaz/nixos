@@ -97,7 +97,7 @@ in {
           # `ssh-keygen -t ed25519 -N "" -f /path/to/ssh_host_ed25519_key`
           hostKeys = [ /persist/secrets/initrd/ssh_host_ed25519_key_initrd ];
           # public ssh key used for login
-          authorizedKeys = sshKeys; # TODO import from ssh profile
+          authorizedKeys = sshKeys;
         };
         # this will automatically load the zfs password prompt on login
         # and kill the other prompt so boot can continue
@@ -117,8 +117,10 @@ in {
     };
   };
 
-  hardware.cpu.intel.updateMicrocode =
-    lib.mkDefault config.hardware.enableRedistributableFirmware;
+  hardware = {
+    enableRedistributableFirmware = true;
+    cpu.intel.updateMicrocode = true;
+  };
 
   networking = {
     hostId = "5130220d";
@@ -126,6 +128,7 @@ in {
     usePredictableInterfaceNames = false;
     useDHCP = false;
     networkmanager.enable = false;
+
     interfaces.eth0 = {
       ipv4.addresses = [{
         address = "5.196.70.206";
