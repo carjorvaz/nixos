@@ -8,8 +8,6 @@ let
   ];
 in {
   imports = suites.batatus;
-  # TODO
-  # - email notifications zfs daemon
 
   fileSystems."/" = {
     device = "zroot/local/root";
@@ -146,18 +144,6 @@ in {
       address = "2001:41d0:e:3ff:ff:ff:ff:ff";
       interface = "eth0";
     };
-
-    nameservers = [ "1.1.1.1" "1.0.0.1" "2a02:c207::1:53" "2a02:c207::2:53" ];
-  };
-
-  # TODO server profile
-  security.sudo.wheelNeedsPassword = false;
-
-  virtualisation = {
-    docker = {
-      enable = true;
-      storageDriver = "zfs";
-    };
   };
 
   services = {
@@ -173,16 +159,6 @@ in {
           bits = 4096;
         }
       ];
-    };
-
-    fail2ban = {
-      enable = true;
-      maxretry = 5;
-      bantime-increment = {
-        enable = true;
-        rndtime = "5min";
-        maxtime = "24h";
-      };
     };
   };
 
