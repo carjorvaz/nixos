@@ -101,7 +101,7 @@
           };
           suites = with profiles; rec {
             base =
-              [ core.nixos users.cjv users.root locale neovim resolved ssh zfs zsh ];
+              [ core.nixos users.cjv users.root locale neovim resolved ssh zfs.common zsh ];
             desktop = base ++ [
               bootloader
               emacs
