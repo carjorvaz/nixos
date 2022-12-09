@@ -115,7 +115,7 @@
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
 
             batatus = server ++ [ docker ghostMafalda mail nextcloud nginx ];
-            gallus = laptop ++ [ distributedBuilds rnl ];
+            gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
       };
