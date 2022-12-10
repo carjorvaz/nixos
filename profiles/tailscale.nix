@@ -4,7 +4,8 @@
   services.tailscale.enable = true;
   networking.firewall = {
     checkReversePath = "loose";
-    #   allowedUDPPorts = [ 41641 ]; # Facilitate firewall punching
+    trustedInterfaces = [ "tailscale0" ];
+    allowedUDPPorts = [ config.services.tailscale.port ];
   };
 
   # environment.persistence = {
