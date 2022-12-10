@@ -39,6 +39,7 @@ in {
     neededForBoot = true;
   };
 
+  # TODO migrate persistent folders to respective profile
   # tree -x / is helpful to check what is being erased.
   environment.persistence."/persist" = {
     hideMounts = true;
@@ -46,6 +47,7 @@ in {
     directories = [
       "/var/www"
       "/var/lib/acme"
+      "/var/lib/headscale"
       "/var/lib/nextcloud"
       "/var/lib/postgresql"
       "/var/lib/rpspamd"

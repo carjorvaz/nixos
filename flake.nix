@@ -100,21 +100,24 @@
             users = digga.lib.rakeLeaves ./users;
           };
           suites = with profiles; rec {
-            base =
-              [ core.nixos users.cjv users.root locale neovim resolved ssh zfs.common zsh ];
-            desktop = base ++ [
-              bootloader
-              emacs
-              fwupd
-              gnome
-              pipewire
-              printing
-              scanning
+            base = [
+              core.nixos
+              users.cjv
+              users.root
+              locale
+              neovim
+              resolved
+              ssh
+              zfs.common
+              zsh
             ];
+            desktop = base
+              ++ [ bootloader emacs fwupd gnome pipewire printing scanning ];
             laptop = desktop ++ [ battery iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
 
-            batatus = server ++ [ docker ghostMafalda mail nextcloud nginx ];
+            batatus = server
+              ++ [ docker ghostMafalda headscale mail nextcloud nginx ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
