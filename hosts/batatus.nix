@@ -48,7 +48,11 @@ in {
       "/var/www"
       "/var/lib/acme"
       "/var/lib/headscale"
-      "/var/lib/nextcloud"
+      {
+        directory = "/var/lib/nextcloud";
+        user = "nextcloud";
+        group = "nextcloud";
+      }
       "/var/lib/postgresql"
       "/var/lib/rpspamd"
       "/var/vmail"
