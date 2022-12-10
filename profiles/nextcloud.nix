@@ -22,6 +22,17 @@ in {
 
       enableBrokenCiphersForSSE = false;
 
+      extraAppsEnable = true;
+      extraApps = with pkgs.nextcloud25Packages.apps; [
+        calendar
+        contacts
+        mail
+        news
+        notes
+        photos
+        tasks
+      ];
+
       config = {
         overwriteProtocol = "https";
         defaultPhoneRegion = "PT";
