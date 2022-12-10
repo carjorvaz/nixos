@@ -108,6 +108,7 @@
               neovim
               resolved
               ssh
+              tailscale
               zfs.common
               zsh
             ];
