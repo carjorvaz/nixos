@@ -5,11 +5,11 @@ in {
   services = {
     headscale = {
       enable = true;
-      # address = "0.0.0.0" # TODO
+      address = "0.0.0.0";
       port = 8080;
       serverUrl = "https://${domain}";
-      dns = { baseDomain = "vaz.ovh"; };
-
+      dns = { baseDomain = "vaz.one"; };
+      settings = { logtail.enabled = false; };
     };
 
     nginx.virtualHosts.${domain} = {
