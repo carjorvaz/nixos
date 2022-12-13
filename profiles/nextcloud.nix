@@ -23,15 +23,9 @@ in {
       enableBrokenCiphersForSSE = false;
 
       extraAppsEnable = true;
-      extraApps = with pkgs.nextcloud25Packages.apps; [
-        calendar
-        contacts
-        mail
-        news
-        notes
-        photos
-        tasks
-      ];
+      extraApps = with pkgs.nextcloud25Packages.apps; {
+        inherit calendar contacts mail news notes tasks;
+      };
 
       config = {
         overwriteProtocol = "https";
