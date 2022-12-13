@@ -54,7 +54,8 @@ in {
         group = "nextcloud";
       }
       "/var/lib/postgresql"
-      "/var/lib/rpspamd"
+      "/var/lib/rspamd"
+      "/var/lib/tailscale"
       "/var/vmail"
       "/var/dkim"
     ];
