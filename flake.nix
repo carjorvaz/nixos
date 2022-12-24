@@ -119,6 +119,7 @@
 
             batatus = server
               ++ [ docker ghostMafalda headscale mail nextcloud nginx ];
+            commodus = desktop ++ [ acme ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };

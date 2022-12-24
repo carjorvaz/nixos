@@ -1,7 +1,7 @@
 { config, lib, pkgs, suites, ... }:
 
 {
-  imports = suites.desktop;
+  imports = suites.commodus;
 
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
