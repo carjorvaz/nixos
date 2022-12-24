@@ -8,8 +8,12 @@
   };
 
   environment.systemPackages = with pkgs; [
+    go
     hugo # ox-hugo
     sqlite # org-roam
     nixfmt
+
+    ccls # C/C++ LSP support
+    clang-tools # clang-format as a C/C++ formatter
   ];
 }
