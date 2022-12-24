@@ -8,7 +8,7 @@
     defaults.email = "carlos+letsencrypt@vaz.one";
 
     # Use services.nginx.virtualHosts."example.vaz.ovh".useACMEHost = "vaz.ovh";
-    # to use the wild card certificate on subdomains.
+    # to use the wildcard certificate on subdomains.
     certs."vaz.ovh" = {
       domain = "vaz.ovh";
       extraDomainNames = [ "*.vaz.ovh" ];
