@@ -1,12 +1,13 @@
 let
+  commodusSystem =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55 root@commodus  ";
+  gallusSystem =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICjVjQULxTJ+NN5ekG0HLpnkyPFIAwbNCQ5EOZ4cSfCt root@gallus";
+  systems = [ commodusSystem gallusSystem ];
+
+  commodusUser =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodu  ";
   gallusUser =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxNtlOg5VM8xN3XYfBGY3wIXrJ0vF5fBpc8s2NsLG9/ cjv@gallus";
-  users = [ gallusUser ];
-
-  gallusSystem =
-    # TODO Experimentar usar o .pub do host que já existia
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICjVjQULxTJ+NN5ekG0HLpnkyPFIAwbNCQ5EOZ4cSfCt root@gallus";
-  systems = [ gallusSystem ];
-in {
-  # "secretFile.age".publicKeys = users ++ systems;
-}
+  users = [ commodusUser gallusUser ];
+in { "ovh.age".publicKeys = [ commodusSystem commodusUser ]; }

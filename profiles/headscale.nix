@@ -8,7 +8,7 @@ in {
       address = "0.0.0.0";
       port = 8080;
       serverUrl = "https://${domain}";
-      dns = { baseDomain = "vaz.one"; };
+      dns = { baseDomain = "vaz.ovh"; };
       settings = { logtail.enabled = false; };
     };
 
