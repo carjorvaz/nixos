@@ -118,8 +118,8 @@
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
 
             batatus = server
-              ++ [ docker ghostMafalda headscale mail nextcloud nginx ];
-            commodus = desktop ++ [ acme ];
+              ++ [ blog acme.common acme.http docker ghostMafalda headscale mail nextcloud nginx ];
+            commodus = desktop ++ [ acme.common acme.dns nginx ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
