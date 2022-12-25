@@ -4,6 +4,7 @@
   services.xserver = {
     enable = true;
     displayManager.gdm.enable = true;
+    displayManager.gdm.autoSuspend = false;
     desktopManager.gnome.enable = true;
 
     layout = "us";
