@@ -117,9 +117,18 @@
             laptop = desktop ++ [ battery iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
 
-            batatus = server
-              ++ [ blog acme.common acme.http docker ghostMafalda headscale mail nextcloud nginx ];
-            commodus = desktop ++ [ acme.common acme.dns nginx ];
+            batatus = server ++ [
+              blog
+              acme.common
+              acme.http
+              docker
+              ghostMafalda
+              headscale
+              mail
+              nextcloud
+              nginx
+            ];
+            commodus = desktop ++ [ acme.common acme.dns jellyfin nginx ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
