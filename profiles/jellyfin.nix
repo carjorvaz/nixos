@@ -11,4 +11,6 @@ in {
 
     jellyfin.enable = true;
   };
+
+  # environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
 }
