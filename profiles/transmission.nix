@@ -12,6 +12,7 @@ in {
     transmission = {
       enable = true;
       openFirewall = true;
+      group = "media";
     };
   };
 
