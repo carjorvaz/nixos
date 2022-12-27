@@ -116,7 +116,7 @@
               ++ [ bootloader emacs fwupd gnome pipewire printing scanning ];
             laptop = desktop ++ [ battery iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
-            media = [ jellyfin prowlarr radarr sonarr transmission ];
+            media = [ bazarr jellyfin prowlarr radarr sonarr transmission ];
 
             batatus = server ++ [
               acme.common
