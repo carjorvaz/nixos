@@ -9,11 +9,10 @@ in {
       locations."/".proxyPass = "http://127.0.0.1:8989";
     };
 
-    sonarr = {
-      enable = true;
-      group = "media";
-    };
+    sonarr.enable = true;
   };
+
+  users.users.sonarr.extraGroups = [ "media" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/sonarr" ];
 }
