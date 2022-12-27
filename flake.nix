@@ -116,6 +116,7 @@
               ++ [ bootloader emacs fwupd gnome pipewire printing scanning ];
             laptop = desktop ++ [ battery iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
+            media = [ jellyfin prowlarr radarr sonarr transmission ];
 
             batatus = server ++ [
               acme.common
@@ -131,7 +132,7 @@
               nginx.bastion
             ];
             commodus = desktop ++ media
-              ++ [ acme.common acme.dns-vaz-ovh media nginx.common ];
+              ++ [ acme.common acme.dns-vaz-ovh nginx.common ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
