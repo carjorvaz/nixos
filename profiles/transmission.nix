@@ -1,18 +1,25 @@
 { config, lib, pkgs, ... }:
 
-# Manage remotely using: ssh -L 9091:localhost:9091 commodus and acessing localhost:9091
 let domain = "transmission.vaz.ovh";
 in {
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:9091";
+      locations."/".proxyPass = "http://127.0.0.1:${
+          toString config.services.transmission.settings.rpc-port
+        }";
     };
 
     transmission = {
       enable = true;
       openFirewall = true;
+      settings = {
+        download-dir = "/persist/media/downloads";
+        rpc-whitelist = "127.0.0.1,100.64.*.*";
+        speed-limit-up-enable = true;
+        speed-limit-up = 100;
+      };
     };
   };
 
