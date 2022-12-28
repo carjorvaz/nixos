@@ -16,8 +16,11 @@ in {
       openFirewall = true;
       settings = {
         download-dir = "/persist/media/downloads";
+        rpc-whitelist-enabled = true;
         rpc-whitelist = "127.0.0.1,100.64.*.*";
-        speed-limit-up-enable = true;
+        rpc-host-whitelist-enabled = true;
+        rpc-host-whitelist = "*.vaz.ovh,*.rome.vaz.ovh";
+        speed-limit-up-enabled = true;
         speed-limit-up = 100;
       };
     };
