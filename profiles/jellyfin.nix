@@ -14,7 +14,7 @@ in {
 
   # Requires: chgrp --recursive media /persist/media && chmod -R g+w /persist/media
   users.groups.media = { }; # Creates the media group
-  users.users.jellyfin.extraGroups = [ "media" ];
+  users.users.jellyfin.extraGroups = [ "media" "render" "video" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
 }
