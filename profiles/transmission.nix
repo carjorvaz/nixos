@@ -14,6 +14,7 @@ in {
     transmission = {
       enable = true;
       openFirewall = true;
+      # Reference: https://github.com/transmission/transmission/blob/main/docs/Editing-Configuration-Files.md
       settings = {
         download-dir = "/persist/media/downloads";
         rpc-whitelist-enabled = true;
