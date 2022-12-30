@@ -9,10 +9,11 @@ in {
       locations."/".proxyPass = "http://127.0.0.1:6767";
     };
 
-    bazarr.enable = true;
+    bazarr = {
+      enable = true;
+      user = "media";
+    };
   };
-
-  users.users.bazarr.extraGroups = [ "media" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/bazarr" ];
 }

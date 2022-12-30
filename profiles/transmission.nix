@@ -13,6 +13,7 @@ in {
 
     transmission = {
       enable = true;
+      user = "media";
       openFirewall = true;
       # Reference: https://github.com/transmission/transmission/blob/main/docs/Editing-Configuration-Files.md
       settings = {
@@ -26,9 +27,6 @@ in {
       };
     };
   };
-
-  # Requires: chgrp --recursive media /var/lib/transmission/Downloads
-  users.users.transmission.extraGroups = [ "media" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/transmission" ];
 }

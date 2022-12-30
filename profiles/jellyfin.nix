@@ -9,12 +9,16 @@ in {
       locations."/".proxyPass = "http://127.0.0.1:8096";
     };
 
-    jellyfin.enable = true;
+    jellyfin = {
+      enable = true;
+      user = "media";
+    };
   };
 
-  # Requires: chgrp --recursive media /persist/media && chmod -R g+w /persist/media
-  users.groups.media = { }; # Creates the media group
-  users.users.jellyfin.extraGroups = [ "media" "render" "video" ];
+  users.users.media = {
+    isNormalUser = true;
+    extraGroups = [ "render" "video" ];
+  };
 
   # environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
 }

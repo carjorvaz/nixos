@@ -9,10 +9,11 @@ in {
       locations."/".proxyPass = "http://127.0.0.1:7878";
     };
 
-    radarr.enable = true;
+    radarr = {
+      enable = true;
+      user = "media";
+    };
   };
-
-  users.users.radarr.extraGroups = [ "media" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/radarr" ];
 }

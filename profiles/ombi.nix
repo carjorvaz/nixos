@@ -9,10 +9,11 @@ in {
       locations."/".proxyPass = "http://127.0.0.1:5000";
     };
 
-    ombi.enable = true;
+    ombi = {
+      enable = true;
+      user = "media";
+    };
   };
-
-  users.users.ombi.extraGroups = [ "media" ];
 
   # environment.persistence."/persist".directories = [ "/var/lib/ombi" ];
 }
