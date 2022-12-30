@@ -123,21 +123,23 @@
               acme.common
               acme.http
               acme.dns-vaz-one
-              docker
-              # ghostMafalda
+              ghostMafalda
               headscale
               mail
               nextcloud
               nginx.blog
               nginx.common
               nginx.bastion
+              oci-containers.docker
             ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
+              homer
               intel-hardware-transcoding
               nginx.common
               nginx.commodus
+              oci-containers.docker
             ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
