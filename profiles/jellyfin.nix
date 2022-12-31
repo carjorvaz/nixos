@@ -17,7 +17,7 @@ in {
 
   users.users.media = {
     isNormalUser = true;
-    extraGroups = [ "render" "video" ];
+    extraGroups = [ "render" "video" ]; # Required for hardware transcoding.
   };
 
   # environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
