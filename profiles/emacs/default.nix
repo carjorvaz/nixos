@@ -8,6 +8,9 @@
   };
 
   environment.systemPackages = with pkgs; [
+    mlocate
+    ripgrep
+    fd
     go
     hugo # ox-hugo
     sqlite # org-roam
