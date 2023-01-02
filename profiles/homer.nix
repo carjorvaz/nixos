@@ -10,6 +10,7 @@ in {
     autoStart = true;
     ports = [ "127.0.0.1:8081:8080" ];
     volumes = [ "/var/lib/homer/assets:/www/assets" ];
+    user = "1000:1000";
   };
 
   services.nginx.virtualHosts.${domain} = {
