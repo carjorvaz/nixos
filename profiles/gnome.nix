@@ -3,9 +3,12 @@
 {
   services.xserver = {
     enable = true;
-    displayManager.gdm.enable = true;
-    displayManager.gdm.autoSuspend = false;
+
     desktopManager.gnome.enable = true;
+    displayManager.gdm = {
+      enable = true;
+      autoSuspend = false;
+    };
 
     layout = "us";
     xkbOptions = "ctrl:nocaps compose:prsc";
