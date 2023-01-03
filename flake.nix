@@ -141,7 +141,7 @@
               nginx.commodus
               oci-containers.docker
             ];
-            gallus = laptop ++ [ distributedBuilds latex pop-shell rnl ];
+            gallus = laptop ++ [ distributedBuilds latex rnl ];
           };
         };
       };
