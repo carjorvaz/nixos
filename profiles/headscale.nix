@@ -5,8 +5,6 @@ in {
   services = {
     headscale = {
       enable = true;
-      address = "0.0.0.0";
-      port = 8080;
       serverUrl = "https://${domain}";
       dns = { baseDomain = "vaz.ovh"; };
       settings = { logtail.enabled = false; };
@@ -24,4 +22,5 @@ in {
   };
 
   environment.systemPackages = [ config.services.headscale.package ];
+  environment.persistence."/persist".directories = [ "/var/lib/headscale" ];
 }
