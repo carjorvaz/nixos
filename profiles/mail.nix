@@ -2,7 +2,8 @@
 
 {
   imports = [
-    inputs.simple-nixos-mailserver.nixosModule {
+    inputs.simple-nixos-mailserver.nixosModule
+    {
       mailserver = {
         enable = true;
         fqdn = "mail.vaz.one";
@@ -53,4 +54,7 @@
       };
     }
   ];
+
+  environment.persistence."/persist".directories =
+    [ "/var/lib/rspamd" "/var/vmail" "/var/dkim" ];
 }
