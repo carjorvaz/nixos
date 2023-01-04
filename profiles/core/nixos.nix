@@ -69,5 +69,10 @@
 
   users.mutableUsers = true; # TODO hashed passwords
 
-  zramSwap.enable = true;
+  # Follow Fedora: https://old.reddit.com/r/Fedora/comments/r4a4so/interesting_fedora_does_not_support_hibernation/hmfonv0/
+  zramSwap = {
+    enable = true;
+    memoryMax = 8 * 1024 * 1024 * 1024;
+    memoryPercent = 100;
+  };
 }
