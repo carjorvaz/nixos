@@ -120,29 +120,40 @@
               [ bazarr jellyfin ombi prowlarr radarr sonarr transmission ];
 
             batatus = server ++ [
-              acme.common
-              acme.http
-              acme.dns-vaz-one
-              ghostMafalda
-              headscale
-              mail
-              nextcloud
-              nginx.blog
-              nginx.common
-              nginx.bastion
-              oci-containers.docker
+              # acme.common
+              # acme.http
+              # acme.dns-vaz-one
+              # ghostMafalda
+              # headscale
+              # mail
+              # nextcloud
+              # nginx.blog
+              # nginx.common
+              # nginx.bastion
+              # oci-containers.docker
             ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
               homer
               intel-hardware-transcoding
+              # TODO nextcloud
               nginx.common
               nginx.commodus
               oci-containers.docker
             ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
-            hadrianus = server ++ [ ];
+            hadrianus = server ++ [
+              acme.common
+              acme.http
+              acme.dns-vaz-one
+              # TODO ghostMafalda; requires docker
+              headscale
+              mail
+              nginx.blog
+              nginx.common
+              nginx.bastion
+            ];
           };
         };
       };

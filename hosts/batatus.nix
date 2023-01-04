@@ -55,7 +55,7 @@ in {
       }
       "/var/lib/postgresql"
       "/var/lib/rspamd"
-      "/var/lib/tailscale"
+      # "/var/lib/tailscale"
       "/var/vmail"
       "/var/dkim"
     ];
