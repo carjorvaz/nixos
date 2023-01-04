@@ -26,4 +26,6 @@
       root = "/var/www/carlosvaz.pt/";
     };
   };
+
+  environment.persistence."/persist".directories = [ "/var/www" ];
 }
