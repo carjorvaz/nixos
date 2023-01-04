@@ -142,6 +142,7 @@
               oci-containers.docker
             ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
+            hadrianus = server ++ [ ];
           };
         };
       };
