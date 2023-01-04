@@ -14,6 +14,10 @@ in {
     kbdInteractiveAuthentication = false;
     # Only allow ssh keys explictly set here, in the NixOS configuration.
     authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
+    hostKeys = [{
+      path = "/persist/etc/ssh/ssh_host_ed25519_key";
+      type = "ed25519";
+    }];
   };
 
   users.users.cjv.openssh.authorizedKeys.keys = sshKeys;
