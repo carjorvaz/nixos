@@ -59,4 +59,13 @@ in {
   };
 
   networking.firewall.allowedTCPPorts = [ 80 443 ];
+
+  environment.persistence."/persist".directories = [
+    {
+      directory = "/var/lib/nextcloud";
+      user = "nextcloud";
+      group = "nextcloud";
+    }
+    "/var/lib/postgresql"
+  ];
 }
