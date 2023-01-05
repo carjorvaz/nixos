@@ -112,8 +112,16 @@
               zfs.common
               zsh
             ];
-            desktop = base
-              ++ [ bootloader emacs fwupd gnome pipewire printing scanning ];
+            desktop = base ++ [
+              bootloader
+              emacs
+              fwupd
+              graphical.common
+              graphical.gnome
+              pipewire
+              printing
+              scanning
+            ];
             laptop = desktop ++ [ battery iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
             media =
