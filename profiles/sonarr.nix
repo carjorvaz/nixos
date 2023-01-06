@@ -15,5 +15,5 @@ in {
     };
   };
 
-  # environment.persistence."/persist".directories = [ "/var/lib/sonarr" ];
+  environment.persistence."/persist".directories = [ "/var/lib/sonarr" ];
 }

@@ -12,5 +12,5 @@ in {
     prowlarr.enable = true;
   };
 
-  # environment.persistence."/persist".directories = [ "/var/lib/prowlarr" ];
+  environment.persistence."/persist".directories = [ "/var/lib/prowlarr" ];
 }

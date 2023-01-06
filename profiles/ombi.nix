@@ -15,5 +15,5 @@ in {
     };
   };
 
-  # environment.persistence."/persist".directories = [ "/var/lib/ombi" ];
+  environment.persistence."/persist".directories = [ "/var/lib/ombi" ];
 }

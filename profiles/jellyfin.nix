@@ -20,5 +20,5 @@ in {
     extraGroups = [ "render" "video" ]; # Required for hardware transcoding.
   };
 
-  # environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
+  environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
 }

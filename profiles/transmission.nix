@@ -28,5 +28,5 @@ in {
     };
   };
 
-  # environment.persistence."/persist".directories = [ "/var/lib/transmission" ];
+  environment.persistence."/persist".directories = [ "/var/lib/transmission" ];
 }
