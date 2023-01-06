@@ -21,6 +21,8 @@ in {
     };
   };
 
+  networking.firewall.allowedTCPPorts = [ 80 443 ];
+
   environment.systemPackages = [ config.services.headscale.package ];
   environment.persistence."/persist".directories = [ "/var/lib/headscale" ];
 }
