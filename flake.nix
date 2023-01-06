@@ -145,7 +145,7 @@
               acme.dns-vaz-ovh
               homer
               intel-hardware-transcoding
-              # TODO nextcloud
+              nextcloud
               nginx.common
               nginx.commodus
               oci-containers.docker

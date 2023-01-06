@@ -7,11 +7,6 @@
 let domain = "cloud.vaz.one";
 in {
   services = {
-    nginx.virtualHosts."${domain}" = {
-      forceSSL = true;
-      enableACME = true;
-    };
-
     nextcloud = {
       enable = true;
       package = pkgs.nextcloud25; # Need to manually increment with every update
@@ -57,8 +52,6 @@ in {
     requires = [ "postgresql.service" ];
     after = [ "postgresql.service" ];
   };
-
-  networking.firewall.allowedTCPPorts = [ 80 443 ];
 
   environment.persistence."/persist".directories = [
     {
