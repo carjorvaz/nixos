@@ -1,6 +1,4 @@
 let
-  batatusSystem =
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA6lzje83dKBww7eAQydUzuG5qhTrfPM6oIRdrmSf1y7 root@batatus";
   commodusSystem =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55 root@commodus  ";
   gallusSystem =
@@ -16,5 +14,5 @@ let
   users = [ commodusUser gallusUser ];
 in {
   "ovh.age".publicKeys =
-    [ batatusSystem commodusSystem commodusUser hadrianusSystem ];
+    [ commodusSystem commodusUser hadrianusSystem ];
 }

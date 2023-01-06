@@ -127,19 +127,6 @@
             media =
               [ bazarr jellyfin ombi prowlarr radarr sonarr transmission ];
 
-            batatus = server ++ [
-              # acme.common
-              # acme.http
-              # acme.dns-vaz-one
-              # ghostMafalda
-              # headscale
-              # mail
-              # nextcloud
-              # nginx.blog
-              # nginx.common
-              # nginx.bastion
-              # oci-containers.docker
-            ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
