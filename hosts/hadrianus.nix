@@ -119,10 +119,6 @@ in {
     };
 
     defaultGateway = "46.38.240.1";
-    defaultGateway6 = {
-      address = "fe80::1";
-      interface = "ens3";
-    };
   };
 
   system.stateVersion = "22.11";
