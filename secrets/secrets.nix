@@ -13,6 +13,9 @@ let
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxNtlOg5VM8xN3XYfBGY3wIXrJ0vF5fBpc8s2NsLG9/ cjv@gallus";
   users = [ commodusUser gallusUser ];
 in {
-  "ovh.age".publicKeys =
-    [ commodusSystem commodusUser hadrianusSystem ];
+  "nextcloud-db-pass.age".publicKeys =
+    [ commodusSystem commodusUser gallusUser ];
+  "nextcloud-admin-pass.age".publicKeys =
+    [ commodusSystem commodusUser gallusUser ];
+  "ovh.age".publicKeys = [ commodusSystem commodusUser hadrianusSystem ];
 }

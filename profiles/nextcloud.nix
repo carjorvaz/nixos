@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ self, config, lib, pkgs, ... }:
 
 # Backup notes:
 # - https://docs.nextcloud.com/server/latest/admin_manual/maintenance/backup.html
@@ -6,6 +6,19 @@
 # - /var/lib/nextcloud must be owned by nextcloud (sudo chown -R nextcloud: /var/lib/nextcloud)
 let domain = "cloud.vaz.one";
 in {
+
+  age.secrets.nextcloud-db-pass = {
+    file = "${self}/secrets/nextcloud-db-pass.age";
+    owner = "nextcloud";
+    group = "nextcloud";
+  };
+
+  age.secrets.nextcloud-admin-pass = {
+    file = "${self}/secrets/nextcloud-admin-pass.age";
+    owner = "nextcloud";
+    group = "nextcloud";
+  };
+
   services = {
     nextcloud = {
       enable = true;
@@ -31,9 +44,9 @@ in {
         dbhost =
           "/run/postgresql"; # nextcloud will add /.s.PGSQL.5432 by itself
         dbname = "nextcloud";
-        dbpassFile = "/persist/secrets/nextcloud/nextcloud-db-pass";
+        dbpassFile = config.age.secrets.nextcloud-db-pass.path;
 
-        adminpassFile = "/persist/secrets/nextcloud/nextcloud-admin-pass";
+        adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
         adminuser = "admin";
       };
     };
