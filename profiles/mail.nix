@@ -1,6 +1,12 @@
-{ config, inputs, lib, pkgs, ... }:
+{ self, config, inputs, lib, pkgs, ... }:
 
 {
+  age.secrets.mailCarlosHashedPassword.file =
+    "${self}/secrets/mailCarlosHashedPassword.age";
+
+  age.secrets.mailMafaldaHashedPassword.file =
+    "${self}/secrets/mailMafaldaHashedPassword.age";
+
   imports = [
     inputs.simple-nixos-mailserver.nixosModule
     {
@@ -26,7 +32,9 @@
         # nix run nixpkgs.apacheHttpd -c htpasswd -nbB "" "super secret password" | cut -d: -f2 > /hashed/password/file/location
         loginAccounts = {
           "carlos@vaz.one" = {
-            hashedPasswordFile = "/persist/secrets/mail/carlos_hashed_password";
+            hashedPasswordFile =
+              config.age.secrets.mailCarlosHashedPassword.path;
+
             # aliases = [ "postmaster@example.com" ];
             # Aliases starting with @ are catchall aliases
             aliases = [
@@ -43,7 +51,8 @@
 
           "me@mafaldaribeiro.com" = {
             hashedPasswordFile =
-              "/persist/secrets/mail/mafalda_hashed_password";
+              config.age.secrets.mailMafaldaHashedPassword.path;
+
             aliases = [ "@mafaldaribeiro.com" "@mafaldaribeiro.pt" ];
           };
         };
@@ -55,6 +64,17 @@
     }
   ];
 
-  environment.persistence."/persist".directories =
-    [ "/var/lib/rspamd" "/var/vmail" "/var/dkim" ];
+  environment.persistence."/persist".directories = [
+    "/var/lib/rspamd"
+    {
+      directory = "/var/vmail";
+      user = "virtualMail";
+      group = "virtualMail";
+    }
+    {
+      directory = "/var/dkim";
+      user = "opendkim";
+      group = "opendkim";
+    }
+  ];
 }
