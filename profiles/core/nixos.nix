@@ -61,9 +61,6 @@
     openFirewall = lib.mkDefault false;
   };
 
-  # Service that makes Out of Memory Killer more effective
-  services.earlyoom.enable = true;
-
   # Allow searching through man pages with apropos(1).
   documentation.man.generateCaches = true;
 
