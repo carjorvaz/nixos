@@ -39,6 +39,8 @@ in {
         overwriteProtocol = "https";
         defaultPhoneRegion = "PT";
 
+        trustedProxies = [ "100.64.0.2" ];
+
         dbtype = "pgsql";
         dbuser = "nextcloud";
         dbhost =
