@@ -19,6 +19,8 @@
         naturalScrolling = true;
       };
     };
+
+    printing.enable = true;
   };
 
   environment.systemPackages = with pkgs; [
