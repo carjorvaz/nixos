@@ -1,22 +1,24 @@
 { config, lib, pkgs, ... }:
 
 {
-  services.xserver = {
-    enable = true;
-
-    layout = "us";
-    xkbOptions = "ctrl:nocaps compose:prsc";
-    xkbVariant = "altgr-intl";
-
-    libinput = {
+  services = {
+    xserver = {
       enable = true;
 
-      # Disable mouse acceleration.
-      mouse.accelProfile = "flat";
+      layout = "us";
+      xkbOptions = "ctrl:nocaps compose:prsc";
+      xkbVariant = "altgr-intl";
 
-      touchpad = {
-        disableWhileTyping = true;
-        naturalScrolling = true;
+      libinput = {
+        enable = true;
+
+        # Disable mouse acceleration.
+        mouse.accelProfile = "flat";
+
+        touchpad = {
+          disableWhileTyping = true;
+          naturalScrolling = true;
+        };
       };
     };
 
