@@ -119,7 +119,6 @@
               graphical.common
               graphical.gnome
               pipewire
-              printing
               scanning
             ];
             laptop = desktop ++ [ iwd ];
