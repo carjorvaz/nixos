@@ -122,7 +122,7 @@
               printing
               scanning
             ];
-            laptop = desktop ++ [ battery iwd ];
+            laptop = desktop ++ [ iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
             media =
               [ bazarr jellyfin ombi prowlarr radarr sonarr transmission ];
