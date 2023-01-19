@@ -21,7 +21,7 @@
         gtk-theme = "Adwaita-dark";
       };
 
-      "/org/gnome/desktop/peripherals/mouse" = { accel-profile = "flat"; };
+      # "/org/gnome/desktop/peripherals/mouse" = { accel-profile = "flat"; }; # TODO broken
 
       "org/gnome/shell" = {
         favorite-apps = [
