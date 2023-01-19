@@ -126,6 +126,7 @@
             media =
               [ bazarr jellyfin ombi prowlarr radarr sonarr transmission ];
 
+            aurelius = desktop;
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
