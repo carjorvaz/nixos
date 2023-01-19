@@ -55,8 +55,6 @@
   #  options = [ "zfsutil" ];
   #};
 
-  services.xserver.displayManager.gdm.autoSuspend = false;
-
   hardware = {
     enableRedistributableFirmware = true;
     cpu.intel.updateMicrocode = true;
