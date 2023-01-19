@@ -144,5 +144,5 @@ in {
   hardware.nvidia.package =
     config.boot.kernelPackages.nvidiaPackages.legacy_470;
 
-  system.stateVersion = "21.11"; # Did you read the comment?
+  system.stateVersion = "21.11";
 }
