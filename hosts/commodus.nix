@@ -61,10 +61,24 @@
     cpu.intel.updateMicrocode = true;
   };
 
-  networking.useDHCP = lib.mkDefault true;
+  networking = {
+    useDHCP = false;
+
+    interfaces.eno1 = {
+      useDHCP = false;
+      wakeOnLan.enable = true;
+
+      ipv4.addresses = [{
+        address = "192.168.1.1";
+        prefixLength = 24;
+      }];
+    };
+
+    defaultGateway = "192.168.1.254";
+  };
+
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
   hardware.video.hidpi.enable = lib.mkDefault true;
-  networking.interfaces.eno1.wakeOnLan.enable = true;
 
   environment.variables.VDPAU_DRIVER = "va_gl";
   hardware.opengl = {
