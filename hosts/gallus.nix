@@ -6,7 +6,8 @@
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "nvme" "usb_storage" "sd_mod" ];
   boot.kernelModules = [ "kvm-intel" "acpi_call" ];
-  boot.kernelPackages = pkgs.linuxPackages_zen;
+  boot.kernelPackages =
+    lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
   boot.extraModulePackages = with config.boot.kernelPackages; [ acpi_call ];
 
   boot.supportedFilesystems = [ "zfs" ];
