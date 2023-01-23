@@ -23,7 +23,7 @@ in {
         rpc-whitelist = "127.0.0.1,100.64.*.*";
         rpc-host-whitelist-enabled = true;
         rpc-host-whitelist = "*.vaz.ovh,*.rome.vaz.ovh";
-        ratio-limit-enable = true;
+        ratio-limit-enabled = true;
         ratio-limit = 4.0;
       };
     };
