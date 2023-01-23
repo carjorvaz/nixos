@@ -16,7 +16,7 @@
   home-manager.users.cjv = {
     # Use `dconf watch /` to track stateful changes you are doing, then set them here.
     dconf.settings = {
-      "/org/gnome/desktop/input-sources" = {
+      "org/gnome/desktop/input-sources" = {
         sources = "[('xkb', 'us+colemak_dh'), ('xkb', 'us+altgr-intl')]";
         xkb-options = "['lv3:ralt_switch', 'compose:prsc', 'ctrl:nocaps']";
       };
@@ -26,7 +26,7 @@
         gtk-theme = "Adwaita-dark";
       };
 
-      # "/org/gnome/desktop/peripherals/mouse" = { accel-profile = "flat"; }; # TODO broken
+      "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
 
       "org/gnome/shell" = {
         favorite-apps = [
