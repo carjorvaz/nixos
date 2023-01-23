@@ -15,6 +15,7 @@ in {
       enable = true;
       user = "media";
       openFirewall = true;
+      openPeerPorts = true;
       # Reference: https://github.com/transmission/transmission/blob/main/docs/Editing-Configuration-Files.md
       settings = {
         download-dir = "/persist/media/downloads";
@@ -22,8 +23,6 @@ in {
         rpc-whitelist = "127.0.0.1,100.64.*.*";
         rpc-host-whitelist-enabled = true;
         rpc-host-whitelist = "*.vaz.ovh,*.rome.vaz.ovh";
-        speed-limit-up-enabled = true;
-        speed-limit-up = 100;
       };
     };
   };
