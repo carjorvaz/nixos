@@ -104,7 +104,6 @@ in {
   networking = {
     networkmanager.enable = false;
 
-    hostName = "aurelius";
     hostId = "8556b001";
     domain = "rnl.tecnico.ulisboa.pt";
 
