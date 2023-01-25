@@ -145,6 +145,7 @@
               nginx.common
               nginx.commodus
               oci-containers.docker
+              printing
             ];
             gallus = laptop ++ [ distributedBuilds latex rnl ];
             hadrianus = server ++ [
