@@ -1,8 +1,6 @@
 { config, lib, pkgs, ... }:
 
 {
-  boot.kernelPackages = pkgs.linuxPackages_zen;
-
   services = {
     xserver = {
       enable = true;
