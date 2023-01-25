@@ -123,8 +123,17 @@
             ];
             laptop = desktop ++ [ iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
-            media =
-              [ bazarr jellyfin ombi prowlarr radarr sonarr transmission ];
+            media = [
+              bazarr
+              calibre
+              jellyfin
+              ombi
+              prowlarr
+              radarr
+              readarr
+              sonarr
+              transmission
+            ];
 
             aurelius = desktop;
             commodus = desktop ++ media ++ [
