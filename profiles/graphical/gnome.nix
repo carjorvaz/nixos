@@ -18,7 +18,7 @@
     dconf.settings = {
       "org/gnome/desktop/input-sources" = {
         sources = "[('xkb', 'us+colemak_dh'), ('xkb', 'us+altgr-intl')]";
-        xkb-options = "['lv3:ralt_switch', 'compose:prsc', 'ctrl:nocaps']";
+        xkb-options = [ "lv3:ralt_switch" "compose:prsc" "ctrl:nocaps" ];
       };
 
       "org/gnome/desktop/interface" = {
