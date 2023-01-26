@@ -106,7 +106,7 @@
               users.root
               locale
               neovim
-              resolved
+              dns
               ssh
               tailscale
               zfs.common
