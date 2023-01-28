@@ -151,7 +151,7 @@ in {
         settings = {
           main = {
             term = "xterm-256color";
-            font = "monospace:size=11";
+            font = "monospace:size=14";
             dpi-aware = "yes";
           };
 
@@ -227,7 +227,7 @@ in {
             "${pkgs.i3status-rust}/bin/i3status-rs ~/.config/i3status-rust/config-top.toml";
           position = "top";
           fonts = {
-            size = 10.0;
+            size = 12.0;
             names = [ "monospace" ];
           };
         }];
