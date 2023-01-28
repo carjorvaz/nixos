@@ -112,8 +112,15 @@
               zfs.common
               zsh
             ];
-            desktop = base
-              ++ [ bootloader emacs fwupd graphical.common pipewire scanning ];
+            desktop = base ++ [
+              bootloader
+              colemak
+              emacs
+              fwupd
+              graphical.common
+              pipewire
+              scanning
+            ];
             laptop = desktop ++ [ iwd ];
             server = base ++ [ fail2ban passwordlessSudo zfs.email ];
             media = [
@@ -128,13 +135,12 @@
               transmission
             ];
 
-            aurelius = desktop
-              ++ [ colemak graphical.sway.aurelius graphical.sway.common ];
+            aurelius = desktop ++ [ graphical.sway ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
               homer
-              graphical.gnome
+              graphical.sway
               intel-hardware-transcoding
               nextcloud
               nginx.common

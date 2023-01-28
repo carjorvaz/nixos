@@ -132,7 +132,7 @@
 
     wayland.windowManager.sway.config.output."*".bg =
       "~/Pictures/bierstadt.jpg fill";
-    services.nextloud-client.enable = true;
+    services.nextcloud-client.enable = true;
   };
 
   system.stateVersion = "22.05";

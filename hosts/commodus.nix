@@ -86,5 +86,47 @@
     extraPackages = with pkgs; [ vaapiIntel libvdpau-va-gl intel-media-driver ];
   };
 
+  services.kanata.keyboards."colemak".devices =
+    [ "/dev/input/by-id/usb-04d9_USB_Keyboard-if01-event-kbd" ];
+
+  home-manager.users.cjv = {
+    # TODO:
+    # - natural scrolling only on gallus; change on common
+    # - increase foot font size
+    programs.i3status-rust.bars.top.blocks = [
+      {
+        block = "sound";
+        max_vol = 100;
+        headphones_indicator = true;
+        device_kind = "sink";
+      }
+      {
+        block = "sound";
+        max_vol = 100;
+        device_kind = "source";
+      }
+      {
+        block = "time";
+        interval = 5;
+        format = "%a %d/%m %R";
+      }
+    ];
+
+    wayland.windowManager.sway.config = rec {
+      output = {
+        "*".bg = "~/Pictures/wallpaper.jpg fill";
+        "HDMI-A-1" = { resolution = "1920x1080"; };
+        "HDMI-A-3" = { resolution = "1920x1080"; };
+      };
+
+      workspaceOutputAssign = [{
+        workspace = "9";
+        output = "HDMI-A-3";
+      }];
+    };
+
+    services.nextcloud-client.enable = true;
+  };
+
   system.stateVersion = "22.05";
 }
