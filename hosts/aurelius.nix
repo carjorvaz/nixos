@@ -140,6 +140,9 @@ in {
     search = [ "rnl.tecnico.ulisboa.pt" ];
   };
 
+  services.kanata.keyboards."colemak".devices =
+    [ "/dev/input/by-path/platform-i8042-serio-0-event-kbd" ];
+
   home-manager.users.cjv = {
     # TODO:
     # - natural scrolling only on gallus; change on common
