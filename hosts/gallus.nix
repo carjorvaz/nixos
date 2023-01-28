@@ -88,5 +88,52 @@
     privateKeyFile = "/persist/secrets/wireguard/privatekey"; # TODO agenix
   };
 
+  home-manager.users.cjv = {
+    # TODO:
+    # - on-screen keyboard
+    # - screen rotation
+    programs.i3status-rust.bars.top = {
+      settings.scrolling = "natural";
+      blocks = [
+        {
+          block = "net";
+          format = " {ssid}";
+        }
+        {
+          block = "backlight";
+          invert_icons = true;
+          cycle = [ 100 50 0 50 ];
+          format = "{brightness}";
+        }
+        {
+          block = "sound";
+          max_vol = 100;
+          headphones_indicator = true;
+          device_kind = "sink";
+        }
+        {
+          block = "sound";
+          max_vol = 100;
+          device_kind = "source";
+        }
+        {
+          block = "battery";
+          interval = 10;
+          format = " {percentage} - {time} remaining ({power})";
+          full_format = " Fully charged";
+        }
+        {
+          block = "time";
+          interval = 5;
+          format = "%a %d/%m %R";
+        }
+      ];
+    };
+
+    wayland.windowManager.sway.config.output."*".bg =
+      "~/Pictures/bierstadt.jpg fill";
+    services.nextloud-client.enable = true;
+  };
+
   system.stateVersion = "22.05";
 }
