@@ -83,5 +83,10 @@
       true; # Refrain from using the power saver profile.
   };
 
+  services.wgrnl = {
+    enable = true;
+    privateKeyFile = "/persist/secrets/wireguard/privatekey"; # TODO agenix
+  };
+
   system.stateVersion = "22.05";
 }
