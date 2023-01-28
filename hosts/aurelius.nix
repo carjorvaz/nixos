@@ -140,9 +140,49 @@ in {
     search = [ "rnl.tecnico.ulisboa.pt" ];
   };
 
-  services.xserver.videoDrivers = [ "nvidia" ];
-  hardware.nvidia.package =
-    config.boot.kernelPackages.nvidiaPackages.legacy_470;
+  home-manager.users.cjv = {
+    # TODO:
+    # - natural scrolling only on gallus; change on common
+    # - increase font size
+    programs.i3status-rust.bars.top.blocks = [
+      {
+        block = "sound";
+        max_vol = 100;
+        headphones_indicator = true;
+        device_kind = "sink";
+      }
+      {
+        block = "sound";
+        max_vol = 100;
+        device_kind = "source";
+      }
+      {
+        block = "time";
+        interval = 5;
+        format = "%a %d/%m %R";
+      }
+    ];
+
+    wayland.windowManager.sway.config = rec {
+      output = {
+        "*".bg = "~/Pictures/wallpaper.png fill";
+        "HDMI-A-1" = {
+          resolution = "2560x1440";
+          pos = "0 215";
+        };
+        "VGA-1" = {
+          resolution = "1920x1080";
+          pos = "2560 0";
+          transform = "270";
+        };
+      };
+
+      workspaceOutputAssign = [{
+        workspace = "9";
+        output = "VGA-1";
+      }];
+    };
+  };
 
   system.stateVersion = "21.11";
 }

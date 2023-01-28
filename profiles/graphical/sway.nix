@@ -1,8 +1,6 @@
 { config, inputs, pkgs, lib, ... }:
 
 # TODO:
-# - on-screen keyboard
-# - screen rotation
 # - fn + f7 wdisplays
 # - kanshi
 # - image viewer (https://github.com/artemsen/swayimg)
@@ -105,13 +103,10 @@ in {
 
   users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
 
-  services = {
-    xserver = {
-      displayManager.autoLogin = {
-        enable = true;
-        user = "cjv";
-      };
-    };
+  services.xserver.displayManager.gdm = {
+    enable = true;
+    wayland = true;
+    autoSuspend = false;
   };
 
   security.polkit.enable = true;
@@ -166,48 +161,10 @@ in {
 
       i3status-rust = {
         enable = true;
-        bars = {
-          top = {
-            blocks = [
-              {
-                block = "net";
-                format = " {ssid}";
-              }
-              {
-                block = "backlight";
-                invert_icons = true;
-                cycle = [ 100 50 0 50 ];
-                format = "{brightness}";
-              }
-              {
-                block = "sound";
-                max_vol = 100;
-                headphones_indicator = true;
-                device_kind = "sink";
-              }
-              {
-                block = "sound";
-                max_vol = 100;
-                device_kind = "source";
-              }
-              {
-                block = "battery";
-                interval = 10;
-                format = " {percentage} - {time} remaining ({power})";
-                full_format = " Fully charged";
-              }
-              {
-                block = "time";
-                interval = 5;
-                format = "%a %d/%m %R";
-              }
-            ];
-            settings = { scrolling = "natural"; };
-            icons = "awesome";
-            theme = "plain";
-          };
+        bars.top = {
+          icons = "awesome";
+          theme = "plain";
         };
-
       };
     };
 
@@ -224,8 +181,6 @@ in {
         terminal = "foot";
         menu =
           "bemenu-run -i -n -p '' --fn 'monospace 11' -H 23 --tb '#1a1a1a' --tf '#268bd2' --fb '#1a1a1a' --nb '#1a1a1a' --hb '#1a1a1a' --hf '#268bd2'";
-
-        output = { "*" = { bg = "~/Pictures/bierstadt.jpg fill"; }; };
 
         input = {
           "type:keyboard" = {
@@ -282,10 +237,12 @@ in {
         exec dbus-sway-environment
         exec configure-gtk
 
+      '';
+
+      extraSessionCommands = ''
         # Needed for GNOME Keyring's SSH integration.
-        # TODO currently broken, needs to be loaded in zsh?
-        exec eval $(/run/wrappers/bin/gnome-keyring-daemon --start --daemonize)
-        exec export SSH_AUTH_SOCK
+        eval $(/run/wrappers/bin/gnome-keyring-daemon --start --components=ssh)
+        export SSH_AUTH_SOCK
       '';
     };
 
@@ -326,8 +283,6 @@ in {
           }
         ];
       };
-
-      nextcloud-client.enable = true;
     };
   };
 }
