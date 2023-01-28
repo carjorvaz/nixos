@@ -27,7 +27,23 @@
       };
 
       # You can choose a specific set of servers from https://github.com/DNSCrypt/dnscrypt-resolvers/blob/master/v3/public-resolvers.md
-      # server_names = [ ... ];
+      server_names = [
+        "adguard-dns-unfiltered"
+        "adguard-dns-unfiltered-doh"
+        "adguard-dns-unfiltered-ipv6"
+        "cloudflare"
+        "cloudflare-ipv6"
+        "controld-uncensored"
+        "mullvad-doh"
+        "nextdns"
+        "nextdns-ipv6"
+        "nextdns-ultralow"
+        "quad9-dnscrypt-ip4-filter-pri"
+        "quad9-doh-ip4-port443-filter-pri"
+        "quad9-doh-ip4-port5053-filter-pri"
+        "quad9-doh-ip6-port443-filter-pri"
+        "quad9-doh-ip6-port5053-filter-pri"
+      ];
     };
   };
 
