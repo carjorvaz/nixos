@@ -48,8 +48,6 @@ in {
       [ "ata_piix" "uhci_hcd" "virtio_pci" "virtio_scsi" "sd_mod" "sr_mod" ];
     supportedFilesystems = [ "zfs" ];
 
-    kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
-
     # Setup networking in the initrd.
     kernelParams = [ "ip=46.38.242.172::46.38.240.1:255.255.252.0::ens3:none" ];
 
