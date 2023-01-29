@@ -22,7 +22,10 @@ in {
       enable = true;
       user = "media";
       listen.ip = "0.0.0.0";
-      options.calibreLibrary = library;
+      options = {
+        calibreLibrary = library;
+        enableBookConversion = true;
+      };
     };
   };
 
