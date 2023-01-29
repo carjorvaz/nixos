@@ -19,7 +19,7 @@
 
 
         (deflayer colemak-dh-wide
-          @grl  1    2    3    4    5    =    6    7    8    9    0    -    _
+          @grl  1    2    3    4    5    6    =    7    8    9    0    -    _
           _     q    w    f    p    b    [    j    l    u    y    ;    '    _
           _     a    r    s    t    g    ]    m    n    e    i    o    _
           _     x    c    d    v    z    /    k    h    ,    .    _
