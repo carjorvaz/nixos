@@ -122,7 +122,8 @@
               scanning
             ];
             laptop = desktop ++ [ iwd ];
-            server = base ++ [ fail2ban passwordlessSudo zfs.email ];
+            server = base
+              ++ [ autoUpgrade fail2ban passwordlessSudo zfs.email ];
             media = [
               bazarr
               calibre
