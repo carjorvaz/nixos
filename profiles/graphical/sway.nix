@@ -4,6 +4,8 @@
 # - fn + f7 wdisplays
 # - kanshi
 # - image viewer (https://github.com/artemsen/swayimg)
+# - calendar
+# - email
 
 let
   # bash script to let dbus know about important env variables and

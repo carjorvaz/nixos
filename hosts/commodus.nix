@@ -90,9 +90,6 @@
     [ "/dev/input/by-id/usb-04d9_USB_Keyboard-if01-event-kbd" ];
 
   home-manager.users.cjv = {
-    # TODO:
-    # - natural scrolling only on gallus; change on common
-    # - increase foot font size
     programs.i3status-rust.bars.top.blocks = [
       {
         block = "sound";

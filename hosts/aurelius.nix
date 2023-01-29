@@ -144,9 +144,6 @@ in {
     [ "/dev/input/by-path/platform-i8042-serio-0-event-kbd" ];
 
   home-manager.users.cjv = {
-    # TODO:
-    # - natural scrolling only on gallus; change on common
-    # - increase font size
     programs.i3status-rust.bars.top.blocks = [
       {
         block = "sound";
