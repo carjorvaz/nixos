@@ -78,6 +78,7 @@ in {
     mattermost-desktop
     gnome.nautilus
     mpv
+    imv
     gnome.seahorse
   ];
 
