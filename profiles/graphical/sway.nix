@@ -223,6 +223,12 @@ in {
           "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
           "XF86AudioMicMute" =
             "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
+
+          # Move to custom workspace
+          "${modifier}+t" =
+            "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | ${pkgs.bemenu}/bin/bemenu -p 'Go to workspace:' )";
+          "${modifier}+Shift+t" =
+            "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | ${pkgs.bemenu}/bin/bemenu -p 'Move to workspace:')";
         };
 
         bars = [{
@@ -239,7 +245,6 @@ in {
       extraConfig = ''
         exec dbus-sway-environment
         exec configure-gtk
-
       '';
 
       extraSessionCommands = ''
