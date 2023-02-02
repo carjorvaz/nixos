@@ -72,4 +72,7 @@
     memoryMax = 8 * 1024 * 1024 * 1024;
     memoryPercent = 100;
   };
+
+  # Enable IPv6 Privacy Extensions.
+  networking.tempAddresses = "default";
 }
