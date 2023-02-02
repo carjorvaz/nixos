@@ -79,6 +79,7 @@ in {
     gnome.nautilus
     mpv
     imv
+    libqalculate
     gnome.seahorse
   ];
 
