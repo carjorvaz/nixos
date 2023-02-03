@@ -64,6 +64,9 @@
   environment.systemPackages = with pkgs; [ powertop ];
 
   services = {
+    kanata.keyboards."colemak".devices =
+      [ "/dev/input/by-path/platform-i8042-serio-0-event-kbd" ];
+
     xserver.wacom.enable = true;
     udev.extraRules = ''
       # blacklist Lenovo IR camera
