@@ -106,7 +106,6 @@
               users.root
               locale
               neovim
-              dns
               ssh
               tailscale
               zfs.common
@@ -140,6 +139,7 @@
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
+              dns
               homer
               graphical.sway
               intel-hardware-transcoding
@@ -149,11 +149,12 @@
               oci-containers.docker
               printing
             ];
-            gallus = laptop ++ [ distributedBuilds graphical.gnome latex ];
+            gallus = laptop ++ [ distributedBuilds dns latex graphical.gnome ];
             hadrianus = server ++ [
               acme.common
               acme.http
               acme.dns-vaz-one
+              dns
               # TODO ghostMafalda; requires docker
               headscale
               mail
