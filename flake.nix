@@ -102,6 +102,7 @@
           suites = with profiles; rec {
             base = [
               core.nixos
+              dns.resolved
               users.cjv
               users.root
               locale
@@ -139,7 +140,6 @@
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
-              dns
               homer
               graphical.sway
               intel-hardware-transcoding
@@ -154,7 +154,6 @@
               acme.common
               acme.http
               acme.dns-vaz-one
-              dns
               # TODO ghostMafalda; requires docker
               headscale
               mail
