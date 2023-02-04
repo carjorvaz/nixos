@@ -64,7 +64,7 @@
   networking = {
     useDHCP = false;
 
-    interfaces.eno1 = {
+    interfaces.enp2s0 = {
       useDHCP = false;
       wakeOnLan.enable = true;
 
@@ -113,12 +113,12 @@
       output = {
         "*".bg = "~/Pictures/wallpaper.jpg fill";
         "HDMI-A-1" = { resolution = "1920x1080"; };
-        "HDMI-A-3" = { resolution = "1920x1080"; };
+        "HDMI-A-2" = { resolution = "1920x1080"; };
       };
 
       workspaceOutputAssign = [{
         workspace = "9";
-        output = "HDMI-A-3";
+        output = "HDMI-A-2";
       }];
     };
 
