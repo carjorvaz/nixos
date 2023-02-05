@@ -1,7 +1,7 @@
 { config, lib, pkgs, ... }:
 
 let
-  domain = "books.vaz.ovh";
+  domain = "calibre.vaz.ovh";
   library = "/persist/media/books";
 in {
   services = {
