@@ -10,14 +10,14 @@ let
   }."${stdenv.hostPlatform.system}" or (throw
     "Unsupported system: ${stdenv.hostPlatform.system}");
   hash = {
-    x64-linux_hash = "sha256-yXxZ7vmph8zHlhT9TvQV9XztBdct+lGk7fulGCuXfQ8=";
+    x64-linux_hash = "sha256-pdcdCvc594Cr3v9J7//ku6N38tx3KU06UhEZYXwqMuk=";
     arm64-linux_hash = "sha256-Z9K9XY+kJ7JEdBGJPqewodfjtQwQJZ+2LXBH8aQyb1c=";
     x64-osx_hash = "sha256-zLwfAOXIjr3YCs7aVdC1spBhEkPld0ndBPueOTSgkN0=";
   }."${arch}-${os}_hash";
 in stdenv.mkDerivation rec {
   pname = "readarr";
   version =
-    "0.1.2.1532"; # TODO set up automatic updating with nvfetcher while it's not upstreamed into nixpkgs
+    "0.1.2.1558"; # TODO set up automatic updating with nvfetcher while it's not upstreamed into nixpkgs
 
   src = fetchurl {
     url =
