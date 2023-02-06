@@ -141,7 +141,7 @@ in {
   };
 
   services.kanata.keyboards."colemak".devices =
-    [ "/dev/input/by-path/platform-i8042-serio-0-event-kbd" ];
+    [ "/dev/input/by-id/usb-SIGMACHIP_USB_Keyboard-event-kbd" ];
 
   home-manager.users.cjv = {
     programs.i3status-rust.bars.top.blocks = [
