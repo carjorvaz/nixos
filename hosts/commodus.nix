@@ -121,7 +121,10 @@
       }];
     };
 
-    services.nextcloud-client.enable = true;
+    services.nextcloud-client = {
+      enable = true;
+      startInBackground = true;
+    };
   };
 
   system.stateVersion = "22.05";
