@@ -19,10 +19,6 @@
           ];
         };
 
-        "org/gnome/shell/extensions/user-theme" = {
-          name = config.home-manager.users.cjv.gtk.theme.name;
-        };
-
         "org/gnome/desktop/interface" = { color-scheme = "prefer-dark"; };
 
         "org/gnome/desktop/peripherals/touchpad" = {
@@ -43,7 +39,7 @@
 
         "org/gnome/settings-daemon/plugins/color" = {
           night-light-enabled = true;
-          night-light-temperature = "uint32 3500";
+          night-light-temperature = "uint32 1700";
           night-light-schedule-automatic = true;
         };
 
@@ -94,7 +90,7 @@
           # toggle maximization state
           toggle-maximized = [ "<super>m" ];
           # close window
-          close = [ "<shift>q" ];
+          close = [ "<super>q" ];
         };
         "org/gnome/shell/keybindings" = {
           open-application-menu = [ ];
@@ -119,6 +115,10 @@
           www = [ "<super>b" ];
           # rotate video lock
           rotate-video-lock-static = [ ];
+          # launch terminal
+          custom-keybindings = [
+            "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
+          ];
         };
         "org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0" =
           {
@@ -126,17 +126,6 @@
             command = "kgx";
             name = "Launch terminal";
           };
-      };
-    };
-    gtk = {
-      enable = true;
-      iconTheme = {
-        name = "Adwaita";
-        package = pkgs.gnome.adwaita-icon-theme;
-      };
-      theme = {
-        name = "Pop";
-        package = pkgs.pop-gtk-theme;
       };
     };
   };

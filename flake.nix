@@ -111,14 +111,8 @@
               zfs.common
               zsh
             ];
-            desktop = base ++ [
-              bootloader
-              emacs
-              fwupd
-              graphical.common
-              pipewire
-              scanning
-            ];
+            desktop = base
+              ++ [ bootloader emacs fwupd graphical.common pipewire scanning ];
             laptop = desktop ++ [ iwd ];
             server = base
               ++ [ autoUpgrade fail2ban passwordlessSudo zfs.email ];
@@ -134,14 +128,16 @@
               transmission
             ];
 
-            aurelius = desktop ++ [ graphical.gnome graphical.pop-shell ];
+            aurelius = desktop
+              ++ [ graphical.gnome.common graphical.gnome.pop-shell ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
               dns.resolved
               changedetection
               homer
-              graphical.sway
+              graphical.gnome.common
+              graphical.gnome.pop-shell
               intel-hardware-transcoding
               nextcloud
               nginx.common
