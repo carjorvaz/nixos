@@ -140,6 +140,7 @@
               acme.common
               acme.dns-vaz-ovh
               dns.resolved
+              changedetection
               homer
               graphical.sway
               intel-hardware-transcoding
@@ -149,12 +150,8 @@
               oci-containers.docker
               printing
             ];
-            gallus = laptop ++ [
-              distributedBuilds
-              dns.resolved
-              latex
-              graphical.gnome
-            ];
+            gallus = laptop
+              ++ [ distributedBuilds dns.resolved latex graphical.gnome ];
             hadrianus = server ++ [
               acme.common
               acme.http
