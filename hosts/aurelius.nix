@@ -141,7 +141,7 @@ in {
   };
 
   services.kanata.keyboards."colemak".devices =
-    [ "/dev/input/by-id/usb-SIGMACHIP_USB_Keyboard-event-kbd" ];
+    [ "/dev/input/by-id/usb-0566_3108-event-kbd" ];
 
   home-manager.users.cjv = {
     programs.i3status-rust.bars.top.blocks = [
