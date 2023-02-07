@@ -184,5 +184,9 @@ in {
     };
   };
 
+  services.xserver.videoDrivers = [ "nvidia" ];
+  hardware.nvidia.package =
+    config.boot.kernelPackages.nvidiaPackages.legacy_470;
+
   system.stateVersion = "21.11";
 }
