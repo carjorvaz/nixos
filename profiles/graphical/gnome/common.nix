@@ -22,7 +22,7 @@
 
       "org/gnome/desktop/interface" = {
         color-scheme = "prefer-dark";
-        gtk-theme = "Adwaita-dark";
+        # gtk-theme = "Adwaita-dark";
       };
 
       "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";

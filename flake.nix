@@ -113,7 +113,6 @@
             ];
             desktop = base ++ [
               bootloader
-              colemak
               emacs
               fwupd
               graphical.common
@@ -135,7 +134,7 @@
               transmission
             ];
 
-            aurelius = desktop ++ [ graphical.sway ];
+            aurelius = desktop ++ [ graphical.gnome graphical.pop-shell ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh

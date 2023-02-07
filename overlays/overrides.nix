@@ -17,6 +17,7 @@ channels: final: prev: {
     rnote
     brave
     mattermost-desktop
+    pop-launcher
     ;
 
   haskellPackages =
