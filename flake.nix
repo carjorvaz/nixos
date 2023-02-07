@@ -102,7 +102,6 @@
           suites = with profiles; rec {
             base = [
               core.nixos
-              dns.resolved
               users.cjv
               users.root
               locale
@@ -140,6 +139,7 @@
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
+              dns.resolved
               homer
               graphical.sway
               intel-hardware-transcoding
@@ -149,11 +149,17 @@
               oci-containers.docker
               printing
             ];
-            gallus = laptop ++ [ distributedBuilds dns latex graphical.gnome ];
+            gallus = laptop ++ [
+              distributedBuilds
+              dns.resolved
+              latex
+              graphical.gnome
+            ];
             hadrianus = server ++ [
               acme.common
               acme.http
               acme.dns-vaz-one
+              dns.resolved
               # TODO ghostMafalda; requires docker
               headscale
               mail
