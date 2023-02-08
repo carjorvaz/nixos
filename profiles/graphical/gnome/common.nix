@@ -13,16 +13,17 @@
 
   programs.dconf.enable = true;
 
-  home-manager.users.cjv = {
+  home-manager.users.cjv = { lib, ... }: {
     # Use `dconf watch /` to track stateful changes you are doing, then set them here.
     dconf.settings = {
       "org/gnome/desktop/input-sources" = {
+        sources = [ (lib.hm.gvariant.mkTuple [ "xkb" "us+altgr-intl" ]) ];
         xkb-options = [ "lv3:ralt_switch" "compose:prsc" "ctrl:nocaps" ];
       };
 
       "org/gnome/desktop/interface" = {
         color-scheme = "prefer-dark";
-        # gtk-theme = "Adwaita-dark";
+        gtk-theme = "Adwaita-dark";
       };
 
       "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
