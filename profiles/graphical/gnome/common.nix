@@ -28,6 +28,19 @@
 
       "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
 
+      "org/gnome/desktop/peripherals/touchpad" = {
+        tap-to-click = true;
+        two-finger-scrolling-enabled = true;
+      };
+
+      "org/gnome/settings-daemon/plugins/color" = {
+        night-light-enabled = true;
+        night-light-temperature = lib.hm.gvariant.mkUint32 1700;
+        night-light-schedule-automatic = true;
+      };
+
+      "org/gnome/eog/ui" = { image-gallery = true; };
+
       "org/gnome/shell" = {
         favorite-apps = [
           "brave-browser.desktop"

@@ -19,13 +19,6 @@
           ];
         };
 
-        "org/gnome/desktop/interface" = { color-scheme = "prefer-dark"; };
-
-        "org/gnome/desktop/peripherals/touchpad" = {
-          tap-to-click = true;
-          two-finger-scrolling-enabled = true;
-        };
-
         "org/gnome/mutter" = {
           edge-tiling = true;
           workspaces-only-on-primary = true;
@@ -36,14 +29,6 @@
           num-workspaces = 9;
           focus-mode = "sloppy";
         };
-
-        "org/gnome/settings-daemon/plugins/color" = {
-          night-light-enabled = true;
-          night-light-temperature = lib.hm.gvariant.mkUint32 1700;
-          night-light-schedule-automatic = true;
-        };
-
-        "org/gnome/eog/ui" = { image-gallery = true; };
 
         # Enable and configure pop-shell, see:
         # - https://github.com/pop-os/shell/blob/master_jammy/scripts/configure.sh
