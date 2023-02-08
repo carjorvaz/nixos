@@ -7,7 +7,7 @@
     gnomeExtensions.native-window-placement
   ];
 
-  home-manager.users.cjv = {
+  home-manager.users.cjv = { lib, ... }: {
     dconf = {
       enable = true;
       settings = {
@@ -29,17 +29,17 @@
         "org/gnome/mutter" = {
           edge-tiling = true;
           workspaces-only-on-primary = true;
-          dynamic-workspaces = true;
+          dynamic-workspaces = false;
         };
 
         "org/gnome/desktop/wm/preferences" = {
-          # num-workspaces = 4; # Prefer dynamic workspaces
+          num-workspaces = 9;
           focus-mode = "sloppy";
         };
 
         "org/gnome/settings-daemon/plugins/color" = {
           night-light-enabled = true;
-          night-light-temperature = "uint32 1700";
+          night-light-temperature = lib.hm.gvariant.mkUint32 1700;
           night-light-schedule-automatic = true;
         };
 
@@ -49,7 +49,12 @@
         # - https://github.com/pop-os/shell/blob/master_jammy/scripts/configure.sh
         # - https://github.com/trevex/dotfiles/blob/5b3b0e2b9624fbedd1a64d378e18aea6efef6db9/modules/nixos/desktop/gnome/default.nix#L60
 
-        "org/gnome/shell/extensions/pop-shell" = { active-hint = true; };
+        "org/gnome/shell/extensions/pop-shell" = {
+          active-hint = true;
+          smart-gaps = true;
+          gap-outer = lib.hm.gvariant.mkUint32 0;
+          gap-inner = lib.hm.gvariant.mkUint32 0;
+        };
 
         # disable incompatible shortcuts
         "org/gnome/mutter/wayland/keybindings" = {
@@ -91,6 +96,15 @@
           toggle-maximized = [ "<super>m" ];
           # close window
           close = [ "<super>q" ];
+
+          switch-to-workspace-1 = [ "<Super>1" ];
+          switch-to-workspace-2 = [ "<Super>2" ];
+          switch-to-workspace-3 = [ "<Super>3" ];
+          switch-to-workspace-4 = [ "<Super>4" ];
+          move-to-workspace-1 = [ "<Super><Shift>1" ];
+          move-to-workspace-2 = [ "<Super><Shift>2" ];
+          move-to-workspace-3 = [ "<Super><Shift>3" ];
+          move-to-workspace-4 = [ "<Super><Shift>4" ];
         };
         "org/gnome/shell/keybindings" = {
           open-application-menu = [ ];
@@ -98,6 +112,16 @@
           toggle-message-tray = [ "<super>v" ];
           # show the activities overview: disable <super>s
           toggle-overview = [ ];
+
+          switch-to-application-1 = [ ];
+          switch-to-application-2 = [ ];
+          switch-to-application-3 = [ ];
+          switch-to-application-4 = [ ];
+          switch-to-application-5 = [ ];
+          switch-to-application-6 = [ ];
+          switch-to-application-7 = [ ];
+          switch-to-application-8 = [ ];
+          switch-to-application-9 = [ ];
         };
         "org/gnome/mutter/keybindings" = {
           # disable tiling to left / right of screen
