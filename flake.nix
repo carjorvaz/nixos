@@ -129,7 +129,7 @@
             ];
 
             aurelius = desktop
-              ++ [ graphical.gnome.common graphical.gnome.pop-shell ];
+              ++ [ graphical.sway ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
