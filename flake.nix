@@ -137,7 +137,6 @@
               changedetection
               homer
               graphical.gnome.common
-              graphical.gnome.pop-shell
               intel-hardware-transcoding
               nextcloud
               nginx.common
@@ -150,7 +149,6 @@
               dns.dnscrypt-proxy2
               latex
               graphical.gnome.common
-              graphical.gnome.pop-shell
             ];
             hadrianus = server ++ [
               acme.common
