@@ -133,7 +133,7 @@
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
-              dns.resolved
+              dns.dnscrypt-proxy2
               changedetection
               homer
               graphical.gnome.common
@@ -145,8 +145,13 @@
               oci-containers.docker
               printing
             ];
-            gallus = laptop
-              ++ [ distributedBuilds dns.resolved latex graphical.gnome ];
+            gallus = laptop ++ [
+              distributedBuilds
+              dns.dnscrypt-proxy2
+              latex
+              graphical.gnome.common
+              graphical.gnome.pop-shell
+            ];
             hadrianus = server ++ [
               acme.common
               acme.http
