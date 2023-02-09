@@ -133,7 +133,7 @@
         };
         "org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0" =
           {
-            binding = "<super>t";
+            binding = "<shift><super>return";
             command = "kgx";
             name = "Launch terminal";
           };
