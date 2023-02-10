@@ -54,6 +54,12 @@
           "com.nextcloud.desktopclient.nextcloud.desktop"
         ];
       };
+
+      "org/gnome/shell/keybindings" = {
+        screenshot = [ "<Shift>Insert" ];
+        show-screenshot-ui = [ "Insert" ];
+        screenshot-window = [ "<Alt>Insert" ];
+      };
     };
   };
 }
