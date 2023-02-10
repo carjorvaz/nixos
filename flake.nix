@@ -128,13 +128,11 @@
               transmission
             ];
 
-            aurelius = desktop
-              ++ [ graphical.sway ];
+            aurelius = desktop ++ [ graphical.sway ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
               dns.dnscrypt-proxy2
-              changedetection
               homer
               graphical.gnome.common
               intel-hardware-transcoding
