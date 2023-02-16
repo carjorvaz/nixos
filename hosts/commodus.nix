@@ -120,11 +120,6 @@
         output = "HDMI-A-2";
       }];
     };
-
-    services.nextcloud-client = {
-      enable = true;
-      startInBackground = true;
-    };
   };
 
   system.stateVersion = "22.05";
