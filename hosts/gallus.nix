@@ -73,14 +73,6 @@
       SUBSYSTEM=="usb", ATTRS{idVendor}=="5986", ATTRS{idProduct}=="211a", ATTR{authorized}="0"
     '';
 
-    fprintd = {
-      enable = true;
-      tod = {
-        enable = true;
-        driver = pkgs.libfprint-2-tod1-vfs0090;
-      };
-    };
-
     undervolt = {
       enable = true;
       coreOffset = -80;
