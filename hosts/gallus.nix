@@ -53,13 +53,6 @@
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
   hardware.video.hidpi.enable = lib.mkDefault true;
 
-  boot.initrd.kernelModules = [ "i915" ];
-  environment.variables.VDPAU_DRIVER = "va_gl";
-  hardware.opengl = {
-    enable = true;
-    extraPackages = with pkgs; [ vaapiIntel libvdpau-va-gl intel-media-driver ];
-  };
-
   powerManagement.powertop.enable = true;
   environment.systemPackages = with pkgs; [ powertop ];
 

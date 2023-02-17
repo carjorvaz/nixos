@@ -145,6 +145,7 @@
             gallus = laptop ++ [
               distributedBuilds
               dns.dnscrypt-proxy2
+              intel-hardware-transcoding
               latex
               graphical.gnome.common
             ];
