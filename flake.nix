@@ -145,7 +145,7 @@
             gallus = laptop ++ [
               distributedBuilds
               dns.dnscrypt-proxy2
-              graphical.gnome.common
+              graphical.startx
               intel-hardware-transcoding
               latex
               miracast

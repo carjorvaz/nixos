@@ -53,5 +53,7 @@
     signal-desktop
     spotify
     stremio
+
+    sbcl
   ];
 }
