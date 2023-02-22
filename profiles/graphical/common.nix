@@ -26,33 +26,20 @@
   };
 
   environment.systemPackages = with pkgs; [
-    celluloid
-    drawing
-    foliate
-    fragments
-    gnome.gnome-sound-recorder
-    gnome.gnome-tweaks
-    inkscape
-    libreoffice-fresh
-    metadata-cleaner
-    pdfslicer
-    qalculate-gtk
-    rnote
-    waypipe
-    wl-clipboard
-    xournalpp
-
     brave
     discord
     firefox
+    libreoffice-fresh
     librewolf
     mattermost-desktop
     monero-gui
     nextcloud-client
     ungoogled-chromium
     signal-desktop
+    rnote
     spotify
     stremio
+    xournalpp
 
     sbcl
   ];

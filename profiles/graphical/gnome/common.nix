@@ -1,6 +1,23 @@
 { config, lib, pkgs, ... }:
 
 {
+  environment.systemPackages = with pkgs; [
+    blackbox-terminal
+    celluloid
+    drawing
+    foliate
+    fragments
+    gnome.gnome-sound-recorder
+    gnome.gnome-terminal
+    gnome.gnome-tweaks
+    inkscape
+    metadata-cleaner
+    pdfslicer
+    qalculate-gtk
+    waypipe
+    wl-clipboard
+  ];
+
   services.xserver = {
     enable = true;
     desktopManager.gnome.enable = true;
