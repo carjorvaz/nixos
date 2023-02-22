@@ -42,5 +42,6 @@
     xournalpp
 
     sbcl
+    rlwrap
   ];
 }
