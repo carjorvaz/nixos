@@ -51,7 +51,6 @@
 
   networking.useDHCP = lib.mkDefault true;
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
-  hardware.video.hidpi.enable = lib.mkDefault true;
 
   powerManagement.powertop.enable = true;
   environment.systemPackages = with pkgs; [ powertop ];
@@ -142,6 +141,14 @@
   services.wgrnl = {
     enable = true;
     privateKeyFile = "/persist/secrets/wireguard/privatekey"; # TODO agenix
+  };
+
+  hardware.video.hidpi.enable = lib.mkDefault true;
+  services.xserver.dpi = 192;
+  environment.variables = {
+    GDK_SCALE = "2";
+    GDK_DPI_SCALE = "0.5";
+    _JAVA_OPTIONS = "-Dsun.java2d.uiScale=2";
   };
 
   home-manager.users.cjv = {
