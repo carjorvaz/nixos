@@ -1,4 +1,4 @@
-{ config, lib, pkgs, suites, ... }:
+{ self, config, lib, pkgs, suites, ... }:
 
 {
   imports = suites.commodus;
@@ -124,6 +124,16 @@
   };
 
   virtualisation.docker.storageDriver = "zfs";
+
+  age.secrets.nebulaRomeCommodusCrt.file =
+    "${self}/secrets/nebulaRomeCommodusCrt.age";
+  age.secrets.nebulaRomeCommodusKey.file =
+    "${self}/secrets/nebulaRomeCommodusKey.age";
+
+  services.nebula.networks."rome" = {
+    cert = config.age.secrets.nebulaRomeCommodusCrt.path;
+    key = config.age.secrets.nebulaRomeCommodusKey.path;
+  };
 
   system.stateVersion = "22.05";
 }

@@ -1,4 +1,4 @@
-{ config, pkgs, lib, suites, ... }:
+{ self, config, pkgs, lib, suites, ... }:
 
 {
   imports = suites.gallus;
@@ -135,6 +135,16 @@
 
     wayland.windowManager.sway.config.output."*".bg =
       "~/Pictures/bierstadt.jpg fill";
+  };
+
+  age.secrets.nebulaRomeGallusCrt.file =
+    "${self}/secrets/nebulaRomeGallusCrt.age";
+  age.secrets.nebulaRomeGallusKey.file =
+    "${self}/secrets/nebulaRomeGallusKey.age";
+
+  services.nebula.networks."rome" = {
+    cert = config.age.secrets.nebulaRomeGallusCrt.path;
+    key = config.age.secrets.nebulaRomeGallusKey.path;
   };
 
   system.stateVersion = "22.05";

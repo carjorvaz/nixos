@@ -107,7 +107,7 @@
               locale
               neovim
               ssh
-              tailscale
+              vpn.nebula
               zfs.common
               zsh
             ];
@@ -156,7 +156,6 @@
               acme.http
               acme.dns-vaz-one
               dns.resolved
-              headscale
               mail
               nginx.blog
               nginx.common
