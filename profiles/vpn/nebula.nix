@@ -22,4 +22,9 @@
       }];
     };
   };
+
+  networking.firewall = {
+    checkReversePath = "loose";
+    trustedInterfaces = [ "nebula.rome" ];
+  };
 }
