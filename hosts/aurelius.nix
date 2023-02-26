@@ -15,7 +15,8 @@ in {
   imports = suites.aurelius
     ++ [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  boot.kernelPackages = pkgs.linuxPackages_xanmod_stable;
+  boot.kernelPackages =
+    lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
   boot.supportedFilesystems = [ "zfs" ];

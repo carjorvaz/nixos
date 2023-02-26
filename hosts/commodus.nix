@@ -6,7 +6,8 @@
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
   boot.initrd.kernelModules = [ "i915" ];
-  boot.kernelPackages = pkgs.linuxPackages_xanmod_stable;
+  boot.kernelPackages =
+    lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
   boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [ ];
 
