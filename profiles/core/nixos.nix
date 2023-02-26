@@ -10,6 +10,7 @@
       usbutils
       utillinux
       steam-run-native
+      tree
     ];
 
     shellAliases = let ifSudo = lib.mkIf config.security.sudo.enable;
