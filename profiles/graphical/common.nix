@@ -44,5 +44,9 @@
     sbcl
     rlwrap
     python3
+
+    # university, delete after they're not needed anymore
+    jdk17
+    maven
   ];
 }
