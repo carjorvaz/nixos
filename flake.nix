@@ -145,11 +145,11 @@
             gallus = laptop ++ [
               distributedBuilds
               dns.dnscrypt-proxy2
-              esof
               graphical.gnome.common
               intel-hardware-transcoding
               latex
               miracast
+              oci-containers.docker
             ];
             hadrianus = server ++ [
               acme.common

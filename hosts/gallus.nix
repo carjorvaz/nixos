@@ -137,6 +137,8 @@
       "~/Pictures/bierstadt.jpg fill";
   };
 
+  virtualisation.docker.storageDriver = "zfs";
+
   age.secrets.nebulaRomeGallusCrt.file =
     "${self}/secrets/nebulaRomeGallusCrt.age";
   age.secrets.nebulaRomeGallusKey.file =
