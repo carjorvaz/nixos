@@ -145,7 +145,8 @@
             gallus = laptop ++ [
               distributedBuilds
               dns.dnscrypt-proxy2
-              graphical.startx
+              esof
+              graphical.gnome.common
               intel-hardware-transcoding
               latex
               miracast
@@ -155,12 +156,12 @@
               acme.http
               acme.dns-vaz-one
               dns.resolved
-              # TODO ghostMafalda; requires docker
               headscale
               mail
               nginx.blog
               nginx.common
               nginx.bastion
+              nginx.mafalda
             ];
           };
         };
