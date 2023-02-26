@@ -123,5 +123,7 @@
     };
   };
 
+  virtualisation.docker.storageDriver = "zfs";
+
   system.stateVersion = "22.05";
 }
