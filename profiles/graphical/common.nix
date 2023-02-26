@@ -43,5 +43,6 @@
 
     sbcl
     rlwrap
+    python3
   ];
 }
