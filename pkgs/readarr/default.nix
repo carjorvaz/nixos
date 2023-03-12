@@ -16,8 +16,7 @@ let
   }."${arch}-${os}_hash";
 in stdenv.mkDerivation rec {
   pname = "readarr";
-  version =
-    "0.1.2.1558"; # TODO set up automatic updating with nvfetcher while it's not upstreamed into nixpkgs
+  version = "0.1.4.1596";
 
   src = fetchurl {
     url =
