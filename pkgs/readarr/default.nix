@@ -10,7 +10,7 @@ let
   }."${stdenv.hostPlatform.system}" or (throw
     "Unsupported system: ${stdenv.hostPlatform.system}");
   hash = {
-    x64-linux_hash = "sha256-pdcdCvc594Cr3v9J7//ku6N38tx3KU06UhEZYXwqMuk=";
+    x64-linux_hash = "sha256-ABk2wxNse8dcFWEMpaXnsALz171/1JQaAFzmpz36we0=";
     arm64-linux_hash = "sha256-Z9K9XY+kJ7JEdBGJPqewodfjtQwQJZ+2LXBH8aQyb1c=";
     x64-osx_hash = "sha256-zLwfAOXIjr3YCs7aVdC1spBhEkPld0ndBPueOTSgkN0=";
   }."${arch}-${os}_hash";
