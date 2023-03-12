@@ -64,7 +64,7 @@
   networking = {
     useDHCP = false;
 
-    interfaces.enp2s0 = {
+    interfaces.eno1 = {
       useDHCP = false;
       wakeOnLan.enable = true;
 
