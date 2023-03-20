@@ -107,7 +107,6 @@
               locale
               neovim
               ssh
-              vpn.nebula
               zfs.common
               zsh
             ];
@@ -141,6 +140,7 @@
               nginx.commodus
               oci-containers.docker
               printing
+              vpn.nebula
             ];
             gallus = laptop ++ [
               distributedBuilds
@@ -150,6 +150,7 @@
               latex
               miracast
               oci-containers.docker
+              vpn.nebula
             ];
             hadrianus = server ++ [
               acme.common
@@ -161,6 +162,7 @@
               nginx.common
               nginx.bastion
               nginx.mafalda
+              vpn.nebula
             ];
           };
         };
