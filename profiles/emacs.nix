@@ -18,5 +18,7 @@
 
     ccls # C/C++ LSP support
     clang-tools # clang-format as a C/C++ formatter
+    shellcheck
+    pandoc
   ];
 }
