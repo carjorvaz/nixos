@@ -118,7 +118,7 @@
 
       workspaceOutputAssign = [{
         workspace = "9";
-        output = "HDMI-A-2";
+        output = "HDMI-A-3";
       }];
     };
   };
