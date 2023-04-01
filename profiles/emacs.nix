@@ -20,5 +20,16 @@
     clang-tools # clang-format as a C/C++ formatter
     shellcheck
     pandoc
+    cmake
+    gnumake
+    nodejs
+    graphviz
+    black
+    isort
+    pipenv
+    shfmt
+    html-tidy
+    nodePackages.stylelint
+    nodePackages.js-beautify
   ];
 }
