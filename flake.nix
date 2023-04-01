@@ -133,7 +133,7 @@
               acme.dns-vaz-ovh
               dns.dnscrypt-proxy2
               homer
-              graphical.stumpwm
+              graphical.sway
               intel-hardware-transcoding
               nextcloud
               nginx.common
