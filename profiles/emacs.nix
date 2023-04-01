@@ -31,5 +31,6 @@
     html-tidy
     nodePackages.stylelint
     nodePackages.js-beautify
+    gcc
   ];
 }
