@@ -11,6 +11,7 @@
       utillinux
       steam-run-native
       tree
+      tmux
     ];
 
     shellAliases = let ifSudo = lib.mkIf config.security.sudo.enable;
