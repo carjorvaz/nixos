@@ -191,7 +191,7 @@ in {
             xkb_layout = "us";
             xkb_options = "ctrl:nocaps,compose:prsc";
             xkb_variant = "altgr-intl";
-            repeat_delay = "300";
+            repeat_delay = "200";
             repeat_rate = "30";
           };
 
