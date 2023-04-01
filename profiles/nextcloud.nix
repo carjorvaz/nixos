@@ -6,7 +6,6 @@
 # - /var/lib/nextcloud must be owned by nextcloud (sudo chown -R nextcloud: /var/lib/nextcloud)
 let domain = "cloud.vaz.one";
 in {
-
   age.secrets.nextcloud-db-pass = {
     file = "${self}/secrets/nextcloud-db-pass.age";
     owner = "nextcloud";
@@ -22,7 +21,7 @@ in {
   services = {
     nextcloud = {
       enable = true;
-      package = pkgs.nextcloud25; # Need to manually increment with every update
+      package = pkgs.nextcloud26; # Need to manually increment with every update
       hostName = domain;
 
       https = true;
@@ -31,7 +30,7 @@ in {
       enableBrokenCiphersForSSE = false;
 
       extraAppsEnable = true;
-      extraApps = with pkgs.nextcloud25Packages.apps; {
+      extraApps = with pkgs.nextcloud26Packages.apps; {
         inherit calendar contacts mail news notes tasks;
       };
 
