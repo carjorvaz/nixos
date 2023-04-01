@@ -4,7 +4,7 @@
   services.emacs = {
     enable = true;
     package = ((pkgs.emacsPackagesFor pkgs.emacs-gtk).emacsWithPackages
-      (epkgs: [ epkgs.vterm epkgs.pdf-tools ]));
+      (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]));
   };
 
   environment.systemPackages = with pkgs; [
