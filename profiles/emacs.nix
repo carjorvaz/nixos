@@ -32,5 +32,6 @@
     nodePackages.stylelint
     nodePackages.js-beautify
     gcc
+    pyright
   ];
 }
