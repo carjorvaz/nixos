@@ -14,30 +14,30 @@
   networking.hostId = "b60d3eae";
 
   fileSystems."/" = {
-    device = "zroot/local/root";
+    device = "rpool/local/root";
     fsType = "zfs";
     options = [ "zfsutil" ];
   };
 
   fileSystems."/boot" = {
-    device = "/dev/disk/by-uuid/23BD-94D0";
+    device = "/dev/disk/by-uuid/F452-C690";
     fsType = "vfat";
   };
 
   fileSystems."/nix" = {
-    device = "zroot/local/nix";
+    device = "rpool/local/nix";
     fsType = "zfs";
     options = [ "zfsutil" ];
   };
 
   fileSystems."/home" = {
-    device = "zroot/safe/home";
+    device = "rpool/safe/home";
     fsType = "zfs";
     options = [ "zfsutil" ];
   };
 
   fileSystems."/persist" = {
-    device = "zroot/safe/persist";
+    device = "rpool/safe/persist";
     fsType = "zfs";
     options = [ "zfsutil" ];
     neededForBoot = true;
@@ -148,6 +148,9 @@
     cert = config.age.secrets.nebulaRomeGallusCrt.path;
     key = config.age.secrets.nebulaRomeGallusKey.path;
   };
+
+  # services.open-fprintd.enable = true;
+  # services.python-validity.enable = true;
 
   system.stateVersion = "22.05";
 }
