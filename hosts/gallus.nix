@@ -149,8 +149,5 @@
     key = config.age.secrets.nebulaRomeGallusKey.path;
   };
 
-  # services.open-fprintd.enable = true;
-  # services.python-validity.enable = true;
-
   system.stateVersion = "22.05";
 }
