@@ -127,7 +127,7 @@
               transmission
             ];
 
-            aurelius = desktop ++ [ graphical.sway ];
+            aurelius = desktop ++ [ graphical.gnome.common ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
