@@ -60,6 +60,10 @@
         night-light-schedule-automatic = true;
       };
 
+      "org/gnome/settings-daemon/plugins/power" = {
+        sleep-inactive-ac-type = "nothing";
+      };
+
       "org/gnome/eog/ui" = { image-gallery = true; };
 
       "org/gnome/shell" = {
