@@ -55,6 +55,29 @@ in {
         adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
         adminuser = "admin";
       };
+
+      caching = {
+        redis = true;
+        apcu = true;
+      };
+
+      extraOptions = {
+        redis = {
+          host = "/run/redis-nextcloud/redis.sock";
+          port = 0;
+        };
+        memcache = {
+          local = "\\OC\\Memcache\\Redis";
+          distributed = "\\OC\\Memcache\\Redis";
+          locking = "\\OC\\Memcache\\Redis";
+        };
+      };
+    };
+
+    redis.servers.nextcloud = {
+      enable = true;
+      user = "nextcloud";
+      port = 0;
     };
 
     postgresql = {
