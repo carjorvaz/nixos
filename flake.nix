@@ -131,7 +131,7 @@
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
-              dns.dnscrypt-proxy2
+              dns.resolved
               homer
               graphical.gnome.common
               intel-hardware-transcoding
