@@ -7,7 +7,7 @@
 
       layout = "us";
       xkbOptions = "ctrl:nocaps compose:prsc";
-      xkbVariant = "altgr-intl";
+      xkbVariant = "intl";
 
       libinput = {
         enable = true;
