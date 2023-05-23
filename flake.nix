@@ -46,10 +46,13 @@
 
     simple-nixos-mailserver.url =
       "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-22.11";
+
+    kmonad.url = "github:kmonad/kmonad/master?dir=nix";
+    kmonad.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, digga, nixos, home, nixos-hardware, nur, agenix, nvfetcher
-    , deploy, impermanence, nixpkgs, ... }@inputs:
+    , deploy, impermanence, kmonad, nixpkgs, ... }@inputs:
     digga.lib.mkFlake {
       inherit self inputs;
 
@@ -74,6 +77,7 @@
         nur.overlay
         agenix.overlays.default
         nvfetcher.overlays.default
+        kmonad.overlays.default
 
         (import ./pkgs)
       ];
@@ -90,6 +94,7 @@
             home.nixosModules.home-manager
             agenix.nixosModules.age
             impermanence.nixosModule
+            kmonad.nixosModules.default
           ];
         };
 

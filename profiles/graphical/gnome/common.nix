@@ -38,7 +38,7 @@
     # Use `dconf watch /` to track stateful changes you are doing, then set them here.
     dconf.settings = {
       "org/gnome/desktop/input-sources" = {
-        sources = [ (lib.hm.gvariant.mkTuple [ "xkb" "us+intl" ]) ];
+        sources = [ (lib.hm.gvariant.mkTuple [ "xkb" "us+altgr-intl" ]) ];
         xkb-options = [ "lv3:ralt_switch" "compose:prsc" "ctrl:nocaps" ];
       };
 

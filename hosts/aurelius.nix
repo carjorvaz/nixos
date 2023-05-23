@@ -189,5 +189,10 @@ in {
   hardware.nvidia.package =
     config.boot.kernelPackages.nvidiaPackages.legacy_470;
 
+  modules.kmonad = {
+    enable = true;
+    device = "/dev/input/by-id/usb-0566_3108-event-kbd";
+  };
+
   system.stateVersion = "21.11";
 }

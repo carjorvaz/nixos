@@ -328,6 +328,29 @@
         "type": "github"
       }
     },
+    "kmonad": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "dir": "nix",
+        "lastModified": 1682527311,
+        "narHash": "sha256-gFiQ62jbBfumg0IR4oXR/DRVunOxMd4lJ5+g+qjz7wA=",
+        "owner": "kmonad",
+        "repo": "kmonad",
+        "rev": "3aa2f52536de853efbcb0f6e790c97a3734687ec",
+        "type": "github"
+      },
+      "original": {
+        "dir": "nix",
+        "owner": "kmonad",
+        "ref": "master",
+        "repo": "kmonad",
+        "type": "github"
+      }
+    },
     "latest": {
       "locked": {
         "lastModified": 1681303793,
@@ -547,6 +570,7 @@
         "flake-compat": "flake-compat_3",
         "home": "home",
         "impermanence": "impermanence",
+        "kmonad": "kmonad",
         "latest": "latest",
         "naersk": "naersk",
         "nixos": "nixos",

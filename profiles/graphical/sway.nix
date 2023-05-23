@@ -190,7 +190,7 @@ in {
           "type:keyboard" = {
             xkb_layout = "us";
             xkb_options = "ctrl:nocaps,compose:prsc";
-            xkb_variant = "intl";
+            xkb_variant = "altgr-intl";
           };
 
           "type:touchpad" = {
