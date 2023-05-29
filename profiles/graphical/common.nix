@@ -2,12 +2,26 @@
 
 {
   services = {
+    dbus.enable = true;
+
+    gnome.gnome-keyring.enable = true;
+
+    pipewire = {
+      enable = true;
+      alsa.enable = true;
+      pulse.enable = true;
+    };
+
+    printing.enable = true;
+
     xserver = {
       enable = true;
 
       layout = "us";
       xkbOptions = "ctrl:nocaps compose:prsc";
-      xkbVariant = "intl";
+      xkbVariant = "altgr-intl";
+      autoRepeatInterval = 30;
+      autoRepeatDelay = 200;
 
       libinput = {
         enable = true;
@@ -22,7 +36,6 @@
       };
     };
 
-    printing.enable = true;
   };
 
   environment.systemPackages = with pkgs; [
