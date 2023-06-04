@@ -45,9 +45,6 @@
     impermanence.url = "github:nix-community/impermanence/master";
 
     simple-nixos-mailserver.url =
-
-    kmonad.url = "github:kmonad/kmonad/master?dir=nix";
-    kmonad.inputs.nixpkgs.follows = "nixpkgs";
       "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.05";
   };
 
@@ -77,7 +74,6 @@
         nur.overlay
         agenix.overlays.default
         nvfetcher.overlays.default
-        kmonad.overlays.default
 
         (import ./pkgs)
       ];
@@ -94,7 +90,6 @@
             home.nixosModules.home-manager
             agenix.nixosModules.age
             impermanence.nixosModule
-            kmonad.nixosModules.default
           ];
         };
 
