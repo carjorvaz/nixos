@@ -14,7 +14,7 @@
     };
 
     # Track channels with commits tested and built by hydra
-    nixos.url = "github:nixos/nixpkgs/nixos-22.11";
+    nixos.url = "github:nixos/nixpkgs/nixos-23.05";
     latest.url = "github:nixos/nixpkgs/nixos-unstable";
 
     digga.url = "github:divnix/digga";
@@ -23,7 +23,7 @@
     digga.inputs.home-manager.follows = "home";
     digga.inputs.deploy.follows = "deploy";
 
-    home.url = "github:nix-community/home-manager/release-22.11";
+    home.url = "github:nix-community/home-manager/release-23.05";
     home.inputs.nixpkgs.follows = "nixos";
 
     deploy.url = "github:serokell/deploy-rs";
@@ -45,14 +45,14 @@
     impermanence.url = "github:nix-community/impermanence/master";
 
     simple-nixos-mailserver.url =
-      "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-22.11";
 
     kmonad.url = "github:kmonad/kmonad/master?dir=nix";
     kmonad.inputs.nixpkgs.follows = "nixpkgs";
+      "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.05";
   };
 
   outputs = { self, digga, nixos, home, nixos-hardware, nur, agenix, nvfetcher
-    , deploy, impermanence, kmonad, nixpkgs, ... }@inputs:
+    , deploy, impermanence, nixpkgs, ... }@inputs:
     digga.lib.mkFlake {
       inherit self inputs;
 

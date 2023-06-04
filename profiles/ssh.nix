@@ -10,8 +10,12 @@ in {
   services.openssh = {
     enable = true;
     openFirewall = true;
-    passwordAuthentication = false;
-    kbdInteractiveAuthentication = false;
+
+    settings = {
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+    };
+
     # Only allow ssh keys explictly set here, in the NixOS configuration.
     authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
     hostKeys = [{
