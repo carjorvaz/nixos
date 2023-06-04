@@ -83,7 +83,6 @@
     privateKeyFile = "/persist/secrets/wireguard/privatekey"; # TODO agenix
   };
 
-  hardware.video.hidpi.enable = lib.mkDefault true;
   # services.xserver.dpi = 192;
   # environment.variables = {
   #   GDK_SCALE = "2";

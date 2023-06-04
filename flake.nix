@@ -142,16 +142,6 @@
               printing
               vpn.nebula
             ];
-            gallus = laptop ++ [
-              distributedBuilds
-              dns.dnscrypt-proxy2
-              graphical.gnome.common
-              intel-hardware-transcoding
-              latex
-              miracast
-              oci-containers.docker
-              vpn.nebula
-            ];
             hadrianus = server ++ [
               acme.common
               acme.http
