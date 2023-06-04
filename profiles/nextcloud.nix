@@ -43,7 +43,7 @@ in {
         overwriteProtocol = "https";
         defaultPhoneRegion = "PT";
 
-        trustedProxies = [ "100.64.0.2" ];
+        trustedProxies = [ "100.103.78.39" ];
 
         dbtype = "pgsql";
         dbuser = "nextcloud";
