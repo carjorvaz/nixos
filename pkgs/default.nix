@@ -3,5 +3,4 @@ final: prev: {
   sources = prev.callPackage (import ./_sources/generated.nix) { };
 
   # then, call packages with `final.callPackage`
-  readarr = prev.callPackage ./readarr { };
 }
