@@ -6,10 +6,7 @@
 let
   sshKeys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus"
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxNtlOg5VM8xN3XYfBGY3wIXrJ0vF5fBpc8s2NsLG9/ cjv@gallus"
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINOSUI7+TSnSwzy3BI7uZm9p7/bS4Of0I7N70ITYgVd4 grapheneos"
-
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICjVjQULxTJ+NN5ekG0HLpnkyPFIAwbNCQ5EOZ4cSfCt root@gallus" # Distributed builds.
   ];
 in {
   imports = suites.aurelius
