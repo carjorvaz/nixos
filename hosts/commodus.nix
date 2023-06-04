@@ -6,8 +6,7 @@
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
   boot.initrd.kernelModules = [ "i915" ];
-  boot.kernelPackages =
-    lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
+  boot.kernelPackages = pkgs.linuxPackages_xanmod;
   boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [ ];
 
@@ -78,7 +77,6 @@
   };
 
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
-  hardware.video.hidpi.enable = lib.mkDefault true;
 
   environment.variables.VDPAU_DRIVER = "va_gl";
   hardware.opengl = {
