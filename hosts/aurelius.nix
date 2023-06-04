@@ -140,6 +140,17 @@ in {
   services.kanata.keyboards."colemak".devices =
     [ "/dev/input/by-id/usb-0566_3108-event-kbd" ];
 
+  services.xserver.xrandrHeads = [
+    {
+      output = "HDMI-0";
+      primary = true;
+    }
+    {
+      monitorConfig = ''Option "Rotate" "left"'';
+      output = "VGA-0";
+    }
+  ];
+
   home-manager.users.cjv = {
     programs.i3status-rust.bars.top.blocks = [
       {
@@ -184,11 +195,6 @@ in {
   services.xserver.videoDrivers = [ "nvidia" ];
   hardware.nvidia.package =
     config.boot.kernelPackages.nvidiaPackages.legacy_470;
-
-  modules.kmonad = {
-    enable = true;
-    device = "/dev/input/by-id/usb-0566_3108-event-kbd";
-  };
 
   system.stateVersion = "21.11";
 }
