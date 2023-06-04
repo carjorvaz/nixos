@@ -39,7 +39,7 @@
     dconf.settings = {
       "org/gnome/desktop/input-sources" = {
         sources = [ (lib.hm.gvariant.mkTuple [ "xkb" "us+altgr-intl" ]) ];
-        xkb-options = [ "lv3:ralt_switch" "compose:prsc" "ctrl:nocaps" ];
+        xkb-options = [ "lv3:ralt_switch" "ctrl:nocaps" ];
       };
 
       "org/gnome/desktop/interface" = {
@@ -78,12 +78,6 @@
           "Mattermost.desktop"
           "com.nextcloud.desktopclient.nextcloud.desktop"
         ];
-      };
-
-      "org/gnome/shell/keybindings" = {
-        screenshot = [ "<Shift>Insert" ];
-        show-screenshot-ui = [ "Insert" ];
-        screenshot-window = [ "<Alt>Insert" ];
       };
     };
   };
