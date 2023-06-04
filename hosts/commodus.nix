@@ -125,15 +125,10 @@
 
   virtualisation.docker.storageDriver = "zfs";
 
-  age.secrets.nebulaRomeCommodusCrt.file =
-    "${self}/secrets/nebulaRomeCommodusCrt.age";
-  age.secrets.nebulaRomeCommodusKey.file =
-    "${self}/secrets/nebulaRomeCommodusKey.age";
-
-  services.nebula.networks."rome" = {
-    cert = config.age.secrets.nebulaRomeCommodusCrt.path;
-    key = config.age.secrets.nebulaRomeCommodusKey.path;
-  };
+  # STATE: sudo tailscale up --advertise-exit-node
+  # Allows me to use this device as a VPN from other devices (geo-blocking, snooping).
+  # Clients should run: sudo tailscale up --exit-node=<exit_node_tailscale_ip>
+  services.tailscale.useRoutingFeatures = "both";
 
   system.stateVersion = "22.05";
 }

@@ -118,16 +118,7 @@ in {
     defaultGateway = "46.38.240.1";
   };
 
-  age.secrets.nebulaRomeHadrianusCrt.file =
-    "${self}/secrets/nebulaRomeHadrianusCrt.age";
-  age.secrets.nebulaRomeHadrianusKey.file =
-    "${self}/secrets/nebulaRomeHadrianusKey.age";
-
-  services.nebula.networks."rome" = {
-    isLighthouse = true;
-    cert = config.age.secrets.nebulaRomeHadrianusCrt.path;
-    key = config.age.secrets.nebulaRomeHadrianusKey.path;
-  };
+  services.tailscale.useRoutingFeatures = "both";
 
   system.stateVersion = "22.11";
 }

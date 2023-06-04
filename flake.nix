@@ -140,7 +140,7 @@
               nginx.commodus
               oci-containers.docker
               printing
-              vpn.nebula
+              vpn.tailscale
             ];
             hadrianus = server ++ [
               acme.common
@@ -152,7 +152,7 @@
               nginx.common
               nginx.bastion
               nginx.mafalda
-              vpn.nebula
+              vpn.tailscale
             ];
           };
         };
