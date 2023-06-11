@@ -73,7 +73,6 @@
           "org.gnome.Nautilus.desktop"
           "emacs.desktop"
           "discord.desktop"
-          "com.github.flxzt.rnote.desktop"
           "org.gnome.Geary.desktop"
           "Mattermost.desktop"
           "com.nextcloud.desktopclient.nextcloud.desktop"
