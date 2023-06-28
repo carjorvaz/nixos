@@ -117,6 +117,10 @@ in {
     };
 
     defaultGateway = "46.38.240.1";
+    defaultGateway6 = {
+      address = "fe80::1";
+      interface = "ens3";
+    };
   };
 
   services.tailscale.useRoutingFeatures = "both";
