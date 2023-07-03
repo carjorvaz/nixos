@@ -21,7 +21,7 @@ in {
   services = {
     nextcloud = {
       enable = true;
-      package = pkgs.nextcloud26; # Need to manually increment with every update
+      package = pkgs.nextcloud27; # Need to manually increment with every update
       hostName = domain;
 
       https = true;
