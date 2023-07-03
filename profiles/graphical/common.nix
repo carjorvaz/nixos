@@ -1,6 +1,8 @@
 { config, lib, pkgs, ... }:
 
 {
+  boot.kernelPackages = pkgs.linuxPackages_xanmod;
+
   services = {
     dbus.enable = true;
 

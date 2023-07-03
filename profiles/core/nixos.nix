@@ -68,11 +68,9 @@
 
   users.mutableUsers = true; # TODO hashed passwords (agenix)
 
-  # Follow Fedora: https://old.reddit.com/r/Fedora/comments/r4a4so/interesting_fedora_does_not_support_hibernation/hmfonv0/
   zramSwap = {
     enable = true;
-    memoryMax = 8 * 1024 * 1024 * 1024;
-    memoryPercent = 100;
+    memoryPercent = 150;
   };
 
   # Enable IPv6 Privacy Extensions.
