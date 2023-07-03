@@ -153,6 +153,7 @@
               nginx.bastion
               nginx.mafalda
               vpn.tailscale
+              wordpress.tobepractical
             ];
           };
         };
