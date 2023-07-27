@@ -15,7 +15,7 @@
           disable-user-extensions = false;
           enabled-extensions = [
             "pop-shell@system76.com"
-            "native-window-placement@gnome-shell-extensions.gcamprax.github.com"
+            "native-window-placement@gnome-shell-extensions.gcampax.github.com"
           ];
         };
 
