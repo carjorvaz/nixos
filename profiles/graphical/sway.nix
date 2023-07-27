@@ -48,7 +48,6 @@ let
   lockCommand = "${pkgs.swaylock}/bin/swaylock -e -f";
 in {
   environment.systemPackages = with pkgs; [
-    foot
     sway
     dbus-sway-environment
     configure-gtk
@@ -159,6 +158,32 @@ in {
             dpi-aware = "yes";
           };
 
+          # Selenized black
+          cursor = { color = "181818 56d8c9"; };
+
+          colors = {
+            background = "181818";
+            foreground = "b9b9b9";
+
+            regular0 = "252525";
+            regular1 = "ed4a46";
+            regular2 = "70b433";
+            regular3 = "dbb32d";
+            regular4 = "368aeb";
+            regular5 = "eb6eb7";
+            regular6 = "3fc5b7";
+            regular7 = "777777";
+
+            bright0 = "3b3b3b";
+            bright1 = "ff5e56";
+            bright2 = "83c746";
+            bright3 = "efc541";
+            bright4 = "4f9cfe";
+            bright5 = "ff81ca";
+            bright6 = "56d8c9";
+            bright7 = "dedede";
+          };
+
           mouse.hide-when-typing = "yes";
         };
       };
@@ -166,7 +191,7 @@ in {
       i3status-rust = {
         enable = true;
         bars.top = {
-          icons = "awesome";
+          icons = "awesome4";
           theme = "plain";
         };
       };
@@ -189,7 +214,7 @@ in {
         input = {
           "type:keyboard" = {
             xkb_layout = "us";
-            xkb_options = "ctrl:nocaps,compose:prsc";
+            xkb_options = "ctrl:nocaps";
             xkb_variant = "altgr-intl";
           };
 
@@ -206,9 +231,9 @@ in {
           "${modifier}+Escape" = "exec ${lockCommand}";
 
           # Screenshots
-          "Insert" =
+          "Print" =
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
-          "Shift+Insert" =
+          "Shift+Print" =
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
           # Brightness
