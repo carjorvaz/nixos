@@ -68,11 +68,10 @@
 
   users.mutableUsers = true; # TODO hashed passwords (agenix)
 
+  boot.kernelPackages = pkgs.linuxPackages_xanmod;
+
   zramSwap = {
     enable = true;
     memoryPercent = 150;
   };
-
-  # Enable IPv6 Privacy Extensions.
-  networking.tempAddresses = "default";
 }
