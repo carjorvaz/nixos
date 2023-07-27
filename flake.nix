@@ -130,7 +130,6 @@
             aurelius = desktop
               ++ [ distributedBuilds.hive graphical.sway libvirt ];
             commodus = desktop ++ media ++ [
-              acme.common
               acme.dns-vaz-ovh
               dns.resolved
               homer
@@ -144,7 +143,6 @@
               vpn.tailscale
             ];
             hadrianus = server ++ [
-              acme.common
               acme.http
               acme.dns-vaz-one
               dns.resolved

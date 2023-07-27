@@ -1,6 +1,8 @@
 { self, config, lib, pkgs, ... }:
 
 {
+  imports = [ ./common.nix ];
+
   age.secrets.ovh.file = "${self}/secrets/ovh.age";
 
   # Use services.nginx.virtualHosts."example.vaz.ovh".useACMEHost = "vaz.ovh";
