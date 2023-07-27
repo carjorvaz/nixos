@@ -15,9 +15,4 @@ in {
   "nextcloud-admin-pass.age".publicKeys = [ commodusSystem commodusUser ];
   "ovh.age".publicKeys = [ commodusSystem commodusUser hadrianusSystem ];
 
-  "nebulaRomeCaCrt.age".publicKeys = systems;
-  "nebulaRomeCommodusCrt.age".publicKeys = [ commodusSystem ];
-  "nebulaRomeCommodusKey.age".publicKeys = [ commodusSystem ];
-  "nebulaRomeHadrianusCrt.age".publicKeys = [ hadrianusSystem ];
-  "nebulaRomeHadrianusKey.age".publicKeys = [ hadrianusSystem ];
 }
