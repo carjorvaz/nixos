@@ -139,7 +139,7 @@
               acme.dns-vaz-ovh
               dns.resolved
               homer
-              graphical.gnome.common
+              graphical.sway
               intel-hardware-transcoding
               nextcloud
               nginx.common
