@@ -121,6 +121,10 @@
     };
   };
 
+  environment.shellAliases = {
+    wakenerva = "${pkgs.wol}/bin/wol 38:2c:4a:e7:e0:8c";
+  };
+
   virtualisation.docker.storageDriver = "zfs";
 
   # STATE: sudo tailscale up --advertise-exit-node
