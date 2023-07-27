@@ -127,7 +127,8 @@
               transmission
             ];
 
-            aurelius = desktop ++ [ graphical.gnome.common libvirt ];
+            aurelius = desktop
+              ++ [ distributedBuilds.hive graphical.sway libvirt ];
             commodus = desktop ++ media ++ [
               acme.common
               acme.dns-vaz-ovh
