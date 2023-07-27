@@ -113,8 +113,14 @@
             desktop = base
               ++ [ bootloader emacs fwupd graphical.common pipewire scanning ];
             laptop = desktop ++ [ iwd ];
-            server = base
-              ++ [ autoUpgrade fail2ban passwordlessSudo zfs.email ];
+            server = base ++ [
+              autoUpgrade
+              dns.resolved
+              fail2ban
+              passwordlessSudo
+              zfs.email
+              vpn.tailscale
+            ];
             media = [
               bazarr
               calibre
@@ -145,15 +151,15 @@
             hadrianus = server ++ [
               acme.http
               acme.dns-vaz-one
-              dns.resolved
               mail
               nginx.blog
               nginx.common
               nginx.bastion
               nginx.mafalda
-              vpn.tailscale
               wordpress.tobepractical
             ];
+            nerva = server;
+            t440 = server ++ [ acme.dns-vaz-ovh frigate ];
           };
         };
       };
