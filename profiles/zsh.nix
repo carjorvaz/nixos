@@ -24,6 +24,11 @@
       '';
     };
 
+    fzf = {
+      keybindings = true;
+      fuzzyCompletion = true;
+    };
+
     starship.enable = true;
   };
 
@@ -50,6 +55,11 @@
         };
 
         fzf.enable = true;
+
+        zoxide = {
+          enable = true;
+          enableZshIntegration = true;
+        };
       };
     };
   in {
