@@ -24,14 +24,17 @@ in {
       package = pkgs.nextcloud27; # Need to manually increment with every update
       hostName = domain;
 
+      maxUploadSize = "16G";
+
       https = true;
       autoUpdateApps.enable = true;
 
       enableBrokenCiphersForSSE = false;
 
       extraAppsEnable = true;
-      extraApps = with pkgs.nextcloud26Packages.apps; {
-        inherit calendar contacts mail news notes tasks;
+      extraApps = with config.services.nextcloud.package.packages.apps; {
+        # TODO news
+        inherit calendar contacts mail notes tasks;
         cookbook = pkgs.fetchNextcloudApp rec {
           url =
             "https://github.com/nextcloud/cookbook/releases/download/v0.10.2/Cookbook-0.10.2.tar.gz";
@@ -52,32 +55,11 @@ in {
         dbname = "nextcloud";
         dbpassFile = config.age.secrets.nextcloud-db-pass.path;
 
-        adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
         adminuser = "admin";
+        adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
       };
 
-      caching = {
-        redis = true;
-        apcu = true;
-      };
-
-      extraOptions = {
-        redis = {
-          host = "/run/redis-nextcloud/redis.sock";
-          port = 0;
-        };
-        memcache = {
-          local = "\\OC\\Memcache\\Redis";
-          distributed = "\\OC\\Memcache\\Redis";
-          locking = "\\OC\\Memcache\\Redis";
-        };
-      };
-    };
-
-    redis.servers.nextcloud = {
-      enable = true;
-      user = "nextcloud";
-      port = 0;
+      configureRedis = true;
     };
 
     postgresql = {
