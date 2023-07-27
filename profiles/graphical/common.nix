@@ -37,7 +37,15 @@
         };
       };
     };
+  };
 
+  programs.chromium = {
+    enable = true;
+    extensions = [
+      "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+      "fhnegjjodccfaliddboelcleikbmapik" # Chrome Tab Counter
+      "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
+    ];
   };
 
   environment.systemPackages = with pkgs; [
@@ -49,6 +57,7 @@
     mattermost-desktop
     monero-gui
     nextcloud-client
+    nyxt
     ungoogled-chromium
     signal-desktop
     rnote
