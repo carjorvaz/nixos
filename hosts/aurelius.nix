@@ -54,11 +54,11 @@ in {
 
   boot = {
     kernelParams =
-      [ "ip=193.136.164.194::193.136.164.222:255.255.255.224::enp4s0:none" ];
+      [ "ip=193.136.164.194::193.136.164.222:255.255.255.224::eno1:none" ];
     initrd.availableKernelModules =
       [ "nvme" "xhci_pci" "ahci" "usbhid" "usb_storage" "sd_mod" ];
     initrd.supportedFilesystems = [ "zfs" ];
-    initrd.kernelModules = [ "r8169" ];
+    initrd.kernelModules = [ "e1000e" ];
     initrd.network = {
       # This will use udhcp to get an ip address.
       # Make sure you have added the kernel module for your network driver to `boot.initrd.availableKernelModules`,
@@ -106,7 +106,7 @@ in {
     domain = "rnl.tecnico.ulisboa.pt";
 
     useDHCP = false;
-    interfaces.enp4s0 = {
+    interfaces.eno1 = {
       useDHCP = false;
       wakeOnLan.enable = true;
 
@@ -124,7 +124,7 @@ in {
     defaultGateway = "193.136.164.222";
     defaultGateway6 = {
       address = "2001:690:2100:82::ffff:1";
-      interface = "enp4s0";
+      interface = "eno1";
     };
 
     nameservers = [
@@ -135,21 +135,51 @@ in {
     ];
 
     search = [ "rnl.tecnico.ulisboa.pt" ];
+    timeServers = [ "ntp.rnl.tecnico.ulisboa.pt" ];
   };
+
+  security.pki.certificates = [
+    # RNL's CA
+    ''
+      -----BEGIN CERTIFICATE-----
+      MIIF9zCCA9+gAwIBAgIJAPWGHuu4tPJcMA0GCSqGSIb3DQEBCwUAMIGRMQswCQYD
+      VQQGEwJQVDEPMA0GA1UECAwGTGlzYm9hMSUwIwYDVQQKDBxSZWRlIGRhcyBOb3Zh
+      cyBMaWNlbmNpYXR1cmFzMR8wHQYDVQQDDBZybmwudGVjbmljby51bGlzYm9hLnB0
+      MSkwJwYJKoZIhvcNAQkBFhpybmxAcm5sLnRlY25pY28udWxpc2JvYS5wdDAeFw0x
+      NDEyMDQxNzA1MzhaFw0yNDEyMDExNzA1MzhaMIGRMQswCQYDVQQGEwJQVDEPMA0G
+      A1UECAwGTGlzYm9hMSUwIwYDVQQKDBxSZWRlIGRhcyBOb3ZhcyBMaWNlbmNpYXR1
+      cmFzMR8wHQYDVQQDDBZybmwudGVjbmljby51bGlzYm9hLnB0MSkwJwYJKoZIhvcN
+      AQkBFhpybmxAcm5sLnRlY25pY28udWxpc2JvYS5wdDCCAiIwDQYJKoZIhvcNAQEB
+      BQADggIPADCCAgoCggIBAL6BX38gr9os4VYzTOJIF0+4l19fEVDI1pPCFEUIm5dG
+      r803zvs1nJ8tJXWiHZLx0TZ2Cs9OPkZILmI/QlofDos5PkzfHG9EREHkXcrMHa9B
+      SwO3n3V58vtcI2JsgchlofcLVstde9kp0rK0hR1hRA3hHjUEUmwx8BqllWI/K/z7
+      hNrpv9U/5SWh9QA3fr2022e1eu6AH4ZDzbfG3SOf27Cothy32rt6q9eBTi5UJkxb
+      tN83uNIQ9/5Swsyev3dGhNhxptTeftXyS1q2zcePiPQYa3JJc5GaCaxdp3RnvNGw
+      9IGZ5wyQ87kEPUCPOe88ILoCTmaTldFYJll+MnARBuGHhDhsii5Tv2IhlM/Gv1Gj
+      sw4tz4+arQETsJ4cHwUohF5tiXzkGs0WpYKs08anUMVvbwAU8r8LHLVHx0hgtPfu
+      dKIo2Ev5pKPNfTiqGVaAlfCibCSA1I1HEnwTMmrP8YryOui51c1p3r1Hzc/ng1AP
+      ny8PRMNAEHYk3bl+dv+rLWPZG9WsUErqTWLJyZrduMBfdTIHHEVOIPVULyAKRQub
+      Nh6aBkiQbyLQ1o9BDpV7oEHUvw3b2f+o4aXSsVEu/xtrRoK6qONRLETA0GmPkWWc
+      SKsy/Wsa72xzzm+cc/kNzYyOEtpAFsygRcFb5Tq4G50c8D45NMzYZ7qqgjlnVW1V
+      AgMBAAGjUDBOMB0GA1UdDgQWBBSCe/t1buKVxGFcRw4RYbHAs8SDhTAfBgNVHSME
+      GDAWgBSCe/t1buKVxGFcRw4RYbHAs8SDhTAMBgNVHRMEBTADAQH/MA0GCSqGSIb3
+      DQEBCwUAA4ICAQBL0PIT+zd07fz8pX87j3mLAfJd3Qq6ZKHguEynMyQywWbt3Rh+
+      fdrRUFRlUjfE1UybV2Q+9Ca43WtmQMPOVtxNGX11nIN15gapMunOG+nHPShu+4om
+      I7w/9EcGZsSSM/lV7+84Rw3oJu//LthP2s1iMaNw4T0kWfoJczmu4TpfN+QLjCTL
+      LPxRsRKiejZHqI8+DiVr8UxuMSEofYLvpDCssTVKMXNt4E6al8xtIvI1lvpmAbnM
+      JeWnwwnxIZEl1RLdHlfZuU+F9nB4uYIlw3/qNdJDHYW1WviPEPWFNG+9qy4q6tvv
+      H494/eeIktmbKWYHxkB/h5iiwVa5ieo6lhBQ3h0xPcJUsSBMC2WFFsIbmIMnAIAO
+      O5cL2aqvc1e6sqQsDss/2YmICJtiWjXlhonJXJOnmt2J1wKBu9bPUaGcQGpXZrYq
+      JfV4GrcBCwd3RRmEtR3xBM/HXtjliG5UTpBwzNrlKbqFBtnhRWhW2WD3d8cHK9SY
+      4vcD8bXiYmZTqVqAdfRXnLjA3GXNXbu+92HzyMqz9o1b1s8SP+N0cWgM0TzfRfmN
+      giZN9k3ensnNqBK1b9ES1O13d86UqiJH4v6B5c361jC/79qLw+GsZq3RXtJvDBN3
+      OhWArde2HmBg1evSXRChZxnOZgTYQIsqCq9qRljJAKEP6dMB3jjCPycskw==
+      -----END CERTIFICATE-----
+    ''
+  ];
 
   services.kanata.keyboards."colemak".devices =
     [ "/dev/input/by-id/usb-0566_3108-event-kbd" ];
-
-  services.xserver.xrandrHeads = [
-    {
-      output = "HDMI-0";
-      primary = true;
-    }
-    {
-      monitorConfig = ''Option "Rotate" "left"'';
-      output = "VGA-0";
-    }
-  ];
 
   home-manager.users.cjv = {
     programs.i3status-rust.bars.top.blocks = [
@@ -167,18 +197,18 @@ in {
       {
         block = "time";
         interval = 5;
-        format = "%a %d/%m %R";
+        format = " $timestamp.datetime(f:'%a %d/%m %R')";
       }
     ];
 
     wayland.windowManager.sway.config = rec {
       output = {
         "*".bg = "~/Pictures/wallpaper.png fill";
-        "HDMI-A-1" = {
+        "DP-1" = {
           resolution = "2560x1440";
           pos = "0 215";
         };
-        "VGA-1" = {
+        "DP-2" = {
           resolution = "1920x1080";
           pos = "2560 0";
           transform = "270";
@@ -187,14 +217,10 @@ in {
 
       workspaceOutputAssign = [{
         workspace = "9";
-        output = "VGA-1";
+        output = "DP-2";
       }];
     };
   };
-
-  services.xserver.videoDrivers = [ "nvidia" ];
-  hardware.nvidia.package =
-    config.boot.kernelPackages.nvidiaPackages.legacy_470;
 
   system.stateVersion = "21.11";
 }
