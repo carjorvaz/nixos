@@ -61,6 +61,7 @@
 
   networking = {
     useDHCP = false;
+    networkmanager.enable = false;
 
     interfaces.eno1 = {
       useDHCP = false;
