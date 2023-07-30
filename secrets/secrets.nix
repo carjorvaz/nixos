@@ -13,7 +13,6 @@ let
 in {
   "mailCarlosHashedPassword.age".publicKeys = [ commodusUser hadrianusSystem ];
   "mailMafaldaHashedPassword.age".publicKeys = [ commodusUser hadrianusSystem ];
-  "nextcloud-db-pass.age".publicKeys = [ commodusSystem commodusUser ];
   "nextcloud-admin-pass.age".publicKeys = [ commodusSystem commodusUser ];
   "ovh.age".publicKeys =
     [ commodusSystem commodusUser hadrianusSystem t440System ];

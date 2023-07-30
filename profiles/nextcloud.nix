@@ -6,12 +6,6 @@
 # - /var/lib/nextcloud must be owned by nextcloud (sudo chown -R nextcloud: /var/lib/nextcloud)
 let domain = "cloud.vaz.one";
 in {
-  age.secrets.nextcloud-db-pass = {
-    file = "${self}/secrets/nextcloud-db-pass.age";
-    owner = "nextcloud";
-    group = "nextcloud";
-  };
-
   age.secrets.nextcloud-admin-pass = {
     file = "${self}/secrets/nextcloud-admin-pass.age";
     owner = "nextcloud";
@@ -23,14 +17,14 @@ in {
       enable = true;
       package = pkgs.nextcloud27; # Need to manually increment with every update
       hostName = domain;
+      database.createLocally = true;
+      configureRedis = true;
 
       maxUploadSize = "16G";
-
       https = true;
-      autoUpdateApps.enable = true;
-
       enableBrokenCiphersForSSE = false;
 
+      autoUpdateApps.enable = true;
       extraAppsEnable = true;
       extraApps = with config.services.nextcloud.package.packages.apps; {
         # TODO news
@@ -45,36 +39,12 @@ in {
       config = {
         overwriteProtocol = "https";
         defaultPhoneRegion = "PT";
-
         trustedProxies = [ "100.103.78.39" ];
-
         dbtype = "pgsql";
-        dbuser = "nextcloud";
-        dbhost =
-          "/run/postgresql"; # nextcloud will add /.s.PGSQL.5432 by itself
-        dbname = "nextcloud";
-        dbpassFile = config.age.secrets.nextcloud-db-pass.path;
-
         adminuser = "admin";
         adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
       };
-
-      configureRedis = true;
     };
-
-    postgresql = {
-      enable = true;
-      ensureDatabases = [ "nextcloud" ];
-      ensureUsers = [{
-        name = "nextcloud";
-        ensurePermissions."DATABASE nextcloud" = "ALL PRIVILEGES";
-      }];
-    };
-  };
-
-  systemd.services."nextcloud-setup" = {
-    requires = [ "postgresql.service" ];
-    after = [ "postgresql.service" ];
   };
 
   environment.persistence."/persist".directories = [
