@@ -67,39 +67,9 @@
 
   boot.loader = {
     efi.canTouchEfiVariables = true;
-    # grub = {
-    #   enable = true;
-    #   efiSupport = true;
-    #   device = "nodev";
-    #   mirroredBoots = [
-    #     # {
-    #     #   devices = [ "/dev/disk/by-uuid/33BC-29B9" ];
-    #     #   path = "/boot";
-    #     # }
-    #     {
-    #       devices = [ "/dev/disk/by-uuid/3399-302E" ];
-    #       path = "/boot-1";
-    #     }
-    #     # {
-    #     #   devices = [ "/dev/disk/by-uuid/3357-70C6" ];
-    #     #   path = "/boot-2";
-    #     # }
-    #     # {
-    #     #   devices = [ "/dev/disk/by-uuid/3377-9DD9" ];
-    #     #   path = "/boot-3";
-    #     # }
-    #     # {
-    #     #   devices = [ "/dev/disk/by-uuid/33DD-A196" ];
-    #     #   path = "/boot-3";
-    #     # }
-    #   ];
-    # };
-
     grub = {
       enable = true;
-      # device = "nodev";
       efiSupport = true;
-      # zfsSupport = true;
       mirroredBoots = [
         {
           devices = [ "nodev" ];
