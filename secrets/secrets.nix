@@ -16,4 +16,7 @@ in {
   "nextcloud-admin-pass.age".publicKeys = [ commodusSystem commodusUser ];
   "ovh.age".publicKeys =
     [ commodusSystem commodusUser hadrianusSystem t440System ];
+  "plausibleAdminPassword.age".publicKeys = [ commodusUser hadrianusSystem ];
+  "plausibleReleaseCookie.age".publicKeys = [ commodusUser hadrianusSystem ];
+  "plausibleSecretKeybase.age".publicKeys = [ commodusUser hadrianusSystem ];
 }
