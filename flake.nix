@@ -156,7 +156,6 @@
               nginx.common
               nginx.bastion
               nginx.mafalda
-              wordpress.tobepractical
               plausible
             ];
             nerva = server;

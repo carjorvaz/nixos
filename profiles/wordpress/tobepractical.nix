@@ -1,5 +1,23 @@
 { config, lib, pkgs, ... }:
 
+# TODO:
+# - webp
+# - lazy load images
+# - minify
+# - check seo e speed cores
+# - security hardening
+# plugins:
+# anti-spam-bee
+# code-syntax-block
+# cookie-notice
+# lightbox-with-photoswipe
+# wp-gdpr-compliance
+
+# STATE:
+# - Enable every plugin
+# - Astra > Settings > (local cache for google fonts -> 2 options)
+# - Settings > Permalinks > Post name
+
 let
   domain = "tobepractical.com";
 
