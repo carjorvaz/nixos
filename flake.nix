@@ -157,6 +157,7 @@
               nginx.bastion
               nginx.mafalda
               wordpress.tobepractical
+              plausible
             ];
             nerva = server;
             t440 = server ++ [ acme.dns-vaz-ovh frigate ];
