@@ -3,7 +3,7 @@
 {
   services.emacs = {
     enable = true;
-    package = ((pkgs.emacsPackagesFor pkgs.emacs-gtk).emacsWithPackages
+    package = ((pkgs.emacsPackagesFor pkgs.emacs29-pgtk).emacsWithPackages
       (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]));
   };
 
