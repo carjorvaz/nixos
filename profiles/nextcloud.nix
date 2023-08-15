@@ -13,6 +13,11 @@ in {
   };
 
   services = {
+    nginx.virtualHosts."onlyoffice.vaz.ovh" = {
+      forceSSL = true;
+      useACMEHost = "vaz.ovh";
+    };
+
     nextcloud = {
       enable = true;
       package = pkgs.nextcloud27; # Need to manually increment with every update
@@ -28,7 +33,7 @@ in {
       extraAppsEnable = true;
       extraApps = with config.services.nextcloud.package.packages.apps; {
         # TODO news
-        inherit calendar contacts mail notes tasks;
+        inherit calendar contacts mail notes onlyoffice tasks;
         cookbook = pkgs.fetchNextcloudApp rec {
           url =
             "https://github.com/nextcloud/cookbook/releases/download/v0.10.2/Cookbook-0.10.2.tar.gz";
@@ -44,6 +49,12 @@ in {
         adminuser = "admin";
         adminpassFile = config.age.secrets.nextcloud-admin-pass.path;
       };
+    };
+
+    # Only accessible inside the VPN.
+    onlyoffice = {
+      enable = true;
+      hostname = "onlyoffice.vaz.ovh";
     };
   };
 
