@@ -6,7 +6,8 @@ in {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:5000";
+      locations."/".proxyPass =
+        "http://127.0.0.1:${toString config.services.ombi.port}";
     };
 
     ombi = {
