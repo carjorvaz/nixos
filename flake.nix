@@ -125,7 +125,7 @@
               bazarr
               calibre
               jellyfin
-              ombi
+              jellyseerr
               prowlarr
               radarr
               readarr
