@@ -56,24 +56,22 @@
 
   services.logind.lidSwitch = "ignore";
 
-  networking.useDHCP = lib.mkDefault true;
-  networking.hostId = "65db7b8e";
-  # networking = {
-  #   useDHCP = false;
-  #   hostId = "65db7b8e";
+  networking = {
+    useDHCP = false;
+    hostId = "65db7b8e";
 
-  #   interfaces.enp0s25 = {
-  #     useDHCP = false;
-  #     wakeOnLan.enable = true; # Requires enabling WoL in BIOS
+    interfaces.enp0s25 = {
+      useDHCP = false;
+      wakeOnLan.enable = true; # Requires enabling WoL in BIOS
 
-  #     ipv4.addresses = [{
-  #       address = "192.168.1.2";
-  #       prefixLength = 24;
-  #     }];
-  #   };
+      ipv4.addresses = [{
+        address = "192.168.1.1";
+        prefixLength = 24;
+      }];
+    };
 
-  #   defaultGateway = "192.168.1.254";
-  # };
+    defaultGateway = "192.168.1.254";
+  };
 
   virtualisation.docker.storageDriver = "zfs";
 
