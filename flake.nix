@@ -156,7 +156,6 @@
               nginx.common
               nginx.bastion
               nginx.mafalda
-              plausible
             ];
             nerva = server;
             t440 = server ++ [ acme.dns-vaz-ovh frigate ];
