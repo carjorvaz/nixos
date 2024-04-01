@@ -5,7 +5,7 @@
 Requires only root ssh access to the destination system (running some Linux distribution with kexec support)
 
 #+begin_src
-nix run github:numtide/nixos-anywhere -- --flake <flake URL>     <SSH destination>
+nix run github:numtide/nixos-anywhere -- --flake <flake URL> <SSH destination>
 #+end_src
 
 For example:
