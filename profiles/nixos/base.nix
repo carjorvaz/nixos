@@ -79,7 +79,7 @@
   documentation.man.generateCaches = true;
 
   # No mutable users by default
-  users.mutableUsers = false;
+  users.mutableUsers = lib.mkDefault false;
 
   # Following section copied from: https://github.com/numtide/srvos/
   systemd = {
