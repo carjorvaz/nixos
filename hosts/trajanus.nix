@@ -62,7 +62,11 @@
       fsType = "zfs";
       options = [ "zfsutil" ];
     };
-    "/home" = {
+
+    # Facing this issue:
+    # - https://discourse.nixos.org/t/users-users-name-createhome-not-creating-home-directory/30779
+    # - https://github.com/NixOS/nixpkgs/issues/6481
+    "/home/cjv" = {
       device = "rpool/safe/home";
       fsType = "zfs";
       options = [ "zfsutil" ];
