@@ -9,8 +9,8 @@
     ../../modules/nixos/zfsRemoteUnlock.nix
   ];
 
-  boot.kernelPackages =
-    lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
+  # boot.kernelPackages =
+  #   lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
 
   # Disko takes care of filesystem configuration but this
   # is needed because of the impermanence module.
