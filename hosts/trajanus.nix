@@ -63,9 +63,10 @@
       options = [ "zfsutil" ];
     };
 
-    # Facing this issue:
+    # Might be facing this issue:
     # - https://discourse.nixos.org/t/users-users-name-createhome-not-creating-home-directory/30779
     # - https://github.com/NixOS/nixpkgs/issues/6481
+    # STATE: requires: sudo chown -R cjv: /home/cjv
     "/home/cjv" = {
       device = "rpool/safe/home";
       fsType = "zfs";
