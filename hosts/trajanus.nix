@@ -15,9 +15,9 @@
     ../profiles/nixos/docker.nix
     ../profiles/nixos/emacs.nix
     ../profiles/nixos/graphical/sway.nix
-    ../profiles/nixos/printing.nix
+    # ../profiles/nixos/printing.nix
     ../profiles/nixos/qmk.nix
-    ../profiles/nixos/scanning.nix
+    # ../profiles/nixos/scanning.nix
     ../profiles/nixos/ssh.nix
 
     # STATE: sudo tailscale up
