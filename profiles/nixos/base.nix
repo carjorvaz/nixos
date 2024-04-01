@@ -43,7 +43,7 @@
       experimental-features = [ "nix-command" "flakes" ];
     };
 
-    registry = {
+    registry = lib.mkDefault {
       nixpkgs.flake = inputs.nixpkgs;
       unstable.flake = inputs.nixpkgs-unstable;
     };
