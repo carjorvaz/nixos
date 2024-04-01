@@ -33,17 +33,16 @@
     peripheralFirmwareDirectory = ./asahi-firmware;
   };
 
-  # # TODO ZFS impermanence; requires redeploy with snapshot after creation
-  # boot = {
-  #   initrd = {
-  #     systemd.enable = false;
-  #     postDeviceCommands = lib.mkAfter ''
-  #       zfs rollback -r zroot/local/root@blank
-  #     '';
-  #   };
+  boot = {
+    initrd = {
+      systemd.enable = false;
+      postDeviceCommands = lib.mkAfter ''
+        zfs rollback -r zroot/local/root@blank
+      '';
+    };
 
-  #   plymouth.enable = false;
-  # };
+    plymouth.enable = false;
+  };
 
   boot.loader.efi.canTouchEfiVariables = false;
   boot.initrd.availableKernelModules = [ "usb_storage" ];
