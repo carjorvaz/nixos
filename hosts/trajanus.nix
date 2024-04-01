@@ -31,6 +31,7 @@
 
     setupAsahiSound = true;
 
+    # TODO really big files taking up space in the repo, think of better alternative
     peripheralFirmwareDirectory = ./asahi-firmware;
   };
 
