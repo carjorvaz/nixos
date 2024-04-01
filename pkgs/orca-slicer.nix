@@ -2,7 +2,7 @@
 
 # TODO/maybe:
 # - use makeDesktopItem to create a proper desktop entry
-# - create package from source instead of appimage
+# - create package from source instead of appimage (like prusa-slicer)
 appimageTools.wrapType2 {
   name = "orca-slicer";
   src = let version = "2.0.0-beta";

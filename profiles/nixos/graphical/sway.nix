@@ -1,0 +1,206 @@
+{ config, inputs, pkgs, lib, ... }:
+
+let
+  # bash script to let dbus know about important env variables and
+  # propogate them to relevent services run at the end of sway config
+  # see
+  # https://github.com/emersion/xdg-desktop-portal-wlr/wiki/"It-doesn't-work"-Troubleshooting-Checklist
+  # note: this is pretty much the same as  /etc/sway/config.d/nixos.conf but also restarts
+  # some user services to make sure they have the correct environment variables
+  dbus-sway-environment = pkgs.writeTextFile {
+    name = "dbus-sway-environment";
+    destination = "/bin/dbus-sway-environment";
+    executable = true;
+
+    text = ''
+      dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
+      systemctl --user stop pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
+      systemctl --user start pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
+    '';
+  };
+
+  # currently, there is some friction between sway and gtk:
+  # https://github.com/swaywm/sway/wiki/GTK-3-settings-on-Wayland
+  # the suggested way to set gtk settings is with gsettings
+  # for gsettings to work, we need to tell it where the schemas are
+  # using the XDG_DATA_DIR environment variable
+  # run at the end of sway config
+  configure-gtk = pkgs.writeTextFile {
+    name = "configure-gtk";
+    destination = "/bin/configure-gtk";
+    executable = true;
+    text = let
+      schema = pkgs.gsettings-desktop-schemas;
+      datadir = "${schema}/share/gsettings-schemas/${schema.name}";
+    in ''
+      export XDG_DATA_DIRS=${datadir}:$XDG_DATA_DIRS
+      gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark' && gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+    '';
+  };
+in {
+  imports = [ ./common.nix ./wayland.nix ];
+
+  environment.systemPackages = with pkgs; [
+    sway
+    dbus-sway-environment
+    configure-gtk
+    wayland
+
+    swaylock
+    swayidle
+
+    # screenshot functionality
+    grim
+    slurp
+    sway-contrib.grimshot
+  ];
+
+  services.dbus.enable = true;
+  xdg.portal = {
+    enable = true;
+    wlr.enable = true;
+  };
+
+  programs = {
+    sway = {
+      enable = true;
+      wrapperFeatures.gtk = true;
+    };
+
+    dconf.enable = true;
+  };
+
+  security.polkit.enable = true;
+
+  networking.networkmanager.enable = false; # Use only iwd and dhcpcd.
+
+  systemd.user.services = {
+    nextcloud-client.wantedBy = lib.mkForce [ "sway-session.target" ];
+  };
+
+  home-manager.users.cjv = {
+    programs.i3status-rust = {
+      enable = true;
+      bars.top = {
+        icons = "material-nf";
+        theme = "plain";
+      };
+    };
+
+    wayland.windowManager.sway = {
+      enable = true;
+      systemd.enable = true;
+      wrapperFeatures = {
+        base = true;
+        gtk = true;
+      };
+
+      config = rec {
+        modifier = "Mod4";
+        terminal = "foot";
+
+        input = {
+          "type:keyboard" = {
+            xkb_layout = "us";
+            xkb_options = "ctrl:nocaps";
+            xkb_variant = "altgr-intl";
+            repeat_delay = "200";
+            repeat_rate = "25";
+          };
+
+          "type:pointer" = {
+            accel_profile = "flat";
+            pointer_accel = "0";
+          };
+
+          # TODO default acceleration for touchpads
+          "type:touchpad" = {
+            tap = "enabled";
+            natural_scroll = "enabled";
+          };
+        };
+
+        keybindings = let
+          modifier =
+            config.home-manager.users.cjv.wayland.windowManager.sway.config.modifier;
+        in lib.mkOptionDefault {
+          "${modifier}+Escape" = "exec ${pkgs.swaylock}/bin/swaylock";
+
+          # Rofi
+          "${modifier}+d" = "exec rofi -modes combi -show combi";
+          "${modifier}+Shift+d" = "exec rofi -modes drun -show drun";
+          "${modifier}+c" = "exec rofi -modes calc -show calc";
+          "${modifier}+x" = "exec rofi -modes calc -show calc"; # TODO emoji
+
+          # Screenshots
+          "Print" =
+            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+          "Shift+Print" =
+            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+
+          # Brightness
+          "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.72";
+          "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.4";
+
+          "XF86AudioRaiseVolume" =
+            "exec '${pkgs.pamixer}/bin/pamixer --increase 5'";
+          "Alt+XF86AudioRaiseVolume" =
+            "exec '${pkgs.pamixer}/bin/pamixer --increase 1'";
+          "XF86AudioLowerVolume" =
+            "exec '${pkgs.pamixer}/bin/pamixer --decrease 5'";
+          "Alt+XF86AudioLowerVolume" =
+            "exec '${pkgs.pamixer}/bin/pamixer --decrease 1'";
+          "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
+          "XF86AudioMicMute" =
+            "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
+
+          # Move to custom workspace
+          "${modifier}+t" =
+            "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | rofi -dmenu -p 'Go to workspace:' )";
+          "${modifier}+Shift+t" =
+            "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | rofi -dmenu -p 'Move to workspace:')";
+        };
+
+        bars = [{
+          statusCommand =
+            "${pkgs.i3status-rust}/bin/i3status-rs ~/.config/i3status-rust/config-top.toml";
+          position = "top";
+          fonts = {
+            size = 12.0;
+            names = [ "monospace" ];
+          };
+        }];
+      };
+
+      extraConfig = ''
+        exec ${dbus-sway-environment}/bin/dbus-sway-environment
+        exec ${configure-gtk}/bin/configure-gtk
+        exec ${pkgs.nextcloud-client}/bin/nextcloud
+      '';
+
+      extraSessionCommands = ''
+        # Needed for GNOME Keyring's SSH integration.
+        eval $(/run/wrappers/bin/gnome-keyring-daemon --start --components=ssh)
+        export SSH_AUTH_SOCK
+      '';
+    };
+
+    services = {
+      kanshi.systemdTarget = "sway-session.target";
+      swayidle.timeouts = [
+        {
+          timeout = 300;
+          # TODO desligar o ecrã 5 segundos antes de bloquear para poder mexer o rato e não ter bloqueado
+          # TODO desligar o ecrã depois deste lock e ligar com o resume
+          command = "${pkgs.swaylock}/bin/swaylock";
+        }
+        {
+          timeout = 2;
+          command = ''
+            if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
+          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+        }
+      ];
+    };
+  };
+}
