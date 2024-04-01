@@ -74,7 +74,7 @@ in {
   };
 
   environment.systemPackages = with pkgs; [
-    brainworkshop
+    # brainworkshop
 
     # STATE:
     # - Set as default browser
