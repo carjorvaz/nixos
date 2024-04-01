@@ -3,7 +3,7 @@
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
   # TODO use self instead of the ../..
-  brainworkshop = pkgs.callPackage ../../../pkgs/brainworkshop.nix { };
+  # brainworkshop = pkgs.callPackage ../../../pkgs/brainworkshop.nix { };
   orca-slicer = pkgs.callPackage ../../../pkgs/orca-slicer.nix { };
   qidi-slicer = pkgs.callPackage ../../../pkgs/qidi-slicer.nix { };
 in {
