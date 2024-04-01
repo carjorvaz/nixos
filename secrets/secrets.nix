@@ -7,14 +7,16 @@ let
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFI1Mcb4pU6+2ZCmS5wBJqb4oLZdcSxryvTOUf9ZLxIU root@hadrianus";
   t440System =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBlO09UlgM2z4BKrw6GeveWdZuCX48Nzj57ujSvRYb+U root@t440";
-  systems = [ aureliusSystem commodusSystem hadrianusSystem t440System ];
+  trajanusSystem =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInSJRAoCzrW1svuSv2rl3WQGpacY1gn0xpq8Zuz3TxP root@trajanus";
+  systems = [ aureliusSystem commodusSystem hadrianusSystem t440System trajanusSystem ];
 
   commodusUser =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus";
   users = [ commodusUser ];
 in {
   "aureliusInitrdHostKey.age".publicKeys = [ aureliusSystem commodusUser ];
-  "cjvHashedPassword.age".publicKeys = [ commodusSystem commodusUser ];
+  "cjvHashedPassword.age".publicKeys = [ commodusSystem commodusUser trajanusSystem ];
   "mailCarlosHashedPassword.age".publicKeys = [ hadrianusSystem commodusUser ];
   "mailMafaldaHashedPassword.age".publicKeys = [ hadrianusSystem commodusUser ];
   "nextcloud-admin-pass.age".publicKeys = [ commodusSystem commodusUser ];
