@@ -8,6 +8,7 @@
   users.users = {
     cjv = {
       isNormalUser = true;
+      createHome = true;
       description = "Carlos Vaz";
       extraGroups = [ "wheel" ];
       hashedPasswordFile =
