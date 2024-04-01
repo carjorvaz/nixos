@@ -9,7 +9,7 @@ let
 in {
   imports = [
     # "${self}/profiles/home/firefox.nix"
-    ../../home/firefox.nix
+    # ../../home/firefox.nix
   ];
 
   # boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
