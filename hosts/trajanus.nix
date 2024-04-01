@@ -37,7 +37,7 @@
     initrd = {
       systemd.enable = false;
       postDeviceCommands = lib.mkAfter ''
-        zfs rollback -r zroot/local/root@blank
+        zfs rollback -r rpool/local/root@blank
       '';
     };
 
