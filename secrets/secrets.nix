@@ -13,6 +13,8 @@ let
 
   commodusUser =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus";
+  trajanusUser =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINeSrytHnGDHS4QQgYf+HxZkNdh79akg19kItGqA+9Z7 cjv@trajanus";
   users = [ commodusUser ];
 in {
   "aureliusInitrdHostKey.age".publicKeys = [ aureliusSystem commodusUser ];
