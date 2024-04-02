@@ -22,6 +22,8 @@
     ../profiles/nixos/tailscale.nix
   ];
 
+  users.mutableUsers = true;
+
   hardware.asahi = {
     withRust = true;
     useExperimentalGPUDriver = true;
@@ -37,7 +39,7 @@
     initrd = {
       systemd.enable = false;
       postDeviceCommands = lib.mkAfter ''
-        zfs rollback -r rpool/local/root@blank
+        zfs rollback -r zroot/local/root@blank
       '';
     };
 
@@ -52,28 +54,24 @@
 
   fileSystems = {
     "/" = {
-      device = "rpool/local/root";
+      device = "zroot/local/root";
       fsType = "zfs";
       options = [ "zfsutil" ];
     };
 
     "/nix" = {
-      device = "rpool/local/nix";
+      device = "zroot/local/nix";
       fsType = "zfs";
       options = [ "zfsutil" ];
     };
 
-    # Might be facing this issue:
-    # - https://discourse.nixos.org/t/users-users-name-createhome-not-creating-home-directory/30779
-    # - https://github.com/NixOS/nixpkgs/issues/6481
-    # STATE: requires: sudo chown -R cjv: /home/cjv
-    "/home/cjv" = {
-      device = "rpool/safe/home";
+    "/home" = {
+      device = "zroot/safe/home";
       fsType = "zfs";
       options = [ "zfsutil" ];
     };
     "/persist" = {
-      device = "rpool/safe/persist";
+      device = "zroot/safe/persist";
       fsType = "zfs";
       options = [ "zfsutil" ];
     };
