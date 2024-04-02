@@ -180,8 +180,11 @@
     # };
 
     wayland.windowManager.sway.config = rec {
-      # TODO
-      # output = { "*".bg = "~/Pictures/wallpaper.jpg fill"; };
+      output = {
+        # TODO
+        # "*".bg = "~/Pictures/wallpaper.jpg fill";
+        "DP-1".scale = "1.75";
+      };
 
       workspaceOutputAssign = [{
         workspace = "9";
