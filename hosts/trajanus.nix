@@ -183,7 +183,7 @@
       output = {
         # TODO
         # "*".bg = "~/Pictures/wallpaper.jpg fill";
-        "DP-1".scale = "1.75";
+        "eDP-1".scale = "1.75";
       };
 
       workspaceOutputAssign = [{
