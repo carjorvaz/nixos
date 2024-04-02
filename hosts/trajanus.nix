@@ -22,8 +22,6 @@
     ../profiles/nixos/tailscale.nix
   ];
 
-  users.mutableUsers = true;
-
   hardware.asahi = {
     withRust = true;
     useExperimentalGPUDriver = true;
