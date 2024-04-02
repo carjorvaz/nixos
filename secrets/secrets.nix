@@ -8,7 +8,7 @@ let
   t440System =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBlO09UlgM2z4BKrw6GeveWdZuCX48Nzj57ujSvRYb+U root@t440";
   trajanusSystem =
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInSJRAoCzrW1svuSv2rl3WQGpacY1gn0xpq8Zuz3TxP root@trajanus";
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHTIQ8jZEsUMNX7yrGpSECIB91B1t0EuX/k+fzLRBJ/v root@trajanus";
   systems = [ aureliusSystem commodusSystem hadrianusSystem t440System trajanusSystem ];
 
   commodusUser =
