@@ -97,6 +97,9 @@ in {
           # - Login
           # - Settings > Auto-fill > Match Host
           bitwarden
+
+          # STATE:
+          # Select All, Save
           bypass-paywalls-clean
           consent-o-matic
           darkreader
