@@ -137,6 +137,10 @@ in {
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
           "Shift+Print" =
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+          "${modifier}+p" =
+            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+          "${modifier}+Shift+p" =
+            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
           # Brightness
           "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.72";
