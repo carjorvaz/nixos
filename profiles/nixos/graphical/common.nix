@@ -38,11 +38,14 @@ in {
     xserver = {
       enable = true;
 
-      layout = "us";
-      xkbOptions = "ctrl:nocaps compose:prsc";
-      xkbVariant = "altgr-intl";
       autoRepeatInterval = 30;
       autoRepeatDelay = 200;
+
+      xkb = {
+        layout = "us";
+        options = "ctrl:nocaps compose:prsc";
+        variant = "altgr-intl";
+      };
 
       libinput = {
         enable = true;

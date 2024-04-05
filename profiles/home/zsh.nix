@@ -8,9 +8,9 @@
         autocd = true;
         defaultKeymap = "emacs";
 
-        enableAutosuggestions = true;
         enableCompletion = true;
         enableVteIntegration = true;
+        autosuggestion.enable = true;
         syntaxHighlighting.enable = true;
 
         history = {
