@@ -10,7 +10,7 @@
 
         enableCompletion = true;
         enableVteIntegration = true;
-        autosuggestion.enable = true;
+        enableAutosuggestions = true;
         syntaxHighlighting.enable = true;
 
         history = {
