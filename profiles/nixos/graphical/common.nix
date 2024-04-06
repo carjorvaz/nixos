@@ -92,9 +92,10 @@ in {
         # STATE: Requires enabling the extensions manually after first install
         extensions = with inputs.firefox-addons.packages.${pkgs.system}; [
           # TODO/maybe:
-          # - auto tab discard?
           # - tridactyl?
           # - unhook?
+
+          auto-tab-discard
 
           # STATE:
           # - Login
