@@ -60,7 +60,7 @@
     nodePackages.js-beautify
     nodePackages.stylelint
     texlab
-    texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
+    # texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
 
     fzf
     hugo
@@ -83,6 +83,10 @@
     brews = [
       "ollama"
       "qmk"
+      "python-tk"
+      "rlwrap"
+      "sbcl"
+      "trash"
 
       # Doom Emacs dependencies
       "coreutils"
@@ -133,25 +137,24 @@
       "firefox"
       "iterm2"
       "mattermost"
-      "microsoft-office" # Only have installed when needed.
+      # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
       # "monitorcontrol" # Brightness and volume controls for external monitors.
       "mullvad-browser"
       "nextcloud"
+      "orcaslicer"
       "orion"
       "qmk-toolbox"
       "signal"
       "stremio"
       "transmission"
       "ukelele"
-      "ultimaker-cura"
       "unnaturalscrollwheels"
       "utm"
       "visual-studio-code"
       "whatsapp"
       "zoom"
 
-      # SSof
-      "tunnelblick" # OpenVPN client
+      "nikitabobko/tap/aerospace"
     ];
 
     masApps = {
@@ -166,8 +169,6 @@
       # "Davinci Resolve" = 571213070;
       Tailscale = 1475387142;
 
-      # TODO ADSI, remove afterwards (also remove vm from tailscale)
-      RDP = 1295203466;
     };
 
     taps = [
