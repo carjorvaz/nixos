@@ -193,9 +193,12 @@ in {
       kanshi.systemdTarget = "sway-session.target";
       swayidle.timeouts = [
         {
+          timeout = 285;
+          command = ''${pkgs.sway}/bin/swaymsg "output * dpms off"'';
+          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+        }
+        {
           timeout = 300;
-          # TODO desligar o ecrã 5 segundos antes de bloquear para poder mexer o rato e não ter bloqueado
-          # TODO desligar o ecrã depois deste lock e ligar com o resume
           command = "${pkgs.swaylock}/bin/swaylock";
         }
         {
