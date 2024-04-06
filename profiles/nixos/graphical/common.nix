@@ -233,6 +233,7 @@ in {
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
     # (discord.override { withOpenASAR = true; }) TODO not available in aarch64, enable otherwise
+    webcord # Cleaner and available in aarch64
     firefox
     libreoffice-fresh
     librewolf
