@@ -38,7 +38,7 @@
       unstable.flake = inputs.nixpkgs-unstable;
     };
 
-    nix.extraOptions = lib.optionalString (pkgs.system == "aarch64-darwin") ''
+    extraOptions = lib.optionalString (pkgs.system == "aarch64-darwin") ''
       extra-platforms = x86_64-darwin aarch64-darwin
     '';
   };
