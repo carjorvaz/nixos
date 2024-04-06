@@ -82,7 +82,6 @@
 
     brews = [
       "ollama"
-      "qmk"
       "python-tk"
       "rlwrap"
       "sbcl"
@@ -153,8 +152,6 @@
       "visual-studio-code"
       "whatsapp"
       "zoom"
-
-      "nikitabobko/tap/aerospace"
     ];
 
     masApps = {
