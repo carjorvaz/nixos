@@ -27,6 +27,7 @@ in {
     [ "ata_piix" "uhci_hcd" "virtio_pci" "virtio_scsi" "sd_mod" "sr_mod" ];
 
   networking = {
+    hostName = "hadrianus";
     hostId = "ce9c10db";
     networkmanager.enable = false;
     useDHCP = false;
