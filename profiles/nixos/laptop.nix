@@ -13,20 +13,6 @@
       # Extend battery longevity.
       START_CHARGE_THRESH_BAT0 = 75;
       STOP_CHARGE_THRESH_BAT0 = 80;
-
-      # https://linrunner.de/tlp/support/optimizing.html
-      # https://linrunner.de/tlp/faq/ppd.html#how-can-i-use-tlp-to-achieve-the-same-effect-as-power-profiles-daemon
-      PLATFORM_PROFILE_ON_AC = "balanced";
-      PLATFORM_PROFILE_ON_BAT = "balanced";
-
-      CPU_ENERGY_PERF_POLICY_ON_AC = "balance_performance";
-      CPU_ENERGY_PERF_POLICY_ON_BAT = "balance_power";
-
-      CPU_BOOST_ON_AC = "1";
-      CPU_BOOST_ON_BAT = "0";
-
-      CPU_HWP_DYN_BOOST_ON_AC = "1";
-      CPU_HWP_DYN_BOOST_ON_BAT = "0";
     };
   };
 
