@@ -129,10 +129,6 @@
         format = " $timestamp.datetime(f:'%a %d/%m %R')";
       }
     ];
-
-    wayland.windowManager.sway.config = rec {
-      output = { "*".bg = "~/Pictures/wallpaper.jpg fill"; };
-    };
   };
 
   system.stateVersion = "23.05";

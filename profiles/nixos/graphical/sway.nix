@@ -120,6 +120,8 @@ in {
           };
         };
 
+        output = { "*".bg = lib.mkDefault "${./wallpaper.jpg} fill"; };
+
         keybindings = let
           modifier =
             config.home-manager.users.cjv.wayland.windowManager.sway.config.modifier;
