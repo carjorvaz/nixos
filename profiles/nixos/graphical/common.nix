@@ -239,6 +239,7 @@ in {
     libreoffice-fresh
     librewolf
     mattermost-desktop
+    metadata-cleaner
     monero-gui
 
     # STATE:
