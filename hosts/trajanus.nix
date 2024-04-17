@@ -7,6 +7,7 @@
     ../profiles/nixos/bootloader/systemd-boot.nix
     ../profiles/nixos/cpu/intel.nix
     ../profiles/nixos/gpu/intel.nix
+    ../profiles/nixos/fingerprint.nix
     ../profiles/nixos/iwctl.nix
     ../profiles/nixos/dns/dnscrypt.nix
     ../profiles/nixos/laptop.nix
@@ -31,8 +32,6 @@
     hostName = "trajanus";
     hostId = "d7ba56e3";
   };
-
-  services.fprintd.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
