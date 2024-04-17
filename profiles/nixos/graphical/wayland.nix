@@ -111,7 +111,9 @@
         settings = {
           color = lib.mkDefault "000000";
           font-size = 14;
-          ignore-empty-password = true;
+          # Needed for fingerprint to work with swaylock.
+          # Press enter than tap finger.
+          ignore-empty-password = false;
           show-failed-attempts = true;
         };
       };
