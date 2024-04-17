@@ -230,10 +230,10 @@ in {
     # - (Trajanus) Settings > 110% page zoom
     # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed
     # - Never show bookmarks bar
-    # brave # TODO not available in aarch64, enable otherwise
+    brave # Disable if on aarch64
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
-    # (discord.override { withOpenASAR = true; }) TODO not available in aarch64, enable otherwise
+    (discord.override { withOpenASAR = true; }) # Disable if on aarch64
     webcord # Cleaner and available in aarch64
     firefox
     libreoffice-fresh
