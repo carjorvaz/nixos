@@ -127,22 +127,28 @@
           ];
         };
 
-        trajanus = inputs.nixpkgs-unstable.lib.nixosSystem {
-          system = "aarch64-linux";
+        trajanus = inputs.nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
           specialArgs = { inherit inputs; };
           modules = [
-            inputs.nixos-apple-silicon.nixosModules.apple-silicon-support
             inputs.agenix.nixosModules.age
+            inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
             ({ config, pkgs, ... }: {
               nixpkgs.overlays = [ overlay-unstable ];
             })
-            inputs.home-manager-unstable.nixosModules.home-manager
+            inputs.home-manager.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
             }
             ./hosts/trajanus.nix
+            ./disko/base.nix
+            ./disko/desktop.nix
+            ./disko/encryption.nix
+            ./disko/zfsImpermanence.nix
+            { _module.args.disks = [ "/dev/nvme0n1" ]; }
+
           ];
         };
       };
