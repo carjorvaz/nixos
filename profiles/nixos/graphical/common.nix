@@ -15,7 +15,8 @@ in {
   # boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
   # boot.kernelPackages = pkgs.linuxPackages_zen;
   boot.kernelPackages = lib.mkDefault
-    pkgs.linuxPackages_xanmod_latest; # Lowest input lag, from my experienece.
+    config.boot.zfs.package.latestCompatibleLinuxPackages;
+    # pkgs.linuxPackages_xanmod_latest; # Lowest input lag, from my experienece.
 
   # Improve desktop responsiveness when updating the system.
   nix.daemonCPUSchedPolicy = "idle";
