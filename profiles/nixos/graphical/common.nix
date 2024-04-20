@@ -105,7 +105,7 @@ in {
 
           # STATE:
           # Select All, Save
-          bypass-paywalls-clean
+          # bypass-paywalls-clean # TODO temporarily commented out because it's broken
           consent-o-matic
           darkreader
 
