@@ -35,6 +35,8 @@
     hostId = "d7ba56e3";
   };
 
+  services.throttled.enable = true;
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   home-manager.users.cjv = {
