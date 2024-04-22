@@ -193,16 +193,8 @@ in {
 
     services = {
       kanshi.systemdTarget = "sway-session.target";
+
       swayidle.timeouts = [
-        {
-          timeout = 285;
-          command = ''${pkgs.sway}/bin/swaymsg "output * dpms off"'';
-          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
-        }
-        {
-          timeout = 300;
-          command = "${pkgs.swaylock}/bin/swaylock";
-        }
         {
           timeout = 2;
           command = ''
