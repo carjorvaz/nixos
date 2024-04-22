@@ -1,9 +1,9 @@
-{ config, lib, pkgs, ... }:
+{ self, config, lib, pkgs, ... }:
 
 {
   imports = [ ./common.nix ];
 
-  age.secrets.ovh.file = ../../../secrets/ovh.age;
+  age.secrets.ovh.file = "${self}/secrets/ovh.age";
 
   # Use services.nginx.virtualHosts."example.vaz.one".useACMEHost = "vaz.one";
   # to use the wildcard certificate on subdomains.

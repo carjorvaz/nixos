@@ -2,16 +2,10 @@
 
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
-  # TODO use self instead of the ../..
-  # brainworkshop = pkgs.callPackage ../../../pkgs/brainworkshop.nix { };
-  orca-slicer = pkgs.callPackage ../../../pkgs/orca-slicer.nix { };
-  qidi-slicer = pkgs.callPackage ../../../pkgs/qidi-slicer.nix { };
+  # brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
+  orca-slicer = pkgs.callPackage "${self}/pkgs/orca-slicer.nix" { };
+  qidi-slicer = pkgs.callPackage "${self}/pkgs/qidi-slicer.nix" { };
 in {
-  imports = [
-    # "${self}/profiles/home/firefox.nix"
-    # ../../home/firefox.nix
-  ];
-
   # boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
   # boot.kernelPackages = pkgs.linuxPackages_zen;
   boot.kernelPackages =
@@ -262,6 +256,7 @@ in {
     stremio
     thunderbird
 
+    coq # TODO delete after LP
     sbcl
     rlwrap
     python3

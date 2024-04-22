@@ -1,9 +1,9 @@
-{ config, lib, pkgs, ... }:
+{ self, config, lib, pkgs, ... }:
 
 {
-  imports = [ ../home/zsh.nix ];
+  imports = [ "${self}/profiles/home/zsh.nix" ];
 
-  age.secrets.cjvHashedPassword.file = ../../secrets/cjvHashedPassword.age;
+  age.secrets.cjvHashedPassword.file = "${self}/secrets/cjvHashedPassword.age";
 
   users.users = {
     cjv = {

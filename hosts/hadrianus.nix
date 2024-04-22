@@ -1,26 +1,26 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ self, config, lib, pkgs, modulesPath, ... }:
 
 let networkInterface = "ens3";
 in {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
-    ../profiles/nixos/base.nix
-    ../profiles/nixos/bootloader/systemd-boot.nix
-    ../profiles/nixos/cpu/amd.nix
-    ../profiles/nixos/dns/resolved.nix # Because dnscrypt-proxy colides with knot-resolver
-    ../profiles/nixos/zfs/common.nix
-    ../profiles/nixos/zramSwap.nix
+    "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/cpu/amd.nix"
+    "${self}/profiles/nixos/dns/resolved.nix # Because dnscrypt-proxy colides with knot-resolver"
+    "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zramSwap.nix"
 
-    ../profiles/nixos/acme/dns-vaz-one.nix
-    ../profiles/nixos/mail.nix
-    ../profiles/nixos/nginx/common.nix
-    ../profiles/nixos/nginx/bastion.nix
-    ../profiles/nixos/nginx/blog.nix
-    ../profiles/nixos/ssh.nix
+    "${self}/profiles/nixos/acme/dns-vaz-one.nix"
+    "${self}/profiles/nixos/mail.nix"
+    "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/nginx/bastion.nix"
+    "${self}/profiles/nixos/nginx/blog.nix"
+    "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up; disable key expiry
-    ../profiles/nixos/tailscale.nix
+    "${self}/profiles/nixos/tailscale.nix"
   ];
 
   boot.initrd.availableKernelModules =
