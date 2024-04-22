@@ -66,12 +66,58 @@
         interval = 5;
         format = " $timestamp.datetime(f:'%a %d/%m %R')";
       }
+
     ];
 
-    wayland.windowManager.sway.config = rec {
-      # output = {
-      #   "eDP-1".scale = "1.5";
-      # };
+    services.kanshi = {
+      enable = true;
+
+      profiles = {
+
+        # Configuration file
+        # Each output profile is delimited by brackets. It contains several output directives (whose syntax is similar to sway-output(5)). A profile will be enabled if all of the listed outputs are connected.
+
+        # profile {
+        # 	output LVDS-1 disable
+        # 	output "Some Company ASDF 4242" mode 1600x900 position 0,0
+        # }
+
+        # profile {
+        # 	output LVDS-1 enable scale 2
+        # }
+
+        undocked = {
+          outputs = [{
+            criteria = "eDP-1";
+            scale = 1.0;
+            status = "enable";
+          }];
+        };
+
+        rnl = {
+          outputs = [
+            {
+              criteria = "Iiyama North America PL3293UH 1213432400052";
+              position = "0,0";
+              scale = 1.25;
+              # Current mode: 3840x2160 @ 59.997 Hz
+              # Position: 1920,0
+              # Scale factor: 1.000000
+              # Scale filter: nearest
+              # Subpixel hinting: unknown
+              # Transform: normal
+              # Workspace: 5
+              # Max render time: off
+              # Adaptive sync: disabled
+              # Available modes:
+            }
+            {
+              criteria = "eDP-1";
+              status = "disable";
+            }
+          ];
+        };
+      };
     };
   };
 
