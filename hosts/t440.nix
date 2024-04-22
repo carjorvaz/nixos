@@ -1,23 +1,23 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ self, config, lib, pkgs, modulesPath, ... }:
 
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    ../profiles/nixos/base.nix
-    # ../profiles/nixos/autoUpgrade.nix # TODO
-    ../profiles/nixos/bootloader/systemd-boot.nix
-    ../profiles/nixos/cpu/intel.nix
-    ../profiles/nixos/gpu/intel.nix
-    ../profiles/nixos/dns/dnscrypt.nix
-    ../profiles/nixos/zramSwap.nix
+    "${self}/profiles/nixos/base.nix"
+    # "${self}/profiles/nixos/autoUpgrade.nix" # TODO
+    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/cpu/intel.nix"
+    "${self}/profiles/nixos/gpu/intel.nix"
+    "${self}/profiles/nixos/dns/dnscrypt.nix"
+    "${self}/profiles/nixos/zramSwap.nix"
 
-    ../profiles/nixos/acme/dns-vaz-ovh.nix
-    ../profiles/nixos/frigate.nix
-    ../profiles/nixos/nginx/common.nix
-    ../profiles/nixos/ssh.nix
+    "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
+    "${self}/profiles/nixos/frigate.nix"
+    "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up; disable key expiry
-    ../profiles/nixos/tailscale.nix
+    "${self}/profiles/nixos/tailscale.nix"
   ];
 
   boot.initrd.availableKernelModules =

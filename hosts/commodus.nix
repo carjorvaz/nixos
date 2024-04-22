@@ -1,44 +1,44 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ self, config, lib, pkgs, modulesPath, ... }:
 
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    ../profiles/nixos/base.nix
-    ../profiles/nixos/bootloader/systemd-boot.nix
-    ../profiles/nixos/cpu/amd.nix
-    ../profiles/nixos/gpu/amd.nix
-    ../profiles/nixos/dns/dnscrypt.nix
-    ../profiles/nixos/zfs/common.nix
-    ../profiles/nixos/zramSwap.nix
+    "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/cpu/amd.nix"
+    "${self}/profiles/nixos/gpu/amd.nix"
+    "${self}/profiles/nixos/dns/dnscrypt.nix"
+    "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zramSwap.nix"
 
-    ../profiles/nixos/adb.nix
-    ../profiles/nixos/cjv.nix
-    ../profiles/nixos/emacs.nix
-    ../profiles/nixos/graphical/sway.nix
-    ../profiles/nixos/printing.nix
-    ../profiles/nixos/qmk.nix
-    ../profiles/nixos/scanning.nix
+    "${self}/profiles/nixos/adb.nix"
+    "${self}/profiles/nixos/cjv.nix"
+    "${self}/profiles/nixos/emacs.nix"
+    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/printing.nix"
+    "${self}/profiles/nixos/qmk.nix"
+    "${self}/profiles/nixos/scanning.nix"
 
-    ../profiles/nixos/acme/dns-vaz-ovh.nix
-    ../profiles/nixos/bazarr.nix
-    ../profiles/nixos/calibre.nix
-    ../profiles/nixos/docker.nix
-    ../profiles/nixos/homer.nix
-    ../profiles/nixos/jellyfin.nix
-    ../profiles/nixos/jellyseerr.nix
-    ../profiles/nixos/nextcloud.nix
-    ../profiles/nixos/nginx/common.nix
-    ../profiles/nixos/prowlarr.nix
-    ../profiles/nixos/radarr.nix
-    ../profiles/nixos/readarr.nix
-    ../profiles/nixos/sonarr.nix
-    ../profiles/nixos/ssh.nix
+    "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
+    "${self}/profiles/nixos/bazarr.nix"
+    "${self}/profiles/nixos/calibre.nix"
+    "${self}/profiles/nixos/docker.nix"
+    "${self}/profiles/nixos/homer.nix"
+    "${self}/profiles/nixos/jellyfin.nix"
+    "${self}/profiles/nixos/jellyseerr.nix"
+    "${self}/profiles/nixos/nextcloud.nix"
+    "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/prowlarr.nix"
+    "${self}/profiles/nixos/radarr.nix"
+    "${self}/profiles/nixos/readarr.nix"
+    "${self}/profiles/nixos/sonarr.nix"
+    "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up; disable key expiry; announce exit node
-    ../profiles/nixos/tailscale.nix
-    ../profiles/nixos/transmission.nix
+    "${self}/profiles/nixos/tailscale.nix"
+    "${self}/profiles/nixos/transmission.nix"
 
-    ../profiles/home/zsh.nix
+    "${self}/profiles/home/zsh.nix"
   ];
 
   boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" ];

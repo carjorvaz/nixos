@@ -1,29 +1,29 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ self, config, lib, pkgs, modulesPath, ... }:
 
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    ../profiles/nixos/base.nix
-    ../profiles/nixos/bluetooth.nix
-    ../profiles/nixos/bootloader/systemd-boot.nix
-    ../profiles/nixos/cpu/intel.nix
-    ../profiles/nixos/gpu/intel.nix
-    ../profiles/nixos/fingerprint.nix
-    ../profiles/nixos/iwctl.nix
-    ../profiles/nixos/dns/dnscrypt.nix
-    ../profiles/nixos/laptop.nix
-    ../profiles/nixos/zfs/common.nix
-    ../profiles/nixos/zramSwap.nix
+    "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/bluetooth.nix"
+    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/cpu/intel.nix"
+    "${self}/profiles/nixos/gpu/intel.nix"
+    "${self}/profiles/nixos/fingerprint.nix"
+    "${self}/profiles/nixos/iwctl.nix"
+    "${self}/profiles/nixos/dns/dnscrypt.nix"
+    "${self}/profiles/nixos/laptop.nix"
+    "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zramSwap.nix"
 
-    ../profiles/nixos/cjv.nix
-    ../profiles/nixos/docker.nix
-    ../profiles/nixos/emacs.nix
-    ../profiles/nixos/graphical/sway.nix
-    ../profiles/nixos/qmk.nix
-    ../profiles/nixos/ssh.nix
+    "${self}/profiles/nixos/cjv.nix"
+    "${self}/profiles/nixos/docker.nix"
+    "${self}/profiles/nixos/emacs.nix"
+    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/qmk.nix"
+    "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up
-    ../profiles/nixos/tailscale.nix
+    "${self}/profiles/nixos/tailscale.nix"
   ];
 
   boot.initrd.availableKernelModules =

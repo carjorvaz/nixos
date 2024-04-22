@@ -1,4 +1,4 @@
-{ config, lib, pkgs, inputs, ... }:
+{ self, config, lib, pkgs, inputs, ... }:
 
 {
   imports = [
@@ -6,7 +6,7 @@
     ./zsh.nix
 
     # TODO automatically import every module in modules/nixos
-    ../../modules/nixos/zfsRemoteUnlock.nix
+    "${self}/modules/nixos/zfsRemoteUnlock.nix"
   ];
 
   # boot.kernelPackages =

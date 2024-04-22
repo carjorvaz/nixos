@@ -1,11 +1,11 @@
-{ config, inputs, ... }:
+{ self, config, inputs, ... }:
 
 {
   age.secrets.mailCarlosHashedPassword.file =
-    ../../secrets/mailCarlosHashedPassword.age;
+    "${self}/secrets/mailCarlosHashedPassword.age";
 
   age.secrets.mailMafaldaHashedPassword.file =
-    ../../secrets/mailMafaldaHashedPassword.age;
+    "${self}/secrets/mailMafaldaHashedPassword.age";
 
   imports = [
     inputs.simple-nixos-mailserver.nixosModule

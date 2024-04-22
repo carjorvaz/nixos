@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ self, config, lib, pkgs, ... }:
 
 # Backup notes:
 # - https://docs.nextcloud.com/server/latest/admin_manual/maintenance/backup.html
@@ -10,7 +10,7 @@ in {
   # # chown -R nextcloud: /var/lib/nextcloud
   # # chown -R nextcloud: /persist/var/lib/nextcloud
   age.secrets.nextcloud-admin-pass = {
-    file = ../../secrets/nextcloud-admin-pass.age;
+    file = "${self}/secrets/nextcloud-admin-pass.age";
     owner = "nextcloud";
     group = "nextcloud";
   };

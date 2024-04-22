@@ -1,34 +1,30 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ self, config, lib, pkgs, modulesPath, ... }:
 
 let networkInterface = "eno1";
 in {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    ../profiles/nixos/base.nix
-    ../profiles/nixos/bootloader/systemd-boot.nix
-    ../profiles/nixos/cpu/intel.nix
-    ../profiles/nixos/gpu/intel.nix
-    ../profiles/nixos/zfs/common.nix
-    ../profiles/nixos/zramSwap.nix
+    "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/cpu/intel.nix"
+    "${self}/profiles/nixos/gpu/intel.nix"
+    "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zramSwap.nix"
 
-    ../profiles/nixos/emacs.nix
+    "${self}/profiles/nixos/emacs.nix"
     # Could prefer sway but doesn't work well with proprietary Nvidia drivers.
-    ../profiles/nixos/graphical/sway.nix
-    ../profiles/nixos/printing.nix
-    ../profiles/nixos/qmk.nix
+    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/printing.nix"
+    "${self}/profiles/nixos/qmk.nix"
 
-    ../profiles/nixos/docker.nix
-    ../profiles/nixos/libvirt.nix
-    ../profiles/nixos/nginx/common.nix
-    ../profiles/nixos/ssh.nix
-
-    # TODO ADSI, remove afterwards
-    ../profiles/nixos/virtualbox.nix
-
-    ../profiles/home/zsh.nix
+    "${self}/profiles/nixos/docker.nix"
+    "${self}/profiles/nixos/libvirt.nix"
+    "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/ssh.nix"
   ];
 
-  age.secrets.aureliusInitrdHostKey.file = ../secrets/aureliusInitrdHostKey.age;
+  age.secrets.aureliusInitrdHostKey.file =
+    "${self}/secrets/aureliusInitrdHostKey.age";
 
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "ahci" "nvme" "usb_storage" "sd_mod" ];

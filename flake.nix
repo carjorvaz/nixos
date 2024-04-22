@@ -31,7 +31,7 @@
       "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.11";
   };
 
-  outputs = inputs:
+  outputs = { self, ... }@inputs:
     let
       overlay-unstable = final: prev: {
         unstable = inputs.nixpkgs-unstable.legacyPackages.${prev.system};
@@ -40,7 +40,7 @@
       nixosConfigurations = {
         aurelius = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs self; };
           modules = [
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
@@ -64,7 +64,7 @@
 
         commodus = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs self; };
           modules = [
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
@@ -87,7 +87,7 @@
 
         hadrianus = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs self; };
           modules = [
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
@@ -110,7 +110,7 @@
 
         t440 = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs self; };
           modules = [
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
@@ -129,7 +129,7 @@
 
         trajanus = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs self; };
           modules = [
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
@@ -155,7 +155,7 @@
 
       darwinConfigurations."mac" = inputs.nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
-        specialArgs = { inherit inputs; };
+        specialArgs = { inherit inputs self; };
         modules = [
           ./hosts/mac.nix
           inputs.home-manager.darwinModules.home-manager

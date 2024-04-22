@@ -1,4 +1,4 @@
-{ config, lib, pkgs, inputs, ... }:
+{ self, config, lib, pkgs, inputs, ... }:
 
 # Bootstrapping:
 # 1. Install Nix
@@ -18,7 +18,7 @@
 # - https://github.com/LnL7/nix-darwin
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
-  imports = [ ../profiles/home/zsh.nix ];
+  imports = [ "${self}/profiles/home/zsh.nix" ];
 
   # Auto upgrade nix package and the daemon service.
   services.nix-daemon.enable = true;
