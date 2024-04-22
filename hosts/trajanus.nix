@@ -4,6 +4,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     ../profiles/nixos/base.nix
+    ../profiles/nixos/bluetooth.nix
     ../profiles/nixos/bootloader/systemd-boot.nix
     ../profiles/nixos/cpu/intel.nix
     ../profiles/nixos/gpu/intel.nix
@@ -37,14 +38,6 @@
 
   home-manager.users.cjv = {
     programs.i3status-rust.bars.top.blocks = [
-      # {
-      #   block = "bluetooth";
-      #   mac = ""; # TODO
-      #   click = [{
-      #     button = "left";
-      #     cmd = "${pkgs.rofi-bluetooth}/bin/rofi-bluetooth &";
-      #   }];
-      # }
       { block = "battery"; }
       {
         block = "sound";
