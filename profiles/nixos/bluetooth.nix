@@ -14,5 +14,5 @@ in {
 
   services.blueman.enable = isWindowManager;
 
-  home-manager.users.cjv.services.blueman.enable = isWindowManager;
+  home-manager.users.cjv.services.blueman-applet.enable = isWindowManager;
 }
