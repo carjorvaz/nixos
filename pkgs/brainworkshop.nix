@@ -89,6 +89,7 @@ in python3Packages.buildPythonApplication {
 
   format = "other";
 
+  # TODO .desktop file
   installPhase = ''
     mkdir -p $out/bin
     cp $src/brainworkshop.py $out/bin/brainworkshop
