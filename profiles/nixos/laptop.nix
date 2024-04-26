@@ -7,14 +7,17 @@
     extraModulePackages = with config.boot.kernelPackages; [ acpi_call ];
   };
 
-  services.tlp = {
-    enable = true;
-    settings = {
-      # Extend battery longevity.
-      START_CHARGE_THRESH_BAT0 = 75;
-      STOP_CHARGE_THRESH_BAT0 = 80;
-    };
-  };
+  services.power-profiles-daemon.enable = true;
+
+  # Only use this once per ThinkPad, then return to power-profiles-daemon
+  # services.tlp = {
+  #   enable = true;
+  #   settings = {
+  #     # Extend battery longevity.
+  #     START_CHARGE_THRESH_BAT0 = 75;
+  #     STOP_CHARGE_THRESH_BAT0 = 80;
+  #   };
+  # };
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
     # https://wiki.hyprland.org/FAQ/#how-heavy-is-this
