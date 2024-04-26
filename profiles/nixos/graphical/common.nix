@@ -235,6 +235,7 @@ in {
     (discord.override { withOpenASAR = true; }) # Disable if on aarch64
     webcord # Cleaner and available in aarch64
     firefox
+    gnome.geary
     libreoffice-fresh
     librewolf
     mattermost-desktop
