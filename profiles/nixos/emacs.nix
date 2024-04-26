@@ -28,6 +28,7 @@
     pandoc
     cmake
     gnumake
+    nil # nix LSP
     nodejs
     graphviz
     black
