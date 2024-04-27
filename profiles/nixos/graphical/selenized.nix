@@ -101,7 +101,7 @@
 
           general = {
             no_border_on_floating = false;
-            "col.active_border" = "rgb(3b3b3b)";
+            "col.active_border" = "rgb(dbb32d)";
             "col.inactive_border" = "rgb(181818)";
             "col.nogroup_border" = "rgb(181818)";
             "col.nogroup_border_active" = "rgb(3b3b3b)";
