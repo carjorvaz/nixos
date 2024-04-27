@@ -255,6 +255,13 @@ in {
     qidi-slicer
     signal-desktop
     stremio
+
+    # TODO: declarative with home-manager?
+    # STATE:
+    # - descending cards https://superuser.com/questions/13518/change-the-default-sorting-order-in-thunderbird
+    # - unified folders
+    # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
+    # - dictionaries
     thunderbird
 
     coq # TODO delete after LP
