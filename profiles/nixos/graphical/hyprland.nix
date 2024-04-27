@@ -37,7 +37,7 @@
         # Execute your favorite apps at launch
         exec-once = [
           "nextcloud --background"
-          "${pkgs.swaybg}/bin/swaybg -m fill -i ~/Pictures/wallpaper.png"
+          "${pkgs.swaybg}/bin/swaybg -m fill -i ${./wallpaper.jpg}"
         ];
 
         "$terminal" = "foot";
