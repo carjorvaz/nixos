@@ -144,18 +144,15 @@ in {
           "${modifier}+Shift+p" =
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
-          # Brightness
+          # Brightness - logarithmic scale
           "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.72";
           "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.4";
 
+          # Audio - logarithmic scale
           "XF86AudioRaiseVolume" =
-            "exec '${pkgs.pamixer}/bin/pamixer --increase 5'";
-          "Alt+XF86AudioRaiseVolume" =
-            "exec '${pkgs.pamixer}/bin/pamixer --increase 1'";
+            "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB'";
           "XF86AudioLowerVolume" =
-            "exec '${pkgs.pamixer}/bin/pamixer --decrease 5'";
-          "Alt+XF86AudioLowerVolume" =
-            "exec '${pkgs.pamixer}/bin/pamixer --decrease 1'";
+            "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB'";
           "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
           "XF86AudioMicMute" =
             "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
@@ -194,14 +191,12 @@ in {
     services = {
       kanshi.systemdTarget = "sway-session.target";
 
-      swayidle.timeouts = [
-        {
-          timeout = 2;
-          command = ''
-            if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
-          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
-        }
-      ];
+      swayidle.timeouts = [{
+        timeout = 2;
+        command = ''
+          if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
+        resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+      }];
     };
   };
 }

@@ -157,15 +157,13 @@
           "$mainMod, P, pseudo," # dwindle
           "$mainMod, V, togglesplit," # dwindle
 
-          # Brightness
+          # Brightness - logarithmic scale
           ", XF86MonBrightnessDown, exec, ${pkgs.light}/bin/light -T 0.72"
           ", XF86MonBrightnessUp, exec, ${pkgs.light}/bin/light -T 1.4"
 
-          # Audio
-          ", XF86AudioRaiseVolume, exec, ${pkgs.pamixer}/bin/pamixer --increase 5"
-          "ALT, XF86AudioRaiseVolume, exec, ${pkgs.pamixer}/bin/pamixer --increase 1"
-          ", XF86AudioLowerVolume, exec, ${pkgs.pamixer}/bin/pamixer --decrease 5"
-          "ALT, XF86AudioLowerVolume, exec, ${pkgs.pamixer}/bin/pamixer --decrease 1"
+          # Audio - logarithmic scale
+          ", XF86AudioRaiseVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB"
+          ", XF86AudioLowerVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB"
           ", XF86AudioMute, exec, ${pkgs.pamixer}/bin/pamixer -t"
           ", XF86AudioMicMute, exec, ${pkgs.pamixer}/bin/pamixer --default-source -t"
 
