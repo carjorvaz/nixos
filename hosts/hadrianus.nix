@@ -61,8 +61,8 @@ in {
   #   enable = true;
   #   # Prevent the MitM message by using different host keys in the same host.
   #   port = 2222;
-  #   authorizedKeys = config.users.users.cjv.openssh.authorizedKeys.keys;
-  #   hostKeyFile = config.age.secrets.aureliusInitrdHostKey.path;
+  #   authorizedKeys = config.users.users.root.openssh.authorizedKeys.keys;
+  #   hostKeyFile = config.age.secrets.aureliusInitrdHostKey.path; # TODO how to generate key instructions in module
   #   driver = "virtio_pci";
   #   static = {
   #     enable = true;
