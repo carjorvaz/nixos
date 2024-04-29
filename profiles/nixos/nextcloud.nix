@@ -29,7 +29,7 @@ in {
     extraAppsEnable = true;
     extraApps = with config.services.nextcloud.package.packages.apps; {
 
-      inherit calendar contacts mail # memories
+      inherit calendar contacts mail # memories TODO
         # news
         notes previewgenerator # Memories dependency.
         tasks;
