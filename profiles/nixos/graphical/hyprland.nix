@@ -158,8 +158,8 @@
           "$mainMod, V, togglesplit," # dwindle
 
           # Brightness - logarithmic scale
-          ", XF86MonBrightnessDown, exec, ${pkgs.light}/bin/light -T 0.72"
-          ", XF86MonBrightnessUp, exec, ${pkgs.light}/bin/light -T 1.4"
+          ", XF86MonBrightnessDown, exec, ${pkgs.light}/bin/light -T 0.618"
+          ", XF86MonBrightnessUp, exec, ${pkgs.light}/bin/light -T 1.618"
 
           # Audio - logarithmic scale
           ", XF86AudioRaiseVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB"
