@@ -73,6 +73,7 @@ in {
   };
 
   home-manager.users.cjv = {
+    # TODO: disable telemetry
     # STATE:
     # - account containers (gmail, im, uni)
     programs.firefox = {
