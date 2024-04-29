@@ -145,8 +145,8 @@ in {
             "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
           # Brightness - logarithmic scale
-          "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.72";
-          "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.4";
+          "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.618";
+          "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.618";
 
           # Audio - logarithmic scale
           "XF86AudioRaiseVolume" =
