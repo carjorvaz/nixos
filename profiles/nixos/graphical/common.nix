@@ -203,11 +203,11 @@ in {
     xdg.mimeApps = {
       enable = true;
       defaultApplications = {
-        "application/pdf" = [ "firefox.desktop" ];
-        "text/html" = [ "firefox.desktop" ];
-        "text/xml" = [ "firefox.desktop" ];
-        "x-scheme-handler/http" = [ "firefox.desktop" ];
-        "x-scheme-handler/https" = [ "firefox.desktop" ];
+        "application/pdf" = [ "brave.desktop" ];
+        "text/html" = [ "brave.desktop" ];
+        "text/xml" = [ "brave.desktop" ];
+        "x-scheme-handler/http" = [ "brave.desktop" ];
+        "x-scheme-handler/https" = [ "brave.desktop" ];
       };
     };
   };
@@ -229,6 +229,11 @@ in {
     # - (Trajanus) Settings > 110% page zoom
     # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed
     # - Never show bookmarks bar
+    # - adblock lists:
+    #   - adguard portuguese
+    #   - annoyances
+    # - portuguese spell check
+    # - System > Memory Saver
     brave # Disable if on aarch64
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
