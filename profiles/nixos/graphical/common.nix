@@ -225,15 +225,20 @@ in {
     #   - Disable sponsored background images
     #   - Disable Brave News
     #   - 24 hour clock
+    #   - Hide top sites
     # - Never translate Portuguese
     # - (Trajanus) Settings > 110% page zoom
     # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed
     # - Never show bookmarks bar
-    # - adblock lists:
+    # - Adblock lists (content-filtering):
     #   - adguard portuguese
     #   - annoyances
-    # - portuguese spell check
+    # - Portuguese spell check
     # - System > Memory Saver
+    # - Pinned extensions:
+    #   - Bitwarden
+    #   - Dark Reader
+    #   - Tab Counter
     brave # Disable if on aarch64
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
