@@ -272,7 +272,7 @@ in {
     # - unified folders
     # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
     # - dictionaries
-    thunderbird
+    betterbird
 
     coq # TODO delete after LP
     sbcl
