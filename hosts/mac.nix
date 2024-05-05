@@ -123,7 +123,7 @@
       "libvterm"
     ];
 
-    # Update these applicaitons manually.
+    # Update these applicatons manually.
     # As brew would update them by unninstalling and installing the newest
     # version, it could lead to data loss.
     casks = [
