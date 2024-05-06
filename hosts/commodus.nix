@@ -7,7 +7,7 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
     "${self}/profiles/nixos/gpu/amd.nix"
-    "${self}/profiles/nixos/dns/dnscrypt.nix"
+    "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
