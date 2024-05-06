@@ -8,7 +8,6 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
-    "${self}/profiles/nixos/fingerprint.nix"
     "${self}/profiles/nixos/iwctl.nix"
     "${self}/profiles/nixos/dns/dnscrypt.nix"
     "${self}/profiles/nixos/laptop.nix"
