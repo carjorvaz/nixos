@@ -9,7 +9,7 @@
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/iwctl.nix"
-    "${self}/profiles/nixos/dns/dnscrypt.nix"
+    "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/laptop.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
