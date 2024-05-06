@@ -21,6 +21,8 @@ in {
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/ssh.nix"
+
+    "${self}/profiles/home/zsh.nix"
   ];
 
   age.secrets.aureliusInitrdHostKey.file =
