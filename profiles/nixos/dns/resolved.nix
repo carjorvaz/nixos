@@ -5,8 +5,8 @@
 
   services.resolved = {
     enable = true;
-    dnsovertls = "true";
-    dnssec = "true";
+    dnsovertls = "opportunistic";
+    dnssec = "allow-downgrade";
     domains = [ "~." ];
   };
 }
