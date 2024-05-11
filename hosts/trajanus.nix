@@ -26,7 +26,7 @@
   ];
 
   boot.initrd.availableKernelModules =
-    [ "xhci_pci" "nvme" "usb_storage" "sd_mod" "rtsx_pci_sdmmc" ];
+    [ "xhci_pci" "nvme" "usb_storage" "sd_mod" ];
 
   networking = {
     useDHCP = true;
@@ -34,7 +34,7 @@
     hostId = "d7ba56e3";
   };
 
-  services.throttled.enable = true;
+  services.thermald.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
@@ -74,7 +74,10 @@
       profiles = {
 
         # Configuration file
-        # Each output profile is delimited by brackets. It contains several output directives (whose syntax is similar to sway-output(5)). A profile will be enabled if all of the listed outputs are connected.
+        # Each output profile is delimited by brackets.
+        # It contains several output directives (whose syntax is similar to sway-output(5)).
+        # A profile will be enabled if all of the listed outputs are connected.
+        # (wdisplays is useful to get the description criteria)
 
         # profile {
         # 	output LVDS-1 disable
@@ -99,22 +102,27 @@
               criteria = "Iiyama North America PL3293UH 1213432400052";
               position = "0,0";
               scale = 1.25;
-              # Current mode: 3840x2160 @ 59.997 Hz
-              # Position: 1920,0
-              # Scale factor: 1.000000
-              # Scale filter: nearest
-              # Subpixel hinting: unknown
-              # Transform: normal
-              # Workspace: 5
-              # Max render time: off
-              # Adaptive sync: disabled
-              # Available modes:
             }
             {
               criteria = "eDP-1";
               status = "disable";
             }
           ];
+        };
+
+        home = {
+          outputs = [
+            {
+              criteria = "Dell Inc. DELL U3419W HW796T2";
+              position = "0,0";
+              scale = 1.0;
+            }
+            {
+              criteria = "eDP-1";
+              status = "disable";
+            }
+          ];
+
         };
       };
     };

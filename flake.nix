@@ -7,6 +7,8 @@
     nix-darwin.url = "github:LnL7/nix-darwin/master";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
 
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
+
     agenix.url = "github:ryantm/agenix";
     agenix.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -128,6 +130,7 @@
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
+            inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x1-6th-gen
             ({ config, pkgs, ... }: {
               nixpkgs.overlays = [ overlay-unstable ];
             })
@@ -142,7 +145,6 @@
             ./disko/encryption.nix
             ./disko/zfsImpermanence.nix
             { _module.args.disks = [ "/dev/nvme0n1" ]; }
-
           ];
         };
       };
