@@ -33,6 +33,7 @@
     tree
     unzip
     wget
+    zip
   ];
 
   nix = {
