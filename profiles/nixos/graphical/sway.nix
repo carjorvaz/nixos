@@ -38,7 +38,7 @@ let
     '';
   };
 in {
-  imports = [ ./common.nix ./wayland.nix ];
+  imports = [ ./wayland.nix ];
 
   environment.systemPackages = with pkgs; [
     sway
@@ -104,8 +104,8 @@ in {
             xkb_layout = "us";
             xkb_options = "ctrl:nocaps";
             xkb_variant = "altgr-intl";
-            repeat_delay = "200";
-            repeat_rate = "25";
+            repeat_delay = "300";
+            repeat_rate = "30";
           };
 
           "type:pointer" = {

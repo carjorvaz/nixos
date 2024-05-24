@@ -26,6 +26,23 @@ in {
     pulse.enable = true;
   };
 
+  fonts = {
+    fontDir.enable = true;
+    fontconfig.defaultFonts.monospace = [ "JetBrainsMono Nerd Font" ];
+    packages = with pkgs;
+      [ (nerdfonts.override { fonts = [ "JetBrainsMono" ]; }) ];
+  };
+
+  programs = {
+    dconf.enable = true;
+
+    light.enable = true;
+  };
+
+  users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
+
+  security.polkit.enable = true;
+
   services = {
     dbus.enable = true;
 
@@ -35,17 +52,15 @@ in {
       enable = true;
 
       autoRepeatInterval = 30;
-      autoRepeatDelay = 200;
+      autoRepeatDelay = 300;
 
       xkb = {
         layout = "us";
-        options = "ctrl:nocaps compose:prsc";
+        options = "ctrl:nocaps,compose:prsc";
         variant = "altgr-intl";
       };
 
       libinput = {
-        enable = true;
-
         # Disable mouse acceleration.
         mouse.accelProfile = "flat";
 
@@ -53,6 +68,13 @@ in {
           disableWhileTyping = true;
           naturalScrolling = true;
         };
+      };
+
+      desktopManager.wallpaper.mode = "fill";
+
+      displayManager = {
+        gdm.autoSuspend = false;
+
       };
     };
   };
@@ -74,6 +96,37 @@ in {
   };
 
   home-manager.users.cjv = {
+    dconf = {
+      enable = true;
+      settings = {
+        "org/gnome/desktop/interface" = { color-scheme = "prefer-dark"; };
+      };
+    };
+
+    gtk = {
+      enable = true;
+
+      theme = {
+        # Use `dconf watch /` to see the correct name
+        package = pkgs.adw-gtk3;
+        name = "adw-gtk3-dark";
+      };
+
+      iconTheme = {
+        package = pkgs.gnome.adwaita-icon-theme;
+        name = "Adwaita";
+      };
+    };
+
+    # qt = {
+    #   enable = true;
+    #   platformTheme = "gnome";
+    #   style = {
+    #     name = "adwaita-dark";
+    #     package = pkgs.adwaita-qt;
+    #   };
+    # };
+
     # TODO: disable telemetry
     # STATE:
     # - account containers (gmail, im, uni)
@@ -198,7 +251,27 @@ in {
           #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
         '';
       };
+    };
 
+    services = {
+      # TODO: herbe + tiramisu?
+      dunst.enable = true;
+
+      nextcloud-client = {
+        enable = true;
+        startInBackground = true;
+      };
+
+      redshift = {
+        enable = true;
+        tray = true;
+        latitude = 38.7;
+        longitude = -9.14;
+        temperature = {
+          day = 6500;
+          night = 2000;
+        };
+      };
     };
 
     # Reference: https://github.com/Misterio77/nix-config/blob/main/home/misterio/features/desktop/common/firefox.nix
@@ -280,38 +353,5 @@ in {
     rlwrap
     python3
     yt-dlp
-  ];
 
-  home-manager.users.cjv = {
-    dconf = {
-      enable = true;
-      settings = {
-        "org/gnome/desktop/interface" = { color-scheme = "prefer-dark"; };
-      };
-    };
-
-    gtk = {
-      enable = true;
-
-      theme = {
-        # Use `dconf watch /` to see the correct name
-        package = pkgs.adw-gtk3;
-        name = "adw-gtk3-dark";
-      };
-
-      iconTheme = {
-        package = pkgs.gnome.adwaita-icon-theme;
-        name = "Adwaita";
-      };
-    };
-
-    qt = {
-      enable = true;
-      platformTheme = "gnome";
-      style = {
-        name = "adwaita-dark";
-        package = pkgs.adwaita-qt;
-      };
-    };
-  };
 }
