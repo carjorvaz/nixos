@@ -1,74 +1,22 @@
 { config, lib, pkgs, ... }:
 
 {
+  imports = [ ./common.nix ];
   # Make electron apps run on Wayland natively.
   environment.sessionVariables.NIXOS_OZONE_WL = "1";
 
   environment.systemPackages = with pkgs; [
-    bashmount
-    glib # gsettings
-    libqalculate
-    pulseaudio # for pactl
-    pulsemixer
     wdisplays
     wl-clipboard # wl-copy and wl-paste for copy/paste from stdin / stdout
     wl-mirror # contains wl-present
-
-    gnome.nautilus
-    gnome.seahorse
-    imv
-    mpv
   ];
 
-  fonts = {
-    fontDir.enable = true;
-    fontconfig.defaultFonts.monospace = [ "JetBrainsMono Nerd Font" ];
-    packages = with pkgs;
-      [ (nerdfonts.override { fonts = [ "JetBrainsMono" ]; }) ];
-  };
-
-  programs.light.enable = true;
-  users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
-
-  services = {
-    gnome.gnome-keyring.enable = true;
-
-    pipewire = {
-      enable = true;
-      alsa.enable = true;
-      pulse.enable = true;
-    };
-
-    xserver.displayManager.gdm = {
-      enable = true;
-      wayland = true;
-      autoSuspend = false;
-    };
+  services.xserver.displayManager.gdm = {
+    enable = true;
+    wayland = true;
   };
 
   home-manager.users.cjv = {
-    gtk = {
-      enable = true;
-      theme = {
-        # Use `dconf watch /` to see the correct name
-        package = lib.mkDefault pkgs.adw-gtk3;
-        name = lib.mkDefault "adw-gtk3-dark";
-      };
-
-      iconTheme = {
-        package = lib.mkDefault pkgs.gnome.adwaita-icon-theme;
-        name = lib.mkDefault "Adwaita";
-      };
-    };
-
-    qt = {
-      enable = true;
-      platformTheme = lib.mkDefault "gnome";
-      style = {
-        name = lib.mkDefault "adwaita-dark";
-        package = lib.mkDefault pkgs.adwaita-qt;
-      };
-    };
 
     # Solves small cursor on HiDPI.
     home.pointerCursor = {

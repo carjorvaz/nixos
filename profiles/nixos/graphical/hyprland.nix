@@ -3,7 +3,7 @@
 # TODO:
 # - use hyprlandPlugins and try out hy3; will use sway until then
 {
-  imports = [ ./common.nix ./selenized.nix ./wayland.nix ];
+  imports = [ ./selenized.nix ./wayland.nix ];
 
   programs.hyprland = {
     enable = true;

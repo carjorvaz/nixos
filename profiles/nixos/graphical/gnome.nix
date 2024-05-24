@@ -28,8 +28,6 @@
     };
   };
 
-  programs.dconf.enable = true;
-
   environment.sessionVariables = {
     # Make electron apps run on Wayland natively.
     NIXOS_OZONE_WL = "1";
