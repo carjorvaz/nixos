@@ -30,30 +30,6 @@
       };
     in {
       nixosConfigurations = {
-        aurelius = inputs.nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
-          specialArgs = { inherit inputs self; };
-          modules = [
-            inputs.agenix.nixosModules.age
-            inputs.disko.nixosModules.disko
-            inputs.impermanence.nixosModule
-            ({ config, pkgs, ... }: {
-              nixpkgs.overlays = [ overlay-unstable ];
-            })
-            inputs.home-manager.nixosModules.home-manager
-            {
-              home-manager.useGlobalPkgs = true;
-              home-manager.useUserPackages = true;
-            }
-            ./hosts/aurelius.nix
-            ./disko/base.nix
-            ./disko/desktop.nix
-            ./disko/encryption.nix
-            ./disko/tmpfs.nix
-            { _module.args.disks = [ "/dev/nvme0n1" ]; }
-          ];
-        };
-
         commodus = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
