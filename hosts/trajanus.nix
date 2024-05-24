@@ -29,7 +29,12 @@
     [ "xhci_pci" "nvme" "usb_storage" "sd_mod" ];
 
   networking = {
-    useDHCP = true;
+    # Let iwd handle DHCP for Wi-Fi
+    useDHCP = false;
+
+    # But use dhcpcd for ethernet
+    interfaces.enp0s31f6.useDHCP = true;
+
     hostName = "trajanus";
     hostId = "d7ba56e3";
   };
