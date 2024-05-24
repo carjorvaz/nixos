@@ -3,8 +3,6 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
 
-    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
-
     agenix.url = "github:ryantm/agenix";
     agenix.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -102,7 +100,6 @@
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
-            inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x1-6th-gen
             ({ config, pkgs, ... }: {
               nixpkgs.overlays = [ overlay-unstable ];
             })
@@ -116,7 +113,7 @@
             ./disko/desktop.nix
             ./disko/encryption.nix
             ./disko/zfsImpermanence.nix
-            { _module.args.disks = [ "/dev/nvme0n1" ]; }
+            { _module.args.disks = [ "/dev/sda" ]; }
           ];
         };
       };
