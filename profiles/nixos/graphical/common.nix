@@ -6,11 +6,12 @@ let
   orca-slicer = pkgs.callPackage "${self}/pkgs/orca-slicer.nix" { };
   qidi-slicer = pkgs.callPackage "${self}/pkgs/qidi-slicer.nix" { };
 in {
-  # boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
-  # boot.kernelPackages = pkgs.linuxPackages_zen;
-  boot.kernelPackages =
-    # lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
-  pkgs.linuxPackages_xanmod; # Lowest input lag, from my experienece.
+  # Lowest input lag, from my experienece.
+  # Other options:
+  # - config.boot.zfs.package.latestCompatibleLinuxPackages;
+  # - pkgs.linuxPackages_zen;
+  # - pkgs.linuxPackages_xanmod_stable;
+  boot.kernelPackages = pkgs.linuxPackages_xanmod;
 
   # Improve desktop responsiveness when updating the system.
   nix.daemonCPUSchedPolicy = "idle";
