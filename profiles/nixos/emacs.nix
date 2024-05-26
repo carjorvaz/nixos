@@ -1,9 +1,17 @@
 { config, lib, pkgs, ... }:
 
-{
+let
+  isWayland = if config.programs.sway.enable || config.programs.hyprland.enable
+  || config.services.xserver.desktopManager.gnome.enable then
+    true
+  else
+    false;
+
+  myEmacs = if isWayland then pkgs.emacs29-pgtk else pkgs.emacs29;
+in {
   services.emacs = {
     enable = true;
-    package = ((pkgs.emacsPackagesFor pkgs.emacs29-pgtk).emacsWithPackages
+    package = ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
       (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]));
   };
 
