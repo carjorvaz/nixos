@@ -58,7 +58,15 @@
 
   environment.etc."channels/nixpkgs".source = inputs.nixpkgs.outPath;
 
-  nixpkgs.config.allowUnfree = true;
+  nixpkgs = {
+    config.allowUnfree = true;
+
+    overlays = [
+      (self: super: {
+        unstable = inputs.nixpkgs-unstable.legacyPackages.${super.system};
+      })
+    ];
+  };
 
   programs = {
     htop.enable = true;
