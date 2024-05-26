@@ -75,6 +75,7 @@ in {
       displayManager = {
         gdm.autoSuspend = false;
 
+        # TODO lightdm; ver opcoes
       };
     };
   };
@@ -127,135 +128,171 @@ in {
     #   };
     # };
 
-    # TODO: disable telemetry
-    # STATE:
-    # - account containers (gmail, im, uni)
-    programs.firefox = {
-      enable = true;
+    programs = {
+      # TODO: disable telemetry
+      # STATE:
+      # - account containers (gmail, im, uni)
+      firefox = {
+        enable = true;
 
-      profiles.default = {
-        isDefault = true;
+        profiles.default = {
+          isDefault = true;
 
-        # Reference: https://discourse.nixos.org/t/firefox-extensions-with-home-manager/34108
-        # Check available extensions (name usually matches the short name in the URL, in the addons store):
-        # $ nix flake show "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons"
-        # STATE: Requires enabling the extensions manually after first install
-        extensions = with inputs.firefox-addons.packages.${pkgs.system}; [
-          # TODO/maybe:
-          # - tridactyl?
-          # - unhook?
+          # Reference: https://discourse.nixos.org/t/firefox-extensions-with-home-manager/34108
+          # Check available extensions (name usually matches the short name in the URL, in the addons store):
+          # $ nix flake show "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons"
+          # STATE: Requires enabling the extensions manually after first install
+          extensions = with inputs.firefox-addons.packages.${pkgs.system}; [
+            # TODO/maybe:
+            # - tridactyl?
+            # - unhook?
 
-          auto-tab-discard
+            auto-tab-discard
 
-          # STATE:
-          # - Login
-          # - Settings > Auto-fill > Match Host
-          bitwarden
+            # STATE:
+            # - Login
+            # - Settings > Auto-fill > Match Host
+            bitwarden
 
-          # STATE:
-          # Select All, Save
-          # bypass-paywalls-clean # TODO temporarily commented out because it's broken
-          consent-o-matic
-          darkreader
+            # STATE:
+            # Select All, Save
+            # bypass-paywalls-clean # TODO temporarily commented out because it's broken
+            consent-o-matic
+            darkreader
 
-          # STATE:
-          # - Lists:
-          #   - Annoyances
-          #   - AdGuard Portuguese
-          ublock-origin
-          return-youtube-dislikes
+            # STATE:
+            # - Lists:
+            #   - Annoyances
+            #   - AdGuard Portuguese
+            ublock-origin
+            return-youtube-dislikes
 
-          #STATE:
-          # - General > Add preface (for userChrome)
-          # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
-          sidebery
-          sponsorblock
-          tabliss
+            #STATE:
+            # - General > Add preface (for userChrome)
+            # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
+            sidebery
+            sponsorblock
+            tabliss
+          ];
+
+          search = {
+            force = true;
+            default = "Brave Search";
+            engines = {
+              "Brave Search" = {
+                urls = [{
+                  template = "https://search.brave.com/search?q={searchTerms}";
+                }];
+                iconUpdateURL =
+                  "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon-32x32.B2iBzfXZ.png";
+                updateInterval = 24 * 60 * 60 * 1000;
+              };
+
+              "Google".metaData.hidden = true;
+            };
+          };
+
+          # Check what settings were modified in about:config > Show only modified preferences
+          settings = {
+            # Never remember passwords
+            "signon.rememberSignons" = false;
+
+            # Customize toolbar manually then copy from about:config to turn declarative
+            "browser.uiCustomization.state" = ''
+              {"placements":{"widget-overflow-fixed-list":["fxa-toolbar-menu-button"],"unified-extensions-area":["_3c078156-979c-498b-8990-85f7987dd929_-browser-action","sponsorblocker_ajay_app-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"nav-bar":["back-button","forward-button","stop-reload-button","urlbar-container","save-to-pocket-button","downloads-button","unified-extensions-button","ublock0_raymondhill_net-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action"],"toolbar-menubar":["menubar-items"],"TabsToolbar":["firefox-view-button","tabbrowser-tabs","new-tab-button","alltabs-button"],"PersonalToolbar":["import-button","personal-bookmarks"]},"seen":["save-to-pocket-button","developer-button","_3c078156-979c-498b-8990-85f7987dd929_-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action","sponsorblocker_ajay_app-browser-action","ublock0_raymondhill_net-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"dirtyAreaCache":["nav-bar","PersonalToolbar","unified-extensions-area","toolbar-menubar","TabsToolbar","widget-overflow-fixed-list"],"currentVersion":20,"newElementCount":3}
+            '';
+
+            # Privacy settings
+            "browser.topsites.contile.enabled" = false;
+            "browser.newtabpage.activity-stream.showSponsored" = false;
+            "browser.newtabpage.activity-stream.system.showSponsored" = false;
+            "browser.newtabpage.activity-stream.showSponsoredTopSites" = false;
+            "dom.security.https_only_mode" = true;
+            "privacy.trackingprotection.enabled" = true;
+
+            # Never translate Portuguese
+            "browser.translations.neverTranslateLanguages" = "pt";
+
+            # Disable Pocket
+            "extensions.pocket.enabled" = false;
+
+            # Disable about:config warning
+            "browser.aboutConfig.showWarning" = false;
+
+            # Restore previous session
+            "browser.startup.page" = 3;
+
+            # Never show bookmarks bar
+            "browser.toolbars.bookmarks.visibility" = "never";
+
+            # Enable userChrome.css
+            "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
+
+            # Force hardware vdeo decoding
+            "media.ffmpeg.vaapi.enabled" = true;
+            "media.hardware-video-decoding.force-enabled" = true;
+            "gfx.webrender.all" = true;
+          };
+
+          # https://github.com/mbnuqw/sidebery/wiki/Firefox-Styles-Snippets-(via-userChrome.css)#completely-hide-native-tabs-strip
+          userChrome = let
+            preface =
+              "[Sidebery] "; # Enable and set same preface in Sidebery settings
+          in ''
+            #main-window #titlebar {
+              overflow: hidden;
+              transition: height 0.3s 0.3s !important;
+            }
+            /* Default state: Set initial height to enable animation */
+            #main-window #titlebar { height: 3em !important; }
+            #main-window[uidensity="touch"] #titlebar { height: 3.35em !important; }
+            #main-window[uidensity="compact"] #titlebar { height: 2.7em !important; }
+            /* Hidden state: Hide native tabs strip */
+            #main-window[titlepreface*="${preface}"] #titlebar { height: 0 !important; }
+            /* Hidden state: Fix z-index of active pinned tabs */
+            #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
+          '';
+        };
+      };
+
+      flameshot.enable = true;
+
+      vscode = {
+        enable = true;
+        extensions = with pkgs.vscode-extensions; [
+          asvetliakov.vscode-neovim
+          github.copilot
+          mkhl.direnv
+          jnoortheen.nix-ide
         ];
 
-        search = {
-          force = true;
-          default = "Brave Search";
-          engines = {
-            "Brave Search" = {
-              urls = [{
-                template = "https://search.brave.com/search?q={searchTerms}";
-              }];
-              iconUpdateURL =
-                "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon-32x32.B2iBzfXZ.png";
-              updateInterval = 24 * 60 * 60 * 1000;
-            };
+        userSettings = {
+          "github.copilot.editor.enableAutoCompletions" = true;
 
-            "Google".metaData.hidden = true;
+          "extensions.experimental.affinity" = {
+            "asvetliakov.vscode-neovim" = 1;
           };
+
+          "telemetry.enableCrashReporter" = false;
+          "telemetry.enableTelemetry" = false;
+          "telemetry.telemetryLevel" = "off";
         };
+      };
 
-        # Check what settings were modified in about:config > Show only modified preferences
-        settings = {
-          # Never remember passwords
-          "signon.rememberSignons" = false;
-
-          # Customize toolbar manually then copy from about:config to turn declarative
-          "browser.uiCustomization.state" = ''
-            {"placements":{"widget-overflow-fixed-list":["fxa-toolbar-menu-button"],"unified-extensions-area":["_3c078156-979c-498b-8990-85f7987dd929_-browser-action","sponsorblocker_ajay_app-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"nav-bar":["back-button","forward-button","stop-reload-button","urlbar-container","save-to-pocket-button","downloads-button","unified-extensions-button","ublock0_raymondhill_net-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action"],"toolbar-menubar":["menubar-items"],"TabsToolbar":["firefox-view-button","tabbrowser-tabs","new-tab-button","alltabs-button"],"PersonalToolbar":["import-button","personal-bookmarks"]},"seen":["save-to-pocket-button","developer-button","_3c078156-979c-498b-8990-85f7987dd929_-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action","sponsorblocker_ajay_app-browser-action","ublock0_raymondhill_net-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"dirtyAreaCache":["nav-bar","PersonalToolbar","unified-extensions-area","toolbar-menubar","TabsToolbar","widget-overflow-fixed-list"],"currentVersion":20,"newElementCount":3}
-          '';
-
-          # Privacy settings
-          "browser.topsites.contile.enabled" = false;
-          "browser.newtabpage.activity-stream.showSponsored" = false;
-          "browser.newtabpage.activity-stream.system.showSponsored" = false;
-          "browser.newtabpage.activity-stream.showSponsoredTopSites" = false;
-          "dom.security.https_only_mode" = true;
-          "privacy.trackingprotection.enabled" = true;
-
-          # Never translate Portuguese
-          "browser.translations.neverTranslateLanguages" = "pt";
-
-          # Disable Pocket
-          "extensions.pocket.enabled" = false;
-
-          # Disable about:config warning
-          "browser.aboutConfig.showWarning" = false;
-
-          # Restore previous session
-          "browser.startup.page" = 3;
-
-          # Never show bookmarks bar
-          "browser.toolbars.bookmarks.visibility" = "never";
-
-          # Enable userChrome.css
-          "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
-
-          # Force hardware vdeo decoding
-          "media.ffmpeg.vaapi.enabled" = true;
-          "media.hardware-video-decoding.force-enabled" = true;
-          "gfx.webrender.all" = true;
-        };
-
-        # https://github.com/mbnuqw/sidebery/wiki/Firefox-Styles-Snippets-(via-userChrome.css)#completely-hide-native-tabs-strip
-        userChrome = let
-          preface =
-            "[Sidebery] "; # Enable and set same preface in Sidebery settings
-        in ''
-          #main-window #titlebar {
-            overflow: hidden;
-            transition: height 0.3s 0.3s !important;
-          }
-          /* Default state: Set initial height to enable animation */
-          #main-window #titlebar { height: 3em !important; }
-          #main-window[uidensity="touch"] #titlebar { height: 3.35em !important; }
-          #main-window[uidensity="compact"] #titlebar { height: 2.7em !important; }
-          /* Hidden state: Hide native tabs strip */
-          #main-window[titlepreface*="${preface}"] #titlebar { height: 0 !important; }
-          /* Hidden state: Fix z-index of active pinned tabs */
-          #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
-        '';
+      zathura = {
+        enable = true;
+        options = { "selection-clipboard" = "clipboard"; };
       };
     };
 
     services = {
       # TODO: herbe + tiramisu?
       dunst.enable = true;
+
+      gnome-keyring = {
+        enable = true;
+        components = [ "secrets" ];
+      };
 
       nextcloud-client = {
         enable = true;
@@ -354,4 +391,17 @@ in {
     python3
     yt-dlp
 
+    gnome.nautilus
+    gnome.seahorse
+
+    bashmount
+    glib # gsettings
+    imv
+    libqalculate
+    mpv
+    pulseaudio # for pactl
+    pulsemixer
+    xlayoutdisplay
+    zathura
+  ];
 }
