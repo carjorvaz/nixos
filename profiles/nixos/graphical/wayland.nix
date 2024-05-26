@@ -17,7 +17,6 @@
   };
 
   home-manager.users.cjv = {
-
     # Solves small cursor on HiDPI.
     home.pointerCursor = {
       name = "Adwaita";
