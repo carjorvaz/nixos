@@ -74,6 +74,7 @@ static const char *incvolumecmd[]  = { "pactl", "set-sink-volume", "@DEFAULT_SIN
 static const char *decvolumecmd[]  = { "pactl", "set-sink-volume", "@DEFAULT_SINK@", "-2dB", NULL };
 static const char *tgmuteoutcmd[]  = { "pamixer", "-t", NULL };
 static const char *tgmuteinpcmd[]  = { "pamixer", "--default-source", "-t", NULL };
+static const char *bluetoothcmd[]  = { "blueman-applet", "&", "blueman-manager", NULL };
 
 static const Key keys[] = {
 	/* modifier                     key        function        argument */
@@ -112,6 +113,7 @@ static const Key keys[] = {
 	TAGKEYS(                        XK_9,                      8)
 	/* { MODKEY|ShiftMask,             XK_q,      quit,           {0} }, */ /* commented out to avoid accidents from sway muscle memory */
     { MODKEY|ShiftMask,             XK_p,                     spawn, {.v = scrotcmd } },
+    { MODKEY|ShiftMask,             XK_b,                     spawn, {.v = bluetoothcmd } },
     { MODKEY,                       XK_Escape,                spawn, {.v = lockcmd } },
 	{0,                             XF86XK_MonBrightnessUp,   spawn, {.v = incbrightcmd } },
 	{0,                             XF86XK_MonBrightnessDown, spawn, {.v = decbrightcmd } },
