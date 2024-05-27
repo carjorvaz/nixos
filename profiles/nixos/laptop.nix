@@ -1,6 +1,8 @@
 { config, lib, pkgs, ... }:
 
 {
+  services = {
+    dwm-status.order = [ "battery" "time" ];
 
     tlp.enable = true;
   };
