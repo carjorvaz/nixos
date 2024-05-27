@@ -132,7 +132,6 @@ in {
     # };
 
     programs = {
-      # TODO: disable telemetry
       # STATE:
       # - account containers (gmail, im, uni)
       firefox = {
@@ -212,6 +211,20 @@ in {
             "browser.newtabpage.activity-stream.showSponsoredTopSites" = false;
             "dom.security.https_only_mode" = true;
             "privacy.trackingprotection.enabled" = true;
+
+            # Disable Telemetry
+            "datareporting.healthreport.uploadEnabled" = false;
+            "datareporting.policy.dataSubmissionEnabled" = false;
+            "toolkit.telemetry.unified" = false;
+            "toolkit.telemetry.enabled" = false;
+            "toolkit.telemetry.server" = "data:,"; # Disables telemetry server
+            "toolkit.telemetry.archive.enabled" = false;
+            "toolkit.telemetry.newProfilePing.enabled" = false;
+            "toolkit.telemetry.shutdownPingSender.enabled" = false;
+            "toolkit.telemetry.updatePing.enabled" = false;
+            "toolkit.telemetry.bhrPing.enabled" =
+              false; # Background hang reporter
+            "toolkit.telemetry.firstShutdownPing.enabled" = false;
 
             # Never translate Portuguese
             "browser.translations.neverTranslateLanguages" = "pt";
