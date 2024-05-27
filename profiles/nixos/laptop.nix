@@ -1,22 +1,8 @@
 { config, lib, pkgs, ... }:
 
 {
-  boot = {
-    # For battery thresholds.
-    kernelModules = [ "acpi_call" ];
-    extraModulePackages = with config.boot.kernelPackages; [ acpi_call ];
-  };
 
-  # services.power-profiles-daemon.enable = true;
-
-  # Only use this once per ThinkPad, then return to power-profiles-daemon TODO always use tlp
-  services.tlp = {
-    enable = true;
-    settings = {
-      # Extend battery longevity.
-      START_CHARGE_THRESH_BAT0 = 75;
-      STOP_CHARGE_THRESH_BAT0 = 80;
-    };
+    tlp.enable = true;
   };
 
   home-manager.users.cjv = {
