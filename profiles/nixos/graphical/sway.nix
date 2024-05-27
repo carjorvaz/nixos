@@ -84,6 +84,23 @@ in {
       bars.top = {
         icons = "material-nf";
         theme = "plain";
+        blocks = [
+          {
+            block = "sound";
+            max_vol = 100;
+            headphones_indicator = true;
+            device_kind = "sink";
+            click = [{
+              button = "left";
+              cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+            }];
+          }
+          {
+            block = "time";
+            interval = 5;
+            format = " $timestamp.datetime(f:'%a %d/%m %R')";
+          }
+        ];
       };
     };
 
