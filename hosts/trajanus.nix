@@ -30,11 +30,6 @@
   boot.initrd.availableKernelModules =
     [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sdhci_pci" ];
 
-  boot.kernelParams = [
-    # Will kernel panic on suspend without this
-    "i915.enable_dc=0"
-  ];
-
   # Scale of 100% is 96 dpi, steps of 12 are prefered
   services.xserver.dpi = 108;
 
