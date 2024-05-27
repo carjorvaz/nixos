@@ -17,7 +17,7 @@
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/graphical/dwm.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
 
