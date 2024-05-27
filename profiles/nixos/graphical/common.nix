@@ -277,8 +277,6 @@ in {
         };
       };
 
-      flameshot.enable = true;
-
       vscode = {
         enable = true;
         extensions = with pkgs.vscode-extensions; [
@@ -309,6 +307,8 @@ in {
 
     services = {
       dunst.enable = true;
+
+      flameshot.enable = true;
 
       gnome-keyring = {
         enable = true;
