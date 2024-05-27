@@ -14,7 +14,7 @@
     "${self}/profiles/nixos/adb.nix"
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/graphical/dwm.nix"
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/scanning.nix"
@@ -64,6 +64,9 @@
     defaultGateway = "192.168.1.254";
   };
 
+  # Scale of 100% is 96 dpi, steps of 12 are prefered
+  services.xserver.dpi = 108;
+
   environment.shellAliases = {
     wakeNerva = "${pkgs.wol}/bin/wol 38:2c:4a:e7:e0:8c";
   };
@@ -112,6 +115,7 @@
   };
 
   home-manager.users.cjv = {
+    # TODO like dwm-status lib.mkDefault?
     programs.i3status-rust.bars.top.blocks = [
       {
         block = "sound";
