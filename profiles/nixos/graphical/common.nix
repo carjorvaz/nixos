@@ -308,7 +308,6 @@ in {
     };
 
     services = {
-      # TODO: herbe + tiramisu?
       dunst.enable = true;
 
       gnome-keyring = {
