@@ -71,7 +71,6 @@
   environment.systemPackages = with pkgs; [
     bemoji
     dmenu
-    dmenu-bluetooth
     st
     stalonetray
   ];
