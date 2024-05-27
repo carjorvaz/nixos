@@ -114,26 +114,5 @@
     };
   };
 
-  home-manager.users.cjv = {
-    # TODO like dwm-status lib.mkDefault?
-    programs.i3status-rust.bars.top.blocks = [
-      {
-        block = "sound";
-        max_vol = 100;
-        headphones_indicator = true;
-        device_kind = "sink";
-        click = [{
-          button = "left";
-          cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
-        }];
-      }
-      {
-        block = "time";
-        interval = 5;
-        format = " $timestamp.datetime(f:'%a %d/%m %R')";
-      }
-    ];
-  };
-
   system.stateVersion = "23.05";
 }
