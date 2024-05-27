@@ -2,7 +2,6 @@
 
 # TODO:
 # - slock dpms patch 2 seconds timeout https://tools.suckless.org/slock/patches/dpms/
-# - remove dmenumon in dwm config
 
 {
   imports = [ ./common.nix ];
