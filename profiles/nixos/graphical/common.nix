@@ -75,7 +75,10 @@ in {
       displayManager = {
         gdm.autoSuspend = false;
 
-        # TODO lightdm; ver opcoes
+        lightdm = {
+          enable = true;
+          background = ./wallpaper.jpg;
+        };
       };
     };
   };
