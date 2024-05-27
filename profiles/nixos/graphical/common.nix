@@ -174,7 +174,6 @@ in {
             # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
             sidebery
             sponsorblock
-            tabliss
           ];
 
           search = {
@@ -196,6 +195,13 @@ in {
 
           # Check what settings were modified in about:config > Show only modified preferences
           settings = {
+            # Disable Firefox View pinned tab
+            "browser.tabs.firefox-view" = false;
+
+            # Set new tab page as a blank page
+            "browser.startup.homepage" = "about:blank";
+            "browser.newtabpage.enabled" = false;
+
             # Never remember passwords
             "signon.rememberSignons" = false;
 
