@@ -35,6 +35,9 @@
     "i915.enable_dc=0"
   ];
 
+  # Scale of 100% is 96 dpi, steps of 12 are prefered
+  services.xserver.dpi = 108;
+
   networking = {
     # Let iwd handle DHCP for Wi-Fi
     useDHCP = false;
@@ -46,6 +49,7 @@
     hostId = "d7ba56e3";
   };
 
+  # Only keep enabled on intel laptops
   services.thermald.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
