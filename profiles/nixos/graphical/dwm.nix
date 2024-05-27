@@ -3,7 +3,6 @@
 # TODO:
 # - slock dpms patch 2 seconds timeout https://tools.suckless.org/slock/patches/dpms/
 # - remove dmenumon in dwm config
-# - remove slstatus
 
 {
   imports = [ ./common.nix ];
@@ -52,9 +51,6 @@
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
       });
-
-      slstatus =
-        super.slstatus.override { conf = ./suckless/slstatus-1.0-config.h; };
     })
   ];
 
@@ -91,14 +87,4 @@
       lockerCommand = "/run/wrappers/bin/slock";
     };
   };
-
-  # TODO remove
-  # systemd.user.services.slstatus = {
-  #   description =
-  #     "status monitor service for window managers that use WM_NAME like dwm";
-  #   wantedBy = [ "graphical-session.target" ];
-  #   partOf = [ "graphical-session.target" ];
-
-  #   serviceConfig.ExecStart = "${pkgs.slstatus}/bin/slstatus";
-  # };
 }
