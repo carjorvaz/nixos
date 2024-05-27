@@ -420,8 +420,10 @@ in {
     imv
     libqalculate
     mpv
+    pamixer
     pulseaudio # for pactl
     pulsemixer
+    xclip
     xlayoutdisplay
     zathura
   ];
