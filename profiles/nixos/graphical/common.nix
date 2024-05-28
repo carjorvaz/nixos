@@ -79,6 +79,12 @@ in {
           enable = true;
           background = ./wallpaper.jpg;
         };
+
+        # Disable screen blanking.
+        # Reference: https://wiki.archlinux.org/title/Display_Power_Management_Signaling#Runtime_settings
+        setupCommands = ''
+          /run/current-system/sw/bin/xset s off
+        '';
       };
     };
   };
