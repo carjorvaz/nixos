@@ -1,8 +1,5 @@
 { config, lib, pkgs, ... }:
 
-# TODO:
-# - slock dpms patch 2 seconds timeout https://tools.suckless.org/slock/patches/dpms/
-
 {
   imports = [ ./common.nix ];
 
@@ -33,6 +30,22 @@
         postPatch = ''
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
+      });
+
+      slock = super.slock.overrideAttrs (oldAttrs: rec {
+        patches = [
+          (pkgs.fetchpatch {
+            url = "https://tools.suckless.org/slock/patches/dpms/slock-dpms-1.4.diff";
+            sha256 = "sha256-hfe71OTpDbqOKhu/LY8gDMX6/c07B4sZ+mSLsbG6qtg=";
+          })
+        ];
+
+        configFile = super.writeText "config.h"
+          (builtins.readFile ./suckless/slock-1.5-config.h);
+        postPatch = ''
+          ${oldAttrs.postPatch}
+          cp ${configFile} config.h'';
+
       });
 
       st = super.st.overrideAttrs (oldAttrs: rec {
@@ -68,12 +81,7 @@
     };
   };
 
-  environment.systemPackages = with pkgs; [
-    bemoji
-    dmenu
-    st
-    stalonetray
-  ];
+  environment.systemPackages = with pkgs; [ bemoji dmenu st stalonetray ];
 
   programs = {
     slock.enable = true;
