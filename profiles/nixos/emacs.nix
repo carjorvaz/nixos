@@ -26,7 +26,7 @@ in {
     go
     hugo # ox-hugo
     sqlite # org-roam
-    nixfmt
+    nixfmt-rfc-style
     zstd
     imagemagick
 
