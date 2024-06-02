@@ -48,6 +48,16 @@ in {
 
     gnome.gnome-keyring.enable = true;
 
+    libinput = {
+      # Disable mouse acceleration.
+      mouse.accelProfile = "flat";
+
+      touchpad = {
+        disableWhileTyping = true;
+        naturalScrolling = true;
+      };
+    };
+
     xserver = {
       enable = true;
 
@@ -58,16 +68,6 @@ in {
         layout = "us";
         options = "ctrl:nocaps,compose:prsc";
         variant = "altgr-intl";
-      };
-
-      libinput = {
-        # Disable mouse acceleration.
-        mouse.accelProfile = "flat";
-
-        touchpad = {
-          disableWhileTyping = true;
-          naturalScrolling = true;
-        };
       };
 
       desktopManager.wallpaper.mode = "fill";
