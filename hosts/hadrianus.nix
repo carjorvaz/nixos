@@ -14,6 +14,7 @@ in {
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-one.nix"
+    "${self}/profiles/nixos/fail2ban.nix"
     "${self}/profiles/nixos/mail.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/nginx/bastion.nix"
