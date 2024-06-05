@@ -19,7 +19,7 @@
   environment.persistence."/persist" = {
     hideMounts = true;
     files = [ "/etc/machine-id" ];
-    directories = [ "/var/db/sudo/lectured" ];
+    directories = [ "/var/db/sudo/lectured" "/var/log/journal" ];
   };
 
   environment.systemPackages = with pkgs; [
