@@ -17,91 +17,92 @@
 
     impermanence.url = "github:nix-community/impermanence/master";
 
-    simple-nixos-mailserver.url =
-      "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.11";
+    simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.11";
   };
 
-  outputs = { self, ... }@inputs: {
-    nixosConfigurations = {
-      commodus = inputs.nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs self; };
-        modules = [
-          inputs.agenix.nixosModules.age
-          inputs.disko.nixosModules.disko
-          inputs.impermanence.nixosModule
-          inputs.home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-          }
-          ./hosts/commodus.nix
-          ./disko/base.nix
-          ./disko/desktop.nix
-          ./disko/tmpfs.nix
-          { _module.args.disks = [ "/dev/nvme0n1" ]; }
-        ];
-      };
+  outputs =
+    { self, ... }@inputs:
+    {
+      nixosConfigurations =
+        let
+          baseModules = [
+            inputs.agenix.nixosModules.age
+            inputs.disko.nixosModules.disko
+            inputs.impermanence.nixosModule
+          ];
 
-      hadrianus = inputs.nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs self; };
-        modules = [
-          inputs.agenix.nixosModules.age
-          inputs.disko.nixosModules.disko
-          inputs.impermanence.nixosModule
-          inputs.home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-          }
-          ./hosts/hadrianus.nix
-          ./disko/base.nix
-          ./disko/encryption.nix
-          ./disko/zfsImpermanence.nix
-          { _module.args.disks = [ "/dev/sda" ]; }
-        ];
-      };
+          desktopModules = [
+            inputs.home-manager.nixosModules.home-manager
+            {
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+            }
 
-      t440 = inputs.nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs self; };
-        modules = [
-          inputs.agenix.nixosModules.age
-          inputs.disko.nixosModules.disko
-          inputs.impermanence.nixosModule
-          inputs.home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-          }
-          ./hosts/t440.nix
-          ./disko/base.nix
-          ./disko/tmpfs.nix
-          { _module.args.disks = [ "/dev/sda" ]; }
-        ];
-      };
+            }
+          ];
+        in
+        {
+          commodus = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules =
+              baseModules
+              ++ desktopModules
+              ++ [
+                ./hosts/commodus.nix
+                ./disko/base.nix
+                ./disko/desktop.nix
+                ./disko/tmpfs.nix
+                { _module.args.disks = [ "/dev/nvme0n1" ]; }
+              ];
+          };
 
-      trajanus = inputs.nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs self; };
-        modules = [
-          inputs.agenix.nixosModules.age
-          inputs.disko.nixosModules.disko
-          inputs.impermanence.nixosModule
-          inputs.home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-          }
-          ./hosts/trajanus.nix
-          ./disko/base.nix
-          ./disko/desktop.nix
-          ./disko/encryption.nix
-          ./disko/zfsImpermanence.nix
-          { _module.args.disks = [ "/dev/sda" ]; }
-        ];
-      };
+          hadrianus = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules = baseModules ++ [
+              ./hosts/hadrianus.nix
+              ./disko/base.nix
+              ./disko/encryption.nix
+              ./disko/zfsImpermanence.nix
+              { _module.args.disks = [ "/dev/sda" ]; }
+            ];
+          };
+
+          t440 = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules = baseModules ++ [
+              ./hosts/t440.nix
+              ./disko/base.nix
+              ./disko/tmpfs.nix
+              { _module.args.disks = [ "/dev/sda" ]; }
+            ];
+          };
+
+          trajanus = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules =
+              baseModules
+              ++ desktopModules
+              ++ [
+                ./hosts/trajanus.nix
+                ./disko/base.nix
+                ./disko/desktop.nix
+                ./disko/encryption.nix
+                ./disko/zfsImpermanence.nix
+                { _module.args.disks = [ "/dev/sda" ]; }
+              ];
+          };
+        };
     };
-  };
 }
