@@ -3,9 +3,9 @@
 {
   boot.initrd.kernelModules = [ "i915" ];
 
-  # nixpkgs.config.packageOverrides = pkgs: {
-  #   vaapiIntel = pkgs.vaapiIntel.override { enableHybridCodec = true; };
-  # };
+  nixpkgs.config.packageOverrides = pkgs: {
+    vaapiIntel = pkgs.vaapiIntel.override { enableHybridCodec = true; };
+  };
 
   hardware.opengl = {
     enable = true;
