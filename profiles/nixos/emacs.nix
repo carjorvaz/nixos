@@ -9,15 +9,11 @@ let
 
   myEmacs = if isWayland then pkgs.emacs29-pgtk else pkgs.emacs29;
 in {
-  services.emacs = {
-    enable = true;
-    package = ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
-      (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]));
-  };
-
   fonts.packages = [ pkgs.emacs-all-the-icons-fonts ];
 
   environment.systemPackages = with pkgs; [
+    ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
+      (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]))
     binutils
     mlocate
     (ripgrep.override { withPCRE2 = true; })
