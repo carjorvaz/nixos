@@ -3,6 +3,9 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    nix-index-database.url = "github:nix-community/nix-index-database";
+    nix-index-database.inputs.nixpkgs.follows = "nixpkgs";
+
     agenix.url = "github:ryantm/agenix";
     agenix.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -38,6 +41,12 @@
               home-manager.useUserPackages = true;
             }
 
+            inputs.nix-index-database.nixosModules.nix-index
+            {
+              programs = {
+                command-not-found.enable = false;
+                nix-index-database.comma.enable = true;
+              };
             }
           ];
         in
