@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   programs = {
@@ -9,8 +14,12 @@
       autosuggestions.enable = true;
       syntaxHighlighting.enable = true;
 
-      setOptions =
-        [ "HIST_IGNORE_DUPS" "SHARE_HISTORY" "HIST_FCNTL_LOCK" "EMACS" ];
+      setOptions = [
+        "HIST_IGNORE_DUPS"
+        "SHARE_HISTORY"
+        "HIST_FCNTL_LOCK"
+        "EMACS"
+      ];
 
       shellInit = ''
         # Completion based on man pages
