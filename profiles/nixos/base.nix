@@ -26,6 +26,7 @@
     inputs.agenix.packages."${system}".default
     fd
     file
+    delta
     git
     pv
     ripgrep
