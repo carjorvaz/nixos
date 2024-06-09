@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   imports = [ ./japaneseKeyboard.nix ];
@@ -29,7 +34,11 @@
       # scrollDelta = -75;
       twoFingerScroll = true;
 
-      fingersMap = [ 1 3 2 ];
+      fingersMap = [
+        1
+        3
+        2
+      ];
 
       additionalOptions = ''
         Option "CircularScrolling" "on"

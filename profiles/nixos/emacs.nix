@@ -1,19 +1,32 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
-  isWayland = if config.programs.sway.enable || config.programs.hyprland.enable
-  || config.services.xserver.desktopManager.gnome.enable then
-    true
-  else
-    false;
+  isWayland =
+    if
+      config.programs.sway.enable
+      || config.programs.hyprland.enable
+      || config.services.xserver.desktopManager.gnome.enable
+    then
+      true
+    else
+      false;
 
   myEmacs = if isWayland then pkgs.emacs29-pgtk else pkgs.emacs29;
-in {
+in
+{
   fonts.packages = [ pkgs.emacs-all-the-icons-fonts ];
 
   environment.systemPackages = with pkgs; [
-    ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages
-      (epkgs: [ epkgs.vterm epkgs.pdf-tools epkgs.org-roam ]))
+    ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages (epkgs: [
+      epkgs.vterm
+      epkgs.pdf-tools
+      epkgs.org-roam
+    ]))
     binutils
     mlocate
     (ripgrep.override { withPCRE2 = true; })

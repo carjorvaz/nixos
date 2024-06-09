@@ -1,7 +1,16 @@
-{ self, config, lib, pkgs, modulesPath, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 
-let networkInterface = "ens3";
-in {
+let
+  networkInterface = "ens3";
+in
+{
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
@@ -25,8 +34,14 @@ in {
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
-  boot.initrd.availableKernelModules =
-    [ "ata_piix" "uhci_hcd" "virtio_pci" "virtio_scsi" "sd_mod" "sr_mod" ];
+  boot.initrd.availableKernelModules = [
+    "ata_piix"
+    "uhci_hcd"
+    "virtio_pci"
+    "virtio_scsi"
+    "sd_mod"
+    "sr_mod"
+  ];
 
   networking = {
     hostName = "hadrianus";
@@ -37,15 +52,19 @@ in {
     interfaces.${networkInterface} = {
       useDHCP = false;
 
-      ipv4.addresses = [{
-        address = "46.38.242.172";
-        prefixLength = 22;
-      }];
+      ipv4.addresses = [
+        {
+          address = "46.38.242.172";
+          prefixLength = 22;
+        }
+      ];
 
-      ipv6.addresses = [{
-        address = "2a03:4000:7:68::";
-        prefixLength = 64;
-      }];
+      ipv6.addresses = [
+        {
+          address = "2a03:4000:7:68::";
+          prefixLength = 64;
+        }
+      ];
     };
 
     defaultGateway = "46.38.240.1";

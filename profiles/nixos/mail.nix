@@ -1,11 +1,14 @@
-{ self, config, inputs, ... }:
+{
+  self,
+  config,
+  inputs,
+  ...
+}:
 
 {
-  age.secrets.mailCarlosHashedPassword.file =
-    "${self}/secrets/mailCarlosHashedPassword.age";
+  age.secrets.mailCarlosHashedPassword.file = "${self}/secrets/mailCarlosHashedPassword.age";
 
-  age.secrets.mailMafaldaHashedPassword.file =
-    "${self}/secrets/mailMafaldaHashedPassword.age";
+  age.secrets.mailMafaldaHashedPassword.file = "${self}/secrets/mailMafaldaHashedPassword.age";
 
   imports = [
     inputs.simple-nixos-mailserver.nixosModule
@@ -32,8 +35,7 @@
         # nix run nixpkgs.apacheHttpd -c htpasswd -nbB "" "super secret password" | cut -d: -f2 > /hashed/password/file/location
         loginAccounts = {
           "carlos@vaz.one" = {
-            hashedPasswordFile =
-              config.age.secrets.mailCarlosHashedPassword.path;
+            hashedPasswordFile = config.age.secrets.mailCarlosHashedPassword.path;
 
             # aliases = [ "postmaster@example.com" ];
             # Aliases starting with @ are catchall aliases
@@ -50,10 +52,12 @@
           };
 
           "me@mafaldaribeiro.com" = {
-            hashedPasswordFile =
-              config.age.secrets.mailMafaldaHashedPassword.path;
+            hashedPasswordFile = config.age.secrets.mailMafaldaHashedPassword.path;
 
-            aliases = [ "@mafaldaribeiro.com" "@mafaldaribeiro.pt" ];
+            aliases = [
+              "@mafaldaribeiro.com"
+              "@mafaldaribeiro.pt"
+            ];
           };
         };
 

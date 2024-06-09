@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   time.timeZone = "Europe/Lisbon";
@@ -20,7 +25,14 @@
 
   environment.systemPackages = with pkgs; [
     aspell
-    (aspellWithDicts (ds: with ds; [ en en-computers en-science pt_PT ]))
+    (aspellWithDicts (
+      ds: with ds; [
+        en
+        en-computers
+        en-science
+        pt_PT
+      ]
+    ))
     hunspell
   ];
 }

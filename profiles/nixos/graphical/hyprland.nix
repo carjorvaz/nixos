@@ -1,9 +1,18 @@
-{ config, inputs, lib, pkgs, ... }:
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
 
 # TODO:
 # - use hyprlandPlugins and try out hy3; will use sway until then
 {
-  imports = [ ./selenized.nix ./wayland.nix ];
+  imports = [
+    ./selenized.nix
+    ./wayland.nix
+  ];
 
   programs.hyprland = {
     enable = true;
@@ -73,8 +82,7 @@
           gaps_out = 20;
           border_size = 2;
 
-          "col.active_border" =
-            lib.mkDefault "rgba(33ccffee) rgba(00ff99ee) 45deg";
+          "col.active_border" = lib.mkDefault "rgba(33ccffee) rgba(00ff99ee) 45deg";
           "col.inactive_border" = lib.mkDefault "rgba(595959aa)";
 
           layout = "dwindle";
@@ -116,13 +124,14 @@
 
         # https://wiki.hyprland.org/Configuring/Dwindle-Layout/
         dwindle = {
-          pseudotile =
-            true; # master switch for pseudotiling. Enabling is bound to mainMod + P in the keybinds section below
+          pseudotile = true; # master switch for pseudotiling. Enabling is bound to mainMod + P in the keybinds section below
           preserve_split = true; # you probably want this
         };
 
         # https://wiki.hyprland.org/Configuring/Master-Layout/
-        master = { new_is_master = true; };
+        master = {
+          new_is_master = true;
+        };
 
         gestures = {
           workspace_swipe = false; # TODO check
@@ -141,8 +150,7 @@
         # windowrulev2 = float,class:^(kitty)$,title:^(kitty)$
         # See https://wiki.hyprland.org/Configuring/Window-Rules/ for more
 
-        windowrulev2 = lib.mkDefault
-          "nomaximizerequest, class:.*"; # You'll probably like this.
+        windowrulev2 = lib.mkDefault "nomaximizerequest, class:.*"; # You'll probably like this.
 
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
         "$mainMod" = "SUPER";
@@ -266,7 +274,6 @@
           "$mainMod, mouse:272, movewindow"
           "$mainMod, mouse:273, resizewindow"
         ];
-
       };
 
       # plugins = [
@@ -283,72 +290,105 @@
           target = "hyprland-session.target";
         };
 
-        settings = [{
-          height = 30;
-          spacing = 6;
-          layer = "top";
-          position = "top";
-          modules-left = [ "hyprland/workspaces" ];
-          modules-center = [ "hyprland/window" ];
-          modules-right =
-            [ "pulseaudio" "backlight" "network" "battery" "clock" "tray" ];
+        settings = [
+          {
+            height = 30;
+            spacing = 6;
+            layer = "top";
+            position = "top";
+            modules-left = [ "hyprland/workspaces" ];
+            modules-center = [ "hyprland/window" ];
+            modules-right = [
+              "pulseaudio"
+              "backlight"
+              "network"
+              "battery"
+              "clock"
+              "tray"
+            ];
 
-          tray.spacing = 10;
+            tray.spacing = 10;
 
-          backlight = {
-            format = "{icon} {percent}%";
-            format-icons = [ "󰃚" "󰃛" "󰃜" "󰃝" "󰃞" "󰃟" "󰃠" ];
-          };
-
-          battery = {
-            # TODO watts e time left? (mas só na tooltip)
-            states = {
-              warning = 25;
-              critical = 15;
+            backlight = {
+              format = "{icon} {percent}%";
+              format-icons = [
+                "󰃚"
+                "󰃛"
+                "󰃜"
+                "󰃝"
+                "󰃞"
+                "󰃟"
+                "󰃠"
+              ];
             };
 
-            format = "{icon} {capacity}%";
-            format-charging = "󰂉 {capacity}%";
-            format-plugged = "󰚥 {capacity}%";
-            format-alt = "{icon} {time}";
+            battery = {
+              # TODO watts e time left? (mas só na tooltip)
+              states = {
+                warning = 25;
+                critical = 15;
+              };
 
-            format-icons = [ "󰁺" "󰁻" "󰁼" "󰁽" "󰁾" "󰁿" "󰂀" "󰂁" "󰂂" "󰁹" ];
-          };
+              format = "{icon} {capacity}%";
+              format-charging = "󰂉 {capacity}%";
+              format-plugged = "󰚥 {capacity}%";
+              format-alt = "{icon} {time}";
 
-          clock = {
-            tooltip-format = ''
-              <big>{:%Y %B}</big>
-              <tt><small>{calendar}</small></tt>'';
-            format = "󱑒 {:%Y-%m-%d %H:%M}";
-          };
+              format-icons = [
+                "󰁺"
+                "󰁻"
+                "󰁼"
+                "󰁽"
+                "󰁾"
+                "󰁿"
+                "󰂀"
+                "󰂁"
+                "󰂂"
+                "󰁹"
+              ];
+            };
 
-          "hyprland/window" = {
-            "max-length" = 200;
-            "separate-outputs" = true;
-          };
+            clock = {
+              tooltip-format = ''
+                <big>{:%Y %B}</big>
+                <tt><small>{calendar}</small></tt>'';
+              format = "󱑒 {:%Y-%m-%d %H:%M}";
+            };
 
-          "hyprland/workspaces" = {
-            "on-scroll-up" = "hyprctl dispatch workspace e+1";
-            "on-scroll-down" = "hyprctl dispatch workspace e-1";
-          };
+            "hyprland/window" = {
+              "max-length" = 200;
+              "separate-outputs" = true;
+            };
 
-          network = {
-            format-wifi = "󰖩 {essid}";
-            format-ethernet = "{ipaddr}/{cidr} 󰈀";
-            format-linked = "{ifname} (No IP)";
-            format-disconnected = "Disconnected";
-            format-alt = "{ifname}: {ipaddr}/{cidr}";
-          };
+            "hyprland/workspaces" = {
+              "on-scroll-up" = "hyprctl dispatch workspace e+1";
+              "on-scroll-down" = "hyprctl dispatch workspace e-1";
+            };
 
-          # TODO mute unmute com right click
-          pulseaudio = {
-            format = "{icon} {volume}%";
-            format-muted = "󰖁";
-            format-icons = { default = [ "󰕿" "󰖀" "󰕾" ]; };
-            on-click = "${pkgs.pavucontrol}/bin/pavucontrol";
-            tooltip = false;
-          };
-        }];
+            network = {
+              format-wifi = "󰖩 {essid}";
+              format-ethernet = "{ipaddr}/{cidr} 󰈀";
+              format-linked = "{ifname} (No IP)";
+              format-disconnected = "Disconnected";
+              format-alt = "{ifname}: {ipaddr}/{cidr}";
+            };
+
+            # TODO mute unmute com right click
+            pulseaudio = {
+              format = "{icon} {volume}%";
+              format-muted = "󰖁";
+              format-icons = {
+                default = [
+                  "󰕿"
+                  "󰖀"
+                  "󰕾"
+                ];
+              };
+              on-click = "${pkgs.pavucontrol}/bin/pavucontrol";
+              tooltip = false;
+            };
+          }
+        ];
 
         style = ''
           @keyframes blink-critical {
@@ -519,8 +559,7 @@
         }
         {
           timeout = 2;
-          command =
-            "if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.hyprland}/bin/hyprctl dispatch dpms off; fi";
+          command = "if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.hyprland}/bin/hyprctl dispatch dpms off; fi";
           resumeCommand = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
         }
       ];

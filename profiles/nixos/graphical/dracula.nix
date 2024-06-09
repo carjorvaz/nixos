@@ -1,8 +1,12 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
-  environment.sessionVariables.FZF_DEFAULT_OPTS =
-    "--color=fg:#f8f8f2,bg:#282a36,hl:#bd93f9 --color=fg+:#f8f8f2,bg+:#44475a,hl+:#bd93f9 --color=info:#ffb86c,prompt:#50fa7b,pointer:#ff79c6 --color=marker:#ff79c6,spinner:#ffb86c,header:#6272a4";
+  environment.sessionVariables.FZF_DEFAULT_OPTS = "--color=fg:#f8f8f2,bg:#282a36,hl:#bd93f9 --color=fg+:#f8f8f2,bg+:#44475a,hl+:#bd93f9 --color=info:#ffb86c,prompt:#50fa7b,pointer:#ff79c6 --color=marker:#ff79c6,spinner:#ffb86c,header:#6272a4";
 
   home-manager.users.cjv = {
     programs = {
@@ -10,26 +14,21 @@
         COLORTERM = "?*";
         RESET = ''0  # reset to " normal " color'';
         DIR = "01;38;2;189;147;249 # directory";
-        LINK =
-          "01;38;2;139;233;253 # symbolic link.  (If you set this to 'target' instead of a";
+        LINK = "01;38;2;139;233;253 # symbolic link.  (If you set this to 'target' instead of a";
         MULTIHARDLINK = "00 # regular file with more than one link";
         FIFO = "48;2;33;34;44;38;2;241;250;140 # pipe";
         SOCK = "01;38;2;255;121;198 # socket";
         DOOR = "01;38;2;255;121;198 # door";
         BLK = "48;2;33;34;44;38;2;241;250;140;01 # block device driver";
         CHR = "48;2;33;34;44;38;2;241;250;140;01 # character device driver";
-        ORPHAN =
-          "48;2;33;34;44;38;2;255;85;85;01 # symlink to nonexistent file, or non-stat'able file ...";
+        ORPHAN = "48;2;33;34;44;38;2;255;85;85;01 # symlink to nonexistent file, or non-stat'able file ...";
         MISSING = "00      # ... and the files they point to";
         SETUID = "38;2;248;248;242;48;2;255;85;85 # file that is setuid (u+s)";
         SETGID = "38;2;33;34;44;48;2;241;250;140 # file that is setgid (g+s)";
         CAPABILITY = "00 # file with capability (very expensive to lookup)";
-        STICKY_OTHER_WRITABLE =
-          "38;2;33;34;44;48;2;80;250;123 # dir that is sticky and other-writable (+t,o+w)";
-        OTHER_WRITABLE =
-          "38;2;189;147;249;48;2;80;250;123 # dir that is other-writable (o+w) and not sticky";
-        STICKY =
-          "38;2;248;248;242;48;2;189;147;249 # dir with the sticky bit set (+t) and not other-writable";
+        STICKY_OTHER_WRITABLE = "38;2;33;34;44;48;2;80;250;123 # dir that is sticky and other-writable (+t,o+w)";
+        OTHER_WRITABLE = "38;2;189;147;249;48;2;80;250;123 # dir that is other-writable (o+w) and not sticky";
+        STICKY = "38;2;248;248;242;48;2;189;147;249 # dir with the sticky bit set (+t) and not other-writable";
         EXEC = "01;38;2;80;250;123";
         ".tar" = "01;38;2;255;85;85";
         ".tgz" = "01;38;2;255;85;85";

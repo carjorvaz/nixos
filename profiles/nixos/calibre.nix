@@ -1,15 +1,20 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   domain = "calibre.vaz.ovh";
   library = "/persist/media/books";
-in {
+in
+{
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
-      locations."/".proxyPass =
-        "http://127.0.0.1:${toString config.services.calibre-web.listen.port}";
+      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.calibre-web.listen.port}";
     };
 
     calibre-server = {
@@ -29,8 +34,7 @@ in {
     };
   };
 
-  systemd.services.calibre-server.serviceConfig.ExecStart = lib.mkForce
-    "${pkgs.calibre}/bin/calibre-server --userdb ${library}/users.sqlite --enable-auth ${library}";
+  systemd.services.calibre-server.serviceConfig.ExecStart = lib.mkForce "${pkgs.calibre}/bin/calibre-server --userdb ${library}/users.sqlite --enable-auth ${library}";
 
   environment.persistence."/persist".directories = [ "/var/lib/calibre-web" ];
 }

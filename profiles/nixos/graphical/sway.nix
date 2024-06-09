@@ -1,4 +1,10 @@
-{ config, inputs, pkgs, lib, ... }:
+{
+  config,
+  inputs,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   # bash script to let dbus know about important env variables and
@@ -29,15 +35,18 @@ let
     name = "configure-gtk";
     destination = "/bin/configure-gtk";
     executable = true;
-    text = let
-      schema = pkgs.gsettings-desktop-schemas;
-      datadir = "${schema}/share/gsettings-schemas/${schema.name}";
-    in ''
-      export XDG_DATA_DIRS=${datadir}:$XDG_DATA_DIRS
-      gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark' && gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    '';
+    text =
+      let
+        schema = pkgs.gsettings-desktop-schemas;
+        datadir = "${schema}/share/gsettings-schemas/${schema.name}";
+      in
+      ''
+        export XDG_DATA_DIRS=${datadir}:$XDG_DATA_DIRS
+        gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark' && gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+      '';
   };
-in {
+in
+{
   imports = [ ./wayland.nix ];
 
   environment.systemPackages = with pkgs; [
@@ -90,10 +99,12 @@ in {
             max_vol = 100;
             headphones_indicator = true;
             device_kind = "sink";
-            click = [{
-              button = "left";
-              cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
-            }];
+            click = [
+              {
+                button = "left";
+                cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+              }
+            ];
           }
           {
             block = "time";
@@ -137,59 +148,54 @@ in {
           };
         };
 
-        output = { "*".bg = lib.mkDefault "${./wallpaper.jpg} fill"; };
-
-        keybindings = let
-          modifier =
-            config.home-manager.users.cjv.wayland.windowManager.sway.config.modifier;
-        in lib.mkOptionDefault {
-          "${modifier}+Escape" = "exec ${pkgs.swaylock}/bin/swaylock";
-
-          # Rofi
-          "${modifier}+d" = "exec rofi -modes combi -show combi";
-          "${modifier}+Shift+d" = "exec rofi -modes drun -show drun";
-          "${modifier}+c" = "exec rofi -modes calc -show calc";
-          "${modifier}+x" = "exec rofi -modes calc -show calc"; # TODO emoji
-
-          # Screenshots
-          "Print" =
-            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
-          "Shift+Print" =
-            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
-          "${modifier}+p" =
-            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
-          "${modifier}+Shift+p" =
-            "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
-
-          # Brightness - logarithmic scale
-          "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.618";
-          "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.618";
-
-          # Audio - logarithmic scale
-          "XF86AudioRaiseVolume" =
-            "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB'";
-          "XF86AudioLowerVolume" =
-            "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB'";
-          "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
-          "XF86AudioMicMute" =
-            "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
-
-          # Move to custom workspace
-          "${modifier}+t" =
-            "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | rofi -dmenu -p 'Go to workspace:' )";
-          "${modifier}+Shift+t" =
-            "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | rofi -dmenu -p 'Move to workspace:')";
+        output = {
+          "*".bg = lib.mkDefault "${./wallpaper.jpg} fill";
         };
 
-        bars = [{
-          statusCommand =
-            "${pkgs.i3status-rust}/bin/i3status-rs ~/.config/i3status-rust/config-top.toml";
-          position = "top";
-          fonts = {
-            size = 12.0;
-            names = [ "monospace" ];
+        keybindings =
+          let
+            modifier = config.home-manager.users.cjv.wayland.windowManager.sway.config.modifier;
+          in
+          lib.mkOptionDefault {
+            "${modifier}+Escape" = "exec ${pkgs.swaylock}/bin/swaylock";
+
+            # Rofi
+            "${modifier}+d" = "exec rofi -modes combi -show combi";
+            "${modifier}+Shift+d" = "exec rofi -modes drun -show drun";
+            "${modifier}+c" = "exec rofi -modes calc -show calc";
+            "${modifier}+x" = "exec rofi -modes calc -show calc"; # TODO emoji
+
+            # Screenshots
+            "Print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+            "Shift+Print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+            "${modifier}+p" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+            "${modifier}+Shift+p" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+
+            # Brightness - logarithmic scale
+            "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.618";
+            "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.618";
+
+            # Audio - logarithmic scale
+            "XF86AudioRaiseVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB'";
+            "XF86AudioLowerVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB'";
+            "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
+            "XF86AudioMicMute" = "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
+
+            # Move to custom workspace
+            "${modifier}+t" = "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | rofi -dmenu -p 'Go to workspace:' )";
+            "${modifier}+Shift+t" = "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | rofi -dmenu -p 'Move to workspace:')";
           };
-        }];
+
+        bars = [
+          {
+            statusCommand = "${pkgs.i3status-rust}/bin/i3status-rs ~/.config/i3status-rust/config-top.toml";
+            position = "top";
+            fonts = {
+              size = 12.0;
+              names = [ "monospace" ];
+            };
+          }
+        ];
       };
 
       extraConfig = ''
@@ -208,12 +214,13 @@ in {
     services = {
       kanshi.systemdTarget = "sway-session.target";
 
-      swayidle.timeouts = [{
-        timeout = 2;
-        command = ''
-          if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
-        resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
-      }];
+      swayidle.timeouts = [
+        {
+          timeout = 2;
+          command = ''if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
+          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+        }
+      ];
     };
   };
 }

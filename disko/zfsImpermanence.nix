@@ -1,5 +1,6 @@
 # TODO migrate everything running with root as tmpfs to this and merge this with base.nix
-{ lib, ... }: {
+{ lib, ... }:
+{
   disko.devices.zpool.zroot = {
     postCreateHook = "zfs snapshot zroot/local/root@blank";
     datasets."local/root" = {

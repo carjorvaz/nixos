@@ -1,8 +1,16 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   services = {
-    dwm-status.order = [ "battery" "time" ];
+    dwm-status.order = [
+      "battery"
+      "time"
+    ];
 
     tlp.enable = true;
   };
@@ -15,26 +23,29 @@
         max_vol = 100;
         headphones_indicator = true;
         device_kind = "sink";
-        click = [{
-          button = "left";
-          cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
-        }];
+        click = [
+          {
+            button = "left";
+            cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+          }
+        ];
       }
       {
         block = "sound";
         max_vol = 100;
         device_kind = "source";
-        click = [{
-          button = "left";
-          cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select source";
-        }];
+        click = [
+          {
+            button = "left";
+            cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select source";
+          }
+        ];
       }
       {
         block = "time";
         interval = 5;
         format = " $timestamp.datetime(f:'%a %d/%m %R')";
       }
-
     ];
 
     services.kanshi = {
@@ -58,11 +69,13 @@
         # }
 
         undocked = {
-          outputs = [{
-            criteria = "eDP-1";
-            scale = 1.0;
-            status = "enable";
-          }];
+          outputs = [
+            {
+              criteria = "eDP-1";
+              scale = 1.0;
+              status = "enable";
+            }
+          ];
         };
 
         rnl = {
@@ -91,7 +104,6 @@
               status = "disable";
             }
           ];
-
         };
       };
     };

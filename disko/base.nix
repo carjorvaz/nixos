@@ -1,4 +1,9 @@
-{ disks ? [ "/dev/sda" ], lib, ... }: {
+{
+  disks ? [ "/dev/sda" ],
+  lib,
+  ...
+}:
+{
   disko.devices = {
     disk.sda = {
       device = builtins.elemAt disks 0;
@@ -52,8 +57,7 @@
         # "com.sun:auto-snapshot" = "false"; # TODO? sanoid?
       };
 
-      postCreateHook = lib.mkDefault
-        "zfs snapshot zroot@blank"; # TODO delete after everything is migrated to zfs impermanence
+      postCreateHook = lib.mkDefault "zfs snapshot zroot@blank"; # TODO delete after everything is migrated to zfs impermanence
 
       datasets = {
         "local/nix" = {

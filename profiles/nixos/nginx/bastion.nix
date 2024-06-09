@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   imports = [ ./common.nix ];
@@ -19,8 +24,7 @@
     "jellyseerr.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass =
-        "http://commodus:${toString config.services.jellyseerr.port}";
+      locations."/".proxyPass = "http://commodus:${toString config.services.jellyseerr.port}";
     };
   };
 }

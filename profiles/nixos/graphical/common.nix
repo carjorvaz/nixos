@@ -1,11 +1,19 @@
-{ self, config, inputs, lib, pkgs, ... }:
+{
+  self,
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
   brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
   orca-slicer = pkgs.callPackage "${self}/pkgs/orca-slicer.nix" { };
   qidi-slicer = pkgs.callPackage "${self}/pkgs/qidi-slicer.nix" { };
-in {
+in
+{
   # Lowest input lag, from my experienece.
   # Other options:
   # - config.boot.zfs.package.latestCompatibleLinuxPackages;
@@ -29,8 +37,7 @@ in {
   fonts = {
     fontDir.enable = true;
     fontconfig.defaultFonts.monospace = [ "JetBrainsMono Nerd Font" ];
-    packages = with pkgs;
-      [ (nerdfonts.override { fonts = [ "JetBrainsMono" ]; }) ];
+    packages = with pkgs; [ (nerdfonts.override { fonts = [ "JetBrainsMono" ]; }) ];
   };
 
   programs = {
@@ -109,7 +116,9 @@ in {
     dconf = {
       enable = true;
       settings = {
-        "org/gnome/desktop/interface" = { color-scheme = "prefer-dark"; };
+        "org/gnome/desktop/interface" = {
+          color-scheme = "prefer-dark";
+        };
       };
     };
 
@@ -187,11 +196,8 @@ in {
             default = "Brave Search";
             engines = {
               "Brave Search" = {
-                urls = [{
-                  template = "https://search.brave.com/search?q={searchTerms}";
-                }];
-                iconUpdateURL =
-                  "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon-32x32.B2iBzfXZ.png";
+                urls = [ { template = "https://search.brave.com/search?q={searchTerms}"; } ];
+                iconUpdateURL = "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon-32x32.B2iBzfXZ.png";
                 updateInterval = 24 * 60 * 60 * 1000;
               };
 
@@ -234,8 +240,7 @@ in {
             "toolkit.telemetry.newProfilePing.enabled" = false;
             "toolkit.telemetry.shutdownPingSender.enabled" = false;
             "toolkit.telemetry.updatePing.enabled" = false;
-            "toolkit.telemetry.bhrPing.enabled" =
-              false; # Background hang reporter
+            "toolkit.telemetry.bhrPing.enabled" = false; # Background hang reporter
             "toolkit.telemetry.firstShutdownPing.enabled" = false;
 
             # Never translate Portuguese
@@ -263,23 +268,24 @@ in {
           };
 
           # https://github.com/mbnuqw/sidebery/wiki/Firefox-Styles-Snippets-(via-userChrome.css)#completely-hide-native-tabs-strip
-          userChrome = let
-            preface =
-              "[Sidebery] "; # Enable and set same preface in Sidebery settings
-          in ''
-            #main-window #titlebar {
-              overflow: hidden;
-              transition: height 0.3s 0.3s !important;
-            }
-            /* Default state: Set initial height to enable animation */
-            #main-window #titlebar { height: 3em !important; }
-            #main-window[uidensity="touch"] #titlebar { height: 3.35em !important; }
-            #main-window[uidensity="compact"] #titlebar { height: 2.7em !important; }
-            /* Hidden state: Hide native tabs strip */
-            #main-window[titlepreface*="${preface}"] #titlebar { height: 0 !important; }
-            /* Hidden state: Fix z-index of active pinned tabs */
-            #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
-          '';
+          userChrome =
+            let
+              preface = "[Sidebery] "; # Enable and set same preface in Sidebery settings
+            in
+            ''
+              #main-window #titlebar {
+                overflow: hidden;
+                transition: height 0.3s 0.3s !important;
+              }
+              /* Default state: Set initial height to enable animation */
+              #main-window #titlebar { height: 3em !important; }
+              #main-window[uidensity="touch"] #titlebar { height: 3.35em !important; }
+              #main-window[uidensity="compact"] #titlebar { height: 2.7em !important; }
+              /* Hidden state: Hide native tabs strip */
+              #main-window[titlepreface*="${preface}"] #titlebar { height: 0 !important; }
+              /* Hidden state: Fix z-index of active pinned tabs */
+              #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
+            '';
         };
       };
 
@@ -307,7 +313,9 @@ in {
 
       zathura = {
         enable = true;
-        options = { "selection-clipboard" = "clipboard"; };
+        options = {
+          "selection-clipboard" = "clipboard";
+        };
       };
     };
 

@@ -1,10 +1,17 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # Icons reference:
 # - https://github.com/walkxcode/dashboard-icons/tree/main/svg
 # - https://thehomelab.wiki/books/helpful-tools-resources/page/icons-for-self-hosted-dashboards
-let domain = "vaz.ovh";
-in {
+let
+  domain = "vaz.ovh";
+in
+{
   imports = [ ./docker.nix ];
 
   virtualisation.oci-containers.containers.homer = {

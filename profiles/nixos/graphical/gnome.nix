@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   # TODO faster "xrate"
@@ -33,54 +38,66 @@
     NIXOS_OZONE_WL = "1";
   };
 
-  home-manager.users.cjv = { lib, ... }: {
-    # Use `dconf watch /` to track stateful changes you are doing, then set them here.
-    dconf.settings = {
-      "org/gnome/desktop/input-sources" = {
-        sources = [ (lib.hm.gvariant.mkTuple [ "xkb" "us+altgr-intl" ]) ];
-        xkb-options = [ "lv3:ralt_switch" "ctrl:nocaps" ];
-      };
+  home-manager.users.cjv =
+    { lib, ... }:
+    {
+      # Use `dconf watch /` to track stateful changes you are doing, then set them here.
+      dconf.settings = {
+        "org/gnome/desktop/input-sources" = {
+          sources = [
+            (lib.hm.gvariant.mkTuple [
+              "xkb"
+              "us+altgr-intl"
+            ])
+          ];
+          xkb-options = [
+            "lv3:ralt_switch"
+            "ctrl:nocaps"
+          ];
+        };
 
-      "org/gnome/desktop/interface" = {
-        color-scheme = "prefer-dark";
-        gtk-theme = "Adwaita-dark";
-      };
+        "org/gnome/desktop/interface" = {
+          color-scheme = "prefer-dark";
+          gtk-theme = "Adwaita-dark";
+        };
 
-      "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
+        "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
 
-      "org/gnome/desktop/peripherals/touchpad" = {
-        tap-to-click = true;
-        two-finger-scrolling-enabled = true;
-      };
+        "org/gnome/desktop/peripherals/touchpad" = {
+          tap-to-click = true;
+          two-finger-scrolling-enabled = true;
+        };
 
-      # Enable fractional scaling.
-      "org/gnome/mutter" = {
-        experimental-features = [ "scale-monitor-framebuffer" ];
-      };
+        # Enable fractional scaling.
+        "org/gnome/mutter" = {
+          experimental-features = [ "scale-monitor-framebuffer" ];
+        };
 
-      "org/gnome/settings-daemon/plugins/color" = {
-        night-light-enabled = true;
-        night-light-temperature = lib.hm.gvariant.mkUint32 1700;
-        night-light-schedule-automatic = true;
-      };
+        "org/gnome/settings-daemon/plugins/color" = {
+          night-light-enabled = true;
+          night-light-temperature = lib.hm.gvariant.mkUint32 1700;
+          night-light-schedule-automatic = true;
+        };
 
-      "org/gnome/settings-daemon/plugins/power" = {
-        sleep-inactive-ac-type = "nothing";
-      };
+        "org/gnome/settings-daemon/plugins/power" = {
+          sleep-inactive-ac-type = "nothing";
+        };
 
-      "org/gnome/eog/ui" = { image-gallery = true; };
+        "org/gnome/eog/ui" = {
+          image-gallery = true;
+        };
 
-      "org/gnome/shell" = {
-        favorite-apps = [
-          "brave-browser.desktop"
-          "org.gnome.Console.desktop"
-          "org.gnome.Nautilus.desktop"
-          "emacs.desktop"
-          "org.gnome.Geary.desktop"
-          "Mattermost.desktop"
-          "com.nextcloud.desktopclient.nextcloud.desktop"
-        ];
+        "org/gnome/shell" = {
+          favorite-apps = [
+            "brave-browser.desktop"
+            "org.gnome.Console.desktop"
+            "org.gnome.Nautilus.desktop"
+            "emacs.desktop"
+            "org.gnome.Geary.desktop"
+            "Mattermost.desktop"
+            "com.nextcloud.desktopclient.nextcloud.desktop"
+          ];
+        };
       };
     };
-  };
 }

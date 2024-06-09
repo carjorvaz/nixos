@@ -1,9 +1,16 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 with lib;
 
-let cfg = config.cjv.zfsRemoteUnlock;
-in {
+let
+  cfg = config.cjv.zfsRemoteUnlock;
+in
+{
   options = {
     cjv.zfsRemoteUnlock = {
       enable = mkEnableOption (lib.mdDoc "Encrypted ZFS pool remote unlock");
