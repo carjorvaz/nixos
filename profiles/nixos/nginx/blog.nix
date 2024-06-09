@@ -32,6 +32,12 @@
       enableACME = true;
       root = "/var/www/carlosvaz.pt/";
     };
+
+    "mafaldaribeiro.pt" = {
+      forceSSL = true;
+      enableACME = true;
+      globalRedirect = "mafaldaribeiro.com";
+    };
   };
 
   environment.persistence."/persist".directories = [ "/var/www" ];
