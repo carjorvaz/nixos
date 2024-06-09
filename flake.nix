@@ -20,7 +20,7 @@
 
     impermanence.url = "github:nix-community/impermanence/master";
 
-    simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-23.11";
+    simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-24.05";
   };
 
   outputs =
