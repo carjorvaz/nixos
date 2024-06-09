@@ -99,8 +99,11 @@
   # Enable the use of apropos(1).
   documentation.man.generateCaches = true;
 
-  # No mutable users by default
-  users.mutableUsers = lib.mkDefault false;
+  users = {
+    mutableUsers = lib.mkDefault false;
+
+    users.root.hashedPassword = lib.mkDefault "$y$j9T$uuLxhbxqtdSRCjsxgbA2E/$8Y5cHKjUeQTHedJCg1EvX0xoAgML3K9t.XQGQushguD";
+  };
 
   # Following section copied from: https://github.com/numtide/srvos/
   systemd = {
