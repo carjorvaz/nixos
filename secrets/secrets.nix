@@ -15,11 +15,6 @@ let
   users = [ commodusUser ];
 in
 {
-  "cjvHashedPassword.age".publicKeys = [
-    commodusSystem
-    commodusUser
-    trajanusSystem
-  ];
   "mailCarlosHashedPassword.age".publicKeys = [
     hadrianusSystem
     commodusUser
