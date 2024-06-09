@@ -32,6 +32,13 @@
             inputs.agenix.nixosModules.age
             inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
+            inputs.nix-index-database.nixosModules.nix-index
+            {
+              programs = {
+                command-not-found.enable = false;
+                nix-index-database.comma.enable = true;
+              };
+            }
           ];
 
           desktopModules = [
@@ -39,14 +46,6 @@
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
-            }
-
-            inputs.nix-index-database.nixosModules.nix-index
-            {
-              programs = {
-                command-not-found.enable = false;
-                nix-index-database.comma.enable = true;
-              };
             }
           ];
         in
