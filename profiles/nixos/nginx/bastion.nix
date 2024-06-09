@@ -12,19 +12,19 @@
     "cloud.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://commodus:80";
+      locations."/".proxyPass = "http://aurelius:80";
     };
 
     "jellyfin.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://commodus:8096";
+      locations."/".proxyPass = "http://aurelius:8096";
     };
 
     "jellyseerr.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://commodus:${toString config.services.jellyseerr.port}";
+      locations."/".proxyPass = "http://aurelius:${toString config.services.jellyseerr.port}";
     };
   };
 }
