@@ -1,7 +1,14 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
-let domain = "jellyfin.vaz.ovh";
-in {
+let
+  domain = "jellyfin.vaz.ovh";
+in
+{
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
@@ -17,7 +24,10 @@ in {
 
   users.users.media = {
     isNormalUser = true;
-    extraGroups = [ "render" "video" ]; # Required for hardware transcoding.
+    extraGroups = [
+      "render"
+      "video"
+    ]; # Required for hardware transcoding.
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];

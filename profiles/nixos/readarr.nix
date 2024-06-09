@@ -1,7 +1,14 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
-let domain = "readarr.vaz.ovh";
-in {
+let
+  domain = "readarr.vaz.ovh";
+in
+{
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;

@@ -1,4 +1,10 @@
-{ self, config, lib, pkgs, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   imports = [ "${self}/profiles/home/zsh.nix" ];
@@ -11,8 +17,7 @@
       createHome = true;
       description = "Carlos Vaz";
       extraGroups = [ "wheel" ];
-      hashedPasswordFile =
-        lib.mkDefault config.age.secrets.cjvHashedPassword.path;
+      hashedPasswordFile = lib.mkDefault config.age.secrets.cjvHashedPassword.path;
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus"
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBK2AsWCLGKxGjkXbIUD8lIV0+48qJFNV9h7FfLLx16f cjv@trajanus"
@@ -22,8 +27,7 @@
       ];
     };
 
-    root.hashedPasswordFile =
-      lib.mkDefault config.age.secrets.cjvHashedPassword.path;
+    root.hashedPasswordFile = lib.mkDefault config.age.secrets.cjvHashedPassword.path;
   };
 
   home-manager.users.cjv.home.stateVersion = "23.11";

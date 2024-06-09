@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   imports = [ ./common.nix ];
@@ -9,8 +14,7 @@
       dmenu = super.dmenu.overrideAttrs (oldAttrs: rec {
         patches = [ ./suckless/patches/dmenu-qalc-5.2.diff ];
 
-        configFile = super.writeText "config.h"
-          (builtins.readFile ./suckless/dmenu-5.3-config.h);
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dmenu-5.3-config.h);
         postPatch = ''
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
@@ -25,8 +29,7 @@
           })
         ];
 
-        configFile = super.writeText "config.h"
-          (builtins.readFile ./suckless/dwm-6.5-config.h);
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dwm-6.5-config.h);
         postPatch = ''
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
@@ -40,25 +43,21 @@
           })
         ];
 
-        configFile = super.writeText "config.h"
-          (builtins.readFile ./suckless/slock-1.5-config.h);
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/slock-1.5-config.h);
         postPatch = ''
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
-
       });
 
       st = super.st.overrideAttrs (oldAttrs: rec {
         patches = [
           (pkgs.fetchpatch {
-            url =
-              "https://st.suckless.org/patches/anysize/st-expected-anysize-0.9.diff";
+            url = "https://st.suckless.org/patches/anysize/st-expected-anysize-0.9.diff";
             sha256 = "sha256-q21HEZoTiVb+IIpjqYPa9idVyYlbG9RF3LD6yKW4muo=";
           })
         ];
 
-        configFile = super.writeText "config.h"
-          (builtins.readFile ./suckless/st-0.9.2-config.h);
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/st-0.9.2-config.h);
         postPatch = ''
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
@@ -81,7 +80,12 @@
     };
   };
 
-  environment.systemPackages = with pkgs; [ bemoji dmenu st stalonetray ];
+  environment.systemPackages = with pkgs; [
+    bemoji
+    dmenu
+    st
+    stalonetray
+  ];
 
   programs = {
     slock.enable = true;

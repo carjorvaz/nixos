@@ -1,4 +1,11 @@
-{ self, config, lib, pkgs, inputs, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  inputs,
+  ...
+}:
 
 {
   imports = [
@@ -19,7 +26,10 @@
   environment.persistence."/persist" = {
     hideMounts = true;
     files = [ "/etc/machine-id" ];
-    directories = [ "/var/db/sudo/lectured" "/var/log/journal" ];
+    directories = [
+      "/var/db/sudo/lectured"
+      "/var/log/journal"
+    ];
   };
 
   environment.systemPackages = with pkgs; [
@@ -42,7 +52,10 @@
     optimise.automatic = true;
     settings = {
       auto-optimise-store = true;
-      experimental-features = [ "nix-command" "flakes" ];
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
     };
 
     registry = lib.mkDefault {
@@ -63,9 +76,7 @@
     config.allowUnfree = true;
 
     overlays = [
-      (self: super: {
-        unstable = inputs.nixpkgs-unstable.legacyPackages.${super.system};
-      })
+      (self: super: { unstable = inputs.nixpkgs-unstable.legacyPackages.${super.system}; })
     ];
   };
 

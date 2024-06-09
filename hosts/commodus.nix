@@ -1,4 +1,11 @@
-{ self, config, lib, pkgs, modulesPath, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 
 {
   imports = [
@@ -41,7 +48,12 @@
     "${self}/profiles/home/zsh.nix"
   ];
 
-  boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" ];
+  boot.initrd.availableKernelModules = [
+    "xhci_pci"
+    "ahci"
+    "nvme"
+    "usbhid"
+  ];
 
   networking = {
     useDHCP = false;
@@ -55,10 +67,12 @@
       useDHCP = false;
       wakeOnLan.enable = true; # Requires enabling WoL in BIOS
 
-      ipv4.addresses = [{
-        address = "192.168.1.1";
-        prefixLength = 24;
-      }];
+      ipv4.addresses = [
+        {
+          address = "192.168.1.1";
+          prefixLength = 24;
+        }
+      ];
     };
 
     defaultGateway = "192.168.1.254";

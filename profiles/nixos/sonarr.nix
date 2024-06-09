@@ -1,7 +1,14 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
-let domain = "sonarr.vaz.ovh";
-in {
+let
+  domain = "sonarr.vaz.ovh";
+in
+{
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;

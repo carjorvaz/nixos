@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   # Enable network scanning.
@@ -12,5 +17,8 @@
     extraBackends = [ pkgs.sane-airscan ];
   };
 
-  users.users.cjv.extraGroups = [ "scanner" "lp" ];
+  users.users.cjv.extraGroups = [
+    "scanner"
+    "lp"
+  ];
 }

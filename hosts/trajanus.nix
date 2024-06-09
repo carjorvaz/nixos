@@ -1,4 +1,11 @@
-{ self, config, lib, pkgs, modulesPath, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 
 {
   imports = [
@@ -27,8 +34,13 @@
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
-  boot.initrd.availableKernelModules =
-    [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sdhci_pci" ];
+  boot.initrd.availableKernelModules = [
+    "xhci_pci"
+    "ahci"
+    "usb_storage"
+    "sd_mod"
+    "sdhci_pci"
+  ];
 
   # Scale of 100% is 96 dpi, steps of 12 are prefered
   services.xserver.dpi = 108;

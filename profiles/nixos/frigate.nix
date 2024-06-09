@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # STATE:
 # - h264 (h264+ disabled on Hikvision; Smart Codec disabled on Dahua)
@@ -21,8 +26,10 @@
 #   - Default gateway: 192.168.1.254
 #   - DNS Servers: 1.1.1.1, 1.0.0.1
 
-let domain = "frigate.vaz.ovh";
-in {
+let
+  domain = "frigate.vaz.ovh";
+in
+{
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
@@ -40,13 +47,11 @@ in {
             ffmpeg = {
               inputs = [
                 {
-                  path =
-                    "rtsp://admin:Unkempt-Distinct@192.168.1.11:554/cam/realmonitor?channel=1&subtype=0";
+                  path = "rtsp://admin:Unkempt-Distinct@192.168.1.11:554/cam/realmonitor?channel=1&subtype=0";
                   roles = [ "record" ];
                 }
                 {
-                  path =
-                    "rtsp://admin:Unkempt-Distinct@192.168.1.11:554/cam/realmonitor?channel=1&subtype=1";
+                  path = "rtsp://admin:Unkempt-Distinct@192.168.1.11:554/cam/realmonitor?channel=1&subtype=1";
                   roles = [ "detect" ];
                 }
               ];
@@ -66,13 +71,11 @@ in {
             ffmpeg = {
               inputs = [
                 {
-                  path =
-                    "rtsp://admin:Unkempt-Distinct@192.168.1.12:554/Streaming/channels/101";
+                  path = "rtsp://admin:Unkempt-Distinct@192.168.1.12:554/Streaming/channels/101";
                   roles = [ "record" ];
                 }
                 {
-                  path =
-                    "rtsp://admin:Unkempt-Distinct@192.168.1.12:554/Streaming/channels/102";
+                  path = "rtsp://admin:Unkempt-Distinct@192.168.1.12:554/Streaming/channels/102";
                   roles = [ "detect" ];
                 }
               ];
@@ -104,6 +107,5 @@ in {
     };
   };
 
-  environment.persistence."/persist".directories =
-    [ "/var/lib/frigate" ];
+  environment.persistence."/persist".directories = [ "/var/lib/frigate" ];
 }

@@ -1,4 +1,5 @@
-{ lib, ... }: {
+{ lib, ... }:
+{
   disko.devices.zpool.zroot = {
     rootFsOptions = {
       encryption = "aes-256-gcm";
