@@ -99,6 +99,16 @@
             ];
           };
 
+          nerva = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules = baseModules ++ [
+              ./hosts/nerva.nix
+            ];
+          };
+
           t440 = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
