@@ -21,16 +21,16 @@
       globalRedirect = "carlosvaz.pt";
     };
 
+    "carlosvaz.pt" = {
+      forceSSL = true;
+      enableACME = true;
+      globalRedirect = "carjorvaz.com";
+    };
+
     "carjorvaz.com" = {
       forceSSL = true;
       enableACME = true;
       root = "/var/www/carjorvaz.com/";
-    };
-
-    "carlosvaz.pt" = {
-      forceSSL = true;
-      enableACME = true;
-      root = "/var/www/carlosvaz.pt/";
     };
 
     "mafaldaribeiro.pt" = {
