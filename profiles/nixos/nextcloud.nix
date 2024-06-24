@@ -65,6 +65,8 @@ in
       overwriteprotocol = "https";
       trusted_domains = [ "https://${domain}/" ];
       trusted_proxies = [ "100.103.78.39" ];
+      mail_smtpmode = "sendmail";
+      mail_sendmailmode = "pipe";
     };
 
     config = {
