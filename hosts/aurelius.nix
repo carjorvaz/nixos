@@ -31,6 +31,7 @@
     "${self}/profiles/nixos/homer.nix"
     "${self}/profiles/nixos/jellyfin.nix"
     "${self}/profiles/nixos/jellyseerr.nix"
+    "${self}/profiles/nixos/msmtp.nix"
     "${self}/profiles/nixos/nextcloud.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/prowlarr.nix"
