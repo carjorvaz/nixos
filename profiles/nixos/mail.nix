@@ -7,8 +7,8 @@
 
 {
   age.secrets.mailCarlosHashedPassword.file = "${self}/secrets/mailCarlosHashedPassword.age";
-
   age.secrets.mailMafaldaHashedPassword.file = "${self}/secrets/mailMafaldaHashedPassword.age";
+  age.secrets.mailAureliusHashedPassword.file = "${self}/secrets/mailAureliusHashedPassword.age";
 
   imports = [
     inputs.simple-nixos-mailserver.nixosModule
@@ -41,7 +41,6 @@
             # Aliases starting with @ are catchall aliases
             aliases = [
               "@vaz.one"
-              "@vaz.ovh"
               "@carjorvaz.com"
               "@carlosvaz.net"
               "@carlosvaz.pt"
@@ -58,6 +57,10 @@
               "@mafaldaribeiro.com"
               "@mafaldaribeiro.pt"
             ];
+          };
+
+          "aurelius@vaz.ovh" = {
+            hashedPasswordFile = config.age.secrets.mailAureliusHashedPassword.path;
           };
         };
 
