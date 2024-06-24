@@ -34,6 +34,7 @@
     "${self}/profiles/nixos/msmtp.nix"
     "${self}/profiles/nixos/nextcloud.nix"
     "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/plausible.nix"
     "${self}/profiles/nixos/prowlarr.nix"
     "${self}/profiles/nixos/radarr.nix"
     "${self}/profiles/nixos/readarr.nix"
