@@ -10,8 +10,6 @@
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
   brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
-  orca-slicer = pkgs.callPackage "${self}/pkgs/orca-slicer.nix" { };
-  qidi-slicer = pkgs.callPackage "${self}/pkgs/qidi-slicer.nix" { };
 in
 {
   # Lowest input lag, from my experienece.
@@ -408,7 +406,6 @@ in
     nyxt
     ungoogled-chromium
     orca-slicer
-    qidi-slicer
     signal-desktop
     stremio
 
