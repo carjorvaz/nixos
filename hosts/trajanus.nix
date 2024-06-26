@@ -43,7 +43,7 @@
   ];
 
   # Scale of 100% is 96 dpi, steps of 12 are prefered
-  services.xserver.dpi = 108;
+  services.xserver.dpi = 120;
 
   networking = {
     # Let iwd handle DHCP for Wi-Fi
