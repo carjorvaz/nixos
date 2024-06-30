@@ -56,19 +56,8 @@
     hostId = "d7ba56e3";
   };
 
-  services = {
-    # Reference for i7-8650U: https://kitsunyan.github.io/blog/ulv-adjusting.html
-    undervolt = {
-      enable = true;
-      coreOffset = -90;
-      uncoreOffset = -80;
-      gpuOffset = -80;
-      analogioOffset = -90;
-    };
-
-    # Only keep enabled on intel laptops
-    thermald.enable = true;
-  };
+  # Only keep enabled on intel laptops
+  services.thermald.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
