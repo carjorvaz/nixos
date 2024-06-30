@@ -417,6 +417,7 @@ in
     # - dictionaries
     betterbird
 
+    racket
     sbcl
     rlwrap
     python3
