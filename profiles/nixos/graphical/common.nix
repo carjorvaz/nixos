@@ -417,7 +417,6 @@ in
     # - dictionaries
     betterbird
 
-    coq # TODO delete after LP
     sbcl
     rlwrap
     python3
