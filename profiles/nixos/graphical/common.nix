@@ -206,6 +206,11 @@ in
                 definedAliases = [ "!nix" ];
                 urls = [ { template = "https://wiki.nixos.org/w/index.php?search={searchTerms}"; } ];
               };
+
+              "Home Manager - Options Search" = {
+                definedAliases = [ "!hm" ];
+                urls = [ { template = "https://home-manager-options.extranix.com/?query={searchTerms}"; } ];
+              };
             };
           };
 
