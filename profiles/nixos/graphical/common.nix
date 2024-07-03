@@ -195,11 +195,17 @@ in
             engines = {
               "Brave Search" = {
                 urls = [ { template = "https://search.brave.com/search?q={searchTerms}"; } ];
-                iconUpdateURL = "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon-32x32.B2iBzfXZ.png";
-                updateInterval = 24 * 60 * 60 * 1000;
               };
 
-              "Google".metaData.hidden = true;
+              "Nix Options" = {
+                definedAliases = [ "!nixopt" ];
+                urls = [ { template = "https://search.nixos.org/options?query={searchTerms}"; } ];
+              };
+
+              "Nix Wiki" = {
+                definedAliases = [ "!nix" ];
+                urls = [ { template = "https://wiki.nixos.org/w/index.php?search={searchTerms}"; } ];
+              };
             };
           };
 
