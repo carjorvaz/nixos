@@ -49,8 +49,16 @@ in
 
   environment.persistence."/persist".directories = [
     {
+      directory = "/var/lib/clickhouse";
+      mode = "0750";
+      user = "clickhouse";
+      group = "clickhouse";
+    }
+    {
       directory = "/var/lib/private/plausible";
-      mode = "0700";
+      mode = "0750";
+      user = "plausible";
+      group = "plausible";
     }
     # "/var/lib/postgresql" # Already persisted by nextcloud
   ];
