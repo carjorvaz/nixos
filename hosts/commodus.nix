@@ -13,7 +13,7 @@
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
-    "${self}/profiles/nixos/gpu/amd.nix"
+    "${self}/profiles/nixos/gpu/nvidia.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up
     "${self}/profiles/nixos/zfs/common.nix"
@@ -22,7 +22,7 @@
     "${self}/profiles/nixos/adb.nix"
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/dwm.nix"
+    "${self}/profiles/nixos/graphical/i3.nix"
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/scanning.nix"
@@ -62,6 +62,9 @@
 
   # Scale of 100% is 96 dpi, steps of 12 are prefered
   services.xserver.dpi = 108;
+  services.xserver.displayManager.setupCommands = ''
+    ${pkgs.xorg.xrandr}/bin/xrandr --output DVI-D-0 --mode 1920x1080 --rate 144
+  '';
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
