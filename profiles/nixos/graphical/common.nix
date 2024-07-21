@@ -22,6 +22,64 @@ in
   # Improve desktop responsiveness when updating the system.
   nix.daemonCPUSchedPolicy = "idle";
 
+  # Suckless software overlays
+  nixpkgs.overlays = [
+    # TODO all very similar, abstract with a function?
+    (self: super: {
+      dmenu = super.dmenu.overrideAttrs (oldAttrs: rec {
+        patches = [ ./suckless/patches/dmenu-qalc-5.2.diff ];
+
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dmenu-5.3-config.h);
+        postPatch = ''
+          ${oldAttrs.postPatch}
+          cp ${configFile} config.h'';
+      });
+
+      dwm = super.dwm.overrideAttrs (oldAttrs: rec {
+        patches = [
+          # Move cursor to focused window/screen
+          (pkgs.fetchpatch {
+            url = "https://dwm.suckless.org/patches/warp/dwm-warp-6.4.diff";
+            sha256 = "sha256-8z41ld47/2WHNJi8JKQNw76umCtD01OUQKSr/fehfLw=";
+          })
+        ];
+
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dwm-6.5-config.h);
+        postPatch = ''
+          ${oldAttrs.postPatch}
+          cp ${configFile} config.h'';
+      });
+
+      slock = super.slock.overrideAttrs (oldAttrs: rec {
+        patches = [
+          (pkgs.fetchpatch {
+            url = "https://tools.suckless.org/slock/patches/dpms/slock-dpms-1.4.diff";
+            sha256 = "sha256-hfe71OTpDbqOKhu/LY8gDMX6/c07B4sZ+mSLsbG6qtg=";
+          })
+        ];
+
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/slock-1.5-config.h);
+        postPatch = ''
+          ${oldAttrs.postPatch}
+          cp ${configFile} config.h'';
+      });
+
+      st = super.st.overrideAttrs (oldAttrs: rec {
+        patches = [
+          (pkgs.fetchpatch {
+            url = "https://st.suckless.org/patches/anysize/st-expected-anysize-0.9.diff";
+            sha256 = "sha256-q21HEZoTiVb+IIpjqYPa9idVyYlbG9RF3LD6yKW4muo=";
+          })
+        ];
+
+        configFile = super.writeText "config.h" (builtins.readFile ./suckless/st-0.9.2-config.h);
+        postPatch = ''
+          ${oldAttrs.postPatch}
+          cp ${configFile} config.h'';
+      });
+    })
+  ];
+
   # Pipewire
   hardware.pulseaudio.enable = false;
   security.rtkit.enable = true;
@@ -80,16 +138,10 @@ in
       displayManager = {
         gdm.autoSuspend = false;
 
-        lightdm = {
+        lightdm = lib.mkDefault {
           enable = true;
           background = ./wallpaper.jpg;
         };
-
-        # Disable screen blanking.
-        # Reference: https://wiki.archlinux.org/title/Display_Power_Management_Signaling#Runtime_settings
-        setupCommands = ''
-          /run/current-system/sw/bin/xset s off
-        '';
       };
     };
   };
@@ -120,7 +172,7 @@ in
       };
     };
 
-    gtk = {
+    gtk = lib.mkDefault {
       enable = true;
 
       theme = {
@@ -135,16 +187,34 @@ in
       };
     };
 
-    # qt = {
-    #   enable = true;
-    #   platformTheme = "gnome";
-    #   style = {
-    #     name = "adwaita-dark";
-    #     package = pkgs.adwaita-qt;
-    #   };
-    # };
-
     programs = {
+
+      i3status-rust = {
+        bars.top = {
+          icons = "material-nf";
+          theme = "plain";
+          blocks = [
+            {
+              block = "sound";
+              max_vol = 100;
+              headphones_indicator = true;
+              device_kind = "sink";
+              click = [
+                {
+                  button = "left";
+                  cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+                }
+              ];
+            }
+            {
+              block = "time";
+              interval = 5;
+              format = " $timestamp.datetime(f:'%a %d/%m %R')";
+            }
+          ];
+        };
+      };
+
       # STATE:
       # - account containers (gmail, im, uni)
       firefox = {
