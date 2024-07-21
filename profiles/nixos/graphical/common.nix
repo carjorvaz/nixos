@@ -138,8 +138,8 @@ in
       displayManager = {
         gdm.autoSuspend = false;
 
-        lightdm = lib.mkDefault {
-          enable = true;
+        lightdm = {
+          enable = lib.mkDefault true;
           background = ./wallpaper.jpg;
         };
       };
