@@ -6,6 +6,9 @@
 }:
 
 {
+  nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.nvidia.acceptLicense = true;
+
   # Make sure opengl is enabled
   hardware.opengl = {
     enable = true;
@@ -39,8 +42,10 @@
     # accessible via `nvidia-settings`.
     nvidiaSettings = true;
 
+    # TODO module; option "stable" or "470"
     # Optionally, you may need to select the appropriate driver version for your specific GPU.
-    package = config.boot.kernelPackages.nvidiaPackages.stable;
+    #package = config.boot.kernelPackages.nvidiaPackages.stable;
+    package = config.boot.kernelPackages.nvidiaPackages.legacy_470;
   };
 
   virtualisation.docker.enableNvidia = true;
