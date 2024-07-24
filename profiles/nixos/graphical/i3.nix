@@ -43,7 +43,7 @@
         modifier = "Mod4";
         terminal = "st";
 
-        defaultWorkspace = "1";
+        defaultWorkspace = "workspace number 1";
 
         # Find out class with xprop
         assigns = {
