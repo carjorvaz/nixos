@@ -119,7 +119,7 @@
             "${modifier}+Shift+c" = "reload";
 
             "${modifier}+Return" = "exec ${config.home-manager.users.cjv.xsession.windowManager.i3.config.terminal}";
-            "${modifier}+Escape" = "exec slock";
+            "--release ${modifier}+Escape" = "exec loginctl lock-session";
 
             # Rofi
             "${modifier}+d" = "exec rofi -modes combi -show combi";
