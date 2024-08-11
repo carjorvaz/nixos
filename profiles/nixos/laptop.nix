@@ -16,8 +16,11 @@
   };
 
   home-manager.users.cjv = {
-    programs.i3status-rust.bars.top.blocks = [
-      { block = "battery"; }
+    programs.i3status-rust.bars.top.blocks = lib.mkForce [
+      {
+        block = "battery";
+        format = " $icon $percentage ($power) ($time remaining) ";
+      }
       {
         block = "sound";
         max_vol = 100;
