@@ -26,7 +26,7 @@
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/i3.nix"
+    "${self}/profiles/nixos/graphical/sway.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
 
@@ -41,9 +41,6 @@
     "sd_mod"
     "sdhci_pci"
   ];
-
-  # Scale of 100% is 96 dpi, steps of 12 are prefered
-  services.xserver.dpi = 120;
 
   networking = {
     # Let iwd handle DHCP for Wi-Fi
