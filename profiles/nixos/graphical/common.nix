@@ -399,7 +399,7 @@ in
     services = {
       dunst.enable = true;
 
-      flameshot.enable = true;
+      flameshot.enable = lib.mkDefault true;
 
       gnome-keyring = {
         enable = true;
@@ -412,7 +412,7 @@ in
       };
 
       redshift = {
-        enable = true;
+        enable = lib.mkDefault true;
         tray = true;
         latitude = 38.7;
         longitude = -9.14;
