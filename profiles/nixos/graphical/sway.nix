@@ -102,6 +102,8 @@ in
         modifier = "Mod4";
         terminal = "foot";
 
+        defaultWorkspace = "workspace number 1";
+
         input = {
           "type:keyboard" = {
             xkb_layout = "us";
