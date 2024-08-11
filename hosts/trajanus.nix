@@ -10,7 +10,6 @@
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    "${self}/profiles/nixos/hardware/panasonic.nix"
 
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/bluetooth.nix"
@@ -46,15 +45,22 @@
     # Let iwd handle DHCP for Wi-Fi
     useDHCP = false;
 
-    # But use dhcpcd for ethernet
-    interfaces.enp0s31f6.useDHCP = true;
-
     hostName = "trajanus";
     hostId = "d7ba56e3";
   };
 
   # Only keep enabled on intel laptops
   services.thermald.enable = true;
+
+  # Undervolting the i7-8650U
+  # https://kitsunyan.github.io/blog/ulv-adjusting.html
+  services.undervolt = {
+    enable = true;
+    coreOffset = -90;
+    uncoreOffset = -90;
+    gpuOffset = -90;
+    analogioOffset = -100;
+  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
