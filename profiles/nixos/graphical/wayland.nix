@@ -69,6 +69,9 @@
     };
 
     services = {
+      flameshot.enable = false;
+      redshift.enable = false;
+
       gammastep = {
         enable = true;
         tray = true;
