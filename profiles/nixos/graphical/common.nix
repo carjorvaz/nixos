@@ -467,7 +467,6 @@ in
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
     (discord.override { withOpenASAR = true; }) # Disable if on aarch64
-    webcord # Cleaner and available in aarch64
     firefox
     foliate
     libreoffice-fresh
