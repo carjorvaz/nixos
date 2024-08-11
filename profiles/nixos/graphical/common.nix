@@ -153,10 +153,8 @@ in
 
       # STATE: Auto-fill > Default URI match detection > Host
       "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
-      "fhnegjjodccfaliddboelcleikbmapik" # Chrome Tab Counter
       "mdjildafknihdffpkfmmpnpoiajfjnjd" # Consent-O-Matic
       "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
-      "dmhgdnbkjkejeddddlklojinngaideac" # Nudgeware
       "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
       "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
     ];
