@@ -176,7 +176,6 @@ in
       extraConfig = ''
         exec ${dbus-sway-environment}/bin/dbus-sway-environment
         exec ${configure-gtk}/bin/configure-gtk
-        exec ${pkgs.nextcloud-client}/bin/nextcloud
       '';
 
       extraSessionCommands = ''
