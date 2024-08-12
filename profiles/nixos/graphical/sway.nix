@@ -104,6 +104,14 @@ in
 
         defaultWorkspace = "workspace number 1";
 
+        # Find name with: swaymsg -t get_tree
+        assigns = {
+          "2" = [ { app_id = "emacs"; } ];
+          "7" = [ { app_id = "betterbird"; } ];
+          "8" = [ { app_id = "signal"; } ];
+          "9" = [ { app_id = "discord"; } ];
+        };
+
         input = {
           "type:keyboard" = {
             xkb_layout = "us";
