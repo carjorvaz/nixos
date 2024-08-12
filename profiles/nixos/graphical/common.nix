@@ -463,6 +463,10 @@ in
     #   - Bitwarden
     #   - Dark Reader
     #   - Tab Counter
+    # - Search Engine shortcuts (Site Search):
+    #   - !hm Home Manager Options Search https://home-manager-options.extranix.com/?query=%s
+    #   - !nix (Official) NixOS Wiki https://wiki.nixos.org/w/index.php?search=%s
+    #   - !nixopt NixOS options https://search.nixos.org/options?query=%s
     brave # Disable if on aarch64
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
