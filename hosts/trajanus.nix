@@ -56,10 +56,10 @@
   # https://kitsunyan.github.io/blog/ulv-adjusting.html
   services.undervolt = {
     enable = true;
-    coreOffset = -90;
-    uncoreOffset = -90;
-    gpuOffset = -90;
-    analogioOffset = -100;
+    coreOffset = -80;
+    uncoreOffset = -80;
+    gpuOffset = -80;
+    analogioOffset = -80;
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
