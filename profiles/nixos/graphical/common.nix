@@ -310,6 +310,7 @@ in
             # Disable Telemetry
             "datareporting.healthreport.uploadEnabled" = false;
             "datareporting.policy.dataSubmissionEnabled" = false;
+            "dom.private-attribution.submission.enabled" = false;
             "toolkit.telemetry.unified" = false;
             "toolkit.telemetry.enabled" = false;
             "toolkit.telemetry.server" = "data:,"; # Disables telemetry server
