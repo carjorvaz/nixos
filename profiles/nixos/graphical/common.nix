@@ -160,6 +160,12 @@ in
     ];
   };
 
+  qt = lib.mkDefault {
+    enable = true;
+    platformTheme = "qt5ct";
+    style = "breeze";
+  };
+
   home-manager.users.cjv = {
     dconf = {
       enable = true;
@@ -501,14 +507,21 @@ in
     # - dictionaries
     betterbird
 
+    gnome.nautilus
+    gnome.seahorse
+
+    libsForQt5.breeze-icons
+    kdePackages.qtsvg
+    dolphin
+
     racket
     sbcl
     rlwrap
     python3
     yt-dlp
 
-    gnome.nautilus
-    gnome.seahorse
+    kubectl
+    unstable.talosctl
 
     bashmount
     glib # gsettings
