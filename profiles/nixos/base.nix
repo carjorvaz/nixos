@@ -73,7 +73,16 @@
   environment.etc."channels/nixpkgs".source = inputs.nixpkgs.outPath;
 
   nixpkgs = {
-    config.allowUnfree = true;
+    config.allowUnfreePredicate =
+      pkg:
+      builtins.elem (lib.getName pkg) [
+        "discord"
+        "nvidia-persistenced"
+        "nvidia-settings"
+        "nvidia-x11"
+        "vscode"
+        "vscode-extension-github-copilot"
+      ];
 
     overlays = [
       (self: super: { unstable = inputs.nixpkgs-unstable.legacyPackages.${super.system}; })

@@ -6,7 +6,6 @@
 }:
 
 {
-  nixpkgs.config.allowUnfree = true;
   nixpkgs.config.nvidia.acceptLicense = true;
 
   # Make sure opengl is enabled
