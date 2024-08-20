@@ -21,6 +21,7 @@ in
       user = "media";
       openFirewall = true;
       openPeerPorts = true;
+      webHome = pkgs.flood-for-transmission;
       # Reference: https://github.com/transmission/transmission/blob/main/docs/Editing-Configuration-Files.md
       settings = {
         download-dir = "/persist/media/downloads";
