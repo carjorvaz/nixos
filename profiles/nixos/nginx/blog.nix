@@ -9,28 +9,34 @@
   imports = [ ./common.nix ];
 
   services.nginx.virtualHosts = {
+    "carjorvaz.com" = {
+      forceSSL = true;
+      enableACME = true;
+      globalRedirect = "carlosvaz.com";
+    };
+
     "carlosvaz.net" = {
       forceSSL = true;
       enableACME = true;
-      globalRedirect = "carjorvaz.com";
+      globalRedirect = "carlosvaz.com";
+    };
+
+    "carlosvaz.pt" = {
+      forceSSL = true;
+      enableACME = true;
+      globalRedirect = "carlosvaz.com";
+    };
+
+    "carlosvaz.com" = {
+      forceSSL = true;
+      enableACME = true;
+      root = "/var/www/carlosvaz.com/";
     };
 
     "cjv.pt" = {
       forceSSL = true;
       enableACME = true;
       globalRedirect = "carlosvaz.pt";
-    };
-
-    "carlosvaz.pt" = {
-      forceSSL = true;
-      enableACME = true;
-      globalRedirect = "carjorvaz.com";
-    };
-
-    "carjorvaz.com" = {
-      forceSSL = true;
-      enableACME = true;
-      root = "/var/www/carjorvaz.com/";
     };
 
     "mafaldaribeiro.pt" = {
