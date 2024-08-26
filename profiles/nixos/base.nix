@@ -28,6 +28,7 @@
     files = [ "/etc/machine-id" ];
     directories = [
       "/var/db/sudo/lectured"
+      "/var/lib/nixos"
       "/var/log/journal"
     ];
   };
