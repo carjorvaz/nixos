@@ -534,5 +534,6 @@ in
     xclip
     xlayoutdisplay
     zathura
+    zoom-us
   ];
 }
