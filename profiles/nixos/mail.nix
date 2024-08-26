@@ -21,6 +21,7 @@
           "vaz.one"
           "vaz.ovh"
           "carjorvaz.com"
+          "carlosvaz.com"
           "carlosvaz.net"
           "carlosvaz.pt"
           "cjv.pt"
@@ -42,6 +43,7 @@
             aliases = [
               "@vaz.one"
               "@carjorvaz.com"
+              "@carlosvaz.com"
               "@carlosvaz.net"
               "@carlosvaz.pt"
               "@cjv.pt"
