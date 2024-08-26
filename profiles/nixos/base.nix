@@ -83,6 +83,7 @@
         "nvidia-x11"
         "vscode"
         "vscode-extension-github-copilot"
+        "zoom"
       ];
 
     overlays = [
