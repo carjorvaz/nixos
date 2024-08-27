@@ -78,7 +78,7 @@
               ++ desktopModules
               ++ [
                 ./hosts/commodus.nix
-                ./disko/base.nix
+                ./disko/baseOld.nix
                 ./disko/desktop.nix
                 ./disko/tmpfs.nix
                 { _module.args.disks = [ "/dev/nvme0n1" ]; }
@@ -92,7 +92,7 @@
             };
             modules = baseModules ++ [
               ./hosts/hadrianus.nix
-              ./disko/base.nix
+              ./disko/baseOld.nix
               ./disko/encryption.nix
               ./disko/zfsImpermanence.nix
               { _module.args.disks = [ "/dev/sda" ]; }
@@ -104,9 +104,7 @@
             specialArgs = {
               inherit inputs self;
             };
-            modules = baseModules ++ [
-              ./hosts/nerva.nix
-            ];
+            modules = baseModules ++ [ ./hosts/nerva.nix ];
           };
 
           t440 = inputs.nixpkgs.lib.nixosSystem {
@@ -116,7 +114,7 @@
             };
             modules = baseModules ++ [
               ./hosts/t440.nix
-              ./disko/base.nix
+              ./disko/baseOld.nix
               ./disko/tmpfs.nix
               { _module.args.disks = [ "/dev/sda" ]; }
             ];
@@ -136,7 +134,7 @@
                 ./disko/desktop.nix
                 ./disko/encryption.nix
                 ./disko/zfsImpermanence.nix
-                { _module.args.disks = [ "/dev/sda" ]; }
+                { _module.args.disks = [ "/dev/nvme0n1" ]; }
               ];
           };
         };

@@ -35,7 +35,8 @@
 
   boot.initrd.availableKernelModules = [
     "xhci_pci"
-    "ahci"
+    "thunderbolt"
+    "nvme"
     "usb_storage"
     "sd_mod"
     "sdhci_pci"
@@ -52,15 +53,11 @@
   # Only keep enabled on intel laptops
   services.thermald.enable = true;
 
-  # Undervolting the i7-8650U
-  # https://kitsunyan.github.io/blog/ulv-adjusting.html
-  services.undervolt = {
-    enable = true;
-    coreOffset = -80;
-    uncoreOffset = -80;
-    gpuOffset = -80;
-    analogioOffset = -80;
-  };
+  # Audio won't work otherwise
+  # https://github.com/nixos/nixpkgs/issues/330685
+  boot.kernelParams = [
+    "snd_hda_intel.dmic_detect=0"
+  ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
