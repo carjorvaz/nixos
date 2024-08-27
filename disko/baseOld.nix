@@ -9,28 +9,31 @@
       device = builtins.elemAt disks 0;
       type = "disk";
       content = {
-        type = "gpt";
-        partitions = {
-          ESP = {
-            size = "500M";
-            type = "EF00";
-            priority = 1;
+        type = "table";
+        format = "gpt";
+        partitions = [
+          {
+            name = "boot";
+            start = "1MiB";
+            end = "513MiB";
+            fs-type = "fat32";
+            bootable = true;
             content = {
               type = "filesystem";
               format = "vfat";
               mountpoint = "/boot";
             };
-          };
-
-          root = {
-            size = "100%";
-            priority = 2;
+          }
+          {
+            name = "root";
+            start = "513MiB";
+            end = "100%";
             content = {
               type = "zfs";
               pool = "zroot";
             };
-          };
-        };
+          }
+        ];
       };
     };
 
