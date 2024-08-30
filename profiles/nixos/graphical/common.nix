@@ -17,7 +17,7 @@ in
   # - config.boot.zfs.package.latestCompatibleLinuxPackages;
   # - pkgs.linuxPackages_zen;
   # - pkgs.linuxPackages_xanmod_stable;
-  boot.kernelPackages = pkgs.linuxPackages_xanmod;
+  boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_xanmod;
 
   # Improve desktop responsiveness when updating the system.
   nix.daemonCPUSchedPolicy = "idle";
