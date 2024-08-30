@@ -55,9 +55,7 @@
 
   # Audio won't work otherwise
   # https://github.com/nixos/nixpkgs/issues/330685
-  boot.kernelParams = [
-    "snd_hda_intel.dmic_detect=0"
-  ];
+  boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
