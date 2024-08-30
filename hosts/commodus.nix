@@ -23,6 +23,7 @@
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/graphical/i3.nix"
+    "${self}/profiles/nixos/japaneseKeyboard.nix"
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/scanning.nix"
