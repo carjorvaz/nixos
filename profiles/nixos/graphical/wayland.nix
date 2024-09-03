@@ -83,6 +83,7 @@
         };
       };
 
+      dunst.enable = false;
       mako.enable = true;
 
       swayidle = {
