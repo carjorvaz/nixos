@@ -25,7 +25,7 @@
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/sway.nix"
+    "${self}/profiles/nixos/graphical/hyprland.nix"
     "${self}/profiles/nixos/japaneseKeyboard.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
@@ -57,6 +57,11 @@
   # Audio won't work on kernels before 6.6.47
   # https://github.com/nixos/nixpkgs/issues/330685
   boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
+
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
+    "eDP-1,preferred,auto,1.25"
+    ",preferred,auto,1"
+  ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 

@@ -12,7 +12,14 @@
       "time"
     ];
 
-    tlp.enable = true;
+    tlp = {
+      enable = true;
+      settings = {
+        # https://wiki.hyprland.org/Configuring/Performance/#low-fpsstutterfps-drops-on-intel-igpu-with-tlp-mainly-laptops
+        INTEL_GPU_MIN_FREQ_ON_AC = 500;
+        INTEL_GPU_MIN_FREQ_ON_BAT = 500;
+      };
+    };
   };
 
   home-manager.users.cjv = {
