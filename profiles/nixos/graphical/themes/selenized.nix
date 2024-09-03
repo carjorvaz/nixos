@@ -120,7 +120,6 @@
           };
 
           windowrulev2 = [
-            "nomaximizerequest, class:.*" # You'll probably like this.
             "bordercolor rgb(ed4a46),xwayland:1" # check if window is xwayland
           ];
         };
