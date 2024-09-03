@@ -60,7 +60,7 @@
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
     "eDP-1,preferred,auto,1.25"
-    ",preferred,auto,1"
+    ",preferred,auto,auto"
   ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
