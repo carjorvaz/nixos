@@ -532,7 +532,6 @@ in
     gnome.nautilus
     gnome.seahorse
 
-    kdePackages.breeze
     libsForQt5.breeze-qt5
     libsForQt5.breeze-icons
     kdePackages.qtsvg
