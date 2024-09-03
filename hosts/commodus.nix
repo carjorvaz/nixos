@@ -67,6 +67,11 @@
     ${pkgs.xorg.xrandr}/bin/xrandr --output DVI-D-0 --mode 1920x1080 --rate 144
   '';
 
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
+    ",preferred,auto,auto"
+    "Unknown-1,disable"
+  ];
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "23.05";
