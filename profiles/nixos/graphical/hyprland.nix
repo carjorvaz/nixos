@@ -10,7 +10,7 @@
 # - use hyprlandPlugins and try out hy3; will use sway until then
 {
   imports = [
-    ./selenized.nix
+    ./themes/gruvbox.nix
     ./wayland.nix
   ];
 
