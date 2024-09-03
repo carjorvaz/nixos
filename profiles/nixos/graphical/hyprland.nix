@@ -20,6 +20,7 @@
   };
 
   # Swaylock won't work without this.
+  # TODO hyprlock?
   security.pam.services.swaylock = { };
 
   systemd.user.services = {
@@ -36,18 +37,10 @@
       systemd.enable = true;
 
       settings = {
-        # https://wiki.hyprland.org/Configuring/Monitors/
-
-        # TODO Per host configuration if at all
-        # monitor = [ "HDMI-A-1,preferred,auto,1" ",preferred,auto,1" ];
-
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
 
         # Execute your favorite apps at launch
-        exec-once = [
-          "nextcloud --background"
-          "${pkgs.swaybg}/bin/swaybg -m fill -i ${./wallpaper.jpg}"
-        ];
+        exec-once = [ "${pkgs.swaybg}/bin/swaybg -m fill -i ${./wallpaper.jpg}" ];
 
         "$terminal" = "foot";
         "$menu" = "rofi";
@@ -128,11 +121,6 @@
           preserve_split = true; # you probably want this
         };
 
-        # https://wiki.hyprland.org/Configuring/Master-Layout/
-        master = {
-          new_is_master = true;
-        };
-
         gestures = {
           workspace_swipe = false; # TODO check
         };
@@ -142,7 +130,8 @@
 
         # Per-device config
         # https://wiki.hyprland.org/Configuring/Keywords/#per-device-input-configs
-        "device:synps/2-synaptics-touchpad".accel_profile = "adaptive";
+        # TODO fix
+        # "device:synps/2-synaptics-touchpad".accel_profile = "adaptive";
 
         # Example windowrule v1
         # windowrule = float, ^(kitty)$
@@ -150,7 +139,13 @@
         # windowrulev2 = float,class:^(kitty)$,title:^(kitty)$
         # See https://wiki.hyprland.org/Configuring/Window-Rules/ for more
 
-        windowrulev2 = lib.mkDefault "nomaximizerequest, class:.*"; # You'll probably like this.
+        # Check class with: hyprctl clients | grep class
+        windowrulev2 = [
+          "workspace 2, class:^(emacs)$"
+          "workspace 7, class:^(betterbird)$"
+          "workspace 8, class:^(signal)$"
+          "workspace 9, class:^(discord)$" # TODO nofocus
+        ];
 
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
         "$mainMod" = "SUPER";
@@ -276,9 +271,7 @@
         ];
       };
 
-      # plugins = [
-      #   pkgs.unstable.hyprlandPlugins.hy3
-      # ];
+      plugins = [ pkgs.hyprlandPlugins.hy3 ];
     };
 
     programs = {
@@ -323,7 +316,6 @@
             };
 
             battery = {
-              # TODO watts e time left? (mas só na tooltip)
               states = {
                 warning = 25;
                 critical = 15;
@@ -434,12 +426,22 @@
           */
 
           /* Selenized Black colors */
+          /*
           @define-color bg #181818;
           @define-color fg #dedede;
           @define-color green_accent #70b433;
           @define-color blue_accent #368aeb;
           @define-color warning #dbb32d;
           @define-color critical #ed4a46;
+          */
+
+          /* Gruvbox Dark colors */
+          @define-color bg #282828;
+          @define-color fg #ebdbb2;
+          @define-color green_accent #98971a;
+          @define-color blue_accent #458588;
+          @define-color warning #d79921;
+          @define-color critical #cc241d;
 
           /* Reset all styles */
           * {
@@ -552,6 +554,7 @@
 
     services = {
       kanshi.systemdTarget = "hyprland-session.target";
+      # TODO hypridle
       swayidle.timeouts = [
         {
           timeout = 300;

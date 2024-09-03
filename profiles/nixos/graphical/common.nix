@@ -186,7 +186,6 @@ in
   qt = lib.mkDefault {
     enable = true;
     platformTheme = "qt5ct";
-    style = "breeze";
   };
 
   home-manager.users.cjv = {
@@ -427,7 +426,7 @@ in
     };
 
     services = {
-      dunst.enable = true;
+      dunst.enable = lib.mkDefault true;
 
       flameshot.enable = lib.mkDefault true;
 
@@ -533,6 +532,8 @@ in
     gnome.nautilus
     gnome.seahorse
 
+    kdePackages.breeze
+    libsForQt5.breeze-qt5
     libsForQt5.breeze-icons
     kdePackages.qtsvg
     dolphin
