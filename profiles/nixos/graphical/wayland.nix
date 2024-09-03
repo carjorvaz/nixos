@@ -37,7 +37,7 @@
         settings = {
           main = {
             term = "xterm-256color";
-            font = lib.mkDefault "monospace:size=12";
+            font = lib.mkDefault "monospace:size=13";
           };
 
           mouse.hide-when-typing = "yes";
