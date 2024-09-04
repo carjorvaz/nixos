@@ -183,8 +183,8 @@
           "$mainMod SHIFT, k, hy3:movewindow, u"
           "$mainMod SHIFT, l, hy3:movewindow, r"
 
-          "$mainMod, v, hy3:makegroup, v"
-          "$mainMod, b, hy3:makegroup, h"
+          "$mainMod, v, hy3:makegroup, h"
+          "$mainMod, b, hy3:makegroup, v"
 
           "$mainMod, w, hy3:makegroup, tab"
 
