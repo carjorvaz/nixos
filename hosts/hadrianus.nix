@@ -99,6 +99,8 @@ in
 
   services.tailscale.useRoutingFeatures = "both";
 
+  services.qemuGuest.enable = true;
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "22.11";
