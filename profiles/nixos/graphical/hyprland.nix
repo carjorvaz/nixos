@@ -101,8 +101,12 @@
           workspace_swipe = false; # TODO check
         };
 
-        # Set to 0 to disable the anime mascot wallpapers
-        misc.force_default_wallpaper = 0;
+        misc = {
+          vfr = true;
+
+          # Set to 0 to disable the anime mascot wallpapers
+          force_default_wallpaper = 0;
+        };
 
         # Per-device config
         # https://wiki.hyprland.org/Configuring/Keywords/#per-device-input-configs
