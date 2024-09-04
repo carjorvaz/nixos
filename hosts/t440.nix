@@ -16,15 +16,14 @@
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/laptopServer.nix"
+    "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/frigate.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/ssh.nix"
-
-    # STATE: sudo tailscale up; disable key expiry
-    "${self}/profiles/nixos/tailscale.nix"
   ];
 
   boot.initrd.availableKernelModules = [
