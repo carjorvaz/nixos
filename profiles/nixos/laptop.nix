@@ -57,19 +57,5 @@
         format = " $timestamp.datetime(f:'%a %d/%m %R')";
       }
     ];
-
-    wayland.windowManager.hyprland.settings = {
-      # https://wiki.hyprland.org/FAQ/#how-heavy-is-this
-      # I prefer no animations so it feels snappier.
-      animations.enabled = false;
-
-      decoration = {
-        # https://wiki.hyprland.org/FAQ/#how-do-i-make-hyprland-draw-as-little-power-as-possible-on-my-laptop
-        blur.enabled = false;
-        drop_shadow = false;
-      };
-
-      misc.vfr = true;
-    };
   };
 }
