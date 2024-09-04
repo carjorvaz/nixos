@@ -220,8 +220,8 @@
           "$mainMod SHIFT, S, hy3:movetoworkspace, special:magic"
 
           # Scroll through existing workspaces with mainMod + scroll
-          "$mainMod, mouse_down, workspace, e+1"
-          "$mainMod, mouse_up, workspace, e-1"
+          "$mainMod, mouse_down, workspace, e-1"
+          "$mainMod, mouse_up, workspace, e+1"
 
           # Make window fullscreen or fake fullscreen
           "$mainMod, f, fullscreen, 0"
@@ -317,8 +317,8 @@
             };
 
             "hyprland/workspaces" = {
-              "on-scroll-up" = "hyprctl dispatch workspace e+1";
-              "on-scroll-down" = "hyprctl dispatch workspace e-1";
+              "on-scroll-up" = "hyprctl dispatch workspace e-1";
+              "on-scroll-down" = "hyprctl dispatch workspace e+1";
             };
 
             network = {
