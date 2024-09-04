@@ -59,7 +59,7 @@
   boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
-    "eDP-1,preferred,auto,1.25"
+    "eDP-1,preferred,auto,1.5"
     ",preferred,auto,auto"
   ];
 
