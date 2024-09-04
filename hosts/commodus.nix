@@ -45,13 +45,13 @@
     networkmanager.enable = false;
     wireless.enable = false;
 
-    interfaces.enp10s0 = {
+    interfaces.enp11s0 = {
       useDHCP = false;
       wakeOnLan.enable = true; # Requires enabling WoL in BIOS
 
       ipv4.addresses = [
         {
-          address = "192.168.1.2";
+          address = "192.168.1.3";
           prefixLength = 24;
         }
       ];
