@@ -185,6 +185,8 @@ in
 
   qt = lib.mkDefault {
     enable = true;
+
+    # STATE: requires opening qt5ct and setting theme and icon theme
     platformTheme = "qt5ct";
   };
 
