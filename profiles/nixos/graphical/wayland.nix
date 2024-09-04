@@ -16,6 +16,7 @@
     wl-mirror # contains wl-present
   ];
 
+  services.xserver.displayManager.lightdm.enable = false;
   services.xserver.displayManager.gdm = {
     enable = true;
     wayland = true;
