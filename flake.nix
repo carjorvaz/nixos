@@ -78,7 +78,7 @@
               ++ desktopModules
               ++ [
                 ./hosts/commodus.nix
-                ./disko/baseOld.nix
+                ./disko/base.nix
                 ./disko/desktop.nix
                 ./disko/tmpfs.nix
                 { _module.args.disks = [ "/dev/nvme0n1" ]; }
@@ -92,7 +92,7 @@
             };
             modules = baseModules ++ [
               ./hosts/hadrianus.nix
-              ./disko/baseOld.nix
+              ./disko/base.nix
               ./disko/encryption.nix
               ./disko/zfsImpermanence.nix
               { _module.args.disks = [ "/dev/sda" ]; }
@@ -114,7 +114,7 @@
             };
             modules = baseModules ++ [
               ./hosts/t440.nix
-              ./disko/baseOld.nix
+              ./disko/base.nix
               ./disko/tmpfs.nix
               { _module.args.disks = [ "/dev/sda" ]; }
             ];
