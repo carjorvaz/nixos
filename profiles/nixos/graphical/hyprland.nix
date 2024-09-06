@@ -307,7 +307,6 @@ in
             modules-right = [
               "pulseaudio"
               "backlight"
-              "network"
               "battery"
               "clock"
               "tray"
@@ -378,7 +377,6 @@ in
               format-alt = "{ifname}: {ipaddr}/{cidr}";
             };
 
-            # TODO mute unmute com right click
             pulseaudio = {
               format = "{icon} {volume}%";
               format-muted = "󰖁";
@@ -389,7 +387,9 @@ in
                   "󰕾"
                 ];
               };
-              on-click = "${pkgs.pavucontrol}/bin/pavucontrol";
+
+              on-click = "${pkgs.pamixer}/bin/pamixer -t";
+              on-click-right = "${pkgs.pamixer}/bin/pamixer --default-source -t";
               tooltip = false;
             };
           }
