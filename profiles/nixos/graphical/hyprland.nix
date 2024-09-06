@@ -106,11 +106,6 @@
           force_default_wallpaper = 0;
         };
 
-        # Per-device config
-        # https://wiki.hyprland.org/Configuring/Keywords/#per-device-input-configs
-        # TODO fix
-        # "device:synps/2-synaptics-touchpad".accel_profile = "adaptive";
-
         # Example windowrule v1
         # windowrule = float, ^(kitty)$
         # Example windowrule v2
