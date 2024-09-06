@@ -58,10 +58,18 @@
   # https://github.com/nixos/nixpkgs/issues/330685
   boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
 
-  home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
-    "eDP-1,preferred,auto,1.5"
-    ",preferred,auto,auto"
-  ];
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
+    # Enable touchpad acceleration
+    device = {
+      name = "syna0103:00-06cb:cfb1-touchpad";
+      accel_profile = "adaptive";
+    };
+
+    monitor = [
+      "eDP-1,preferred,auto,1.5"
+      ",preferred,auto,auto"
+    ];
+  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
