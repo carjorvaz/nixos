@@ -6,6 +6,9 @@
   ...
 }:
 
+let
+  wallpaper = ./wallpaper.jpg;
+in
 {
   imports = [
     ./themes/gruvbox.nix
