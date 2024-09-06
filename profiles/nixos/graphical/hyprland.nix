@@ -22,6 +22,8 @@
     hyprlock.enable = true;
   };
 
+  services.hypridle.enable = true;
+
   home-manager.users.cjv = {
     wayland.windowManager.hyprland = {
       enable = true;
@@ -566,6 +568,39 @@
     };
 
     services = {
+      hypridle = {
+        enable = true;
+        settings = {
+          general = {
+            lock_cmd = "${pkgs.hyprlock}/bin/hyprlock";
+            before_sleep_cmd = "${pkgs.systemd}/bin/loginctl lock-session";
+            after_sleep_cmd = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
+          };
+
+          listener = [
+            {
+              timeout = 2;
+              on-timeout = "if ${pkgs.procps}/bin/pgrep hyprlock; then ${pkgs.hyprland}/bin/hyprctl dispatch dpms off; fi";
+              on-resume = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
+            }
+            {
+              timeout = 900; # 15 min
+              on-timeout = "${pkgs.brightnessctl}/bin/brightnessctl -s set 10"; # set monitor backlight to minimum, avoid 0 on OLED monitor.
+              on-resume = "${pkgs.brightnessctl}/bin/brightnessctl -r"; # monitor backlight restore.
+            }
+            {
+              timeout = 910;
+              on-timeout = "${pkgs.hyprland}/bin/hyprctl dispatch dpms off";
+              on-resume = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
+            }
+            {
+              timeout = 920;
+              on-timeout = "${pkgs.systemd}/bin/loginctl lock-session";
+            }
+          ];
+        };
+      };
+
       hyprpaper = {
         enable = true;
         settings = {
@@ -575,18 +610,6 @@
       };
 
       kanshi.systemdTarget = "hyprland-session.target";
-      # TODO hypridle
-      swayidle.timeouts = [
-        {
-          timeout = 300;
-          command = "${pkgs.swaylock}/bin/swaylock";
-        }
-        {
-          timeout = 2;
-          command = "if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.hyprland}/bin/hyprctl dispatch dpms off; fi";
-          resumeCommand = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
-        }
-      ];
     };
   };
 }
