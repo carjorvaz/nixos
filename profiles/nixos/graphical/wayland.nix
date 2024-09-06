@@ -8,7 +8,11 @@
 {
   imports = [ ./common.nix ];
   # Make electron apps run on Wayland natively.
-  environment.sessionVariables.NIXOS_OZONE_WL = "1";
+  environment.sessionVariables = {
+    ELECTRON_OZONE_PLATFORM_HINT = "auto";
+    NIXOS_OZONE_WL = "1";
+    MOZ_ENABLE_WAYLAND = "1";
+  };
 
   environment.systemPackages = with pkgs; [
     wdisplays
