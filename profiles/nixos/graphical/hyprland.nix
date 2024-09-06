@@ -62,7 +62,7 @@
 
           touchpad = {
             natural_scroll = true;
-            scroll_factor = "0.4";
+            scroll_factor = "0.2";
           };
 
           sensitivity = 0; # -1.0 - 1.0, 0 means no modification.
