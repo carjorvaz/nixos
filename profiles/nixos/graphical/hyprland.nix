@@ -152,10 +152,10 @@
           "$mainMod, C, exec, $menu -modes calc -show calc"
 
           # Screenshots
-          ", Print, exec, ${pkgs.grimblast}/bin/grimblast --notify copy area"
-          "Shift, Print, exec, ${pkgs.grimblast}/bin/grimblast --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')"
-          "$mainMod, P, exec, ${pkgs.grimblast}/bin/grimblast --notify copy area"
-          "$mainMod Shift, P, exec, ${pkgs.grimblast}/bin/grimblast --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')"
+          ", Print, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area"
+          "Shift, Print, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')"
+          "$mainMod, P, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area"
+          "$mainMod Shift, P, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')"
 
           # Move focus with mainMod + arrow keys
           "$mainMod, left, hy3:movefocus, l"
