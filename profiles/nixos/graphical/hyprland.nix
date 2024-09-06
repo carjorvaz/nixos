@@ -119,10 +119,10 @@
 
         # Check class with: hyprctl clients | grep class
         windowrulev2 = [
-          "workspace 2, class:^(emacs)$"
-          "workspace 7, class:^(betterbird)$"
-          "workspace 8, class:^(signal)$"
-          "workspace 9, class:^(discord)$" # TODO nofocus
+          "workspace 2 silent, class:^(emacs)$"
+          "workspace 7 silent, class:^(betterbird)$"
+          "workspace 8 silent, class:^(signal)$"
+          "workspace 9 silent, class:^(discord)$"
         ];
 
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
