@@ -95,10 +95,6 @@
           preserve_split = true; # you probably want this
         };
 
-        gestures = {
-          workspace_swipe = false; # TODO check
-        };
-
         misc = {
           vfr = true;
 
