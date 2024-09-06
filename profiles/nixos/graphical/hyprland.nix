@@ -10,6 +10,7 @@
   imports = [
     ./themes/gruvbox.nix
     ./wayland.nix
+    ./hyprshade.nix
   ];
 
   programs = {
@@ -18,8 +19,6 @@
       package = pkgs.unstable.hyprland;
     };
 
-  systemd.user.services = {
-    gammastep.wantedBy = lib.mkForce [ "hyprland-session.target" ];
     hyprlock.enable = true;
   };
 
