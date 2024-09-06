@@ -88,7 +88,21 @@ in
   };
 
   home-manager.users.cjv = {
-    programs.i3status-rust.enable = true;
+    programs = {
+      i3status-rust.enable = true;
+
+      swaylock = {
+        enable = true;
+        settings = {
+          color = lib.mkDefault "000000";
+          font-size = 14;
+          # Needed for fingerprint to work with swaylock.
+          # Press enter than tap finger.
+          ignore-empty-password = false;
+          show-failed-attempts = true;
+        };
+      };
+    };
 
     wayland.windowManager.sway = {
       enable = true;
@@ -198,15 +212,40 @@ in
     };
 
     services = {
+      gammastep = {
+        enable = true;
+        tray = true;
+        latitude = 38.7;
+        longitude = -9.14;
+        temperature = {
+          day = 6500;
+          night = 2000;
+        };
+      };
+
       kanshi.systemdTarget = "sway-session.target";
 
-      swayidle.timeouts = [
-        {
-          timeout = 2;
-          command = ''if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
-          resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
-        }
-      ];
+      swayidle = {
+        enable = true;
+        events = [
+          {
+            event = "before-sleep";
+            command = "${pkgs.swaylock}/bin/swaylock";
+          }
+          {
+            event = "lock";
+            command = "${pkgs.swaylock}/bin/swaylock";
+          }
+        ];
+
+        timeouts = [
+          {
+            timeout = 2;
+            command = ''if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
+            resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+          }
+        ];
+      };
     };
   };
 }

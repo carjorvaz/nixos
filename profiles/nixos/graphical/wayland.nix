@@ -60,50 +60,14 @@
         ];
       };
 
-      swaylock = {
-        enable = true;
-        settings = {
-          color = lib.mkDefault "000000";
-          font-size = 14;
-          # Needed for fingerprint to work with swaylock.
-          # Press enter than tap finger.
-          ignore-empty-password = false;
-          show-failed-attempts = true;
-        };
-      };
     };
 
     services = {
       flameshot.enable = false;
       redshift.enable = false;
 
-      gammastep = {
-        enable = true;
-        tray = true;
-        latitude = 38.7;
-        longitude = -9.14;
-        temperature = {
-          day = 6500;
-          night = 2000;
-        };
-      };
-
       dunst.enable = false;
       mako.enable = true;
-
-      swayidle = {
-        enable = true;
-        events = [
-          {
-            event = "before-sleep";
-            command = "${pkgs.swaylock}/bin/swaylock";
-          }
-          {
-            event = "lock";
-            command = "${pkgs.swaylock}/bin/swaylock";
-          }
-        ];
-      };
     };
   };
 }
