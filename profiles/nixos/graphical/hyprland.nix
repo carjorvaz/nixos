@@ -36,7 +36,7 @@
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
 
         # Execute your favorite apps at launch
-        exec-once = [ "${pkgs.swaybg}/bin/swaybg -m fill -i ${./wallpaper.jpg}" ];
+        exec-once = [ ];
 
         "$terminal" = "foot";
         "$menu" = "rofi";
@@ -567,6 +567,14 @@
     };
 
     services = {
+      hyprpaper = {
+        enable = true;
+        settings = {
+          preload = "${wallpaper}";
+          wallpaper = ", ${wallpaper}";
+        };
+      };
+
       kanshi.systemdTarget = "hyprland-session.target";
       # TODO hypridle
       swayidle.timeouts = [
