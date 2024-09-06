@@ -27,7 +27,6 @@
   home-manager.users.cjv = {
     wayland.windowManager.hyprland = {
       enable = true;
-      # package = pkgs.unstable.hyprland;
       xwayland.enable = true;
 
       # Whether to enable hyprland-session.target on hyprland startup
