@@ -54,10 +54,6 @@
   # Only keep enabled on intel laptops
   services.thermald.enable = true;
 
-  # Audio won't work on kernels before 6.6.47
-  # https://github.com/nixos/nixpkgs/issues/330685
-  boot.kernelPackages = config.boot.zfs.package.latestCompatibleLinuxPackages;
-
   home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
     # Enable touchpad acceleration
     device = {
