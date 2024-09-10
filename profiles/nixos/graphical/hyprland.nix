@@ -237,6 +237,15 @@ in
           "$mainMod, mouse:272, movewindow"
           "$mainMod, mouse:273, resizewindow"
         ];
+
+        # https://wiki.hyprland.org/Configuring/Binds/#switches
+        bindl = [
+          # trigger when the switch is turning on
+          '', switch:on:Lid Switch, exec, hyprctl keyword monitor "eDP-1, disable"''
+
+          # trigger when the switch is turning off
+          '', switch:off:Lid Switch, exec, hyprctl keyword monitor "eDP-1, preferred, auto, auto"''
+        ];
       };
 
       plugins = [ pkgs.hyprlandPlugins.hy3 ];
