@@ -60,6 +60,11 @@
       name = "syna0103:00-06cb:cfb1-touchpad";
       accel_profile = "adaptive";
     };
+
+    monitor = [
+      "eDP-1, preferred, auto, 1.5"
+      "desc:Iiyama North America PL3293UH 1213432400967, preferred, auto, 1.5"
+    ];
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
