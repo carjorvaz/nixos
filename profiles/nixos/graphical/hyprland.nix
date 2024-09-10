@@ -105,6 +105,8 @@ in
           force_default_wallpaper = 0;
         };
 
+        monitor = [ ",preferred,auto,auto" ];
+
         # Example windowrule v1
         # windowrule = float, ^(kitty)$
         # Example windowrule v2
