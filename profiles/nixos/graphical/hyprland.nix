@@ -187,6 +187,14 @@ in
 
           "$mainMod, e, hy3:changegroup, opposite"
 
+          # Move focus between monitors
+          "$mainMod, comma, focusmonitor, l"
+          "$mainMod, period, focusmonitor, r"
+
+          # Move workspace between monitors
+          "$mainMod SHIFT, comma, movecurrentworkspacetomonitor, l"
+          "$mainMod SHIFT, period, movecurrentworkspacetomonitor, r"
+
           # Switch workspaces with mainMod + [0-9]
           "$mainMod, 1, workspace, 1"
           "$mainMod, 2, workspace, 2"
