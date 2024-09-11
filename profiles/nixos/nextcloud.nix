@@ -35,9 +35,8 @@ in
 
     autoUpdateApps.enable = true;
     extraAppsEnable = true;
-    extraApps = with config.services.nextcloud.package.packages.apps; {
-
-      inherit
+    extraApps = {
+      inherit (config.services.nextcloud.package.packages.apps)
         calendar
         contacts
         mail # memories TODO
