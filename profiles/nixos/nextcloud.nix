@@ -33,6 +33,7 @@ in
     maxUploadSize = "16G";
     https = true;
 
+    appstoreEnable = true; # For apps that don't work declaratively or that aren't packaged in nixpkgs, so they auto-update.
     autoUpdateApps.enable = true;
     extraAppsEnable = true;
     extraApps = {
