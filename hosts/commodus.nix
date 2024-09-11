@@ -23,9 +23,11 @@
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/graphical/hyprland.nix"
     "${self}/profiles/nixos/japaneseKeyboard.nix"
+    "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/scanning.nix"
+    "${self}/profiles/nixos/ssh.nix"
 
     "${self}/profiles/home/zsh.nix"
   ];
