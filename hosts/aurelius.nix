@@ -10,7 +10,6 @@
 {
   # TODO
   # - cups printing server
-  # - disk spin down
 
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
@@ -27,6 +26,7 @@
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/calibre.nix"
+    "${self}/profiles/nixos/diskSpinDown.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/homer.nix"
     "${self}/profiles/nixos/jellyfin.nix"
