@@ -38,6 +38,7 @@ in
     extraApps = {
       inherit (config.services.nextcloud.package.packages.apps)
         calendar
+        cookbook
         contacts
         mail # memories TODO
         # news
@@ -45,12 +46,6 @@ in
         previewgenerator # Memories dependency.
         # tasks
         ;
-      # cookbook = pkgs.fetchNextcloudApp rec {
-      #   url =
-      #     "https://github.com/nextcloud/cookbook/releases/download/v0.10.2/Cookbook-0.10.2.tar.gz";
-      #   sha256 = "sha256-XgBwUr26qW6wvqhrnhhhhcN4wkI+eXDHnNSm1HDbP6M=";
-      #   license = "agpl3";
-      # };
       # # Memories dependency
       # recognize = pkgs.fetchNextcloudApp rec {
       #   url =
