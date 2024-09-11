@@ -41,7 +41,6 @@ in
         calendar
         cookbook
         contacts
-        # news
         mail
         memories # Requires setup in the admin panel
         notes
