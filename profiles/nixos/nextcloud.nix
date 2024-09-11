@@ -45,7 +45,7 @@ in
         # news
         notes
         previewgenerator # Memories dependency.
-        # tasks
+        tasks
         ;
       # # Memories dependency
       # recognize = pkgs.fetchNextcloudApp rec {
