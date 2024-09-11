@@ -34,9 +34,6 @@
         name = "blue-light-filter"
         start_time = 19:00:00
         end_time = 06:00:00
-
-        [[shades]]
-        name = "grayscale"
       '';
 
       # Copied from: https://github.com/TheRiceCold/dots/blob/d25001db1529195174b214fe61e507522ea2195d/home/wolly/kaizen/desktop/wayland/hyprland/ecosystem/hyprshade.nix#L35C4-L50C8
