@@ -41,18 +41,13 @@ in
         calendar
         cookbook
         contacts
-        mail # memories TODO
         # news
+        mail
+        memories # Requires setup in the admin panel
         notes
-        previewgenerator # Memories dependency.
+        previewgenerator # Memories dependency
         tasks
         ;
-      # # Memories dependency
-      # recognize = pkgs.fetchNextcloudApp rec {
-      #   url =
-      #     "https://github.com/nextcloud/recognize/releases/download/v6.0.0/recognize-6.0.0.tar.gz";
-      #   sha256 = "sha256-zQd43bjJSMqBqoYg2LiXh2TobdHIU5HmrG2TDExjT/Q=";
-      # };
     };
 
     settings = {
@@ -80,6 +75,8 @@ in
     exiftool
     ffmpeg
     imagemagick
+    nodejs
+    perl
   ];
 
   environment.persistence."/persist".directories = [
