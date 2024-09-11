@@ -13,4 +13,8 @@
 
   programs.virt-manager.enable = true;
   users.users.cjv.extraGroups = [ "libvirtd" ];
+
+  environment.systemPackages = with pkgs; [ virtiofsd ];
+
+  environment.persistence."/persist".directories = [ "/var/lib/libvirt" ];
 }
