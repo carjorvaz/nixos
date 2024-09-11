@@ -546,6 +546,7 @@ in
     yt-dlp
 
     kubectl
+    kubernetes-helm
     unstable.talosctl
 
     bashmount
