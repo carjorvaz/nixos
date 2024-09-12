@@ -15,6 +15,7 @@
   };
 
   environment.systemPackages = with pkgs; [
+    waypipe
     wdisplays
     wl-clipboard # wl-copy and wl-paste for copy/paste from stdin / stdout
     wl-mirror # contains wl-present
