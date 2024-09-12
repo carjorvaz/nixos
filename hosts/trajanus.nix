@@ -30,6 +30,8 @@
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
 
+    "${self}/profiles/nixos/virtualbox.nix" # TODO remove after AID
+
     # STATE: sudo tailscale up
     "${self}/profiles/nixos/tailscale.nix"
   ];
