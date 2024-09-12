@@ -23,13 +23,6 @@ in
     group = "nextcloud";
   };
 
-  services.nginx.virtualHosts = {
-    "cloud.vaz.one" = {
-      forceSSL = true;
-      useACMEHost = "vaz.one";
-    };
-  };
-
   services.nextcloud = {
     enable = true;
     package = pkgs.nextcloud29; # Need to manually increment with every update

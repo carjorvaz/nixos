@@ -23,7 +23,6 @@
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
-    "${self}/profiles/nixos/acme/dns-vaz-one.nix"
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/calibre.nix"
