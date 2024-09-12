@@ -248,7 +248,7 @@ in
         ];
       };
 
-      plugins = [ pkgs.hyprlandPlugins.hy3 ];
+      plugins = [ pkgs.unstable.hyprlandPlugins.hy3 ];
     };
 
     programs = {
