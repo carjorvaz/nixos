@@ -129,6 +129,12 @@ in
 
   security.polkit.enable = true;
 
+  networking.hosts = {
+    # Add home server's tailscale IP directly to hosts file so machines on my
+    # tailnet don't have to go through the bastion VPS.
+    "100.121.87.116" = [ "cloud.vaz.one" ];
+  };
+
   services = {
     dbus.enable = true;
 
