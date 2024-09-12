@@ -121,7 +121,7 @@ in
           "workspace 9 silent, class:^(discord)$"
         ];
 
-        workspace = [ "10, monitor:eDP-1, persistent:true" ];
+        workspace = [ ];
 
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
         "$mainMod" = "SUPER";
