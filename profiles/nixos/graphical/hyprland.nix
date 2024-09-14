@@ -73,9 +73,9 @@ in
         };
 
         general = {
-          gaps_in = 0;
-          gaps_out = 0;
-          border_size = 1;
+          gaps_in = lib.mkDefault 0;
+          gaps_out = lib.mkDefault 0;
+          border_size = lib.mkDefault 1;
 
           "col.active_border" = lib.mkDefault "rgba(33ccffee) rgba(00ff99ee) 45deg";
           "col.inactive_border" = lib.mkDefault "rgba(595959aa)";
@@ -84,7 +84,7 @@ in
         };
 
         decoration = {
-          rounding = 0;
+          rounding = lib.mkDefault 0;
 
           # https://wiki.hyprland.org/FAQ/#how-do-i-make-hyprland-draw-as-little-power-as-possible-on-my-laptop
           blur.enabled = false;
