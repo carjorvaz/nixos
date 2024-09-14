@@ -103,6 +103,18 @@
       ",preferred, auto, auto"
     ];
 
+    workspace = [
+      # Center window on ultrawide, except for Emacs's workspace (2)
+      # Reference:
+      # - https://github.com/hyprwm/Hyprland/issues/2092
+      # - https://github.com/hyprwm/Hyprland/issues/5312
+
+      # On all workspaces:
+      # "w[t1], gapsout:20 400 20 400"
+
+      "1, w[t1], gapsout:20 400 20 400"
+      "r[3-10], w[t1], gapsout:20 400 20 400"
+    ];
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
