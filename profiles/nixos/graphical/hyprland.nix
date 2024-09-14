@@ -138,8 +138,8 @@ in
           ", XF86MonBrightnessUp, exec, ${pkgs.light}/bin/light -T 1.618"
 
           # Audio - logarithmic scale
-          ", XF86AudioRaiseVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB"
           ", XF86AudioLowerVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB"
+          ", XF86AudioRaiseVolume, exec, ${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB"
           ", XF86AudioMute, exec, ${pkgs.pamixer}/bin/pamixer -t"
           ", XF86AudioMicMute, exec, ${pkgs.pamixer}/bin/pamixer --default-source -t"
 
@@ -343,6 +343,8 @@ in
                 "󰃟"
                 "󰃠"
               ];
+              on-scroll-down = "${pkgs.light}/bin/light -T 0.618";
+              on-scroll-up = "${pkgs.light}/bin/light -T 1.618";
             };
 
             battery = {
@@ -408,6 +410,8 @@ in
 
               on-click = "${pkgs.pamixer}/bin/pamixer -t";
               on-click-right = "${pkgs.pamixer}/bin/pamixer --default-source -t";
+              on-scroll-down = "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB";
+              on-scroll-up = "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB";
               tooltip = false;
             };
           }
