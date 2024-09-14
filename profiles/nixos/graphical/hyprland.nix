@@ -102,6 +102,7 @@ in
 
           # Set to 0 to disable the anime mascot wallpapers
           force_default_wallpaper = 0;
+          disable_hyprland_logo = false;
         };
 
         monitor = [ ",preferred,auto,auto" ];
