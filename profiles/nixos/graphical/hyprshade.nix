@@ -16,11 +16,6 @@
           "${pkgs.hyprshade}/bin/hyprshade auto"
         ];
 
-        exec-once = [
-          # https://github.com/loqusion/hyprshade?tab=readme-ov-file#scheduling
-          "${pkgs.dbus}/bin/dbus-update-activation-environment --systemd HYPRLAND_INSTANCE_SIGNATURE"
-        ];
-
         bind = [
           # Grayscale toggle
           "$mainMod, G, exec, ${pkgs.hyprshade}/bin/hyprshade toggle grayscale"
