@@ -110,10 +110,8 @@
       # - https://github.com/hyprwm/Hyprland/issues/5312
 
       # On all workspaces:
-      # "w[t1], gapsout:20 400 20 400"
-
-      "1, w[t1], gapsout:20 400 20 400"
-      "r[3-10], w[t1], gapsout:20 400 20 400"
+      "w[t1], gapsout:20 400 20 400"
+      "2, gapsout:20"
     ];
   };
 
