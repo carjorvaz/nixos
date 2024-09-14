@@ -33,7 +33,10 @@ in
       xwayland.enable = true;
 
       # Whether to enable hyprland-session.target on hyprland startup
-      systemd.enable = true;
+      systemd = {
+        enable = true;
+        variables = [ "--all" ];
+      };
 
       settings = {
         # See https://wiki.hyprland.org/Configuring/Keywords/ for more
