@@ -87,8 +87,9 @@
   ];
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
-    ",preferred,auto,auto"
-    "Unknown-1,disable"
+    "HDMI-A-1, preferred, auto, 1.25"
+    "Unknown-1, disable"
+    ",preferred, auto, auto"
   ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
