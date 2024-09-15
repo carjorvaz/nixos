@@ -98,20 +98,9 @@
     };
 
     monitor = [
-      "HDMI-A-1, preferred, auto, 1.25"
+      "HDMI-A-1, preferred, auto, 1.6"
       "Unknown-1, disable"
       ",preferred, auto, auto"
-    ];
-
-    workspace = [
-      # Center window on ultrawide, except for Emacs's workspace (2)
-      # Reference:
-      # - https://github.com/hyprwm/Hyprland/issues/2092
-      # - https://github.com/hyprwm/Hyprland/issues/5312
-
-      # On all workspaces:
-      "w[t1], gapsout:20 400 20 400"
-      "2, gapsout:20"
     ];
   };
 
