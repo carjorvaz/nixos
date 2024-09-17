@@ -36,6 +36,12 @@
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
+  age.secrets.wgrnlTrajanus = {
+    file = "${self}/secrets/wgrnlTrajanus.age";
+    owner = "systemd-network";
+    group = "systemd-network";
+  };
+
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "thunderbolt"
@@ -51,6 +57,14 @@
 
     hostName = "trajanus";
     hostId = "d7ba56e3";
+
+    wgrnl = {
+      enable = true;
+      id = 32;
+      ownPrivateKeyFile = config.age.secrets.wgrnlTrajanus.path;
+      peerEndpoint = "193.136.164.211:34266";
+      peerPubkey = "g08PXxMmzC6HA+Jxd+hJU0zJdI6BaQJZMgUrv2FdLBY=";
+    };
   };
 
   # Only keep enabled on intel laptops

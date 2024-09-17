@@ -49,4 +49,8 @@ in
     aureliusSystem
     commodusUser
   ];
+  "wgrnlTrajanus.age".publicKeys = [
+    trajanusSystem
+    trajanusUser
+  ];
 }
