@@ -13,6 +13,7 @@
     ./zsh.nix
 
     # TODO automatically import every module in modules/nixos
+    "${self}/modules/nixos/wgrnl.nix"
     "${self}/modules/nixos/zfsRemoteUnlock.nix"
   ];
 
