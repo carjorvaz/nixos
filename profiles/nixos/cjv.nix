@@ -24,5 +24,5 @@
     };
   };
 
-  home-manager.users.cjv.home.stateVersion = "23.11";
+  home-manager.users.cjv.home.stateVersion = lib.mkDefault "23.11";
 }
