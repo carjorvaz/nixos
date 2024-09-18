@@ -29,7 +29,7 @@
       nixosConfigurations =
         let
           baseModules = [
-            inputs.agenix.nixosModules.age
+            inputs.agenix.nixosModules.default
             inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
             inputs.nix-index-database.nixosModules.nix-index
