@@ -50,24 +50,6 @@
           ];
         in
         {
-          aurelius = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = {
-              inherit inputs self;
-            };
-            modules = baseModules ++ [
-              ./hosts/aurelius.nix
-              ./disko/aurelius.nix
-              {
-                _module.args.disks = [
-                  "/dev/nvme0n1"
-                  "/dev/sda"
-                  "/dev/sdb"
-                ];
-              }
-            ];
-          };
-
           commodus = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
@@ -105,6 +87,24 @@
               inherit inputs self;
             };
             modules = baseModules ++ [ ./hosts/nerva.nix ];
+          };
+
+          pius = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules = baseModules ++ [
+              ./hosts/pius.nix
+              ./disko/pius.nix
+              {
+                _module.args.disks = [
+                  "/dev/nvme0n1"
+                  "/dev/sda"
+                  "/dev/sdb"
+                ];
+              }
+            ];
           };
 
           t440 = inputs.nixpkgs.lib.nixosSystem {

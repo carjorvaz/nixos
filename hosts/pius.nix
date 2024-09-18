@@ -53,7 +53,7 @@
 
   networking = {
     useDHCP = false;
-    hostName = "aurelius";
+    hostName = "pius";
     hostId = "b10eb16e";
 
     networkmanager.enable = false;
