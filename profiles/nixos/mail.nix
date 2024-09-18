@@ -8,7 +8,7 @@
 {
   age.secrets.mailCarlosHashedPassword.file = "${self}/secrets/mailCarlosHashedPassword.age";
   age.secrets.mailMafaldaHashedPassword.file = "${self}/secrets/mailMafaldaHashedPassword.age";
-  age.secrets.mailAureliusHashedPassword.file = "${self}/secrets/mailAureliusHashedPassword.age";
+  age.secrets.mailPiusHashedPassword.file = "${self}/secrets/mailPiusHashedPassword.age";
 
   imports = [
     inputs.simple-nixos-mailserver.nixosModule
@@ -61,8 +61,8 @@
             ];
           };
 
-          "aurelius@vaz.ovh" = {
-            hashedPasswordFile = config.age.secrets.mailAureliusHashedPassword.path;
+          "pius@vaz.ovh" = {
+            hashedPasswordFile = config.age.secrets.mailPiusHashedPassword.path;
           };
         };
 

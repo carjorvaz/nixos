@@ -8,8 +8,8 @@ in
     plausibleAdminPassword.file = "${self}/secrets/plausibleAdminPassword.age";
     plausibleSecretKeybase.file = "${self}/secrets/plausibleSecretKeybase.age";
 
-    mailAureliusPassword = {
-      file = "${self}/secrets/mailAureliusPassword.age";
+    mailPiusPassword = {
+      file = "${self}/secrets/mailPiusPassword.age";
       mode = "444";
     };
   };
@@ -35,13 +35,13 @@ in
       };
 
       mail = {
-        email = "aurelius@vaz.ovh";
+        email = "pius@vaz.ovh";
 
         smtp = {
-          user = "aurelius@vaz.ovh";
+          user = "pius@vaz.ovh";
           hostAddr = "mail.vaz.one";
           hostPort = 587;
-          passwordFile = config.age.secrets.mailAureliusPassword.path;
+          passwordFile = config.age.secrets.mailPiusPassword.path;
         };
       };
     };

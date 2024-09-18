@@ -12,19 +12,19 @@
     "cloud.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://aurelius:80";
+      locations."/".proxyPass = "http://pius:80";
     };
 
     "jellyfin.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://aurelius:8096";
+      locations."/".proxyPass = "http://pius:8096";
     };
 
     "jellyseerr.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://aurelius:${toString config.services.jellyseerr.port}";
+      locations."/".proxyPass = "http://pius:${toString config.services.jellyseerr.port}";
     };
 
     # https://github.com/plausible/community-edition/blob/v2.1.1/reverse-proxy/nginx/plausible
@@ -32,7 +32,7 @@
       forceSSL = true;
       enableACME = true;
       locations."/" = {
-        proxyPass = "http://aurelius:${toString config.services.plausible.server.port}";
+        proxyPass = "http://pius:${toString config.services.plausible.server.port}";
         proxyWebsockets = true;
         extraConfig = ''
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

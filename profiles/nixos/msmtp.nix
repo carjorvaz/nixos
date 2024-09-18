@@ -6,8 +6,8 @@
 }:
 
 {
-  age.secrets.mailAureliusPassword = {
-    file = "${self}/secrets/mailAureliusPassword.age";
+  age.secrets.mailPiusPassword = {
+    file = "${self}/secrets/mailPiusPassword.age";
     mode = "444";
   };
 
@@ -24,10 +24,10 @@
     accounts.default = {
       auth = true;
       aliases = "/etc/aliases";
-      user = "aurelius@vaz.ovh";
-      from = "aurelius <aurelius@vaz.ovh>";
+      user = "pius@vaz.ovh";
+      from = "pius <pius@vaz.ovh>";
       host = "mail.vaz.one";
-      passwordeval = "${pkgs.coreutils}/bin/cat ${config.age.secrets.mailAureliusPassword.path}";
+      passwordeval = "${pkgs.coreutils}/bin/cat ${config.age.secrets.mailPiusPassword.path}";
     };
   };
 
@@ -35,8 +35,8 @@
   environment.etc."aliases" = {
     mode = "0644";
     text = ''
-      root: aurelius@vaz.ovh
-      nextcloud: aurelius@vaz.ovh
+      root: pius@vaz.ovh
+      nextcloud: pius@vaz.ovh
     '';
   };
 }
