@@ -83,7 +83,6 @@ in
     boot = {
       # systemd stage-1 doesn't support initrd.network.postCommands.
       initrd.systemd.enable = false;
-      plymouth.enable = false;
 
       kernelParams = lib.mkIf cfg.static.enable [
         "ip=${cfg.static.address}::${cfg.static.gateway}:${cfg.static.netmask}::${cfg.static.interface}:none"
