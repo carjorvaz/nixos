@@ -50,6 +50,24 @@
           ];
         in
         {
+          aurelius = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules =
+              baseModules
+              ++ desktopModules
+              ++ [
+                ./hosts/aurelius.nix
+                ./disko/base.nix
+                ./disko/desktop.nix
+                ./disko/encryption.nix
+                ./disko/zfsImpermanence.nix
+                { _module.args.disks = [ "/dev/sda" ]; }
+              ];
+          };
+
           commodus = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
