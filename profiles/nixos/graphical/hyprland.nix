@@ -80,7 +80,7 @@ in
           "col.active_border" = lib.mkDefault "rgba(33ccffee) rgba(00ff99ee) 45deg";
           "col.inactive_border" = lib.mkDefault "rgba(595959aa)";
 
-          layout = "master";
+          layout = "hy3";
         };
 
         decoration = {
@@ -133,7 +133,7 @@ in
         bind = [
           "$mainMod, ESCAPE, exec, hyprlock"
           "$mainMod, RETURN, exec, $terminal"
-          "$mainMod SHIFT, Q, killactive,"
+          "$mainMod SHIFT, Q, hy3:killactive,"
           "$mainMod SHIFT, E, exit,"
           "$mainMod SHIFT, space, togglefloating,"
 
@@ -157,28 +157,38 @@ in
           ''$mainMod SHIFT, P, exec, shader=$(hyprshade current) && hyprshade off && ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png'); hyprshade on "$shader"''
 
           # Move focus with mainMod + arrow keys
-          "$mainMod, left, movefocus, l"
-          "$mainMod, right, movefocus, r"
-          "$mainMod, up, movefocus, u"
-          "$mainMod, down, movefocus, d"
+          "$mainMod, left, hy3:movefocus, l"
+          "$mainMod, right, hy3:movefocus, r"
+          "$mainMod, up, hy3:movefocus, u"
+          "$mainMod, down, hy3:movefocus, d"
 
           # Move window with mainMod + arrow keys
-          "$mainMod SHIFT, left, movewindow, l"
-          "$mainMod SHIFT, right, movewindow, r"
-          "$mainMod SHIFT, up, movewindow, u"
-          "$mainMod SHIFT, down, movewindow, d"
+          "$mainMod SHIFT, left, hy3:movewindow, l"
+          "$mainMod SHIFT, right, hy3:movewindow, r"
+          "$mainMod SHIFT, up, hy3:movewindow, u"
+          "$mainMod SHIFT, down, hy3:movewindow, d"
 
           # Move focus with mainMod + vim keys
-          "$mainMod, h, movefocus, l"
-          "$mainMod, j, movefocus, d"
-          "$mainMod, k, movefocus, u"
-          "$mainMod, l, movefocus, r"
+          "$mainMod, h, hy3:movefocus, l"
+          "$mainMod, j, hy3:movefocus, d"
+          "$mainMod, k, hy3:movefocus, u"
+          "$mainMod, l, hy3:movefocus, r"
 
           # Move window with mainMod + vim keys
-          "$mainMod SHIFT, h, movewindow, l"
-          "$mainMod SHIFT, j, movewindow, d"
-          "$mainMod SHIFT, k, movewindow, u"
-          "$mainMod SHIFT, l, movewindow, r"
+          "$mainMod SHIFT, h, hy3:movewindow, l"
+          "$mainMod SHIFT, j, hy3:movewindow, d"
+          "$mainMod SHIFT, k, hy3:movewindow, u"
+          "$mainMod SHIFT, l, hy3:movewindow, r"
+
+          "$mainMod, v, hy3:makegroup, h"
+          "$mainMod, b, hy3:makegroup, v"
+
+          "$mainMod, w, hy3:makegroup, tab"
+
+          "$mainMod, a, hy3:changefocus, raise"
+          "$mainMod SHIFT, a, hy3:changefocus, lower"
+
+          "$mainMod, e, hy3:changegroup, opposite"
 
           # Move focus between monitors
           "$mainMod, comma, focusmonitor, l"
@@ -201,20 +211,20 @@ in
           "$mainMod, 0, workspace, 10"
 
           # Move active window to a workspace with mainMod + SHIFT + [0-9]
-          "$mainMod SHIFT, 1, movetoworkspacesilent, 1"
-          "$mainMod SHIFT, 2, movetoworkspacesilent, 2"
-          "$mainMod SHIFT, 3, movetoworkspacesilent, 3"
-          "$mainMod SHIFT, 4, movetoworkspacesilent, 4"
-          "$mainMod SHIFT, 5, movetoworkspacesilent, 5"
-          "$mainMod SHIFT, 6, movetoworkspacesilent, 6"
-          "$mainMod SHIFT, 7, movetoworkspacesilent, 7"
-          "$mainMod SHIFT, 8, movetoworkspacesilent, 8"
-          "$mainMod SHIFT, 9, movetoworkspacesilent, 9"
-          "$mainMod SHIFT, 0, movetoworkspacesilent, 10"
+          "$mainMod SHIFT, 1, hy3:movetoworkspace, 1"
+          "$mainMod SHIFT, 2, hy3:movetoworkspace, 2"
+          "$mainMod SHIFT, 3, hy3:movetoworkspace, 3"
+          "$mainMod SHIFT, 4, hy3:movetoworkspace, 4"
+          "$mainMod SHIFT, 5, hy3:movetoworkspace, 5"
+          "$mainMod SHIFT, 6, hy3:movetoworkspace, 6"
+          "$mainMod SHIFT, 7, hy3:movetoworkspace, 7"
+          "$mainMod SHIFT, 8, hy3:movetoworkspace, 8"
+          "$mainMod SHIFT, 9, hy3:movetoworkspace, 9"
+          "$mainMod SHIFT, 0, hy3:movetoworkspace, 10"
 
           # Example special workspace (scratchpad)
           "$mainMod, S, togglespecialworkspace, magic"
-          "$mainMod SHIFT, S, movetoworkspacesilent, special:magic"
+          "$mainMod SHIFT, S, hy3:movetoworkspace, special:magic"
 
           # Scroll through existing workspaces with mainMod + scroll
           "$mainMod, mouse_down, workspace, e-1"
@@ -227,7 +237,7 @@ in
 
         # Move/resize windows with mainMod + LMB/RMB and dragging
         bindm = [
-          "$mainMod, mouse:272, movewindow"
+          "$mainMod, mouse:272, hy3:movewindow"
           "$mainMod, mouse:273, resizewindow"
         ];
 
@@ -240,6 +250,8 @@ in
           '', switch:off:Lid Switch, exec, hyprctl keyword monitor "eDP-1, preferred, auto, auto"''
         ];
       };
+
+      plugins = [ pkgs.hyprlandPlugins.hy3 ];
     };
 
     programs = {
