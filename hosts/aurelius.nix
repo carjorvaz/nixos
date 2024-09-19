@@ -19,6 +19,8 @@ in
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
+    "${self}/profiles/nixos/fail2ban.nix"
+
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/graphical/hyprland.nix"
