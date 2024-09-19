@@ -216,7 +216,6 @@ in
     };
 
     programs = {
-
       i3status-rust = {
         bars.top = {
           icons = "material-nf";
