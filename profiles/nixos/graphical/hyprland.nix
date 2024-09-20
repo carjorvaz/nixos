@@ -249,6 +249,18 @@ in
           # trigger when the switch is turning off
           '', switch:off:Lid Switch, exec, hyprctl keyword monitor "eDP-1, preferred, auto, auto"''
         ];
+
+        plugin.hy3 = {
+          tabs = {
+            text_font = "monospace";
+          };
+
+          autotile = {
+            enable = true;
+            trigger_width = 800;
+            trigger_height = 500;
+          };
+        };
       };
 
       plugins = [ pkgs.hyprlandPlugins.hy3 ];
