@@ -100,7 +100,6 @@
     monitor = [
       "HDMI-A-1, preferred, auto, 1.6"
       "Unknown-1, disable"
-      ",preferred, auto, auto"
     ];
   };
 
