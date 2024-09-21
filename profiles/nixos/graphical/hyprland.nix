@@ -556,8 +556,6 @@ in
               color: @fg;
               opacity: 1;
               padding: 0 0;
-              text-shadow: 0em 0em 0.5em @fg,
-              0em 0em 0.5em @fg;
           }
 
           #workspaces #sway-workspace-1 {
