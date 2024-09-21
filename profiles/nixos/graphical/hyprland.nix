@@ -69,7 +69,7 @@ in
             scroll_factor = "0.2";
           };
 
-          sensitivity = 0; # -1.0 - 1.0, 0 means no modification.
+          sensitivity = lib.mkDefault 0; # -1.0 - 1.0, 0 means no modification.
         };
 
         general = {
