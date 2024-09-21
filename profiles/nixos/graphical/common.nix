@@ -467,6 +467,10 @@ in
     };
   };
 
+  environment.shellAliases = {
+    zzz = "${pkgs.systemd}/bin/systemctl suspend";
+  };
+
   environment.systemPackages = with pkgs; [
     brainworkshop
 
