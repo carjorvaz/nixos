@@ -609,8 +609,10 @@ in
         settings = {
           general = {
             lock_cmd = "${pkgs.procps}/bin/pidof hyprlock || ${pkgs.hyprlock}/bin/hyprlock"; # avoid starting multiple hyprlock instances.
-            before_sleep_cmd = "${pkgs.systemd}/bin/loginctl lock-session";
-            after_sleep_cmd = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
+
+            # https://github.com/hyprwm/Hyprland/issues/6560#issuecomment-2283282226
+            before_sleep_cmd = "${pkgs.systemd}/bin/loginctl lock-session && ${pkgs.coreutils}/bin/sleep 0.5 && ${pkgs.hyprland}/bin/hyprctl dispatch dpms off";
+            after_sleep_cmd = "${pkgs.coreutils}/bin/sleep 3 && ${pkgs.hyprland}/bin/hyprctl dispatch dpms on";
           };
 
           listener = [
