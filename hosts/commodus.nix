@@ -86,22 +86,10 @@
     "nvidia_modeset"
   ];
 
-  home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
-    general = {
-      gaps_in = 5;
-      gaps_out = 20;
-      border_size = 2;
-    };
-
-    decoration = {
-      rounding = 10;
-    };
-
-    monitor = [
-      "HDMI-A-1, preferred, auto, 1.6"
-      "Unknown-1, disable"
-    ];
-  };
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
+    "HDMI-A-1, preferred, auto, 1.6"
+    "Unknown-1, disable"
+  ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
