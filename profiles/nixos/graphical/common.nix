@@ -21,7 +21,7 @@ in
 
   # Prettier boot
   boot = {
-    plymouth.enable = true;
+    plymouth.enable = lib.mkDefault true;
 
     # Enable "Silent Boot"
     consoleLogLevel = 0;
@@ -437,7 +437,7 @@ in
       };
 
       nextcloud-client = {
-        enable = true;
+        enable = lib.mkDefault true;
         startInBackground = true;
       };
 
