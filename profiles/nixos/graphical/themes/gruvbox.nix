@@ -50,6 +50,16 @@
         "col.active_border" = "rgb(d79921)";
         "col.inactive_border" = "rgb(282828)";
       };
+
+      plugin.hy3.tabs = {
+        "col.active" = "rgb(d79921)";
+        "col.inactive" = "rgb(282828)";
+        "col.urgent" = "rgb(cc241d)";
+
+        "col.text.active" = "rgb(282828)";
+        "col.text.urgent" = "rgb(ebdbb2)";
+        "col.text.inactive" = "rgb(ebdbb2)";
+      };
     };
   };
 }
