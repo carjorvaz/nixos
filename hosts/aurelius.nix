@@ -113,17 +113,7 @@ in
     };
   };
 
-  users.users.cjv = {
-    isNormalUser = true;
-    description = "Carlos Vaz";
-    extraGroups = [ "wheel" ];
-    hashedPassword = "$y$j9T$tJQ1YunPkcr0P2ay/PHqP.$OLGalRqTmS8q0goP6N5jBa0YvUJrdQ0/WDoNdBYPTD5";
-    openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus"
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBK2AsWCLGKxGjkXbIUD8lIV0+48qJFNV9h7FfLLx16f cjv@trajanus"
-      "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEYD8N3akY3HZzv03LxEgnvctoeI6Z3MI9q4hL/m6IOE0LjXejJ3tYA56OYmRPitj73ks4I+ik7qpNHNZ6H/ktg= cjv@iphone"
-    ];
-  };
+  users.users.cjv.hashedPassword = "$y$j9T$tJQ1YunPkcr0P2ay/PHqP.$OLGalRqTmS8q0goP6N5jBa0YvUJrdQ0/WDoNdBYPTD5";
 
   home-manager.users.cjv = {
     home.stateVersion = "24.05";
