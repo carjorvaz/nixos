@@ -252,7 +252,9 @@ in
 
         plugin.hy3 = {
           tabs = {
+            height = 18;
             text_font = "monospace";
+            text_height = 10;
           };
 
           autotile = {
