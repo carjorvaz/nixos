@@ -176,6 +176,8 @@ in
     };
   };
 
+  home-manager.users.cjv.services.nextcloud-client.enable = false;
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "24.05";
