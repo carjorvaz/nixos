@@ -83,6 +83,11 @@
     ];
   };
 
+  # TODO temporary, delete after ESLE
+  # Incompatible with Docker Swarm
+  virtualisation.docker.liveRestore = false;
+  users.users.cjv.extraGroups = [ "docker" ];
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "23.11";
