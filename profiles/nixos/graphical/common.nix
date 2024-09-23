@@ -23,6 +23,7 @@ in
   # Prettier boot
   boot = {
     plymouth.enable = lib.mkDefault true;
+    initrd.systemd.enable = lib.mkDefault true;
 
     # Enable "Silent Boot"
     consoleLogLevel = 0;
