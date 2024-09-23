@@ -151,7 +151,7 @@ in
         output = {
           "*".bg = lib.mkDefault "${./wallpaper.jpg} fill";
 
-          "eDP-1".scale = "1.25";
+          "eDP-1".scale = "1.5";
         };
 
         keybindings =
