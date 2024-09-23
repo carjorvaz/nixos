@@ -140,10 +140,11 @@ in
             pointer_accel = "0";
           };
 
-          # TODO default acceleration for touchpads
           "type:touchpad" = {
+            accel_profile = "adaptive";
             tap = "enabled";
             natural_scroll = "enabled";
+            scroll_factor = "0.2";
           };
         };
 
