@@ -21,6 +21,18 @@
     wl-mirror # contains wl-present
   ];
 
+  programs.foot = {
+    enable = true;
+    settings = {
+      main = {
+        term = "xterm-256color";
+        font = lib.mkDefault "monospace:size=13";
+      };
+
+      mouse.hide-when-typing = "yes";
+    };
+  };
+
   services.xserver.displayManager.lightdm.enable = false;
   services.xserver.displayManager.gdm = {
     enable = true;
@@ -37,30 +49,15 @@
       x11.enable = true;
     };
 
-    programs = {
-      foot = {
-        enable = true;
-        settings = {
-          main = {
-            term = "xterm-256color";
-            font = lib.mkDefault "monospace:size=13";
-          };
-
-          mouse.hide-when-typing = "yes";
-        };
-      };
-
-      rofi = {
-        enable = true;
-        package = pkgs.rofi-wayland;
-        cycle = true;
-        terminal = "${pkgs.foot}/bin/foot";
-        plugins = with pkgs; [
-          # https://github.com/NixOS/nixpkgs/issues/298539
-          (pkgs.rofi-calc.override { rofi-unwrapped = rofi-wayland-unwrapped; })
-        ];
-      };
-
+    programs.rofi = {
+      enable = true;
+      package = pkgs.rofi-wayland;
+      cycle = true;
+      terminal = "${pkgs.foot}/bin/foot";
+      plugins = with pkgs; [
+        # https://github.com/NixOS/nixpkgs/issues/298539
+        (pkgs.rofi-calc.override { rofi-unwrapped = rofi-wayland-unwrapped; })
+      ];
     };
 
     services = {
