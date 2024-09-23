@@ -479,7 +479,7 @@ in
   ];
 
   environment.shellAliases = {
-    zzz = "${pkgs.systemd}/bin/systemctl suspend";
+    zzz = "${pkgs.systemd}/bin/systemctl sleep";
   };
 
   environment.systemPackages = with pkgs; [
