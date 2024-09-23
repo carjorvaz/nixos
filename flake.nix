@@ -18,6 +18,9 @@
     home-manager.url = "github:nix-community/home-manager/release-24.05";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
+    home-manager-unstable.url = "github:nix-community/home-manager";
+    home-manager-unstable.inputs.nixpkgs.follows = "nixpkgs";
+
     impermanence.url = "github:nix-community/impermanence/master";
 
     simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-24.05";
@@ -42,7 +45,7 @@
           ];
 
           desktopModules = [
-            inputs.home-manager.nixosModules.home-manager
+            inputs.home-manager-unstable.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
@@ -50,7 +53,7 @@
           ];
         in
         {
-          aurelius = inputs.nixpkgs.lib.nixosSystem {
+          aurelius = inputs.nixpkgs-unstable.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
               inherit inputs self;
@@ -68,7 +71,7 @@
               ];
           };
 
-          commodus = inputs.nixpkgs.lib.nixosSystem {
+          commodus = inputs.nixpkgs-unstable.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
               inherit inputs self;
@@ -138,7 +141,7 @@
             ];
           };
 
-          trajanus = inputs.nixpkgs.lib.nixosSystem {
+          trajanus = inputs.nixpkgs-unstable.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
               inherit inputs self;
