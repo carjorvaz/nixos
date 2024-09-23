@@ -19,7 +19,6 @@ in
   programs = {
     hyprland = {
       enable = true;
-      package = pkgs.unstable.hyprland;
     };
 
     hyprlock.enable = true;
@@ -232,7 +231,7 @@ in
 
           # Make window fullscreen or fake fullscreen
           "$mainMod, f, fullscreen, 0"
-          "$mainMod SHIFT, f, fakefullscreen,"
+          "$mainMod SHIFT, f, fullscreenstate, -1, 2"
         ];
 
         # Move/resize windows with mainMod + LMB/RMB and dragging
