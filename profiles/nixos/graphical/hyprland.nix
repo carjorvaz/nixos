@@ -58,8 +58,8 @@ in
           kb_variant = "altgr-intl";
           kb_options = "ctrl:nocaps";
 
-          repeat_delay = 200;
-          repeat_rate = 25;
+          repeat_delay = 300;
+          repeat_rate = 30;
 
           accel_profile = "flat";
           follow_mouse = 1;
