@@ -468,6 +468,16 @@ in
     };
   };
 
+  # https://wiki.nixos.org/wiki/Sway#Inferior_performance_compared_to_other_distributions
+  security.pam.loginLimits = [
+    {
+      domain = "@users";
+      item = "rtprio";
+      type = "-";
+      value = 1;
+    }
+  ];
+
   environment.shellAliases = {
     zzz = "${pkgs.systemd}/bin/systemctl suspend";
   };
