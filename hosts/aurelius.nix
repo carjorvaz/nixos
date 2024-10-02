@@ -8,14 +8,15 @@
 }:
 
 let
-  networkInterface = "enp3s0";
+  networkInterface = "eno1";
 in
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
-    "${self}/profiles/nixos/cpu/amd.nix"
+    "${self}/profiles/nixos/cpu/intel.nix"
+    "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
@@ -36,8 +37,8 @@ in
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "ahci"
-    "usb_storage"
     "usbhid"
+    "usb_storage"
     "sd_mod"
   ];
 
@@ -101,7 +102,7 @@ in
     port = 80;
     authorizedKeys = config.users.users.cjv.openssh.authorizedKeys.keys;
     hostKeyFile = config.age.secrets.aureliusInitrdHostKey.path;
-    driver = "r8169";
+    driver = "e1000e";
     static = {
       enable = true;
       # Gets the first IP address from the system network configuration.

@@ -67,7 +67,7 @@
                 ./disko/desktop.nix
                 ./disko/encryption.nix
                 ./disko/zfsImpermanence.nix
-                { _module.args.disks = [ "/dev/sda" ]; }
+                { _module.args.disks = [ "/dev/nvme0n1" ]; }
               ];
           };
 
