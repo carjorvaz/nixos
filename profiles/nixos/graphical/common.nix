@@ -570,6 +570,7 @@ in
     libqalculate
     mpv
     pamixer
+    pavucontrol
     pulseaudio # for pactl
     pulsemixer
     xclip
