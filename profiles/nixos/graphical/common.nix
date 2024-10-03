@@ -573,6 +573,7 @@ in
     pavucontrol
     pulseaudio # for pactl
     pulsemixer
+    skypeforlinux
     xclip
     xlayoutdisplay
     zathura

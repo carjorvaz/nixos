@@ -82,6 +82,7 @@
         "nvidia-persistenced"
         "nvidia-settings"
         "nvidia-x11"
+        "skypeforlinux"
         "vscode"
         "vscode-extension-github-copilot"
         "zoom"
