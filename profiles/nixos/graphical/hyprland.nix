@@ -121,6 +121,8 @@ in
           "workspace 7 silent, class:^(betterbird)$"
           "workspace 8 silent, class:^(signal)$"
           "workspace 9 silent, class:^(discord)$"
+
+          "stayfocused, title:^()$, class:^(zoom)$"
         ];
 
         workspace = [ ];
