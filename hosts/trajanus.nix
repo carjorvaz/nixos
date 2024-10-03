@@ -82,6 +82,10 @@
       "desc:Iiyama North America PL3293UH 1213432400967, preferred, auto, 2"
       "desc:Dell Inc. DELL U3419W HW796T2, preferred, auto, 1.6"
     ];
+
+    workspace = [
+      "10, monitor:eDP-1, default:true"
+    ];
   };
 
   # TODO temporary, delete after ESLE
