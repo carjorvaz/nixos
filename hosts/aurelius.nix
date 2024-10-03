@@ -169,10 +169,16 @@ in
 
   home-manager.users.cjv.services.nextcloud-client.enable = false;
 
-  home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
-    "HDMI-A-1, preferred, auto, 2"
-  ];
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
+    monitor = [
+      "HDMI-A-2, preferred, 0x0, 1.6, transform, 3"
+      "DP-1, preferred, 901x310, 2"
+    ];
 
+    workspace = [
+      "10, monitor:HDMI-A-2, default:true"
+    ];
+  };
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "24.05";
