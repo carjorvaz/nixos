@@ -116,6 +116,8 @@ in
 
   users.users.cjv.hashedPassword = "$y$j9T$tJQ1YunPkcr0P2ay/PHqP.$OLGalRqTmS8q0goP6N5jBa0YvUJrdQ0/WDoNdBYPTD5";
 
+  nix.gc.automatic = lib.mkForce false;
+
   home-manager.users.cjv = {
     home.stateVersion = "24.05";
 
