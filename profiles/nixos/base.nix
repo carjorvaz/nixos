@@ -50,8 +50,7 @@
   ];
 
   nix = {
-    gc.automatic = true;
-    optimise.automatic = true;
+    gc.automatic = lib.mkDefault true;
     settings = {
       auto-optimise-store = true;
       experimental-features = [
