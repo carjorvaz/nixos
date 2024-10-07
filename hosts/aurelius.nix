@@ -27,6 +27,7 @@ in
     "${self}/profiles/nixos/graphical/hyprland.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/libvirt.nix"
+    "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/ssh.nix"
 
     "${self}/profiles/home/zsh.nix"
