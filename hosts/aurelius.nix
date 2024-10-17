@@ -174,8 +174,8 @@ in
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
     monitor = [
-      "HDMI-A-2, preferred, 0x0, 1.6, transform, 3"
-      "DP-1, preferred, 901x310, 2"
+      "HDMI-A-2, preferred, 0x45, 1.6"
+      "DP-1, preferred, 1602x0, 2"
     ];
 
     workspace = [
