@@ -343,6 +343,7 @@ in
             modules-center = [ "hyprland/window" ];
             modules-right = [
               "pulseaudio"
+              "idle_inhibitor"
               "backlight"
               "battery"
               "clock"
@@ -406,6 +407,14 @@ in
             "hyprland/workspaces" = {
               "on-scroll-up" = "hyprctl dispatch workspace e-1";
               "on-scroll-down" = "hyprctl dispatch workspace e+1";
+            };
+
+            idle_inhibitor = {
+              format = "{icon} ";
+              format-icons = {
+                activated = "";
+                deactivated = "";
+              };
             };
 
             network = {
