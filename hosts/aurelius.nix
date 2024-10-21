@@ -142,46 +142,49 @@ in
       }
     ];
 
-    wayland.windowManager.sway.config = rec {
-      output = {
-        "*".bg = "~/Pictures/wallpaper.png fill";
+    services.nextcloud-client.enable = false;
 
-        "DP-1" = {
-          resolution = "3840x2160";
-          # Get pos from wdisplays.
-          pos = "0 86";
-          scale = "1.25";
-        };
+    wayland.windowManager = {
+      hyprland.settings = {
+        monitor = [
+          "HDMI-A-2, preferred, 0x45, 1.6"
+          "DP-1, preferred, 1602x0, 2"
+        ];
 
-        "HDMI-A-2" = {
-          resolution = "1920x1080";
-          # Get pos from wdisplays.
-          pos = "3072 0";
-          transform = "270";
-        };
+        workspace = [
+          "10, monitor:HDMI-A-2, default:true"
+        ];
       };
 
-      workspaceOutputAssign = [
-        {
-          workspace = "9";
-          output = "HDMI-A-2";
-        }
-      ];
+      sway.config = rec {
+        output = {
+          "*".bg = "~/Pictures/wallpaper.png fill";
+
+          "DP-1" = {
+            resolution = "3840x2160";
+            # Get pos from wdisplays.
+            pos = "0 86";
+            scale = "1.25";
+          };
+
+          "HDMI-A-2" = {
+            resolution = "1920x1080";
+            # Get pos from wdisplays.
+            pos = "3072 0";
+            transform = "270";
+          };
+        };
+
+        workspaceOutputAssign = [
+          {
+            workspace = "9";
+            output = "HDMI-A-2";
+          }
+        ];
+      };
     };
   };
 
-  home-manager.users.cjv.services.nextcloud-client.enable = false;
-
-  home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
-    monitor = [
-      "HDMI-A-2, preferred, 0x45, 1.6"
-      "DP-1, preferred, 1602x0, 2"
-    ];
-
-    workspace = [
-      "10, monitor:HDMI-A-2, default:true"
-    ];
-  };
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "24.05";
