@@ -122,25 +122,46 @@ in
   home-manager.users.cjv = {
     home.stateVersion = "24.05";
 
-    programs.i3status-rust.bars.top.blocks = [
-      {
-        block = "sound";
-        max_vol = 100;
-        headphones_indicator = true;
-        device_kind = "sink";
-        click = [
-          {
-            button = "left";
-            cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
-          }
-        ];
-      }
-      {
-        block = "time";
-        interval = 5;
-        format = " $timestamp.datetime(f:'%a %d/%m %R')";
-      }
-    ];
+    programs = {
+      i3status-rust.bars.top.blocks = [
+        {
+          block = "sound";
+          max_vol = 100;
+          headphones_indicator = true;
+          device_kind = "sink";
+          click = [
+            {
+              button = "left";
+              cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+            }
+          ];
+        }
+        {
+          block = "time";
+          interval = 5;
+          format = " $timestamp.datetime(f:'%a %d/%m %R')";
+        }
+      ];
+
+      ssh = {
+        enable = true;
+        extraConfig = ''
+          CanonicalizeHostname yes
+          CanonicalDomains rnl.tecnico.ulisboa.pt
+          CanonicalizeMaxDots 0
+
+          Match canonical host="*.rnl.tecnico.ulisboa.pt"
+            User root
+            SendEnv RNLADMIN
+            ServerAliveInterval 60
+
+          Host *.rnl.tecnico.ulisboa.pt *.rnl.ist.utl.pt
+            User root
+            SendEnv RNLADMIN
+            ServerAliveInterval 60
+        '';
+      };
+    };
 
     services.nextcloud-client.enable = false;
 
