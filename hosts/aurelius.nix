@@ -35,6 +35,12 @@ in
 
   age.secrets.aureliusInitrdHostKey.file = "${self}/secrets/aureliusInitrdHostKey.age";
 
+  # For old SSH
+  # STATE: ❯ nix registry add nixpkgs2205 github:nixos/nixpkgs/nixos-22.05
+
+  # # TODO declarative, currently broken
+  # nix.registry.nixpkgs2205.flake.url = "github:nixos/nixpkgs/nixos-22.05";
+
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "ahci"
@@ -81,6 +87,18 @@ in
       "193.136.164.2"
       "2001:690:2100:82::1"
       "2001:690:2100:82::2"
+    ];
+
+    vlans.management = {
+      id = 1;
+      interface = networkInterface;
+    };
+
+    interfaces.management.ipv4.addresses = [
+      {
+        address = "192.168.102.202";
+        prefixLength = 22;
+      }
     ];
   };
 
