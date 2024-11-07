@@ -3,6 +3,7 @@
   config,
   inputs,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -46,6 +47,12 @@ in
 
   # Improve desktop responsiveness when updating the system.
   nix.daemonCPUSchedPolicy = "idle";
+
+  # Enable nix-ld for standard ~Common Lisp~ and Julia development.
+  programs.nix-ld = {
+    enable = true;
+    # libraries = options.programs.nix-ld.libraries.default ++ (with pkgs; [ openssl ]);
+  };
 
   # Suckless software overlays
   nixpkgs.overlays = [
@@ -561,9 +568,13 @@ in
 
     racket
     sbcl
+    # https://www.reddit.com/r/NixOS/comments/10io6ae/comment/j5foln9/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+    openssl
+    openssl.dev
+    openssl.out
     rlwrap
+
     python3
-    yt-dlp
 
     kubectl
     kubernetes-helm
@@ -581,6 +592,7 @@ in
     skypeforlinux
     xclip
     xlayoutdisplay
+    yt-dlp
     zathura
     zoom-us
   ];
