@@ -18,7 +18,6 @@
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
-    "${self}/profiles/nixos/diskSpinDown.nix"
     "${self}/profiles/nixos/ssh.nix"
   ];
 
