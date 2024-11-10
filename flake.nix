@@ -3,6 +3,9 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
+    nixos-wsl.inputs.nixpkgs.follows = "nixpkgs";
+
     nix-index-database.url = "github:nix-community/nix-index-database";
     nix-index-database.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -157,6 +160,22 @@
                 ./disko/zfsImpermanence.nix
                 { _module.args.disks = [ "/dev/nvme0n1" ]; }
               ];
+          };
+
+          trajanus-wsl = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = {
+              inherit inputs self;
+            };
+            modules = baseModules ++ [
+              inputs.nixos-wsl.nixosModules.default
+              inputs.home-manager.nixosModules.home-manager
+              {
+                home-manager.useGlobalPkgs = true;
+                home-manager.useUserPackages = true;
+              }
+              ./hosts/trajanus-wsl.nix
+            ];
           };
         };
     };
