@@ -38,6 +38,9 @@
     "usbhid"
   ];
 
+  # Would make it unbootable remotely because of backups
+  boot.zfs.requestEncryptionCredentials = false;
+
   networking = {
     useDHCP = false;
     hostName = "commodus";
