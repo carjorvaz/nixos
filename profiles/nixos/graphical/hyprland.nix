@@ -156,9 +156,9 @@ in
           "$mainMod SHIFT, D, exec, $menu -modes drun -show drun"
           "$mainMod, C, exec, $menu -modes calc -show calc"
 
-          # Screenshots; copied from: https://github.com/amadejkastelic/nixos-config/blob/0663337fddd2a5048eafb6231d2f378aee5d2bac/home/programs/wayland/hyprland/binds.nix#L2
-          ''$mainMod, P, exec, shader=$(hyprshade current) && hyprshade off && ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area; hyprshade on "$shader"''
-          ''$mainMod SHIFT, P, exec, shader=$(hyprshade current) && hyprshade off && ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png'); hyprshade on "$shader"''
+          # Screenshots
+          "$mainMod, P, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area"
+          "$mainMod SHIFT, P, exec, ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')"
 
           # Move focus with mainMod + arrow keys
           "$mainMod, left, hy3:movefocus, l"
