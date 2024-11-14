@@ -13,7 +13,6 @@ in
   imports = [
     ./themes/gruvbox.nix
     ./wayland.nix
-    ./hyprshade.nix
   ];
 
   programs = {
@@ -25,6 +24,10 @@ in
   };
 
   services.hypridle.enable = true;
+
+  environment.systemPackages = with pkgs; [
+    hyprsunset # Use: hyprsunset -t 1200
+  ];
 
   home-manager.users.cjv = {
     wayland.windowManager.hyprland = {
@@ -87,6 +90,7 @@ in
 
           # https://wiki.hyprland.org/FAQ/#how-do-i-make-hyprland-draw-as-little-power-as-possible-on-my-laptop
           blur.enabled = false;
+          shadow.enabled = false;
         };
 
         # https://wiki.hyprland.org/FAQ/#how-heavy-is-this
