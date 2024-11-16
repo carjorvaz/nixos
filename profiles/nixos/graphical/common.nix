@@ -534,7 +534,7 @@ in
     libreoffice-fresh
     librewolf
     mattermost-desktop
-    # metadata-cleaner # TODO not compiling on nixos-unstable as of 2024/10/16; re-enable when fixed
+    metadata-cleaner
     monero-gui
 
     # STATE:
