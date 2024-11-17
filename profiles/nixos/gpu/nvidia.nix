@@ -8,8 +8,8 @@
 {
   nixpkgs.config.nvidia.acceptLicense = true;
 
-  # Make sure opengl is enabled
-  hardware.opengl = {
+  # Make sure graphics are enabled
+  hardware.graphics = {
     enable = true;
     driSupport = true;
     driSupport32Bit = true;

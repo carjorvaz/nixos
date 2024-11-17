@@ -224,7 +224,7 @@ in
       };
 
       iconTheme = {
-        package = pkgs.gnome.adwaita-icon-theme;
+        package = pkgs.adwaita-icon-theme;
         name = "Adwaita";
       };
     };
@@ -558,8 +558,8 @@ in
     # - dictionaries
     thunderbird
 
-    gnome.nautilus
-    gnome.seahorse
+    nautilus
+    seahorse
 
     libsForQt5.breeze-qt5
     libsForQt5.breeze-icons
