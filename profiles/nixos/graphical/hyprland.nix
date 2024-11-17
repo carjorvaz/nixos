@@ -610,7 +610,7 @@ in
 
           listener = [
             {
-              # Turn off screen after two seconds of inactivity when locked
+              # Turn off screen after five seconds of inactivity when locked
               timeout = 5;
               on-timeout = "${pkgs.procps}/bin/pidof hyprlock && ${pkgs.hyprland}/bin/hyprctl dispatch dpms off";
               on-resume = "${pkgs.hyprland}/bin/hyprctl dispatch dpms on";

@@ -49,53 +49,55 @@
 
         netdevs."10-wgrnl" = {
           enable = true;
+
           netdevConfig = {
             Kind = "wireguard";
             MTUBytes = "1300";
             Name = "wgrnl";
           };
+
           wireguardConfig = {
             PrivateKeyFile = cfg.ownPrivateKeyFile;
             FirewallMark = cfg.fwmark;
             RouteTable = "wgrnl";
           };
+
           wireguardPeers = [
             {
-              wireguardPeerConfig = {
-                PublicKey = cfg.peerPubkey;
-                Endpoint = cfg.peerEndpoint;
-                AllowedIPs = [
-                  # public RNL-operated ranges
-                  "193.136.164.0/24"
-                  "193.136.154.0/24"
-                  "2001:690:2100:80::/58"
+              PublicKey = cfg.peerPubkey;
+              Endpoint = cfg.peerEndpoint;
+              AllowedIPs = [
+                # public RNL-operated ranges
+                "193.136.164.0/24"
+                "193.136.154.0/24"
+                "2001:690:2100:80::/58"
 
-                  # private RNL-operated ranges
-                  "10.16.64.0/18" # DSI-assigned
-                  "192.168.154.0/24"
-                  "192.168.20.0/24" # wgrnl VPN
-                  "fd92:3315:9e43:c490::/64" # wgrnl VPN
+                # private RNL-operated ranges
+                "10.16.64.0/18" # DSI-assigned
+                "192.168.154.0/24"
+                "192.168.20.0/24" # wgrnl VPN
+                "fd92:3315:9e43:c490::/64" # wgrnl VPN
 
-                  # multicast
-                  "224.0.0.0/24"
-                  "ff02::/16"
-                  "239.255.255.250/32"
-                  "239.255.255.253/32"
-                  "fe80::/10"
-                ];
-                PersistentKeepalive = 25;
-              };
+                # multicast
+                "224.0.0.0/24"
+                "ff02::/16"
+                "239.255.255.250/32"
+                "239.255.255.253/32"
+                "fe80::/10"
+              ];
+              PersistentKeepalive = 25;
             }
           ];
         };
+
         networks."40-rnl" = {
           name = "wgrnl";
 
           addresses = [
-            { addressConfig.Address = "192.168.20.${builtins.toString cfg.id}/24"; }
+            { Address = "192.168.20.${builtins.toString cfg.id}/24"; }
             {
-              addressConfig.Address = "fd92:3315:9e43:c490::${builtins.toString cfg.id}/64";
-              addressConfig.DuplicateAddressDetection = "none";
+              Address = "fd92:3315:9e43:c490::${builtins.toString cfg.id}/64";
+              DuplicateAddressDetection = "none";
             }
           ];
 
@@ -115,12 +117,10 @@
 
           routingPolicyRules = [
             {
-              routingPolicyRuleConfig = {
-                InvertRule = true;
-                FirewallMark = cfg.fwmark;
-                Table = "wgrnl";
-                Family = "both";
-              };
+              InvertRule = true;
+              FirewallMark = cfg.fwmark;
+              Table = "wgrnl";
+              Family = "both";
             }
           ];
 
