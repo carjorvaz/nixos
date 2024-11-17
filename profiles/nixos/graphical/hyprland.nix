@@ -135,7 +135,7 @@ in
 
         # Example binds, see https://wiki.hyprland.org/Configuring/Binds/ for more
         bind = [
-          "$mainMod, ESCAPE, exec, hyprlock"
+          "$mainMod, ESCAPE, exec, loginctl lock-session"
           "$mainMod, RETURN, exec, $terminal"
           "$mainMod SHIFT, Q, hy3:killactive,"
           "$mainMod SHIFT, E, exit,"
