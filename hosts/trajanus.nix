@@ -30,8 +30,6 @@
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
 
-    "${self}/profiles/nixos/virtualbox.nix" # TODO remove after AID
-
     # STATE: sudo tailscale up
     "${self}/profiles/nixos/tailscale.nix"
   ];
@@ -87,11 +85,6 @@
       "10, monitor:eDP-1, default:true"
     ];
   };
-
-  # TODO temporary, delete after ESLE
-  # Incompatible with Docker Swarm
-  virtualisation.docker.liveRestore = false;
-  users.users.cjv.extraGroups = [ "docker" ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
