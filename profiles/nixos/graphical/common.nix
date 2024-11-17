@@ -194,6 +194,7 @@ in
       "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
       "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
       "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
+      "khncfooichmfjbepaaaebmommgaepoid" # Unhook
     ];
   };
 
