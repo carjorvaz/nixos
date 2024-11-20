@@ -28,35 +28,46 @@ in
       epkgs.org-roam
     ]))
     binutils
-    mlocate
-    (ripgrep.override { withPCRE2 = true; })
-    gnutls
     fd
+    gnutls
     go
     hugo # ox-hugo
-    sqlite # org-roam
-    nixfmt-rfc-style
-    zstd
     imagemagick
+    libtool # for vterm
+    mlocate
+    nixfmt-rfc-style
+    (ripgrep.override { withPCRE2 = true; })
+    sqlite # org-roam
+    zstd
 
+    black
+    cargo
     ccls # C/C++ LSP support
     clang-tools # clang-format as a C/C++ formatter
-    shellcheck
-    pandoc
+    cljfmt
     cmake
+    editorconfig-core-c
+    dockfmt
+    gcc
     gnumake
+    graphviz
+    html-tidy
+    isort
+    jdk
+    julia
+    libxml2
     nil # nix LSP
     nodejs
-    graphviz
-    black
-    isort
-    pipenv
-    shfmt
-    html-tidy
     nodePackages.stylelint
     nodePackages.js-beautify
-    gcc
+    pandoc
+    pipenv
     pyright
+    racket
+    rustc
+    rust-analyzer
+    shellcheck
+    shfmt
     texlive.combined.scheme-full
   ];
 }
