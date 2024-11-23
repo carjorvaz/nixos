@@ -18,8 +18,9 @@ in
   # Other options:
   # - config.boot.zfs.package.latestCompatibleLinuxPackages;
   # - pkgs.linuxPackages_zen;
-  # - pkgs.linuxPackages_xanmod_stable;
-  boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_xanmod;
+  boot.kernelPackages = pkgs.linuxPackages_cachyos;
+  boot.zfs.package = pkgs.zfs_cachyos;
+  chaotic.scx.enable = true; # by default uses scx_rustland scheduler
 
   # Prettier boot
   boot = {
