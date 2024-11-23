@@ -11,6 +11,7 @@
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
   brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
+  orca-slicer-appimage = pkgs.callPackage "${self}/pkgs/orca-slicer-appimage.nix" { };
 in
 {
   # Lowest input lag, from my experienece.
@@ -546,7 +547,7 @@ in
 
     nyxt
     ungoogled-chromium
-    orca-slicer
+    orca-slicer-appimage
     signal-desktop
     stremio
 
