@@ -20,7 +20,8 @@ in
   # - pkgs.linuxPackages_zen;
   boot.kernelPackages = pkgs.linuxPackages_cachyos;
   boot.zfs.package = pkgs.zfs_cachyos;
-  chaotic.scx.enable = true; # by default uses scx_rustland scheduler
+  chaotic.scx.enable = true;
+  chaotic.scx.scheduler = "scx_lavd";
 
   # Prettier boot
   boot = {
