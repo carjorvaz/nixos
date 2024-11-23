@@ -12,6 +12,8 @@
     agenix.url = "github:ryantm/agenix";
     agenix.inputs.nixpkgs.follows = "nixpkgs";
 
+    chaotic.url = "github:chaotic-cx/nyx/nyxpkgs-unstable";
+
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -48,6 +50,7 @@
           ];
 
           desktopModules = [
+            inputs.chaotic.nixosModules.default
             inputs.home-manager-unstable.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
