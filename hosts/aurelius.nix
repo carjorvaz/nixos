@@ -8,15 +8,15 @@
 }:
 
 let
-  networkInterface = "eno1";
+  networkInterface = "enp4s0";
 in
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
-    "${self}/profiles/nixos/cpu/intel.nix"
-    "${self}/profiles/nixos/gpu/intel.nix"
+    "${self}/profiles/nixos/cpu/amd.nix"
+    "${self}/profiles/nixos/gpu/nvidia.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
@@ -42,12 +42,15 @@ in
   # nix.registry.nixpkgs2205.flake.url = "github:nixos/nixpkgs/nixos-22.05";
 
   boot.initrd.availableKernelModules = [
+    "nvme"
     "xhci_pci"
     "ahci"
-    "usbhid"
     "usb_storage"
+    "usbhid"
     "sd_mod"
   ];
+
+  hardware.nvidia.package = lib.mkDefault config.boot.kernelPackages.nvidiaPackages.beta;
 
   networking = {
     useDHCP = false;
@@ -121,7 +124,7 @@ in
     port = 80;
     authorizedKeys = config.users.users.cjv.openssh.authorizedKeys.keys;
     hostKeyFile = config.age.secrets.aureliusInitrdHostKey.path;
-    driver = "e1000e";
+    driver = "r8169";
     static = {
       enable = true;
       # Gets the first IP address from the system network configuration.
@@ -186,12 +189,12 @@ in
     wayland.windowManager = {
       hyprland.settings = {
         monitor = [
-          "HDMI-A-2, preferred, 0x45, 1.6"
-          "DP-1, preferred, 1602x0, 2"
+          "HDMI-A-1, preferred, 0x45, 1.6"
+          "DP-3, preferred, 1602x0, 2"
         ];
 
         workspace = [
-          "10, monitor:HDMI-A-2, default:true"
+          "10, monitor:HDMI-A-1, default:true"
         ];
       };
 
