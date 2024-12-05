@@ -133,7 +133,7 @@ in
   fonts = {
     fontDir.enable = true;
     fontconfig.defaultFonts.monospace = [ "JetBrainsMono Nerd Font" ];
-    packages = with pkgs; [ (nerdfonts.override { fonts = [ "JetBrainsMono" ]; }) ];
+    packages = with pkgs; [ nerd-fonts.jetbrains-mono ];
   };
 
   programs = {
