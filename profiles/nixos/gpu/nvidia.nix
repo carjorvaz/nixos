@@ -9,25 +9,12 @@
   nixpkgs.config.nvidia.acceptLicense = true;
 
   # Make sure graphics are enabled
-  hardware.graphics = {
-    enable = true;
-    driSupport = true;
-    driSupport32Bit = true;
-  };
+  hardware.graphics.enable = true;
 
   # Tell Xorg to use the nvidia driver (also valid for Wayland)
   services.xserver.videoDrivers = [ "nvidia" ];
 
   hardware.nvidia = {
-    # Modesetting is required.
-    modesetting.enable = true;
-
-    # Nvidia power management. Experimental, and can cause sleep/suspend to fail.
-    powerManagement.enable = false;
-    # Fine-grained power management. Turns off GPU when not in use.
-    # Experimental and only works on modern Nvidia GPUs (Turing or newer).
-    powerManagement.finegrained = false;
-
     # Use the NVidia open source kernel module (not to be confused with the
     # independent third-party "nouveau" open source driver).
     # Support is limited to the Turing and later architectures. Full list of
@@ -37,15 +24,18 @@
     # Currently alpha-quality/buggy, so false is currently the recommended setting.
     open = lib.mkDefault false;
 
-    # Enable the Nvidia settings menu,
-    # accessible via `nvidia-settings`.
-    nvidiaSettings = true;
-
-    # TODO module; option "stable" or "470"
     # Optionally, you may need to select the appropriate driver version for your specific GPU.
-    #package = config.boot.kernelPackages.nvidiaPackages.stable;
-    package = config.boot.kernelPackages.nvidiaPackages.legacy_470;
+    package = lib.mkDefault config.boot.kernelPackages.nvidiaPackages.stable;
+    # package = lib.mkDefault config.boot.kernelPackages.nvidiaPackages.beta;
+    # package = config.boot.kernelPackages.nvidiaPackages.legacy_470;
   };
 
-  virtualisation.docker.enableNvidia = true;
+  home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
+    env = [
+      "LIBVA_DRIVER_NAME,nvidia"
+      "__GLX_VENDOR_LIBRARY_NAME,nvidia"
+    ];
+
+    cursor.no_hardware_cursors = true;
+  };
 }
