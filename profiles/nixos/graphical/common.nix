@@ -18,10 +18,11 @@ in
   # Other options:
   # - config.boot.zfs.package.latestCompatibleLinuxPackages;
   # - pkgs.linuxPackages_zen;
+
   boot.kernelPackages = pkgs.linuxPackages_cachyos;
   boot.zfs.package = pkgs.zfs_cachyos;
-  chaotic.scx.enable = true;
-  chaotic.scx.scheduler = "scx_lavd";
+  services.scx.enable = true;
+  services.scx.scheduler = "scx_lavd";
 
   # Prettier boot
   boot = {
