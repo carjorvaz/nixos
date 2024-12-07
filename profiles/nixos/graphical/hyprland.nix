@@ -51,7 +51,6 @@ in
 
         env = [
           "XCURSOR_SIZE,24"
-          "QT_QPA_PLATFORMTHEME,qt5ct" # change to qt6ct if you have that
         ];
 
         # https://wiki.hyprland.org/Configuring/Variables/

@@ -201,11 +201,10 @@ in
     ];
   };
 
-  qt = lib.mkDefault {
+  qt = {
     enable = true;
-
-    # STATE: requires opening qt5ct and setting theme and icon theme
-    platformTheme = "qt5ct";
+    platformTheme = "gnome";
+    style = "adwaita-dark";
   };
 
   home-manager.users.cjv = {
@@ -564,11 +563,6 @@ in
 
     nautilus
     seahorse
-
-    libsForQt5.breeze-qt5
-    libsForQt5.breeze-icons
-    kdePackages.qtsvg
-    dolphin
 
     racket
     sbcl
