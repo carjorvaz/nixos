@@ -16,9 +16,9 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
-    "${self}/profiles/nixos/iwd.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/laptop.nix"
+    "${self}/profiles/nixos/networkManager.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
@@ -50,9 +50,6 @@
   ];
 
   networking = {
-    # Let iwd handle DHCP for Wi-Fi
-    useDHCP = false;
-
     hostName = "trajanus";
     hostId = "d7ba56e3";
 

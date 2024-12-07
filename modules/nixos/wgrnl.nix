@@ -42,6 +42,8 @@
     lib.mkIf cfg.enable {
       networking.networkmanager.unmanaged = lib.mkIf config.networking.networkmanager.enable [ "wgrnl" ];
 
+      networking.useNetworkd = true;
+
       systemd.network = {
         enable = true;
 
