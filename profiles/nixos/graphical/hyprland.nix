@@ -18,6 +18,7 @@ in
   programs = {
     hyprland = {
       enable = true;
+      withUWSM = true; # recommended for most users
     };
 
     hyprlock.enable = true;
