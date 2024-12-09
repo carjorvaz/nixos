@@ -6,6 +6,8 @@
     nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
     nixos-wsl.inputs.nixpkgs.follows = "nixpkgs";
 
+    nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
+
     nix-index-database.url = "github:nix-community/nix-index-database";
     nix-index-database.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -57,6 +59,7 @@
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
             }
+            inputs.nixos-cosmic.nixosModules.default
           ];
         in
         {
