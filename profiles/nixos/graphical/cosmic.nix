@@ -11,6 +11,12 @@
     trusted-public-keys = [ "cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE=" ];
   };
 
+  # STATE:
+  # - increase keyboard repeat rate
+  # - disable mouse acceleration
+  # - disable automatic suspend on desktops
+  # - change accent color to grey
+  # - mouse follows focus, focus follows mouse
   services.displayManager.cosmic-greeter.enable = true;
   services.desktopManager.cosmic.enable = true;
 
