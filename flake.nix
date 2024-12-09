@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
 
     nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
@@ -20,7 +20,7 @@
     firefox-addons.url = "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons";
     firefox-addons.inputs.nixpkgs.follows = "nixpkgs";
 
-    home-manager.url = "github:nix-community/home-manager/release-24.05";
+    home-manager.url = "github:nix-community/home-manager/release-24.11";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
     home-manager-unstable.url = "github:nix-community/home-manager";
@@ -28,6 +28,7 @@
 
     impermanence.url = "github:nix-community/impermanence/master";
 
+    # TODO: 24.11
     simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-24.05";
   };
 
