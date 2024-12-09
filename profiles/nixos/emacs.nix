@@ -7,14 +7,10 @@
 
 let
   isWayland =
-    if
-      config.programs.sway.enable
-      || config.programs.hyprland.enable
-      || config.services.xserver.desktopManager.gnome.enable
-    then
-      true
-    else
-      false;
+    config.programs.sway.enable
+    || config.programs.hyprland.enable
+    || config.services.xserver.desktopManager.gnome.enable
+    || config.services.desktopManager.cosmic.enable;
 
   myEmacs = if isWayland then pkgs.emacs29-pgtk else pkgs.emacs29;
 in
