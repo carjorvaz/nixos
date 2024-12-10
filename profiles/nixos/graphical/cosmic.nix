@@ -23,7 +23,6 @@
   # - mouse follows focus, focus follows mouse
   # - disable dock
   # - top panel applets: remove workspace and applications; add workspace numbers
-  # - scale X11 apps at native resolution
   # - time and date: 24 hours; week starts on monday
   # - touchpad:
   #   - disable while typing
