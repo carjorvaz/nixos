@@ -7,6 +7,7 @@
 
 {
   imports = [ ./common.nix ];
+
   # Make electron apps run on Wayland natively.
   environment.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
@@ -35,7 +36,7 @@
 
   services.xserver.displayManager.lightdm.enable = false;
   services.xserver.displayManager.gdm = {
-    enable = true;
+    enable = lib.mkDefault true;
     wayland = true;
   };
 
@@ -65,7 +66,7 @@
       redshift.enable = false;
 
       dunst.enable = false;
-      mako.enable = true;
+      mako.enable = lib.mkDefault true;
     };
   };
 }
