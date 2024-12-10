@@ -1,6 +1,6 @@
 {
+  inputs,
   config,
-  lib,
   pkgs,
   ...
 }:
@@ -12,9 +12,14 @@ let
     || config.services.xserver.desktopManager.gnome.enable
     || config.services.desktopManager.cosmic.enable;
 
-  myEmacs = if isWayland then pkgs.emacs29-pgtk else pkgs.emacs29;
+  myEmacs = if isWayland then pkgs.emacs-pgtk else pkgs.emacs29;
 in
 {
+
+  nixpkgs.overlays = [
+    inputs.emacs-overlay.overlays.default
+  ];
+
   fonts.packages = [ pkgs.emacs-all-the-icons-fonts ];
 
   environment.systemPackages = with pkgs; [
