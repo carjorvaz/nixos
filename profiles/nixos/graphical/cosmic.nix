@@ -20,7 +20,7 @@
   # - disable automatic suspend on desktops/plugged in
   # - change accent color to grey
   # - slightly round interface
-  # - mouse follows focus, focus follows mouse
+  # - mouse follows focus, focus follows mouse, 0 delay
   # - disable dock
   # - top panel applets: remove workspace and applications; add workspace numbers
   # - time and date: 24 hours; week starts on monday
