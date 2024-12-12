@@ -171,11 +171,6 @@ in
           CanonicalDomains rnl.tecnico.ulisboa.pt
           CanonicalizeMaxDots 0
 
-          Match canonical host="*.rnl.tecnico.ulisboa.pt"
-            User root
-            SendEnv RNLADMIN
-            ServerAliveInterval 60
-
           Host *.rnl.tecnico.ulisboa.pt *.rnl.ist.utl.pt
             User root
             SendEnv RNLADMIN
