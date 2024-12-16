@@ -232,6 +232,8 @@ in
     };
 
     programs = {
+      eza.enable = true;
+
       i3status-rust = {
         bars.top = {
           icons = "material-nf";
@@ -438,6 +440,15 @@ in
         enable = true;
         options = {
           "selection-clipboard" = "clipboard";
+        };
+      };
+
+      zellij = {
+        enable = true;
+        settings = {
+          theme = "gruvbox-dark";
+          # default_layout = "compact";
+          # on_force_close = "quit";
         };
       };
     };
