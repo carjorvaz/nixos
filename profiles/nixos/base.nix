@@ -53,7 +53,6 @@
     nixPath = [
       "nixpkgs=${inputs.nixpkgs.outPath}"
       "unstable=${inputs.nixpkgs-unstable.outPath}"
-      "/nix/var/nix/profiles/per-user/root/channels"
     ];
   };
 
