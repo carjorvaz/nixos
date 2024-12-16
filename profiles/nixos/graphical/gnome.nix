@@ -14,8 +14,8 @@
     drawing
     foliate
     fragments
-    gnome.gnome-sound-recorder
-    gnome.gnome-tweaks
+    gnome-sound-recorder
+    gnome-tweaks
     inkscape
     metadata-cleaner
     pdfslicer
