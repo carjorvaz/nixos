@@ -52,6 +52,11 @@ in
 
   hardware.nvidia.package = lib.mkDefault config.boot.kernelPackages.nvidiaPackages.beta;
 
+  # Fixes not being able to boot into TTY
+  # https://github.com/NixOS/nixpkgs/issues/328972
+  hardware.nvidia.modesetting.enable = false;
+  boot.kernelParams = [ "nvidia-drm.modeset=1" ];
+
   networking = {
     useDHCP = false;
     hostName = "aurelius";
