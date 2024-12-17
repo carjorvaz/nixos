@@ -77,6 +77,8 @@
     NIXOS_OZONE_WL = "1";
   };
 
+  services.blueman.enable = false;
+
   home-manager.users.cjv =
     { lib, ... }:
     {
@@ -225,6 +227,11 @@
         "org/gnome/shell/extensions/space-bar/shortcuts".enable-move-to-workspace-shortcuts = true;
         "org/gnome/shell/extensions/space-bar/shortcuts".open-menu =
           lib.hm.gvariant.mkEmptyArray lib.hm.gvariant.type.string;
+      };
+
+      services = {
+        blueman-applet.enable = false;
+        mako.enable = false;
       };
     };
 }
