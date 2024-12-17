@@ -109,7 +109,7 @@
         };
 
         "org/gnome/desktop/wm/preferences" = {
-          focus-mode = "mouse";
+          focus-mode = "sloppy";
           num-workspaces = 9;
         };
 
