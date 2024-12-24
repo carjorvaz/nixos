@@ -24,7 +24,7 @@ in
 
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/gnome.nix"
+    "${self}/profiles/nixos/graphical/hyprland.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/printing.nix"
@@ -196,6 +196,26 @@ in
         workspace = [
           "10, monitor:HDMI-A-1, default:true"
         ];
+
+        # Temporary workaround for chromium flickers on nvidia
+        # https://github.com/hyprwm/Hyprland/issues/7252#issuecomment-2345792172
+        render = {
+          explicit_sync = 2;
+          explicit_sync_kms = 0;
+        };
+
+        opengl = {
+          nvidia_anti_flicker = 0;
+          force_introspection = 2;
+        };
+
+        misc = {
+          vfr = 0;
+        };
+
+        debug = {
+          damage_tracking = 0;
+        };
       };
 
       sway.config = rec {

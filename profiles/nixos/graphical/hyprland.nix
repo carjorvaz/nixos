@@ -103,14 +103,20 @@ in
         };
 
         misc = {
-          vfr = true;
+          vfr = lib.mkDefault true;
 
           # Set to 0 to disable the anime mascot wallpapers
           force_default_wallpaper = 0;
           disable_hyprland_logo = false;
         };
 
-        monitor = [ ",preferred,auto,auto" ];
+        monitor = [
+          ",preferred,auto,auto"
+
+          # Prevent hyprlock from crashing when turning off screen
+          # https://github.com/hyprwm/hyprlock/issues/434#issuecomment-2341710088
+          "FALLBACK,1920x1080@60,auto,1"
+        ];
 
         # Example windowrule v1
         # windowrule = float, ^(kitty)$
