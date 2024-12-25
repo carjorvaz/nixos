@@ -25,7 +25,7 @@
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/gnome.nix"
+    "${self}/profiles/nixos/graphical/hyprland.nix"
     "${self}/profiles/nixos/japaneseKeyboard.nix"
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
