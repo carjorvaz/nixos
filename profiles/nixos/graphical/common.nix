@@ -575,7 +575,6 @@ in
     # - disable show server notifications (maybe, choose accordingly)
     nextcloud-client
 
-    nyxt
     ungoogled-chromium
     orca-slicer-appimage
     signal-desktop
