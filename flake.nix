@@ -2,6 +2,12 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-24.11-darwin";
+
+    nix-darwin.url = "github:LnL7/nix-darwin";
+    nix-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
+
+    determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
 
     nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
     nixos-wsl.inputs.nixpkgs.follows = "nixpkgs";
@@ -185,5 +191,20 @@
             ];
           };
         };
+
+    darwinConfigurations."mac" = inputs.nix-darwin.lib.darwinSystem {
+        system = "aarch64-darwin";
+        specialArgs = { inherit inputs self; };
+        modules = [
+          ./hosts/mac.nix
+          inputs.home-manager.darwinModules.home-manager
+          {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+          }
+          # https://github.com/DeterminateSystems/determinate?tab=readme-ov-file#nix-darwin
+          inputs.determinate.darwinModules.default
+        ];
+      };
     };
 }
