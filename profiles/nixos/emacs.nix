@@ -64,5 +64,6 @@ in
     shellcheck
     shfmt
     texlive.combined.scheme-full
+    python3Packages.pygments # minted syntax highlighting in latex
   ];
 }
