@@ -8,6 +8,30 @@
 {
   home-manager.users.cjv = {
     programs = {
+      dircolors.enable = true;
+
+      direnv = {
+        enable = true;
+        nix-direnv.enable = true;
+      };
+
+      eza.enable = true;
+
+      fzf.enable = true;
+
+      starship.enable = true;
+
+      zellij = {
+        enable = true;
+        settings = {
+          theme = "gruvbox-dark";
+          # default_layout = "compact";
+          # on_force_close = "quit";
+        };
+      };
+
+      zoxide.enable = true;
+
       zsh = {
         enable = true;
         autocd = true;
@@ -24,16 +48,6 @@
           ignoreDups = true;
         };
       };
-
-      direnv = {
-        enable = true;
-        nix-direnv.enable = true;
-      };
-
-      dircolors.enable = true;
-      fzf.enable = true;
-      starship.enable = true;
-      zoxide.enable = true;
     };
   };
 }
