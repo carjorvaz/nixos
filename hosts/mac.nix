@@ -191,6 +191,7 @@
       "signal"
       "stremio"
       "transmission"
+      "tunnelblick"
       "ukelele"
       "unnaturalscrollwheels"
       "utm"
