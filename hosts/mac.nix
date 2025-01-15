@@ -79,11 +79,6 @@
     wget
     yt-dlp
     inputs.agenix.packages."${system}".default
-
-    # Waiting for:
-    # - https://github.com/NixOS/nixpkgs/issues/360412
-    # - https://github.com/NixOS/nixpkgs/pull/361752
-    # emacs-macport
   ];
 
   homebrew = {
@@ -104,6 +99,34 @@
       "rlwrap"
       "sbcl"
       "trash"
+
+      {
+        # Emacs
+        # STATE: ln -s /usr/local/opt/emacs-plus/Emacs.app /Applications/Emacs.app
+        name = "emacs-plus@30";
+        args = [
+          "with-native-comp"
+          "with-c9rgreen-sonoma-icon"
+        ];
+      }
+      # Emacs dependencies
+      "awk"
+      "fribidi"
+      "gdk-pixbuf"
+      "giflib"
+      "gnu-sed"
+      "gnu-tar"
+      "graphite2"
+      "harfbuzz"
+      "jansson"
+      "jpeg"
+      "pango"
+      "librsvg"
+      "make"
+      "texinfo"
+      "tree-sitter"
+      "webp"
+      "zlib"
 
       # Doom Emacs dependencies
       "coreutils"
@@ -150,7 +173,6 @@
       "brave-browser"
       "discord"
       "docker"
-      "emacs-mac"
       "firefox"
       "flux"
       "ghostty"
@@ -189,7 +211,7 @@
     };
 
     taps = [
-      "railwaycat/emacsmacport" # emacs-mac
+      "d12frosted/emacs-plus" # emacs-plus
     ];
   };
 
