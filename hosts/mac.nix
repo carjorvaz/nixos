@@ -188,6 +188,7 @@
       "orcaslicer"
       "orion"
       "qmk-toolbox"
+      "racket"
       "signal"
       "skype"
       "stremio"
