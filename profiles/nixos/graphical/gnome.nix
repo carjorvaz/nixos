@@ -52,7 +52,7 @@
           owner = "vanvugt";
           repo = "mutter";
           rev = "triple-buffering-v4-47";
-          hash = "sha256-JaqJvbuIAFDKJ3y/8j/7hZ+/Eqru+Mm1d3EvjfmCcug=";
+          hash = "sha256-1VXEzKwzrqLCZby2oWxjclA08kPhxs/Om5N17qYeglM=";
         };
 
         preConfigure =
@@ -99,6 +99,7 @@
 
         "org/gnome/desktop/interface" = {
           color-scheme = "prefer-dark";
+          show-battery-percentage = true;
         };
 
         "org/gnome/desktop/peripherals/mouse".accel-profile = "flat";
@@ -108,48 +109,21 @@
           two-finger-scrolling-enabled = true;
         };
 
-        "org/gnome/desktop/wm/preferences" = {
-          focus-mode = "sloppy";
-          num-workspaces = 9;
-        };
-
-        "org/gnome/shell/keybindings" = lib.pipe (lib.range 1 9) [
-          (lib.map toString)
-          (lib.map (i: [
-            (lib.nameValuePair "switch-to-application-${i}" (
-              lib.hm.gvariant.mkEmptyArray lib.hm.gvariant.type.string
-            ))
-          ]))
-          lib.flatten
-          builtins.listToAttrs
-        ];
+        # "org/gnome/desktop/wm/preferences" = {
+        #   focus-mode = "sloppy";
+        # };
 
         "org/gnome/desktop/peripherals/keyboard" = {
           delay = lib.hm.gvariant.mkUint32 300;
           repeat-interval = lib.hm.gvariant.mkUint32 30;
         };
 
-        "org/gnome/desktop/wm/keybindings" =
-          lib.pipe (lib.range 1 9) [
-            (lib.map toString)
-            (lib.map (i: [
-              (lib.nameValuePair "switch-to-workspace-${i}" [ "<Super>${i}" ])
-              (lib.nameValuePair "move-to-workspace-${i}" [ "<Shift><Super>${i}" ])
-            ]))
-            lib.flatten
-            builtins.listToAttrs
-          ]
-          // {
-            close = [ "<Shift><Super>q" ];
-          };
-
         "org/gnome/mutter" = {
           # Enable fractional scaling.
           experimental-features = [ "scale-monitor-framebuffer" ];
-
-          center-new-windows = true;
           current-workspace-only = true;
-          dynamic-workspaces = false;
+          dynamic-workspaces = true;
+          edge-tiling = true;
           workspaces-only-on-primary = true;
         };
 
@@ -157,16 +131,6 @@
           night-light-enabled = true;
           night-light-temperature = lib.hm.gvariant.mkUint32 1200;
           night-light-schedule-automatic = true;
-        };
-
-        "org/gnome/settings-daemon/plugins/media-keys" = {
-          screensaver = [ "<Super>o" ];
-        };
-
-        # STATE: Needs to be created manually
-        "org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0" = {
-          binding = "<Super>Return";
-          command = "alacritty";
         };
 
         "org/gnome/settings-daemon/plugins/power" = {
@@ -180,10 +144,10 @@
         "org/gnome/shell" = {
           favorite-apps = [
             "brave-browser.desktop"
-            "Alacritty.desktop"
+            "org.gnome.Ptyxis.desktop"
             "org.gnome.Nautilus.desktop"
             "emacs.desktop"
-            "thunderbird.desktop"
+            "org.gnome.Geary.desktop"
             "Mattermost.desktop"
             "com.nextcloud.desktopclient.nextcloud.desktop"
           ];
@@ -192,41 +156,10 @@
           disable-user-extensions = false; # enables user extensions
           enabled-extensions = [
             pkgs.gnomeExtensions.appindicator.extensionUuid
-            pkgs.gnomeExtensions.just-perfection.extensionUuid
-            pkgs.gnomeExtensions.blur-my-shell.extensionUuid
-            pkgs.gnomeExtensions.space-bar.extensionUuid
-            pkgs.gnomeExtensions.undecorate.extensionUuid
           ];
         };
 
-        # Configure Just Perfection
-        "org/gnome/shell/extensions/just-perfection" = {
-          animation = 2;
-          dash-app-running = true;
-          workspace = true;
-          workspace-popup = false;
-        };
-
-        # Configure Blur My Shell
-        "org/gnome/shell/extensions/blur-my-shell/appfolder".blur = false;
-        "org/gnome/shell/extensions/blur-my-shell/lockscreen".blur = false;
-        "org/gnome/shell/extensions/blur-my-shell/screenshot".blur = false;
-        "org/gnome/shell/extensions/blur-my-shell/window-list".blur = false;
-        "org/gnome/shell/extensions/blur-my-shell/panel".blur = false;
-        "org/gnome/shell/extensions/blur-my-shell/overview".blur = true;
-        "org/gnome/shell/extensions/blur-my-shell/overview".pipeline = "pipeline_default";
-        "org/gnome/shell/extensions/blur-my-shell/dash-to-dock".blur = true;
-        "org/gnome/shell/extensions/blur-my-shell/dash-to-dock".brightness = "0/6";
-        "org/gnome/shell/extensions/blur-my-shell/dash-to-dock".sigma = 30;
-        "org/gnome/shell/extensions/blur-my-shell/dash-to-dock".static-blur = true;
-        "org/gnome/shell/extensions/blur-my-shell/dash-to-dock".style-dash-to-dock = 0;
-
-        # Configure Space Bar
-        "org/gnome/shell/extensions/space-bar/behavior".smart-workspace-names = false;
-        "org/gnome/shell/extensions/space-bar/shortcuts".enable-activate-workspace-shortcuts = false;
-        "org/gnome/shell/extensions/space-bar/shortcuts".enable-move-to-workspace-shortcuts = true;
-        "org/gnome/shell/extensions/space-bar/shortcuts".open-menu =
-          lib.hm.gvariant.mkEmptyArray lib.hm.gvariant.type.string;
+        "system/locale".region = "pt_PT.UTF-8";
       };
 
       services = {
