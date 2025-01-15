@@ -192,18 +192,20 @@
           };
         };
 
-    darwinConfigurations."mac" = inputs.nix-darwin.lib.darwinSystem {
+      darwinConfigurations."mac" = inputs.nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
         specialArgs = { inherit inputs self; };
         modules = [
-          ./hosts/mac.nix
+          # https://github.com/DeterminateSystems/determinate?tab=readme-ov-file#nix-darwin
+          inputs.determinate.darwinModules.default
           inputs.home-manager.darwinModules.home-manager
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
           }
-          # https://github.com/DeterminateSystems/determinate?tab=readme-ov-file#nix-darwin
-          inputs.determinate.darwinModules.default
+          inputs.nix-index-database.darwinModules.nix-index
+          { programs.nix-index-database.comma.enable = true; }
+          ./hosts/mac.nix
         ];
       };
     };
