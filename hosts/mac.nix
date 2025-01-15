@@ -189,6 +189,7 @@
       "orion"
       "qmk-toolbox"
       "signal"
+      "skype"
       "stremio"
       "transmission"
       "tunnelblick"
