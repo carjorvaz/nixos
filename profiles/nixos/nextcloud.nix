@@ -34,7 +34,8 @@ in
     https = true;
 
     appstoreEnable = true; # For apps that don't work declaratively or that aren't packaged in nixpkgs, so they auto-update.
-    autoUpdateApps.enable = true;
+    # autoUpdateApps.enable = true; # Broken as of 15/01/2025
+
     extraAppsEnable = true;
     extraApps = {
       inherit (config.services.nextcloud.package.packages.apps)
