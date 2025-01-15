@@ -530,7 +530,7 @@ in
     #   - Hide top sites
     # - Never translate Portuguese
     # - (Trajanus) Settings > 110% page zoom
-    # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed
+    # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed; expand vertical tabs independently per window
     # - Never show bookmarks bar
     # - Adblock lists (content-filtering):
     #   - adguard portuguese
