@@ -67,8 +67,11 @@
     black
     shellcheck
     shfmt
+    nil # nix LSP
     nodePackages.js-beautify
     nodePackages.stylelint
+    python3Packages.pygments
+    rust-analyzer
     texlab
     texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
 
