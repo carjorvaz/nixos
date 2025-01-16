@@ -70,6 +70,7 @@
     nil # nix LSP
     nodePackages.js-beautify
     nodePackages.stylelint
+    pyright
     python3Packages.pygments
     rust-analyzer
     texlab
