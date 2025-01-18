@@ -12,6 +12,7 @@
     drawing
     foliate
     fragments
+    ghostty
     gnome-sound-recorder
     gnome-tweaks
     inkscape
@@ -144,7 +145,7 @@
         "org/gnome/shell" = {
           favorite-apps = [
             "brave-browser.desktop"
-            "org.gnome.Ptyxis.desktop"
+            "com.mitchellh.ghostty.desktop"
             "org.gnome.Nautilus.desktop"
             "emacs.desktop"
             "org.gnome.Geary.desktop"
