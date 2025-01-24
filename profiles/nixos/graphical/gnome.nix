@@ -22,12 +22,6 @@
     qalculate-gtk
     waypipe
     wl-clipboard
-
-    gnomeExtensions.appindicator
-    gnomeExtensions.just-perfection
-    gnomeExtensions.blur-my-shell
-    gnomeExtensions.space-bar
-    gnomeExtensions.undecorate
   ];
 
   # https://wiki.nixos.org/wiki/GNOME#Systray_Icons
@@ -151,12 +145,6 @@
             "org.gnome.Geary.desktop"
             "Mattermost.desktop"
             "com.nextcloud.desktopclient.nextcloud.desktop"
-          ];
-
-          # https://wiki.nixos.org/wiki/GNOME#Managing_extensions
-          disable-user-extensions = false; # enables user extensions
-          enabled-extensions = [
-            pkgs.gnomeExtensions.appindicator.extensionUuid
           ];
         };
 
