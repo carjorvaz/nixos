@@ -486,18 +486,6 @@ in
         };
       };
     };
-
-    # Reference: https://github.com/Misterio77/nix-config/blob/main/home/misterio/features/desktop/common/firefox.nix
-    xdg.mimeApps = {
-      enable = true;
-      defaultApplications = {
-        "application/pdf" = [ "brave-browser.desktop" ];
-        "text/html" = [ "brave-browser.desktop" ];
-        "text/xml" = [ "brave-browser.desktop" ];
-        "x-scheme-handler/http" = [ "brave-browser.desktop" ];
-        "x-scheme-handler/https" = [ "brave-browser.desktop" ];
-      };
-    };
   };
 
   # https://wiki.nixos.org/wiki/Sway#Inferior_performance_compared_to_other_distributions
