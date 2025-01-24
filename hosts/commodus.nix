@@ -32,10 +32,12 @@
   ];
 
   boot.initrd.availableKernelModules = [
+    "nvme"
     "xhci_pci"
     "ahci"
-    "nvme"
     "usbhid"
+    "usb_storage"
+    "sd_mod"
   ];
 
   # Would make it unbootable remotely because of backups
