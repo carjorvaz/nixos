@@ -143,6 +143,7 @@
             "org.gnome.Nautilus.desktop"
             "emacs.desktop"
             "org.gnome.Geary.desktop"
+            "discord.desktop"
             "Mattermost.desktop"
             "com.nextcloud.desktopclient.nextcloud.desktop"
           ];
