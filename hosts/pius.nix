@@ -73,7 +73,6 @@
     defaultGateway = "192.168.1.254";
   };
 
-  # TODO wake commodus (testar)
   environment.shellAliases = {
     wakeNerva = "${pkgs.wol}/bin/wol 38:2c:4a:e7:e0:8c";
     wakeCommodus = "${pkgs.wol}/bin/wol 00:68:eb:cd:f5:31";
