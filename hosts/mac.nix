@@ -183,8 +183,8 @@
       "docker"
       "firefox"
       "flux"
-      "ghostty"
       "font-jetbrains-mono-nerd-font"
+      "ghostty"
       "mattermost"
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
       # "monitorcontrol" # Brightness and volume controls for external monitors.
@@ -264,11 +264,6 @@
   security.pam.enableSudoTouchIdAuth = true;
 
   home-manager.users.cjv = {
-    #programs.zsh.initExtra = ''
-    ## Enable iTerm2 shell integration.
-    #test -e "~/.iterm2_shell_integration.zsh" && source "~/.iterm2_shell_integration.zsh"
-    #'';
-
     home.stateVersion = "23.05";
   };
 
