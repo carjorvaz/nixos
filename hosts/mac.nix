@@ -103,7 +103,6 @@
     brews = [
       "julia"
       "llama.cpp"
-      "ollama"
       "python-tk"
       "rlwrap"
       "sbcl"
