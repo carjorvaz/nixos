@@ -21,7 +21,7 @@
     "${self}/profiles/nixos/adb.nix"
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/gnome.nix"
+    "${self}/profiles/nixos/graphical/plasma.nix"
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/qmk.nix"
