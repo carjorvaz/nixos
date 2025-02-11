@@ -72,8 +72,6 @@
     NIXOS_OZONE_WL = "1";
   };
 
-  services.blueman.enable = false;
-
   home-manager.users.cjv =
     { lib, ... }:
     {
@@ -166,11 +164,6 @@
           window-theme = "ghostty";
           # window-decoration = false; # Enable for window managers
         };
-      };
-
-      services = {
-        blueman-applet.enable = false;
-        mako.enable = false;
       };
     };
 }
