@@ -71,7 +71,6 @@
       redshift.enable = false;
 
       dunst.enable = false;
-      mako.enable = lib.mkDefault true;
     };
   };
 }

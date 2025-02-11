@@ -648,6 +648,8 @@ in
       };
 
       kanshi.systemdTarget = "hyprland-session.target";
+
+      mako.enable = true;
     };
   };
 }

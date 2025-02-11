@@ -247,6 +247,8 @@ in
           }
         ];
       };
+
+      mako.enable = true;
     };
   };
 }
