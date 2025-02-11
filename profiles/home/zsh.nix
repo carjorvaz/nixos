@@ -22,7 +22,6 @@
       starship.enable = true;
 
       zellij = {
-        enable = true;
         settings = {
           theme = "gruvbox-dark";
           # default_layout = "compact";
