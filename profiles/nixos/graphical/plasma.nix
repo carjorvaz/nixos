@@ -10,6 +10,12 @@
 # - lower hot corner delay to 5 ms
 # - speed up animations by 2 ticks
 # - change keyboard repeat rate to 300/30
+# - change wallpaper
+# - change theme to breeze dark
+# - pin to panel: brave, ghostty, dolphin, emacs, discord, mattermost, thunderbird
+# - disable mouse acceleration
+# - adjust display scaling
+
 {
   imports = [ ./common.nix ];
 
