@@ -15,6 +15,7 @@
 # - pin to panel: brave, ghostty, dolphin, emacs, discord, mattermost, thunderbird
 # - disable mouse acceleration
 # - adjust display scaling
+# - don't show media controls in lock screen
 
 {
   imports = [ ./common.nix ];
