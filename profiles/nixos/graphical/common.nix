@@ -111,12 +111,6 @@ in
           ${oldAttrs.postPatch}
           cp ${configFile} config.h'';
       });
-
-      # https://www.reddit.com/r/archlinux/comments/15sse7i/psa_chromium_dropped_gnomekeyring_support_use/
-      # https://www.reddit.com/r/archlinux/comments/18w78i5/comment/l87j82j/
-      brave = super.brave.override {
-        commandLineArgs = "--password-store=libsecret";
-      };
     })
   ];
 
