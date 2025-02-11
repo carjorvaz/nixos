@@ -130,21 +130,7 @@ in
     packages = with pkgs; [ nerd-fonts.jetbrains-mono ];
   };
 
-  programs = {
-    dconf.enable = true;
-
-    light.enable = true;
-  };
-
-  users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
-
-  security.polkit.enable = true;
-
   services = {
-    dbus.enable = true;
-
-    gnome.gnome-keyring.enable = true;
-
     libinput = {
       # Disable mouse acceleration.
       mouse.accelProfile = "flat";
@@ -169,14 +155,7 @@ in
 
       desktopManager.wallpaper.mode = "fill";
 
-      displayManager = {
-        gdm.autoSuspend = false;
-
-        lightdm = {
-          enable = lib.mkDefault true;
-          background = ./wallpaper.jpg;
-        };
-      };
+      displayManager.gdm.autoSuspend = false;
     };
   };
 
@@ -195,64 +174,8 @@ in
     ];
   };
 
-  qt = {
-    enable = true;
-    platformTheme = "gnome";
-    style = "adwaita-dark";
-  };
-
   home-manager.users.cjv = {
-    dconf = {
-      enable = true;
-      settings = {
-        "org/gnome/desktop/interface" = {
-          color-scheme = "prefer-dark";
-        };
-      };
-    };
-
-    gtk = lib.mkDefault {
-      enable = true;
-
-      theme = {
-        # Use `dconf watch /` to see the correct name
-        package = pkgs.adw-gtk3;
-        name = "adw-gtk3-dark";
-      };
-
-      iconTheme = {
-        package = pkgs.adwaita-icon-theme;
-        name = "Adwaita";
-      };
-    };
-
     programs = {
-      i3status-rust = {
-        bars.top = {
-          icons = "material-nf";
-          theme = "plain";
-          blocks = [
-            {
-              block = "sound";
-              max_vol = 100;
-              headphones_indicator = true;
-              device_kind = "sink";
-              click = [
-                {
-                  button = "left";
-                  cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
-                }
-              ];
-            }
-            {
-              block = "time";
-              interval = 5;
-              format = " $timestamp.datetime(f:'%a %d/%m %R')";
-            }
-          ];
-        };
-      };
-
       # STATE:
       # - account containers (gmail, im, uni)
       firefox = {
@@ -459,42 +382,12 @@ in
     };
 
     services = {
-      dunst.enable = lib.mkDefault true;
-
-      flameshot.enable = lib.mkDefault true;
-
-      gnome-keyring = {
-        enable = true;
-        components = [ "secrets" ];
-      };
-
       nextcloud-client = {
         enable = lib.mkDefault true;
         startInBackground = true;
       };
-
-      redshift = {
-        enable = lib.mkDefault true;
-        tray = true;
-        latitude = 38.7;
-        longitude = -9.14;
-        temperature = {
-          day = 6500;
-          night = 2000;
-        };
-      };
     };
   };
-
-  # https://wiki.nixos.org/wiki/Sway#Inferior_performance_compared_to_other_distributions
-  security.pam.loginLimits = [
-    {
-      domain = "@users";
-      item = "rtprio";
-      type = "-";
-      value = 1;
-    }
-  ];
 
   environment.shellAliases = {
     zzz = "${pkgs.systemd}/bin/systemctl sleep";
