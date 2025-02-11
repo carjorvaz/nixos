@@ -9,6 +9,7 @@ let
     config.programs.sway.enable
     || config.programs.hyprland.enable
     || config.services.xserver.desktopManager.gnome.enable
+    || config.services.desktopManager.plasma6.enable
     || config.services.desktopManager.cosmic.enable;
 
   myEmacs = if isWayland then pkgs.emacs30-pgtk else pkgs.emacs30;
