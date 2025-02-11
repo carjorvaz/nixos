@@ -154,6 +154,21 @@
         "system/locale".region = "pt_PT.UTF-8";
       };
 
+      gtk = lib.mkDefault {
+        enable = true;
+
+        theme = {
+          # Use `dconf watch /` to see the correct name
+          package = pkgs.adw-gtk3;
+          name = "adw-gtk3-dark";
+        };
+
+        iconTheme = {
+          package = pkgs.adwaita-icon-theme;
+          name = "Adwaita";
+        };
+      };
+
       programs.ghostty = {
         enable = true;
         settings = {
