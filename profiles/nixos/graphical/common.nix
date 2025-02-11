@@ -383,6 +383,10 @@ in
             "media.ffmpeg.vaapi.enabled" = true;
             "media.hardware-video-decoding.force-enabled" = true;
             "gfx.webrender.all" = true;
+
+            # Fix using KDE file picker
+            # https://wiki.nixos.org/wiki/Firefox#Use_KDE_file_picker
+            "widget.use-xdg-desktop-portal.file-picker" = 1;
           };
 
           # https://github.com/mbnuqw/sidebery/wiki/Firefox-Styles-Snippets-(via-userChrome.css)#completely-hide-native-tabs-strip
