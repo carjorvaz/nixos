@@ -185,6 +185,7 @@
       "flux"
       "font-jetbrains-mono-nerd-font"
       "ghostty"
+      "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "mattermost"
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
