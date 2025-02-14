@@ -30,6 +30,14 @@
   services.displayManager.sddm.wayland.enable = true;
   services.desktopManager.plasma6.enable = true;
 
+  programs.chromium = {
+    enablePlasmaBrowserIntegration = true;
+    extensions = [
+      # Plasma Integration
+      "cimiefiiaegbelhefglklhhakcgmhkai"
+    ];
+  };
+
   environment.systemPackages = with pkgs; [
     ghostty
 
