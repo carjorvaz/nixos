@@ -169,16 +169,9 @@
         };
       };
 
-      programs.ghostty = {
-        enable = true;
-        settings = {
-          font-size = 14;
-
-          adw-toolbar-style = "flat";
-          theme = "GruvboxDark";
-          window-theme = "ghostty";
-          # window-decoration = false; # Enable for window managers
-        };
+      programs.ghostty.settings = {
+        adw-toolbar-style = "flat";
+        window-theme = "ghostty";
       };
     };
 }
