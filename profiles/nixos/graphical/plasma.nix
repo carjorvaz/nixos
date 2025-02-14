@@ -6,7 +6,7 @@
 
 # STATE:
 # - disable saving clipboard history across sessions
-# - night light; 1200k at night 38.7 -9.14
+# - night light; 2000k at night 38.7 -9.14
 # - lower hot corner delay to 5 ms
 # - speed up animations by 2 ticks
 # - change keyboard repeat rate to 300/30
