@@ -8,9 +8,8 @@
 }:
 
 # Bootstrapping:
-# 1. Install Nix
-# curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | \
-#  sh -s -- install
+# 1. Install Nix with determinate installer
+#   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --determinate
 # 2. Use nix run to run the first rebuild
 #   nix run nix-darwin -- switch --flake ~/Documents/nixos#mac
 # 3. Use darwin-rebuild normally
@@ -23,14 +22,8 @@
 {
   imports = [ "${self}/profiles/home/zsh.nix" ];
 
-  # Auto upgrade nix package and the daemon service.
-  services.nix-daemon.enable = true;
-
   nix = {
-    package = lib.mkDefault pkgs.nix;
-
-    gc.automatic = true;
-    optimise.automatic = true;
+    enable = false; # Managed by Determinate Nix
 
     settings = {
       experimental-features = [
@@ -48,10 +41,6 @@
       extra-platforms = x86_64-darwin aarch64-darwin
     '';
   };
-
-  nixpkgs.overlays = [
-    (self: super: { unstable = inputs.nixpkgs-unstable.legacyPackages.${super.system}; })
-  ];
 
   # Required by home-manager.
   users.users.cjv.home = "/Users/cjv";
@@ -220,7 +209,6 @@
       Bitwarden = 1352778147;
       # "Davinci Resolve" = 571213070;
       Tailscale = 1475387142;
-
     };
 
     taps = [

@@ -2,9 +2,9 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
-    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-24.11-darwin";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    nix-darwin.url = "github:LnL7/nix-darwin/nix-darwin-24.11";
+    nix-darwin.url = "github:LnL7/nix-darwin/master";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
 
     determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
@@ -196,9 +196,7 @@
         system = "aarch64-darwin";
         specialArgs = { inherit inputs self; };
         modules = [
-          # https://github.com/DeterminateSystems/determinate?tab=readme-ov-file#nix-darwin
-          inputs.determinate.darwinModules.default
-          inputs.home-manager.darwinModules.home-manager
+          inputs.home-manager-unstable.darwinModules.home-manager
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
