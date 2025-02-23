@@ -69,6 +69,7 @@
     # STATE: venv with pyglet installed with direnv
     ffmpeg
 
+    delta
     fzf
     hugo
     go
