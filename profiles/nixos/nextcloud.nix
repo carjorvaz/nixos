@@ -42,6 +42,7 @@ in
         calendar
         cookbook
         contacts
+        cospend
         mail
         memories # Requires setup in the admin panel
         notes
