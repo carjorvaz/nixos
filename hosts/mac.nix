@@ -91,6 +91,8 @@
     };
 
     brews = [
+      "colima" # Streamlines Docker, just run `colima start`.
+      "docker"
       "julia"
       "llama.cpp"
       "python-tk"
@@ -170,7 +172,6 @@
       "betterdisplay" # Custom fractional scaling resolutions, brightness and volume control for non-Apple external displays.
       "brave-browser"
       "discord"
-      "docker"
       "firefox"
       "flux"
       "font-jetbrains-mono-nerd-font"
