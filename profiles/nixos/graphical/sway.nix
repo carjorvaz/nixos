@@ -1,6 +1,5 @@
 {
   config,
-  inputs,
   pkgs,
   lib,
   ...
@@ -64,7 +63,12 @@ in
     sway-contrib.grimshot
   ];
 
-  services.dbus.enable = true;
+  services = {
+    blueman.enable = true;
+    dbus.enable = true;
+    gnome.gnome-keyring.enable = true;
+  };
+
   xdg.portal = {
     enable = true;
     wlr.enable = true;
@@ -77,19 +81,89 @@ in
     };
 
     dconf.enable = true;
+    light.enable = true;
   };
 
-  security.polkit.enable = true;
+  users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
 
-  networking.networkmanager.enable = false; # Use only iwd and dhcpcd.
+  security = {
+    pam.loginLimits = [
+      {
+        domain = "@users";
+        item = "rtprio";
+        type = "-";
+        value = 1;
+      }
+    ];
+
+    polkit.enable = true;
+  };
 
   systemd.user.services = {
     nextcloud-client.wantedBy = lib.mkForce [ "sway-session.target" ];
   };
 
   home-manager.users.cjv = {
+    dconf = {
+      enable = true;
+      settings = {
+        "org/gnome/desktop/interface" = {
+          color-scheme = "prefer-dark";
+        };
+      };
+    };
+
+    gtk = lib.mkDefault {
+      enable = true;
+
+      theme = {
+        # Use `dconf watch /` to see the correct name
+        package = pkgs.adw-gtk3;
+        name = "adw-gtk3-dark";
+      };
+
+      iconTheme = {
+        package = pkgs.adwaita-icon-theme;
+        name = "Adwaita";
+      };
+    };
+
+    qt = {
+      enable = true;
+      platformTheme.name = "kde";
+      style.name = "breeze";
+    };
+
     programs = {
-      i3status-rust.enable = true;
+      i3status-rust = {
+        enable = true;
+        bars.top = {
+          icons = "material-nf";
+          theme = "plain";
+          blocks = [
+            {
+              block = "sound";
+              max_vol = 100;
+              headphones_indicator = true;
+              device_kind = "sink";
+              click = [
+                {
+                  button = "left";
+                  cmd = "${pkgs.rofi-pulse-select}/bin/rofi-pulse-select sink";
+                }
+              ];
+
+              # on_scroll_up = "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB";
+              # on_scroll_down = "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB";
+            }
+            {
+              block = "time";
+              interval = 5;
+              format = " $timestamp.datetime(f:'%a %d/%m %R')";
+            }
+          ];
+        };
+      };
 
       swaylock = {
         enable = true;
@@ -169,23 +243,27 @@ in
 
             # Screenshots
             "Print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
-            "Shift+Print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+            "Shift+Print" =
+              "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
             "${modifier}+p" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
-            "${modifier}+Shift+p" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+            "${modifier}+Shift+p" =
+              "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
             # Brightness - logarithmic scale
             "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.618";
             "XF86MonBrightnessUp" = "exec ${pkgs.light}/bin/light -T 1.618";
 
             # Audio - logarithmic scale
-            "XF86AudioRaiseVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB'";
-            "XF86AudioLowerVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB'";
+            "XF86AudioRaiseVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +1dB'";
+            "XF86AudioLowerVolume" = "exec '${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -1dB'";
             "XF86AudioMute" = "exec '${pkgs.pamixer}/bin/pamixer -t'";
             "XF86AudioMicMute" = "exec ${pkgs.pamixer}/bin/pamixer --default-source -t";
 
             # Move to custom workspace
-            "${modifier}+t" = "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | rofi -dmenu -p 'Go to workspace:' )";
-            "${modifier}+Shift+t" = "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | rofi -dmenu -p 'Move to workspace:')";
+            "${modifier}+t" =
+              "exec ${pkgs.sway}/bin/swaymsg workspace $(swaymsg -t get_workspaces | ${pkgs.jq}/bin/jq -r '.[].name' | rofi -dmenu -p 'Go to workspace:' )";
+            "${modifier}+Shift+t" =
+              "exec ${pkgs.sway}/bin/swaymsg move container to workspace $(swaymsg -t get_workspaces | ${pkgs.jq} -r '.[].name' | rofi -dmenu -p 'Move to workspace:')";
           };
 
         bars = [
@@ -213,6 +291,9 @@ in
     };
 
     services = {
+      blueman-applet.enable = true;
+      network-manager-applet.enable = true;
+
       gammastep = {
         enable = true;
         tray = true;
@@ -222,6 +303,11 @@ in
           day = 6500;
           night = 2000;
         };
+      };
+
+      gnome-keyring = {
+        enable = true;
+        components = [ "secrets" ];
       };
 
       kanshi.systemdTarget = "sway-session.target";
