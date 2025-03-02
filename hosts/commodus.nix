@@ -67,7 +67,7 @@
   };
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings.monitor = [
-    "HDMI-A-1, preferred, auto, 1.6"
+    "HDMI-A-1, preferred, auto, 1"
     "Unknown-1, disable"
   ];
 
