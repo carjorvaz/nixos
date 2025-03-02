@@ -188,7 +188,7 @@ in
           # Check available extensions (name usually matches the short name in the URL, in the addons store):
           # $ nix flake show "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons"
           # STATE: Requires enabling the extensions manually after first install
-          extensions = with inputs.firefox-addons.packages.${pkgs.system}; [
+          extensions.packages = with inputs.firefox-addons.packages.${pkgs.system}; [
             # TODO/maybe:
             # - tridactyl?
             # - unhook?
@@ -362,23 +362,26 @@ in
 
       vscode = {
         enable = true;
-        extensions = with pkgs.vscode-extensions; [
-          asvetliakov.vscode-neovim
-          github.copilot
-          mkhl.direnv
-          jnoortheen.nix-ide
-        ];
 
-        userSettings = {
-          "github.copilot.editor.enableAutoCompletions" = true;
+        profiles.default = {
+          extensions = with pkgs.vscode-extensions; [
+            asvetliakov.vscode-neovim
+            github.copilot
+            mkhl.direnv
+            jnoortheen.nix-ide
+          ];
 
-          "extensions.experimental.affinity" = {
-            "asvetliakov.vscode-neovim" = 1;
+          userSettings = {
+            "github.copilot.editor.enableAutoCompletions" = true;
+
+            "extensions.experimental.affinity" = {
+              "asvetliakov.vscode-neovim" = 1;
+            };
+
+            "telemetry.enableCrashReporter" = false;
+            "telemetry.enableTelemetry" = false;
+            "telemetry.telemetryLevel" = "off";
           };
-
-          "telemetry.enableCrashReporter" = false;
-          "telemetry.enableTelemetry" = false;
-          "telemetry.telemetryLevel" = "off";
         };
       };
 
