@@ -135,6 +135,11 @@ in
     };
 
     programs = {
+      firefox.profiles.default.settings = {
+        # https://www.reddit.com/r/swaywm/comments/1iuqclq/firefox_is_now_way_more_efficient_under_sway_it/
+        "gfx.webrender.compositor.force-enabled" = true;
+      };
+
       i3status-rust = {
         enable = true;
         bars.top = {
