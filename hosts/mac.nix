@@ -197,6 +197,7 @@
       "utm"
       "visual-studio-code"
       "whatsapp"
+      "zen-browser"
       "zoom"
     ];
 
