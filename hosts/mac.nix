@@ -203,7 +203,6 @@
 
     masApps = {
       AdGuard = 1440147259;
-      Consent = 1606897889;
       # STATE:
       # - Enable browser extension
       # - Match URI by host
