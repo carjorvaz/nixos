@@ -173,7 +173,6 @@ in
 
       # STATE: Auto-fill > Default URI match detection > Host
       "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
-      "mdjildafknihdffpkfmmpnpoiajfjnjd" # Consent-O-Matic
       "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
       "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
       "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
