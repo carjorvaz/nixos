@@ -1,8 +1,7 @@
 {
   self,
-  config,
+  inputs,
   lib,
-  pkgs,
   ...
 }:
 
@@ -25,5 +24,12 @@
     };
   };
 
-  home-manager.users.cjv.home.stateVersion = lib.mkDefault "23.11";
+  home-manager.users.cjv = {
+    nix.registry = lib.mkDefault {
+      nixpkgs.flake = inputs.nixpkgs;
+      unstable.flake = inputs.nixpkgs-unstable;
+    };
+
+    home.stateVersion = lib.mkDefault "23.11";
+  };
 }
