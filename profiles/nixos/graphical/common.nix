@@ -12,6 +12,7 @@ let
   # TODO automatically make every pkg in pkgs/ available everywhere
   brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
   orca-slicer-appimage = pkgs.callPackage "${self}/pkgs/orca-slicer-appimage.nix" { };
+  zen-browser = pkgs.callPackage "${self}/pkgs/zen-browser.nix" { };
 in
 {
   # Lowest input lag, from my experienece.
@@ -473,6 +474,7 @@ in
     # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
     # - dictionaries
     thunderbird
+    zen-browser
 
     nautilus
     seahorse
