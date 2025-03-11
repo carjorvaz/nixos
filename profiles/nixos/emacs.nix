@@ -1,5 +1,6 @@
 {
   config,
+  lib,
   pkgs,
   ...
 }:
@@ -17,12 +18,22 @@ in
 {
   fonts.packages = [ pkgs.emacs-all-the-icons-fonts ];
 
+  programs.neovim.defaultEditor = false;
+
+  services.emacs = {
+    enable = true;
+    install = true;
+    defaultEditor = true;
+    package = (
+      (pkgs.emacsPackagesFor myEmacs).emacsWithPackages (epkgs: [
+        epkgs.vterm
+        epkgs.pdf-tools
+        epkgs.org-roam
+      ])
+    );
+  };
+
   environment.systemPackages = with pkgs; [
-    ((pkgs.emacsPackagesFor myEmacs).emacsWithPackages (epkgs: [
-      epkgs.vterm
-      epkgs.pdf-tools
-      epkgs.org-roam
-    ]))
     binutils
     fd
     gnutls
