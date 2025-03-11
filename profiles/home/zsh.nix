@@ -21,6 +21,8 @@
 
       starship.enable = true;
 
+      yazi.enable = true;
+
       zellij = {
         settings = {
           theme = "gruvbox-dark";

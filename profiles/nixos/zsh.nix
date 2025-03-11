@@ -39,6 +39,8 @@
     };
 
     starship.enable = true;
+
+    yazi.enable = true;
   };
 
   environment.pathsToLink = [ "/share/zsh" ]; # For zsh completion
