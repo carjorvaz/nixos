@@ -151,7 +151,6 @@
       "tree-sitter"
       "webp"
       "zlib"
-
       # Doom Emacs dependencies
       "coreutils"
       "fd"
@@ -162,7 +161,6 @@
       "marked"
       "ripgrep"
       "direnv"
-
       # pdf-tools dependencies
       "pkg-config"
       "autoconf"
@@ -182,7 +180,6 @@
       "xz"
       "nspr"
       "nss"
-
       # vterm dependencies
       "libtool"
       "libvterm"
