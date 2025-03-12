@@ -214,6 +214,7 @@
       "signal"
       "skype"
       "stremio"
+      "telegram"
       "transmission"
       "tunnelblick"
       "ukelele"
