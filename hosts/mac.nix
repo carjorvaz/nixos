@@ -100,6 +100,30 @@
       "sbcl"
       "trash"
 
+      "qmk"
+      # QMK dependencies
+      "avr-binutils"
+      "avr-gcc@8"
+      "boost"
+      "confuse"
+      "hidapi"
+      "libftdi"
+      "libusb-compat"
+      "avrdude"
+      "bootloadhid"
+      "clang-format"
+      "dfu-programmer"
+      "dfu-util"
+      "libimagequant"
+      "libraqm"
+      "pillow"
+      "teensy_loader_cli"
+      "osx-cross/arm/arm-none-eabi-binutils"
+      "osx-cross/arm/arm-none-eabi-gcc@8"
+      "osx-cross/avr/avr-gcc@9"
+      "qmk/qmk/hid_bootloader_cli"
+      "qmk/qmk/mdloader"
+
       {
         # Emacs
         # STATE: ln -s /usr/local/opt/emacs-plus/Emacs.app /Applications/Emacs.app
@@ -195,6 +219,7 @@
       "ukelele"
       "unnaturalscrollwheels"
       "utm"
+      "vial"
       "visual-studio-code"
       "whatsapp"
       "zen-browser"
@@ -215,6 +240,9 @@
 
     taps = [
       "d12frosted/emacs-plus" # emacs-plus
+      "osx-cross/arm"
+      "osx-cross/avr"
+      "qmk/qmk"
     ];
   };
 
