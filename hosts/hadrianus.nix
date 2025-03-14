@@ -15,7 +15,6 @@ in
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
     "${self}/profiles/nixos/base.nix"
-    "${self}/profiles/nixos/autoUpgrade.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/zfs/common.nix"
