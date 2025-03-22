@@ -96,6 +96,7 @@
       "htop"
       "julia"
       "llama.cpp"
+      "pipx"
       "python-tk"
       "rlwrap"
       "sbcl"
