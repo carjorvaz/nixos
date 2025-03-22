@@ -93,6 +93,7 @@
     brews = [
       "colima" # Streamlines Docker, just run `colima start`.
       "docker"
+      "htop"
       "julia"
       "llama.cpp"
       "python-tk"
