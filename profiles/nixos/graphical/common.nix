@@ -463,7 +463,6 @@ in
     ungoogled-chromium
     orca-slicer-appimage
     signal-desktop
-    stremio
 
     # TODO: declarative with home-manager?
     # STATE:
