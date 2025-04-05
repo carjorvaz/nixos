@@ -6,56 +6,22 @@
 }:
 
 let
-  # bash script to let dbus know about important env variables and
-  # propogate them to relevent services run at the end of sway config
-  # see
-  # https://github.com/emersion/xdg-desktop-portal-wlr/wiki/"It-doesn't-work"-Troubleshooting-Checklist
-  # note: this is pretty much the same as  /etc/sway/config.d/nixos.conf but also restarts
-  # some user services to make sure they have the correct environment variables
-  dbus-sway-environment = pkgs.writeTextFile {
-    name = "dbus-sway-environment";
-    destination = "/bin/dbus-sway-environment";
-    executable = true;
+  my-sway-lock = pkgs.writeShellScriptBin "my-sway-lock" ''
+    # Launch swayidle to switch off screen after 5 seconds, if locked
+    ${pkgs.swayidle}/bin/swayidle -w timeout 5 '${pkgs.sway}/bin/swaymsg "output * dpms off"' resume '${pkgs.sway}/bin/swaymsg "output * dpms on"' &
 
-    text = ''
-      dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
-      systemctl --user stop pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
-      systemctl --user start pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
-    '';
-  };
+    # Lock the screen
+    ${pkgs.swaylock}/bin/swaylock
 
-  # currently, there is some friction between sway and gtk:
-  # https://github.com/swaywm/sway/wiki/GTK-3-settings-on-Wayland
-  # the suggested way to set gtk settings is with gsettings
-  # for gsettings to work, we need to tell it where the schemas are
-  # using the XDG_DATA_DIR environment variable
-  # run at the end of sway config
-  configure-gtk = pkgs.writeTextFile {
-    name = "configure-gtk";
-    destination = "/bin/configure-gtk";
-    executable = true;
-    text =
-      let
-        schema = pkgs.gsettings-desktop-schemas;
-        datadir = "${schema}/share/gsettings-schemas/${schema.name}";
-      in
-      ''
-        export XDG_DATA_DIRS=${datadir}:$XDG_DATA_DIRS
-        gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark' && gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-      '';
-  };
+    # Kill swayidle after unlocking
+    ${pkgs.procps}/bin/pkill --newest swayidle
+  '';
 in
 {
   imports = [ ./wayland.nix ];
 
   environment.systemPackages = with pkgs; [
-    sway
-    dbus-sway-environment
-    configure-gtk
-    wayland
-
-    swaylock
-    swayidle
+    qt5.qtwayland
 
     # screenshot functionality
     grim
@@ -67,6 +33,18 @@ in
     blueman.enable = true;
     dbus.enable = true;
     gnome.gnome-keyring.enable = true;
+
+    # # Interesting possibility but I would rather have automatic screen turn off on my machines.
+    # xserver.displayManager.gdm.enable = false;
+    # greetd = {
+    #   enable = true;
+    #   settings = {
+    #     default_session = {
+    #       command = "${pkgs.greetd.tuigreet}/bin/tuigreet --time --cmd sway";
+    #       user = "greeter";
+    #     };
+    #   };
+    # };
   };
 
   xdg.portal = {
@@ -173,12 +151,39 @@ in
       swaylock = {
         enable = true;
         settings = {
-          color = lib.mkDefault "000000";
-          font-size = 14;
           # Needed for fingerprint to work with swaylock.
           # Press enter than tap finger.
           ignore-empty-password = false;
           show-failed-attempts = true;
+
+          font = "monospace";
+          image = "${./wallpaper.jpg}";
+
+          # https://github.com/swayos/swayos.github.io/blob/main/home/.swaylock/config
+          color = "dcdccc55";
+          indicator-radius = "100";
+          indicator-thickness = "50";
+          # layout-border-color = "00000022";
+          line-color = "ffffff22";
+          line-clear-color = "00000000";
+          line-caps-lock-color = "00000000";
+          line-ver-color = "00000000";
+          line-wrong-color = "00000000";
+          inside-color = "dcdccc55";
+          # inside-ver-color = "dcdcdc55";
+          ring-color = "dcdcdc55";
+          ring-ver-color = "33445555";
+          key-hl-color = "FFFFFF66";
+          separator-color = "00000000";
+          layout-bg-color = "00000000";
+          layout-border-color = "00000000";
+          inside-ver-color = "ffffff22";
+          font-size = "24";
+          text-color = "FFFFFFFF";
+          text-clear-color = "FFFFFFFF";
+          text-caps-lock-color = "FFFFFFFF";
+          text-ver-color = "FFFFFFFF";
+          text-wrong-color = "FFFFFFFF";
         };
       };
     };
@@ -186,6 +191,7 @@ in
     wayland.windowManager.sway = {
       enable = true;
       systemd.enable = true;
+
       wrapperFeatures = {
         base = true;
         gtk = true;
@@ -238,7 +244,7 @@ in
             modifier = config.home-manager.users.cjv.wayland.windowManager.sway.config.modifier;
           in
           lib.mkOptionDefault {
-            "${modifier}+Escape" = "exec ${pkgs.swaylock}/bin/swaylock";
+            "${modifier}+Escape" = "exec ${my-sway-lock}/bin/my-sway-lock";
 
             # Rofi
             "${modifier}+d" = "exec rofi -modes combi -show combi";
@@ -247,12 +253,12 @@ in
             "${modifier}+x" = "exec rofi -modes calc -show calc"; # TODO emoji
 
             # Screenshots
-            "Print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+            "Print" = "exec ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area";
             "Shift+Print" =
-              "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
-            "${modifier}+p" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify copy area";
+              "exec ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+            "${modifier}+p" = "exec ${pkgs.grimblast}/bin/grimblast --freeze --notify copy area";
             "${modifier}+Shift+p" =
-              "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot --notify save area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
+              "exec ${pkgs.grimblast}/bin/grimblast --freeze --notify copysave area /tmp/$(${pkgs.coreutils}/bin/date +'%H:%M:%S.png')";
 
             # Brightness - logarithmic scale
             "XF86MonBrightnessDown" = "exec ${pkgs.light}/bin/light -T 0.618";
@@ -282,17 +288,6 @@ in
           }
         ];
       };
-
-      extraConfig = ''
-        exec ${dbus-sway-environment}/bin/dbus-sway-environment
-        exec ${configure-gtk}/bin/configure-gtk
-      '';
-
-      extraSessionCommands = ''
-        # Needed for GNOME Keyring's SSH integration.
-        eval $(/run/wrappers/bin/gnome-keyring-daemon --start --components=ssh)
-        export SSH_AUTH_SOCK
-      '';
     };
 
     services = {
@@ -322,19 +317,11 @@ in
         events = [
           {
             event = "before-sleep";
-            command = "${pkgs.swaylock}/bin/swaylock";
+            command = "${my-sway-lock}/bin/my-sway-lock";
           }
           {
             event = "lock";
-            command = "${pkgs.swaylock}/bin/swaylock";
-          }
-        ];
-
-        timeouts = [
-          {
-            timeout = 2;
-            command = ''if ${pkgs.procps}/bin/pgrep swaylock; then ${pkgs.sway}/bin/swaymsg "output * dpms off"; fi'';
-            resumeCommand = ''${pkgs.sway}/bin/swaymsg "output * dpms on"'';
+            command = "${my-sway-lock}/bin/my-sway-lock";
           }
         ];
       };
