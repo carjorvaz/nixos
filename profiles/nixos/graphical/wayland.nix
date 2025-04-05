@@ -29,6 +29,8 @@
       main = {
         term = "xterm-256color";
         font = lib.mkDefault "monospace:size=13";
+
+        pad = "5x5";
       };
 
       mouse.hide-when-typing = "yes";
@@ -59,6 +61,7 @@
         package = pkgs.rofi-wayland;
         cycle = true;
         terminal = "${pkgs.foot}/bin/foot";
+        theme = "gruvbox-dark";
         plugins = with pkgs; [
           # https://github.com/NixOS/nixpkgs/issues/298539
           (pkgs.rofi-calc.override { rofi-unwrapped = rofi-wayland-unwrapped; })
