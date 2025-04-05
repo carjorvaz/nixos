@@ -5,7 +5,7 @@ let
 
   src = fetchurl {
     url = "https://github.com/zen-browser/desktop/releases/latest/download/zen-x86_64.AppImage";
-    sha256 = "sha256-hZiJ8JLzLhtD1W8DAso3yBAJYhFE+nJEbQJa59AWjnU=";
+    sha256 = "sha256-H3rxDi0xoN7xYSysmOndZE6feQVO7UgZLE7DSwN30AQ=";
   };
 
   appimageContents = appimageTools.extract {
