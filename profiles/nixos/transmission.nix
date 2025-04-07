@@ -13,11 +13,13 @@ in
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.transmission.settings.rpc-port}";
+      locations."/".proxyPass =
+        "http://127.0.0.1:${toString config.services.transmission.settings.rpc-port}";
     };
 
     transmission = {
       enable = true;
+      package = pkgs.transmission_4;
       user = "media";
       openFirewall = true;
       openPeerPorts = true;
