@@ -105,7 +105,7 @@
             "com.mitchellh.ghostty.desktop"
             "org.gnome.Nautilus.desktop"
             "emacs.desktop"
-            "org.gnome.Geary.desktop"
+            "thunderbird.desktop"
             "discord.desktop"
             "Mattermost.desktop"
             "com.nextcloud.desktopclient.nextcloud.desktop"
