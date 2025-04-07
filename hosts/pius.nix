@@ -27,6 +27,7 @@
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/calibre.nix"
     "${self}/profiles/nixos/docker.nix"
+    "${self}/profiles/nixos/home-assistant.nix"
     "${self}/profiles/nixos/homer.nix"
     "${self}/profiles/nixos/jellyfin.nix"
     "${self}/profiles/nixos/jellyseerr.nix"
