@@ -199,6 +199,7 @@
       "flux"
       "font-jetbrains-mono-nerd-font"
       "ghostty"
+      "iina"
       "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "mattermost"
