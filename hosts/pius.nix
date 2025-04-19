@@ -86,13 +86,6 @@
 
   services = {
     nginx.virtualHosts = {
-      # TODO (3d printer)
-      "printer.vaz.ovh" = {
-        forceSSL = true;
-        useACMEHost = "vaz.ovh";
-        locations."/".proxyPass = "http://192.168.1.73:10088";
-      };
-
       "router.vaz.ovh" = {
         forceSSL = true;
         useACMEHost = "vaz.ovh";
