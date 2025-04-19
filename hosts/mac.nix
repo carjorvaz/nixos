@@ -8,8 +8,8 @@
 }:
 
 # Bootstrapping:
-# 1. Install Nix with determinate installer
-#   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --determinate
+# 1. Install Nix with determinate installer (install upstream Nix, not Determinate Nix)
+#   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
 # 2. Use nix run to run the first rebuild
 #   nix run nix-darwin -- switch --flake ~/Documents/nixos#mac
 # 3. Use darwin-rebuild normally
@@ -23,7 +23,7 @@
   imports = [ "${self}/profiles/home/zsh.nix" ];
 
   nix = {
-    enable = false; # Managed by Determinate Nix
+    enable = true;
 
     settings = {
       experimental-features = [
@@ -288,6 +288,8 @@
   home-manager.users.cjv = {
     home.stateVersion = "23.05";
   };
+
+  ids.gids.nixbld = 350;
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
