@@ -9,8 +9,6 @@
 
     determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
 
-    nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
-    nixos-wsl.inputs.nixpkgs.follows = "nixpkgs";
 
     nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
 
@@ -173,22 +171,6 @@
                 ./disko/zfsImpermanence.nix
                 { _module.args.disks = [ "/dev/nvme0n1" ]; }
               ];
-          };
-
-          trajanus-wsl = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = {
-              inherit inputs self;
-            };
-            modules = baseModules ++ [
-              inputs.nixos-wsl.nixosModules.default
-              inputs.home-manager.nixosModules.home-manager
-              {
-                home-manager.useGlobalPkgs = true;
-                home-manager.useUserPackages = true;
-              }
-              ./hosts/trajanus-wsl.nix
-            ];
           };
         };
 
