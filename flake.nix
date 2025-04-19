@@ -9,7 +9,6 @@
 
     determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
 
-
     nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
 
     nix-index-database.url = "github:nix-community/nix-index-database";
