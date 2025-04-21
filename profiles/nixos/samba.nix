@@ -28,12 +28,12 @@ in
 
         "private" = {
           "path" = privatePath;
-          "browseable" = "yes";
-          "read only" = "no";
-          "guest ok" = "no";
-          "create mask" = "0644";
-          "directory mask" = "0755";
+          "valid users" = user;
+          "public" = "no";
+          "writeable" = "yes";
           "force user" = user;
+          "fruit:aapl" = "yes";
+          "vfs objects" = "catia fruit streams_xattr";
         };
 
         # Connect first through Finder > Go > Connect to Server (CMD + K)
