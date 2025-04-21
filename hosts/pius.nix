@@ -39,6 +39,7 @@
     "${self}/profiles/nixos/prowlarr.nix"
     "${self}/profiles/nixos/radarr.nix"
     "${self}/profiles/nixos/readarr.nix"
+    "${self}/profiles/nixos/samba.nix"
     "${self}/profiles/nixos/searx.nix"
     "${self}/profiles/nixos/sonarr.nix"
     "${self}/profiles/nixos/ssh.nix"
