@@ -1,8 +1,6 @@
 {
   self,
-  config,
   lib,
-  pkgs,
   modulesPath,
   ...
 }:
@@ -18,6 +16,7 @@ in
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zfs/email.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-one.nix"
