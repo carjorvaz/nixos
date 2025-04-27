@@ -1,14 +1,9 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 {
   security.acme = {
     acceptTerms = true;
-    defaults.email = "carlos+letsencrypt@vaz.one";
+    defaults.email = "letsencrypt@carjorvaz.com";
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/acme" ];
