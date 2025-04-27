@@ -42,6 +42,7 @@
             # Aliases starting with @ are catchall aliases
             aliases = [
               "@vaz.one"
+              "@vaz.ovh"
               "@carjorvaz.com"
               "@carlosvaz.com"
               "@carlosvaz.net"
@@ -61,7 +62,7 @@
             ];
           };
 
-          "pius@vaz.ovh" = {
+          "pius@carjorvaz.com" = {
             hashedPasswordFile = config.age.secrets.mailPiusHashedPassword.path;
           };
         };

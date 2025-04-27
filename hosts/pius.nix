@@ -21,6 +21,7 @@
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry; announce exit node
     "${self}/profiles/nixos/zfs/common.nix"
+    "${self}/profiles/nixos/zfs/email.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
@@ -98,6 +99,20 @@
     # Allows this device to be used as a VPN from other devices (geo-blocking, snooping).
     # Clients should run: sudo tailscale up --exit-node=<exit_node_tailscale_ip>
     tailscale.useRoutingFeatures = "both";
+  };
+
+  age.secrets.mailPiusPassword = {
+    file = "${self}/secrets/mailPiusPassword.age";
+    mode = "444";
+  };
+
+  programs.msmtp.accounts.default = {
+    auth = true;
+    aliases = "/etc/aliases";
+    user = "pius@carjorvaz.com";
+    from = "pius <pius@carjorvaz.com>";
+    host = "mail.vaz.one";
+    passwordeval = "${pkgs.coreutils}/bin/cat ${config.age.secrets.mailPiusPassword.path}";
   };
 
   powerManagement.powertop.enable = true;
