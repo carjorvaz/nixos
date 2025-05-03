@@ -204,6 +204,7 @@
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "mattermost"
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
+      "microsoft-teams" # Only have installed when needed (has some sinister telemetry).
       # "monitorcontrol" # Brightness and volume controls for external monitors.
       "mullvad-browser"
       "nextcloud"
@@ -212,7 +213,6 @@
       "qmk-toolbox"
       "racket"
       "signal"
-      "skype"
       "stremio"
       "telegram"
       "transmission"
