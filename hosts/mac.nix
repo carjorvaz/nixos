@@ -194,6 +194,7 @@
       "balenaetcher"
       "betterdisplay" # Custom fractional scaling resolutions, brightness and volume control for non-Apple external displays.
       "brave-browser"
+      "citrix-workspace"
       "discord"
       "firefox"
       "flux"
