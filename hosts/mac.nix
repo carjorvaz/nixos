@@ -224,6 +224,7 @@
       "vial"
       "visual-studio-code"
       "whatsapp"
+      "zed"
       "zoom"
     ];
 
