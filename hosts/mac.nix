@@ -224,7 +224,6 @@
       "vial"
       "visual-studio-code"
       "whatsapp"
-      "zen-browser"
       "zoom"
     ];
 
