@@ -5,7 +5,6 @@ let
 in
 {
   age.secrets = {
-    plausibleAdminPassword.file = "${self}/secrets/plausibleAdminPassword.age";
     plausibleSecretKeybase.file = "${self}/secrets/plausibleSecretKeybase.age";
 
     mailPiusPassword = {
@@ -17,16 +16,6 @@ in
   services = {
     plausible = {
       enable = true;
-
-      adminUser = {
-        # activate is used to skip the email verification of the admin-user that's
-        # automatically created by plausible. This is only supported if
-        # postgresql is configured by the module. This is done by default, but
-        # can be turned off with services.plausible.database.postgres.setup.
-        activate = true;
-        email = "plausible@carjorvaz.com";
-        passwordFile = config.age.secrets.plausibleAdminPassword.path;
-      };
 
       server = {
         baseUrl = "https://${domain}";

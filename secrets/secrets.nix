@@ -47,10 +47,6 @@ in
     hadrianusSystem
     t440System
   ];
-  "plausibleAdminPassword.age".publicKeys = [
-    piusSystem
-    commodusUser
-  ];
   "plausibleSecretKeybase.age".publicKeys = [
     piusSystem
     commodusUser
