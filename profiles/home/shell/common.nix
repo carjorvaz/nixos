@@ -1,13 +1,14 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 {
   home-manager.users.cjv = {
+    home.shellAliases = {
+      cat = "bat";
+    };
+
     programs = {
+      bat.enable = true;
+
       dircolors.enable = true;
 
       direnv = {
@@ -15,9 +16,9 @@
         nix-direnv.enable = true;
       };
 
-      eza.enable = true;
-
       fzf.enable = true;
+
+      eza.enable = true;
 
       starship.enable = true;
 
@@ -32,23 +33,6 @@
       };
 
       zoxide.enable = true;
-
-      zsh = {
-        enable = true;
-        autocd = true;
-        defaultKeymap = "emacs";
-
-        enableCompletion = true;
-        enableVteIntegration = true;
-        autosuggestion.enable = true;
-        syntaxHighlighting.enable = true;
-
-        history = {
-          expireDuplicatesFirst = true;
-          extended = true;
-          ignoreDups = true;
-        };
-      };
     };
   };
 }

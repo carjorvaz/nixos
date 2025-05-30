@@ -30,7 +30,7 @@ in
     "${self}/profiles/nixos/printing.nix"
     "${self}/profiles/nixos/ssh.nix"
 
-    "${self}/profiles/home/zsh.nix"
+    "${self}/profiles/home/shell/fish.nix"
   ];
 
   age.secrets.aureliusInitrdHostKey.file = "${self}/secrets/aureliusInitrdHostKey.age";
