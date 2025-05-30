@@ -1,6 +1,5 @@
 {
   self,
-  config,
   lib,
   pkgs,
   inputs,
@@ -20,7 +19,10 @@
 # - https://github.com/LnL7/nix-darwin
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
-  imports = [ "${self}/profiles/home/zsh.nix" ];
+  imports = [
+    "${self}/profiles/darwin/fish.nix"
+    "${self}/profiles/home/helix.nix"
+  ];
 
   nix = {
     enable = true;
@@ -42,8 +44,7 @@
     '';
   };
 
-  # Required by home-manager.
-  users.users.cjv.home = "/Users/cjv";
+  networking.hostName = "mac";
 
   environment.systemPackages = with pkgs; [
     # Emacs related
@@ -241,34 +242,14 @@
     };
 
     taps = [
-      "d12frosted/emacs-plus" # emacs-plus
+      "d12frosted/emacs-plus"
       "osx-cross/arm"
       "osx-cross/avr"
       "qmk/qmk"
     ];
   };
 
-  programs = {
-    man.enable = true;
-
-    zsh = {
-      # Create /etc/zshrc that loads the nix-darwin environment.
-      enable = true;
-
-      enableBashCompletion = true;
-      enableCompletion = true;
-      enableFzfCompletion = true;
-      enableFzfHistory = true;
-      enableSyntaxHighlighting = true;
-
-      shellInit = ''
-        # Make sure brew is on the path for M1.
-        if [[ $(uname -m) == 'arm64' ]]; then
-             eval "$(/opt/homebrew/bin/brew shellenv)"
-        fi
-      '';
-    };
-  };
+  programs.man.enable = true;
 
   environment.variables = {
     EDITOR = "nvim";
@@ -286,11 +267,15 @@
 
   security.pam.services.sudo_local.touchIdAuth = true;
 
+  # Required by home-manager.
+  users.users.cjv.home = "/Users/cjv";
+
   home-manager.users.cjv = {
     home.stateVersion = "23.05";
   };
 
   ids.gids.nixbld = 350;
+  system.primaryUser = "cjv";
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog

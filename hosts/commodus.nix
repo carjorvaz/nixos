@@ -27,8 +27,6 @@
     "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/scanning.nix"
     "${self}/profiles/nixos/ssh.nix"
-
-    "${self}/profiles/home/zsh.nix"
   ];
 
   boot.initrd.availableKernelModules = [

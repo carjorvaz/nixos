@@ -6,7 +6,7 @@
 }:
 
 {
-  imports = [ "${self}/profiles/home/zsh.nix" ];
+  imports = [ "${self}/profiles/home/shell/fish.nix" ];
 
   users.users = {
     cjv = {

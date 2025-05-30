@@ -9,8 +9,8 @@
 
 {
   imports = [
-    ./locale.nix
-    ./zsh.nix
+    "${self}/profiles/nixos/shell/fish.nix"
+    "${self}/profiles/nixos/locale.nix"
 
     # TODO automatically import every module in modules/nixos
     "${self}/modules/nixos/wgrnl.nix"
@@ -66,6 +66,7 @@
         "nvidia-persistenced"
         "nvidia-settings"
         "nvidia-x11"
+        "open-webui"
         "skypeforlinux"
         "vscode"
         "vscode-extension-github-copilot"
