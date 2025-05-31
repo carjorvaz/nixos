@@ -16,9 +16,13 @@
         nix-direnv.enable = true;
       };
 
+      eza.enable = true;
+
       fzf.enable = true;
 
-      eza.enable = true;
+      git.delta.enable = true;
+
+      gitui.enable = true;
 
       starship.enable = true;
 

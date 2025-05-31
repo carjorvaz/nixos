@@ -47,6 +47,19 @@
   networking.hostName = "mac";
 
   environment.systemPackages = with pkgs; [
+    colima # Streamlines Docker, just run `colima start`.
+    docker
+    htop
+    llama-cpp
+
+    delta
+    dua
+    fd
+    hyperfine
+    ripgrep
+    ripgrep-all
+    uutils-coreutils-noprefix
+
     # Emacs related
     nixfmt-rfc-style
     cmake
@@ -92,11 +105,7 @@
     };
 
     brews = [
-      "colima" # Streamlines Docker, just run `colima start`.
-      "docker"
-      "htop"
       "julia"
-      "llama.cpp"
       "pipx"
       "python-tk"
       "rlwrap"
@@ -156,13 +165,11 @@
       "zlib"
       # Doom Emacs dependencies
       "coreutils"
-      "fd"
       "gcc"
       "git"
       "grep"
       "libgccjit"
       "marked"
-      "ripgrep"
       "direnv"
       # pdf-tools dependencies
       "pkg-config"
