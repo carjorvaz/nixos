@@ -51,6 +51,7 @@
     docker
     htop
     llama-cpp
+    nixos-rebuild
 
     delta
     dua
