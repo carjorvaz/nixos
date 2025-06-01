@@ -13,8 +13,14 @@
   programs = {
     fish = {
       enable = true;
+
       interactiveShellInit = ''
         set fish_greeting # Disable greeting
+
+        # Make sure brew is on the path for M1.
+        if test (uname -m) = "arm64"
+            eval (/opt/homebrew/bin/brew shellenv)
+        end
       '';
     };
 
