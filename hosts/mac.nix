@@ -22,6 +22,7 @@
   imports = [
     "${self}/profiles/darwin/fish.nix"
     "${self}/profiles/home/helix.nix"
+    "${self}/profiles/home/mpv.nix"
     "${self}/profiles/home/ssh.nix"
   ];
 
@@ -210,7 +211,6 @@
       "flux"
       "font-jetbrains-mono-nerd-font"
       "ghostty"
-      "iina"
       "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "mattermost"
