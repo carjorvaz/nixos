@@ -22,6 +22,7 @@
   imports = [
     "${self}/profiles/darwin/fish.nix"
     "${self}/profiles/home/helix.nix"
+    "${self}/profiles/home/ssh.nix"
   ];
 
   nix = {
