@@ -23,6 +23,7 @@
     "${self}/profiles/darwin/fish.nix"
     "${self}/profiles/home/helix.nix"
     "${self}/profiles/home/mpv.nix"
+    "${self}/profiles/home/qutebrowser.nix"
     "${self}/profiles/home/ssh.nix"
   ];
 
@@ -222,6 +223,7 @@
       "orcaslicer"
       "orion"
       "qmk-toolbox"
+      "qutebrowser"
       "racket"
       "signal"
       "stremio"
