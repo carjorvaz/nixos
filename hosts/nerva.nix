@@ -11,7 +11,6 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
-    "${self}/profiles/nixos/autoUpgrade.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry; announce exit node
