@@ -14,7 +14,6 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
-    "${self}/profiles/nixos/autoUpgrade.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
