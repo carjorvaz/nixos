@@ -11,7 +11,9 @@
   home-manager.users.cjv = {
     programs.helix = {
       enable = true;
-      # package = pkgs.evil-helix;
+      # Prefer the design and mindset of upstream Helix but currently using
+      # evil-helix to keep bindings consistent with Doom Emacs.
+      package = pkgs.evil-helix;
 
       settings = {
         theme = "gruvbox_dark_hard";
