@@ -272,6 +272,9 @@
   # in VSCode with vim keys to move around.
   system.defaults.NSGlobalDomain.ApplePressAndHoldEnabled = false;
 
+  # https://tonsky.me/blog/monitors/#turn-off-font-smoothing
+  system.defaults.NSGlobalDomain.AppleFontSmoothing = 0;
+
   # Keyboard
   system.keyboard.enableKeyMapping = true;
   system.keyboard.remapCapsLockToControl = true;
