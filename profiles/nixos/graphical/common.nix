@@ -11,15 +11,12 @@
 let
   # TODO automatically make every pkg in pkgs/ available everywhere
   brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
-  orca-slicer-appimage = pkgs.callPackage "${self}/pkgs/orca-slicer-appimage.nix" { };
-  zen-browser = pkgs.callPackage "${self}/pkgs/zen-browser.nix" { };
 in
 {
   # Lowest input lag, from my experienece.
   # Other options:
   # - config.boot.zfs.package.latestCompatibleLinuxPackages;
   # - pkgs.linuxPackages_zen;
-
   boot.kernelPackages = pkgs.linuxPackages_cachyos;
   boot.zfs.package = pkgs.zfs_cachyos;
   services.scx.enable = true;
@@ -53,10 +50,7 @@ in
   nix.daemonCPUSchedPolicy = "idle";
 
   # Enable nix-ld for standard ~Common Lisp~ and Julia development.
-  programs.nix-ld = {
-    enable = true;
-    # libraries = options.programs.nix-ld.libraries.default ++ (with pkgs; [ openssl ]);
-  };
+  programs.nix-ld.enable = true;
 
   # Suckless software overlays
   nixpkgs.overlays = [
@@ -173,7 +167,6 @@ in
 
       # STATE: Auto-fill > Default URI match detection > Host
       "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
-      "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
       "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
       "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
       "khncfooichmfjbepaaaebmommgaepoid" # Unhook
@@ -209,7 +202,6 @@ in
             # STATE:
             # Select All, Save
             # bypass-paywalls-clean # TODO temporarily commented out because it's broken
-            darkreader
 
             # STATE:
             # - Lists:
@@ -447,7 +439,6 @@ in
     firefox
     foliate
     libreoffice-fresh
-    librewolf
     mattermost-desktop
     metadata-cleaner
     monero-gui
@@ -460,7 +451,7 @@ in
     nextcloud-client
 
     ungoogled-chromium
-    orca-slicer-appimage
+    orca-slicer
     signal-desktop
 
     # TODO: declarative with home-manager?
@@ -470,7 +461,6 @@ in
     # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
     # - dictionaries
     thunderbird-latest
-    zen-browser
 
     nautilus
     seahorse
@@ -485,10 +475,6 @@ in
 
     python3
 
-    kubectl
-    kubernetes-helm
-    unstable.talosctl
-
     bashmount
     glib # gsettings
     imv
@@ -498,9 +484,7 @@ in
     pavucontrol
     pulseaudio # for pactl
     pulsemixer
-    skypeforlinux
     xclip
-    xlayoutdisplay
     yt-dlp
     zathura
     zoom-us
