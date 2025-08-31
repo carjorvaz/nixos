@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 # Icons reference:
 # - https://github.com/walkxcode/dashboard-icons/tree/main/svg
