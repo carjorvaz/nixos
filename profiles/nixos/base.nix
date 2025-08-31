@@ -66,7 +66,6 @@
         "nvidia-settings"
         "nvidia-x11"
         "open-webui"
-        "skypeforlinux"
         "vscode"
         "vscode-extension-github-copilot"
         "zoom"
