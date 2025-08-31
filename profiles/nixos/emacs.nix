@@ -13,7 +13,7 @@ let
     || config.services.desktopManager.plasma6.enable
     || config.services.desktopManager.cosmic.enable;
 
-  myEmacs = if isWayland then pkgs.emacs30-pgtk else pkgs.emacs30;
+  myEmacs = if isWayland then pkgs.emacs-pgtk else pkgs.emacs;
 in
 {
   fonts.packages = [ pkgs.emacs-all-the-icons-fonts ];
