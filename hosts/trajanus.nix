@@ -15,28 +15,22 @@
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/iwd.nix"
     "${self}/profiles/nixos/laptop.nix"
-    "${self}/profiles/nixos/networkManager.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/cjv.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
-    "${self}/profiles/nixos/graphical/gnome.nix"
+    "${self}/profiles/nixos/graphical/gnome.nix" # TODO niri
     "${self}/profiles/nixos/japaneseKeyboard.nix"
-    "${self}/profiles/nixos/qmk.nix"
+    # "${self}/profiles/nixos/qmk.nix"
     "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up
     "${self}/profiles/nixos/tailscale.nix"
   ];
-
-  age.secrets.wgrnlTrajanus = {
-    file = "${self}/secrets/wgrnlTrajanus.age";
-    owner = "systemd-network";
-    group = "systemd-network";
-  };
 
   boot.initrd.availableKernelModules = [
     "xhci_pci"
@@ -44,24 +38,12 @@
     "nvme"
     "usb_storage"
     "sd_mod"
-    "sdhci_pci"
   ];
 
   networking = {
     hostName = "trajanus";
     hostId = "d7ba56e3";
-
-    wgrnl = {
-      enable = true;
-      id = 32;
-      ownPrivateKeyFile = config.age.secrets.wgrnlTrajanus.path;
-      peerEndpoint = "193.136.164.211:34266";
-      peerPubkey = "g08PXxMmzC6HA+Jxd+hJU0zJdI6BaQJZMgUrv2FdLBY=";
-    };
   };
-
-  # Only keep enabled on intel laptops
-  services.thermald.enable = true;
 
   home-manager.users.cjv.wayland.windowManager.hyprland.settings = {
     # Enable touchpad acceleration
@@ -83,5 +65,6 @@
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
-  system.stateVersion = "23.11";
+  system.stateVersion = "25.05";
+  home-manager.users.cjv.home.stateVersion = "25.05";
 }
