@@ -127,7 +127,6 @@
                 ./disko/base.nix
                 ./disko/desktop.nix
                 ./disko/encryption.nix
-                ./disko/laptop.nix
                 ./disko/zfsImpermanence.nix
                 { _module.args.disks = [ "/dev/nvme0n1" ]; }
               ];
