@@ -1,13 +1,5 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 {
-  zramSwap = {
-    enable = true;
-    memoryPercent = 50;
-  };
+  zramSwap.enable = true;
 }
