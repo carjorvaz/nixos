@@ -101,16 +101,16 @@
             ];
           };
 
-          t440 = inputs.nixpkgs.lib.nixosSystem {
+          julius = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
               inherit inputs self;
             };
             modules = baseModules ++ [
-              ./hosts/t440.nix
+              ./hosts/julius.nix
               ./disko/base.nix
-              ./disko/tmpfs.nix
-              { _module.args.disks = [ "/dev/sda" ]; }
+              ./disko/zfsImpermanence.nix
+              { _module.args.disks = [ "/dev/nvme0n1" ]; }
             ];
           };
 
