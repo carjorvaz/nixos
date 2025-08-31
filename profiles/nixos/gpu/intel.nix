@@ -1,20 +1,18 @@
 { pkgs, ... }:
 
 {
-  boot.initrd.kernelModules = [ "i915" ];
-
-  nixpkgs.config.packageOverrides = pkgs: {
-    vaapiIntel = pkgs.vaapiIntel.override { enableHybridCodec = true; };
-  };
+  services.xserver.videoDrivers = [ "modesetting" ];
 
   hardware.graphics = {
     enable = true;
     extraPackages = with pkgs; [
-      intel-media-driver
-      vaapiIntel
-      vaapiVdpau
-      libvdpau-va-gl
-      intel-compute-runtime # OpenCL filter support (hardware tonemapping and subtitle burn-in)
+      # For modern Intel CPU's
+      intel-media-driver # Enable Hardware Acceleration
+      vpl-gpu-rt # Enable QSV
     ];
+  };
+
+  environment.sessionVariables = {
+    LIBVA_DRIVER_NAME = "iHD";
   };
 }
