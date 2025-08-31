@@ -46,7 +46,7 @@
         acltype = "posixacl";
         atime = "off";
         canmount = "off";
-        compression = "zstd";
+        compression = "lz4";
         dnodesize = "auto";
         normalization = "formD";
         xattr = "sa";
