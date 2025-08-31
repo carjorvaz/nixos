@@ -7,10 +7,6 @@
     nix-darwin.url = "github:LnL7/nix-darwin/master";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
 
-    determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
-
-    nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
-
     nix-index-database.url = "github:nix-community/nix-index-database";
     nix-index-database.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -62,45 +58,9 @@
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
             }
-            inputs.nixos-cosmic.nixosModules.default
           ];
         in
         {
-          aurelius = inputs.nixpkgs-unstable.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = {
-              inherit inputs self;
-            };
-            modules =
-              baseModules
-              ++ desktopModules
-              ++ [
-                ./hosts/aurelius.nix
-                ./disko/base.nix
-                ./disko/desktop.nix
-                ./disko/encryption.nix
-                ./disko/zfsImpermanence.nix
-                { _module.args.disks = [ "/dev/nvme0n1" ]; }
-              ];
-          };
-
-          commodus = inputs.nixpkgs-unstable.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = {
-              inherit inputs self;
-            };
-            modules =
-              baseModules
-              ++ desktopModules
-              ++ [
-                ./hosts/commodus.nix
-                ./disko/base.nix
-                ./disko/desktop.nix
-                ./disko/tmpfs.nix
-                { _module.args.disks = [ "/dev/nvme0n1" ]; }
-              ];
-          };
-
           hadrianus = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {
