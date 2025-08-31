@@ -1,8 +1,6 @@
 {
   self,
-  config,
   lib,
-  pkgs,
   modulesPath,
   ...
 }:
@@ -16,29 +14,29 @@
     "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/laptopServer.nix"
+    "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/frigate.nix"
     "${self}/profiles/nixos/nginx/common.nix"
-    "${self}/profiles/nixos/ssh.nix"
   ];
 
   boot.initrd.availableKernelModules = [
     "xhci_pci"
-    "ehci_pci"
-    "ahci"
+    "nvme"
+    "usbhid"
     "usb_storage"
     "sd_mod"
   ];
 
   networking = {
     useDHCP = false;
-    hostName = "t440";
-    hostId = "65db7b8e";
+    hostName = "julius";
+    hostId = "236fb370";
 
-    interfaces.enp0s25 = {
+    interfaces.enp0s31f6 = {
       useDHCP = false;
       wakeOnLan.enable = true; # Requires enabling WoL in BIOS
 
@@ -55,5 +53,5 @@
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
-  system.stateVersion = "23.05";
+  system.stateVersion = "25.05";
 }

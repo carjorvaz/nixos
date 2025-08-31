@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ pkgs, ... }:
 
 # STATE:
 # - h264 (h264+ disabled on Hikvision; Smart Codec disabled on Dahua)
@@ -39,6 +34,7 @@ in
     frigate = {
       enable = true;
       hostname = domain;
+      vaapiDriver = "iHD";
       settings = {
         cameras = {
           # Passwords are in plain text for simplicity because the cameras are
@@ -91,6 +87,10 @@ in
             snapshots.enabled = true;
           };
         };
+
+        auth.enabled = false;
+
+        ffmpeg.hwaccel_args = "preset-vaapi";
 
         record = {
           enabled = true;
