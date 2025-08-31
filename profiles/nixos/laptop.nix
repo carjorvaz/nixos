@@ -7,8 +7,11 @@
       "time"
     ];
 
-    power-profiles-daemon.enable = false;
-    tlp.enable = true;
+    # Thermald and TLP might be more harmful than good, leave disabled
+    # https://pointieststick.com/2020/06/08/lenovo-thinkpad-x1-yoga-impressions-bugs-workarounds-and-thoughts-about-the-future/#comment-10995
+    power-profiles-daemon.enable = true;
+    thermald.enable = false;
+    tlp.enable = false;
   };
 
   home-manager.users.cjv = {
