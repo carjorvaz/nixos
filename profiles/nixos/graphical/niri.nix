@@ -1,23 +1,5 @@
 { inputs, pkgs, ... }:
 
-# Apontamentos post porque gosto do niri:
-# - workspace espaco infinito alinha com o meu pensamento; workspace passa a ser por topico em vez de malabarismo de espaco
-#   - exemplo facil: abrir um terminal para fazer uma coisa rapida e fechar outra vez
-#   - com os meus bindings ate acaba por ser plano 2d infinito, muito melhor para me organizar
-# - gestures de 3 e 4 dedos funcionam fixe
-# - overview com hot corner e fixe (vibes de gnome mas melhor)
-#   - overview so com o teclado tambem e fixe, nao e preciso depender so do mapa mental, da mesmo para ver tudo e reorganizar
-# - portal ser o do gnome e fixe para image previews e etc
-# - muito rapido e smooth
-# - pode ser o suficiente para voltar do macos
-# - supostamente integra com cosmic, lxqt, whatever; don't care, so quero niri
-#   - https://github.com/lxqt/lxqt/wiki/ConfigWaylandSettings#general
-#   - https://github.com/Drakulix/cosmic-ext-extra-sessions
-# - xwayland just works
-# - ha verificacao de se a config esta correta quando se da nixos-rebuild, estamos sempre numa config funcional (rust vibes)
-# - ate acho que quero experimentar nao ter workspaces com numeros, ser so navegar no 2d (e capaz de fazer um melhor mental model)
-#   - autor tambem sugere isto de so dar scroll up and down e de nao ter workspaces estaticos
-
 # Reference:
 # - https://github.com/sodiboo/niri-flake/blob/main/docs.md
 # - https://github.com/sodiboo/system/blob/main/personal/niri.mod.nix
@@ -222,11 +204,7 @@ in
 
       wpaperd = {
         enable = true;
-        settings = {
-          default = {
-            path = ./wallpaper.jpg;
-          };
-        };
+        settings.default.path = ./wallpaper.jpg;
       };
     };
   };
