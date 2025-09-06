@@ -141,6 +141,8 @@ in
   ];
 
   services = {
+    displayManager.gdm.autoSuspend = false;
+
     libinput = {
       # Disable mouse acceleration.
       mouse.accelProfile = "flat";
@@ -164,8 +166,6 @@ in
       };
 
       desktopManager.wallpaper.mode = "fill";
-
-      displayManager.gdm.autoSuspend = false;
     };
   };
 

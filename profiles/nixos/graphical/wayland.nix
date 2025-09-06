@@ -35,7 +35,7 @@
   };
 
   services.xserver.displayManager.lightdm.enable = false;
-  services.xserver.displayManager.gdm = {
+  services.displayManager.gdm = {
     enable = lib.mkDefault true;
     wayland = true;
   };

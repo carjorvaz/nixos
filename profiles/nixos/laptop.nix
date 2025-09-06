@@ -2,7 +2,7 @@
 
 {
   services = {
-    dwm-status.order = [
+    dwm-status.settings.order = [
       "battery"
       "time"
     ];
