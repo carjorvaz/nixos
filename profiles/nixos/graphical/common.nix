@@ -452,13 +452,6 @@ in
     metadata-cleaner
     monero-gui
 
-    # STATE:
-    # - login, skip folders configuration, add folder connection ~/org -> Org
-    # - launch on system startup, use monochrome icons
-    # - move removed files to trash
-    # - disable show server notifications (maybe, choose accordingly)
-    nextcloud-client
-
     ungoogled-chromium
     orca-slicer
     signal-desktop
