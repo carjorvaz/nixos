@@ -16,7 +16,6 @@
     gnome-sound-recorder
     gnome-tweaks
     inkscape
-    metadata-cleaner
     pdfslicer
     ptyxis
     qalculate-gtk
@@ -105,10 +104,7 @@
             "com.mitchellh.ghostty.desktop"
             "org.gnome.Nautilus.desktop"
             "emacs.desktop"
-            "thunderbird.desktop"
             "discord.desktop"
-            "Mattermost.desktop"
-            "com.nextcloud.desktopclient.nextcloud.desktop"
           ];
         };
 
