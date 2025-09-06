@@ -18,7 +18,10 @@ let
   '';
 in
 {
-  imports = [ ./wayland.nix ];
+  imports = [
+    ./swaylock.nix
+    ./wayland.nix
+  ];
 
   environment.systemPackages = with pkgs; [
     qt5.qtwayland
@@ -64,18 +67,7 @@ in
 
   users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
 
-  security = {
-    pam.loginLimits = [
-      {
-        domain = "@users";
-        item = "rtprio";
-        type = "-";
-        value = 1;
-      }
-    ];
-
-    polkit.enable = true;
-  };
+  security.polkit.enable = true;
 
   systemd.user.services = {
     nextcloud-client.wantedBy = lib.mkForce [ "sway-session.target" ];
@@ -145,45 +137,6 @@ in
               format = " $timestamp.datetime(f:'%a %d/%m %R')";
             }
           ];
-        };
-      };
-
-      swaylock = {
-        enable = true;
-        settings = {
-          # Needed for fingerprint to work with swaylock.
-          # Press enter than tap finger.
-          ignore-empty-password = false;
-          show-failed-attempts = true;
-
-          font = "monospace";
-          image = "${./wallpaper.jpg}";
-
-          # https://github.com/swayos/swayos.github.io/blob/main/home/.swaylock/config
-          color = "dcdccc55";
-          indicator-radius = "100";
-          indicator-thickness = "50";
-          # layout-border-color = "00000022";
-          line-color = "ffffff22";
-          line-clear-color = "00000000";
-          line-caps-lock-color = "00000000";
-          line-ver-color = "00000000";
-          line-wrong-color = "00000000";
-          inside-color = "dcdccc55";
-          # inside-ver-color = "dcdcdc55";
-          ring-color = "dcdcdc55";
-          ring-ver-color = "33445555";
-          key-hl-color = "FFFFFF66";
-          separator-color = "00000000";
-          layout-bg-color = "00000000";
-          layout-border-color = "00000000";
-          inside-ver-color = "ffffff22";
-          font-size = "24";
-          text-color = "FFFFFFFF";
-          text-clear-color = "FFFFFFFF";
-          text-caps-lock-color = "FFFFFFFF";
-          text-ver-color = "FFFFFFFF";
-          text-wrong-color = "FFFFFFFF";
         };
       };
     };
