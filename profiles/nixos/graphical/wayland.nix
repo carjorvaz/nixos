@@ -31,7 +31,7 @@
       mouse.hide-when-typing = "yes";
     };
 
-    theme = "gruvbox-dark";
+    theme = lib.mkDefault "gruvbox-dark";
   };
 
   services.xserver.displayManager.lightdm.enable = false;
@@ -56,7 +56,6 @@
         package = pkgs.rofi-wayland;
         cycle = true;
         terminal = "${pkgs.foot}/bin/foot";
-        theme = "gruvbox-dark";
         plugins = with pkgs; [
           # https://github.com/NixOS/nixpkgs/issues/298539
           (pkgs.rofi-calc.override { rofi-unwrapped = rofi-wayland-unwrapped; })
@@ -67,7 +66,6 @@
     services = {
       flameshot.enable = false;
       redshift.enable = false;
-
       dunst.enable = false;
     };
   };

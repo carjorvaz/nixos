@@ -28,7 +28,11 @@
     home-manager-unstable.url = "github:nix-community/home-manager";
     home-manager-unstable.inputs.nixpkgs.follows = "nixpkgs";
 
-    impermanence.url = "github:nix-community/impermanence/master";
+    impermanence.url = "github:nix-community/impermanence";
+
+    niri.url = "github:sodiboo/niri-flake";
+    niri.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    niri.inputs.nixpkgs-stable.follows = "nixpkgs";
 
     simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-25.05";
   };
@@ -53,6 +57,7 @@
 
           desktopModules = [
             inputs.chaotic.nixosModules.default
+            inputs.niri.nixosModules.niri
             inputs.home-manager-unstable.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;

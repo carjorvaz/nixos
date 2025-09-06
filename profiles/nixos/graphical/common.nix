@@ -131,6 +131,15 @@ in
     packages = with pkgs; [ nerd-fonts.jetbrains-mono ];
   };
 
+  security.pam.loginLimits = [
+    {
+      domain = "@users";
+      item = "rtprio";
+      type = "-";
+      value = 1;
+    }
+  ];
+
   services = {
     libinput = {
       # Disable mouse acceleration.

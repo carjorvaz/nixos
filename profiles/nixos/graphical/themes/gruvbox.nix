@@ -6,6 +6,8 @@
   home-manager.users.cjv = {
     programs.rofi.theme = "gruvbox-dark";
 
+    programs.niri.settings.layout.focus-ring.active.color = "#d79921";
+
     services.mako = {
       backgroundColor = "#282828";
       textColor = "#ebdbb2";
