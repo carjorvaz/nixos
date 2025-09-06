@@ -397,13 +397,6 @@ in
         };
       };
     };
-
-    services = {
-      nextcloud-client = {
-        enable = lib.mkDefault true;
-        startInBackground = true;
-      };
-    };
   };
 
   environment.shellAliases = {
