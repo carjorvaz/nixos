@@ -52,7 +52,7 @@
         };
 
         "org/gnome/desktop/interface" = {
-          color-scheme = "prefer-dark";
+          color-scheme = "prefer-light";
           show-battery-percentage = true;
         };
 
@@ -121,7 +121,7 @@
         theme = {
           # Use `dconf watch /` to see the correct name
           package = pkgs.adw-gtk3;
-          name = "adw-gtk3-dark";
+          name = "adw-gtk3";
         };
 
         iconTheme = {
