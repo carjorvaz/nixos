@@ -175,7 +175,9 @@ in
       # STATE: Bypass Paywalls Clean
 
       # STATE: Auto-fill > Default URI match detection > Host
+      # STATE: Allow extensions in private windows
       "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+      "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
       "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
       "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
       "khncfooichmfjbepaaaebmommgaepoid" # Unhook
