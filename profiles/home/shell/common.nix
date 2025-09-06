@@ -2,10 +2,6 @@
 
 {
   home-manager.users.cjv = {
-    home.shellAliases = {
-      cat = "bat";
-    };
-
     programs = {
       bat.enable = true;
 
