@@ -419,21 +419,28 @@ in
     #   - Hide top sites
     # - Never translate Portuguese
     # - (Trajanus) Settings > 110% page zoom
-    # - Vertical Tabs (keep expanded); disable expand vertical tabs panel on mouseover when collapsed; expand vertical tabs independently per window
+    # - Vertical Tabs:
+    #   - keep expanded
+    #   - disable expand vertical tabs panel on mouseover when collapsed
+    #   - expand vertical tabs independently per window
     # - Never show bookmarks bar
     # - Adblock lists (content-filtering):
     #   - adguard portuguese
     #   - annoyances
+    #   - bypass paywalls clean
+    #   - adguard url tracking protection
     # - Portuguese spell check
     # - System > Memory Saver
     # - Pinned extensions:
     #   - Bitwarden
-    #   - Dark Reader
-    #   - Tab Counter
+    # - Allow extensions in private windows
     # - Search Engine shortcuts (Site Search):
     #   - !hm Home Manager Options Search https://home-manager-options.extranix.com/?query=%s
     #   - !nix (Official) NixOS Wiki https://wiki.nixos.org/w/index.php?search=%s
     #   - !nixopt NixOS options https://search.nixos.org/options?query=%s
+    # - Set up Kagi as default search engine
+    #   - First enable index other search engines
+    #   - https://github.com/kagisearch/chrome_extension_basic?tab=readme-ov-file#setting-default-search-on-linux
     brave # Disable if on aarch64
 
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
