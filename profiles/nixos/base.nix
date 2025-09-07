@@ -27,7 +27,7 @@
     git
     pv
     ripgrep
-    trashy
+    trash-cli
     tree
     unzip
     wget
