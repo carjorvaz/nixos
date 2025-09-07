@@ -110,18 +110,18 @@
 
     # For more detail, see:
     #   https://0pointer.de/blog/projects/watchdog.html
-    settings.Manager = {
+    watchdog = {
       # systemd will send a signal to the hardware watchdog at half
       # the interval defined here, so every 10s.
       # If the hardware watchdog does not get a signal for 20s,
       # it will forcefully reboot the system.
-      RuntimeWatchdogSec = "20s";
+      runtimeTime = "20s";
 
       # Forcefully reboot if the final stage of the reboot
       # hangs without progress for more than 30s.
       # For more info, see:
       #   https://utcc.utoronto.ca/~cks/space/blog/linux/SystemdShutdownWatchdog
-      RebootWatchdogSec = "30s";
+      rebootTime = "30s";
     };
   };
 
