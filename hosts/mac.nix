@@ -143,9 +143,8 @@
       {
         # Emacs
         # STATE: ln -s /usr/local/opt/emacs-plus/Emacs.app /Applications/Emacs.app
-        name = "emacs-plus@30";
+        name = "emacs-plus@31";
         args = [
-          "with-native-comp"
           "with-c9rgreen-sonoma-icon"
         ];
       }
