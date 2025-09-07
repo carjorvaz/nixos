@@ -25,7 +25,9 @@
     home-manager.url = "github:nix-community/home-manager/release-25.05";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
-    home-manager-unstable.url = "github:nix-community/home-manager";
+    # home-manager-unstable.url = "github:nix-community/home-manager";
+    # TODO: remove after this is merged: https://github.com/nix-community/home-manager/pull/7766
+    home-manager-unstable.url = "github:DamienCassou/home-manager/syncthing-v2";
     home-manager-unstable.inputs.nixpkgs.follows = "nixpkgs";
 
     impermanence.url = "github:nix-community/impermanence";
