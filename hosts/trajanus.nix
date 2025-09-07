@@ -42,6 +42,14 @@
     "sd_mod"
   ];
 
+  boot.kernelParams = [
+    # https://wiki.cachyos.org/configuration/general_system_tweaks/#disabling-split-lock-mitigate
+    "kernel.split_lock_mitigate=0"
+
+    # https://wiki.cachyos.org/configuration/general_system_tweaks/#enable-rcu-lazy
+    "rcutree.enable_rcu_lazy=1"
+  ];
+
   networking = {
     hostName = "trajanus";
     hostId = "d7ba56e3";
