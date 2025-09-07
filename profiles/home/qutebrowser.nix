@@ -22,15 +22,30 @@
         # Restore previous tabs
         auto_save.session = true;
 
-        # Enable ad-blocking
-        content.blocking.method = "both";
-
         # Try to resist fingerprinting
         # https://wiki.archlinux.org/title/Qutebrowser#Minimize_fingerprinting
-        content.canvas_reading = false;
-        content.webgl = false;
+        content = {
+          canvas_reading = false;
+          webgl = false;
+
+          # Enable ad-blocking
+          blocking.enabled = true;
+          blocking.method = "both";
+          blocking.adblock.lists = [
+            # TODO lists I usually use in ublock origin
+            "https://easylist.to/easylist/easylist.txt"
+            "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"
+            "https://easylist.to/easylist/easyprivacy.txt"
+            "https://secure.fanboy.co.nz/fanboy-annoyance.txt"
+            "https://easylist.to/easylist/fanboy-social.txt"
+          ];
+        };
 
         tabs.position = "left";
+
+        # url.searchengines = {
+        #   "DEFAULT" = "https://search.brave.com/search?q={}";
+        # };
       };
     };
   };
