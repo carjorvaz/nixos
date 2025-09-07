@@ -1,7 +1,6 @@
 { pkgs, ... }:
 
 {
-
   home-manager.users.cjv = {
     programs.mpv = {
       enable = true;
@@ -17,6 +16,12 @@
           };
         }
       );
+
+      config = {
+        hwdec = "auto-safe";
+        profile = "gpu-hq";
+        vo = "gpu";
+      };
     };
   };
 }
