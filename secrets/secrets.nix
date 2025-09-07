@@ -1,58 +1,40 @@
 let
-  aureliusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP7f0hFBGTlQo533O73cpWP+7lQqncdYpxS2/qtYbv3A root@aurelius";
   piusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55 root@commodus  ";
   hadrianusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFI1Mcb4pU6+2ZCmS5wBJqb4oLZdcSxryvTOUf9ZLxIU root@hadrianus";
-  t440System = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBlO09UlgM2z4BKrw6GeveWdZuCX48Nzj57ujSvRYb+U root@t440";
+  juliusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEIQuRyifNhgbFI8ufu22kcj1Jx8WkTRlpl2HIFGZBZ root@julius";
   trajanusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbiiJr+X+25mBGrcKj+2i8ESORUYAv/FpeS+7LCb+nj root@trajanus";
   systems = [
     piusSystem
     hadrianusSystem
-    t440System
+    juliusSystem
     trajanusSystem
   ];
 
-  aureliusUser = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICrco+nZ1DgpsNHntTzMeo626GglxwLKks3XL82XD0kZ cjv@aurelius";
-  commodusUser = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1OS3cOxw5+wleeTybg0sWE2z0pCj007rUO3kQHSVJ7 cjv@commodus";
+  macUser = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKabE30sEDKJPK6Oq5zHn80qyakDSMqG3Y5tAfcUs2c9 cjv@mac";
   trajanusUser = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBK2AsWCLGKxGjkXbIUD8lIV0+48qJFNV9h7FfLLx16f cjv@trajanus";
   users = [
-    commodusUser
+    macUser
     trajanusUser
   ];
 in
 {
-  "aureliusInitrdHostKey.age".publicKeys = [ aureliusSystem ] ++ users;
   "mailCarlosHashedPassword.age".publicKeys = [
     hadrianusSystem
-    commodusUser
-  ];
+  ] ++ users;
   "mailMafaldaHashedPassword.age".publicKeys = [
     hadrianusSystem
-    commodusUser
-  ];
+  ] ++ users;
   "mailPiusPassword.age".publicKeys = [
     piusSystem
-    commodusUser
-  ];
+  ] ++ users;
   "mailPiusHashedPassword.age".publicKeys = [
     hadrianusSystem
-    commodusUser
-  ];
+  ] ++ users;
   "nextcloud-admin-pass.age".publicKeys = [
     piusSystem
-    commodusUser
-  ];
-  "ovh.age".publicKeys = [
-    piusSystem
-    commodusUser
-    hadrianusSystem
-    t440System
-  ];
+  ] ++ users;
+  "ovh.age".publicKeys = systems ++ users;
   "plausibleSecretKeybase.age".publicKeys = [
     piusSystem
-    commodusUser
-  ];
-  "wgrnlTrajanus.age".publicKeys = [
-    trajanusSystem
-    trajanusUser
-  ];
+  ] ++ users;
 }
