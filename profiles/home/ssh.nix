@@ -16,8 +16,9 @@
         in
         {
           hadrianus = serverConf;
+          julius = serverConf;
           pius = serverConf;
-          t440 = serverConf;
+          trajanus = serverConf;
         };
     };
   };
