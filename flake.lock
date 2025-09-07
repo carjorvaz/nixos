@@ -234,15 +234,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1757075491,
-        "narHash": "sha256-a+NMGl5tcvm+hyfSG2DlVPa8nZLpsumuRj1FfcKb2mQ=",
-        "owner": "nix-community",
+        "lastModified": 1757068129,
+        "narHash": "sha256-rQf2K/p1SA52fAQgupZmA2YCcgrhP5mOZwirNSryexk=",
+        "owner": "DamienCassou",
         "repo": "home-manager",
-        "rev": "f56bf065f9abedc7bc15e1f2454aa5c8edabaacf",
+        "rev": "69b00abc4442823606ac0d2d9679825d7254ce4a",
         "type": "github"
       },
       "original": {
-        "owner": "nix-community",
+        "owner": "DamienCassou",
+        "ref": "syncthing-v2",
         "repo": "home-manager",
         "type": "github"
       }

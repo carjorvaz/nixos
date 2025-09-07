@@ -30,6 +30,8 @@
     # STATE: sudo tailscale up
     # STATE: sudo tailscale set --exit-node=pius
     "${self}/profiles/nixos/tailscale.nix"
+
+    "${self}/profiles/home/syncthing.nix"
   ];
 
   boot.initrd.availableKernelModules = [
