@@ -5,8 +5,23 @@
 # - https://github.com/sodiboo/system/blob/main/personal/niri.mod.nix
 let
   my-lockscreen = pkgs.writeShellScriptBin "my-lockscreen" ''
-    # Launch swayidle to switch off screen after 5 seconds, if locked
-    ${pkgs.swayidle}/bin/swayidle -w timeout 5 '${pkgs.sway}/bin/swaymsg "output * dpms off"' resume '${pkgs.sway}/bin/swaymsg "output * dpms on"' &
+    # Get output names
+    outputs=$(${pkgs.niri}/bin/niri msg outputs | ${pkgs.gnugrep}/bin/grep "Output" | ${pkgs.gnugrep}/bin/grep -o '([^)]*)' | ${pkgs.coreutils-full}/bin/tr -d '()')
+
+    # Build output control commands
+    off_cmd=""
+    on_cmd=""
+    for output in $outputs; do
+      off_cmd+="${pkgs.niri}/bin/niri msg output $output off && "
+      on_cmd+="${pkgs.niri}/bin/niri msg output $output on && "
+    done
+    off_cmd="''${off_cmd% && }"
+    on_cmd="''${on_cmd% && }"
+
+    # Launch swayidle with dynamic output control
+    ${pkgs.swayidle}/bin/swayidle -w \
+      timeout 5 "$off_cmd" \
+      resume "$on_cmd" &
 
     # Lock the screen
     ${pkgs.swaylock}/bin/swaylock
