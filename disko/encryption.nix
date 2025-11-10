@@ -1,5 +1,11 @@
-{ lib, ... }:
+{ ... }:
 {
+  # https://wiki.nixos.org/wiki/Full_Disk_Encryption#Perf_test
+  boot.initrd.availableKernelModules = [
+    "aesni_intel"
+    "cryptd"
+  ];
+
   disko.devices.zpool.zroot = {
     rootFsOptions = {
       encryption = "aes-256-gcm";
