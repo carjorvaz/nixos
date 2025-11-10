@@ -57,12 +57,10 @@
 
       rofi = {
         enable = true;
-        package = pkgs.rofi-wayland;
         cycle = true;
         terminal = "${pkgs.foot}/bin/foot";
-        plugins = with pkgs; [
-          # https://github.com/NixOS/nixpkgs/issues/298539
-          (pkgs.rofi-calc.override { rofi-unwrapped = rofi-wayland-unwrapped; })
+        plugins = [
+          pkgs.rofi-calc
         ];
       };
     };
