@@ -51,6 +51,10 @@
     };
 
     programs = {
+      ghostty = {
+        enable = true;
+      };
+
       rofi = {
         enable = true;
         package = pkgs.rofi-wayland;
