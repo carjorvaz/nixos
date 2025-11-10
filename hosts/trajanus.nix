@@ -24,7 +24,6 @@
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/graphical/niri.nix"
-    "${self}/profiles/nixos/japaneseKeyboard.nix"
     "${self}/profiles/nixos/ssh.nix"
 
     # STATE: sudo tailscale up
