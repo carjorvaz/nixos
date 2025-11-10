@@ -1,5 +1,8 @@
 { lib, pkgs, ... }:
 
+let
+  fontSize = 13;
+in
 {
   imports = [ ./common.nix ];
 
@@ -23,7 +26,7 @@
     settings = {
       main = {
         term = "xterm-256color";
-        font = lib.mkDefault "monospace:size=13";
+        font = lib.mkDefault "monospace:size=${toString fontSize}";
 
         pad = "5x5";
       };
@@ -53,6 +56,9 @@
     programs = {
       ghostty = {
         enable = true;
+        settings = {
+          font-size = fontSize;
+        };
       };
 
       rofi = {
