@@ -9,9 +9,19 @@
 
     # Thermald and TLP might be more harmful than good, leave disabled
     # https://pointieststick.com/2020/06/08/lenovo-thinkpad-x1-yoga-impressions-bugs-workarounds-and-thoughts-about-the-future/#comment-10995
-    power-profiles-daemon.enable = true;
+    power-profiles-daemon.enable = false;
     thermald.enable = false;
     tlp.enable = false;
+
+    tuned.ppdSettings = {
+      main.default = "desktop";
+
+      # Available profiles: tuned-adm list
+      profiles = {
+        balanced = "desktop";
+        power-saver = "laptop-battery-powersave";
+      };
+    };
   };
 
   home-manager.users.cjv = {
