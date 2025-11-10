@@ -54,6 +54,8 @@
     hostId = "d7ba56e3";
   };
 
+  services.displayManager.autoLogin.user = "cjv";
+
   home-manager.users.cjv = {
     # Panasonic numlock is overlayed on the normal layout
     programs.niri.settings.input.keyboard.numlock = false;
