@@ -272,7 +272,8 @@
   system.defaults.NSGlobalDomain.ApplePressAndHoldEnabled = false;
 
   # https://tonsky.me/blog/monitors/#turn-off-font-smoothing
-  system.defaults.NSGlobalDomain.AppleFontSmoothing = 0;
+  # https://www.reddit.com/r/MacOS/comments/16tow2w/psa_turn_off_font_smoothing/
+  system.defaults.NSGlobalDomain.AppleFontSmoothing = 2;
 
   # Keyboard
   system.keyboard.enableKeyMapping = true;
