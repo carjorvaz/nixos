@@ -88,6 +88,7 @@
     # STATE: venv with pyglet installed with direnv
     ffmpeg
 
+    claude-code
     delta
     fzf
     hugo
@@ -97,6 +98,12 @@
     yt-dlp
     inputs.agenix.packages."${system}".default
   ];
+
+  nixpkgs.config.allowUnfreePredicate =
+    pkg:
+    builtins.elem (lib.getName pkg) [
+      "claude-code"
+    ];
 
   homebrew = {
     # STATE: requires manually installing Homebrew: brew.sh
@@ -110,12 +117,14 @@
     };
 
     brews = [
-      "julia"
+      "guile"
+      "ollama"
       "pipx"
       "python-tk"
       "rlwrap"
       "sbcl"
       "trash"
+      "uv"
 
       "qmk"
       # QMK dependencies
@@ -206,10 +215,13 @@
       "balenaetcher"
       "betterdisplay" # Custom fractional scaling resolutions, brightness and volume control for non-Apple external displays.
       "brave-browser"
-      "citrix-workspace"
+      "comfyui"
+      "diffusionbee"
       "discord"
+      "dolphin"
+      "draw-things"
       "firefox"
-      "flux"
+      "flux-app"
       "font-jetbrains-mono-nerd-font"
       "ghostty"
       "inkscape"
@@ -219,14 +231,15 @@
       "microsoft-teams" # Only have installed when needed (has some sinister telemetry).
       # "monitorcontrol" # Brightness and volume controls for external monitors.
       "mullvad-browser"
-      "nextcloud"
       "orcaslicer"
       "orion"
+      "pale-moon"
       "qmk-toolbox"
       "qutebrowser"
       "racket"
       "signal"
       "stremio"
+      "syncthing-app"
       "telegram"
       "transmission"
       "tunnelblick"
@@ -234,14 +247,15 @@
       "unnaturalscrollwheels"
       "utm"
       "vial"
-      "visual-studio-code"
+      # "visual-studio-code"
+      "vscodium"
       "whatsapp"
-      "zed"
+      "zed@preview"
+      "zen@twilight"
       "zoom"
     ];
 
     masApps = {
-      AdGuard = 1440147259;
       # STATE:
       # - Enable browser extension
       # - Match URI by host
@@ -286,6 +300,11 @@
   users.users.cjv.home = "/Users/cjv";
 
   home-manager.users.cjv = {
+    home.sessionPath = [
+      # STATE: install juliaup manually with curl method
+      "/Users/cjv/.juliaup/bin/"
+    ];
+
     home.stateVersion = "23.05";
   };
 
