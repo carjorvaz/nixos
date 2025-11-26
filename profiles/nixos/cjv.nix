@@ -6,7 +6,10 @@
 }:
 
 {
-  imports = [ "${self}/profiles/home/shell/fish.nix" ];
+  imports = [
+    "${self}/profiles/home/neovim.nix"
+    "${self}/profiles/home/shell/fish.nix"
+  ];
 
   users.users = {
     cjv = {
