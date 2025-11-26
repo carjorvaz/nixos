@@ -1,6 +1,7 @@
 {
   self,
   lib,
+  pkgs,
   modulesPath,
   ...
 }:
@@ -31,6 +32,11 @@ in
     # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/tailscale.nix"
   ];
+
+  boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
+  boot.zfs.package = pkgs.zfs_cachyos;
+  # TODO remove after 25.11
+  system.modulesTree = [ (lib.getOutput "modules" pkgs.linuxPackages_cachyos-server.kernel) ];
 
   boot.initrd.availableKernelModules = [
     "ata_piix"

@@ -46,6 +46,7 @@
         let
           baseModules = [
             inputs.agenix.nixosModules.default
+            inputs.chaotic.nixosModules.default
             inputs.disko.nixosModules.disko
             inputs.impermanence.nixosModule
             inputs.nix-index-database.nixosModules.nix-index
@@ -58,7 +59,6 @@
           ];
 
           desktopModules = [
-            inputs.chaotic.nixosModules.default
             inputs.niri.nixosModules.niri
             inputs.home-manager-unstable.nixosModules.home-manager
             {
