@@ -1,6 +1,7 @@
 {
   self,
   lib,
+  pkgs,
   modulesPath,
   ...
 }:
@@ -22,6 +23,11 @@
     "${self}/profiles/nixos/frigate.nix"
     "${self}/profiles/nixos/nginx/common.nix"
   ];
+
+  boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
+  boot.zfs.package = pkgs.zfs_cachyos;
+  # TODO remove after 25.11
+  system.modulesTree = [ (lib.getOutput "modules" pkgs.linuxPackages_cachyos-server.kernel) ];
 
   boot.initrd.availableKernelModules = [
     "xhci_pci"
