@@ -18,6 +18,10 @@ let
   ];
 in
 {
+  "hadrianusInitrdHostKey.age".publicKeys = [
+    hadrianusSystem
+  ]
+  ++ users;
   "mailCarlosHashedPassword.age".publicKeys = [
     hadrianusSystem
   ]

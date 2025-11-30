@@ -5,6 +5,11 @@
   ...
 }:
 
+# Reference:
+#
+# Unlock with:
+# ssh -4 -p 2222 root@host
+
 with lib;
 
 let
@@ -37,6 +42,7 @@ in
         default = null;
         description = lib.mdDoc ''
           Path to the SSH host keys to be used in the initrd.
+          Generate key with: ssh-keygen -t ed25519 -N "" -f /path/to/ssh_host_ed25519_key
         '';
       };
 
@@ -81,8 +87,6 @@ in
 
   config = mkIf cfg.enable {
     boot = {
-      # systemd stage-1 doesn't support initrd.network.postCommands.
-      initrd.systemd.enable = false;
       plymouth.enable = false;
 
       kernelParams = lib.mkIf cfg.static.enable [
@@ -100,18 +104,11 @@ in
           authorizedKeys = cfg.authorizedKeys;
         };
 
-        # This will automatically load the zfs password prompt on login
-        # and kill the other prompt so boot can continue.
         postCommands = ''
-          cat <<EOF > /root/.profile
-          if pgrep -x "zfs" > /dev/null
-          then
-            zfs load-key -a
-            killall zfs
-          else
-            echo "zfs not running -- maybe the pool is taking some time to load for some unforseen reason."
-          fi
-          EOF
+          # Import all pools
+          zpool import -a
+          # Add the load-key command to the .profile
+          echo "zfs load-key -a; killall zfs" >> /root/.profile
         '';
       };
     };
