@@ -1,7 +1,10 @@
 { ... }:
 
 {
-  zramSwap.enable = true;
+  zramSwap = {
+    enable = true;
+    memoryPercent = 250;
+  };
 
   # https://github.com/NixOS/nixpkgs/pull/351002/files
   boot.kernel.sysctl = {
