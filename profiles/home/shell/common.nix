@@ -5,6 +5,8 @@
     programs = {
       bat.enable = true;
 
+      delta.enableGitIntegration = true;
+
       dircolors.enable = true;
 
       direnv = {
