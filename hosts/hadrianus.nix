@@ -1,5 +1,6 @@
 {
   self,
+  config,
   lib,
   pkgs,
   modulesPath,
@@ -35,8 +36,6 @@ in
 
   boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
   boot.zfs.package = pkgs.zfs_cachyos;
-  # TODO remove after 25.11
-  system.modulesTree = [ (lib.getOutput "modules" pkgs.linuxPackages_cachyos-server.kernel) ];
 
   boot.initrd.availableKernelModules = [
     "ata_piix"
