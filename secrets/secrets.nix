@@ -47,4 +47,10 @@ in
     piusSystem
   ]
   ++ users;
+
+  # cl-olx-scraper (webhook/URL pairs, see flake.nix for format)
+  "cl-olx-scraper-config.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
 }

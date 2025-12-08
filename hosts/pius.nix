@@ -25,6 +25,7 @@
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/bazarr.nix"
+    "${self}/profiles/nixos/cl-olx-scraper.nix"
     "${self}/profiles/nixos/calibre.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/home-assistant.nix"

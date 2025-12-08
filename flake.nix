@@ -37,6 +37,9 @@
     niri.inputs.nixpkgs-stable.follows = "nixpkgs";
 
     simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-25.05";
+
+    cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
+    cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
   };
 
   outputs =
@@ -96,6 +99,7 @@
               inherit inputs self;
             };
             modules = baseModules ++ [
+              inputs.cl-olx-scraper.nixosModules.default
               ./hosts/pius.nix
               ./disko/pius.nix
               {
