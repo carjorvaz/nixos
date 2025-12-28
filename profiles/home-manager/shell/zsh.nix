@@ -3,7 +3,7 @@
 {
   imports = [ ./common.nix ];
 
-  home-manager.users.cjv.programs = {
+  programs = {
     fzf.enable = true;
     zoxide.enable = true;
 
