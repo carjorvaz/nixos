@@ -40,6 +40,10 @@
 
     cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
     cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
+    nix-on-droid.url = "github:nix-community/nix-on-droid/release-24.05";
+    nix-on-droid.inputs.nixpkgs.follows = "nixpkgs";
+    nix-on-droid.inputs.home-manager.follows = "home-manager";
   };
 
   outputs =
@@ -157,6 +161,12 @@
           { programs.nix-index-database.comma.enable = true; }
           ./hosts/mac.nix
         ];
+      };
+
+      nixOnDroidConfigurations.default = inputs.nix-on-droid.lib.nixOnDroidConfiguration {
+        pkgs = import inputs.nixpkgs { system = "aarch64-linux"; };
+        extraSpecialArgs = { inherit inputs self; };
+        modules = [ ./hosts/phone.nix ];
       };
     };
 }

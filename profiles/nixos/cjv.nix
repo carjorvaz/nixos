@@ -6,11 +6,6 @@
 }:
 
 {
-  imports = [
-    "${self}/profiles/home/neovim.nix"
-    "${self}/profiles/home/shell/fish.nix"
-  ];
-
   users.users = {
     cjv = {
       isNormalUser = true;
@@ -28,6 +23,11 @@
   };
 
   home-manager.users.cjv = {
+    imports = [
+      "${self}/profiles/home-manager/neovim.nix"
+      "${self}/profiles/home-manager/shell/fish.nix"
+    ];
+
     nix.registry = lib.mkDefault {
       nixpkgs.flake = inputs.nixpkgs;
       unstable.flake = inputs.nixpkgs-unstable;
