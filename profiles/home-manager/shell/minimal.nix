@@ -1,6 +1,6 @@
 { ... }:
 
-# Portable shell config - works on NixOS, Darwin, and nix-on-droid
+# Minimal shell profile for environments with limited home-manager support (e.g., nix-on-droid)
 {
   programs = {
     bat.enable = true;
@@ -17,10 +17,6 @@
     fzf.enable = true;
 
     starship.enable = true;
-
-    yazi.enable = true;
-
-    zellij.enable = true;
 
     zoxide.enable = true;
   };
