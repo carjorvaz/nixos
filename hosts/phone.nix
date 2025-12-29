@@ -43,10 +43,8 @@
       imports = [
         "${self}/profiles/home-manager/neovim.nix"
         "${self}/profiles/home-manager/ssh.nix"
-        "${self}/profiles/home-manager/shell/common.nix"
+        "${self}/profiles/home-manager/shell/fish.nix"
       ];
-
-      programs.bash.enable = true;
 
       home.stateVersion = "24.05";
     };
