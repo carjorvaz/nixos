@@ -1,5 +1,6 @@
 {
   self,
+  lib,
   pkgs,
   ...
 }:
@@ -10,6 +11,8 @@
 # 3. Run: nix-on-droid switch --flake ~/.config/nixos
 {
   system.stateVersion = "24.05";
+
+  user.shell = "${pkgs.fish}/bin/fish";
 
   nix.extraOptions = ''
     experimental-features = nix-command flakes
@@ -26,6 +29,7 @@
     gzip
 
     # Development tools
+    claude-code
     git
     openssh
 
@@ -34,6 +38,8 @@
     ripgrep
     htop
   ];
+
+  nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "claude-code" ];
 
   terminal.font = "${pkgs.nerd-fonts.jetbrains-mono}/share/fonts/truetype/NerdFonts/JetBrainsMonoNerdFont-Regular.ttf";
 
