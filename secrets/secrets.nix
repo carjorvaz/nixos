@@ -53,4 +53,14 @@ in
     piusSystem
   ]
   ++ users;
+
+  # Syncoid SSH keys for ZFS replication
+  "syncoidTrajanusKey.age".publicKeys = [
+    trajanusSystem
+  ]
+  ++ users;
+  "syncoidHadrianusKey.age".publicKeys = [
+    hadrianusSystem
+  ]
+  ++ users;
 }
