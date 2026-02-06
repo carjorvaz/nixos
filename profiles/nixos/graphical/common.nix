@@ -198,35 +198,72 @@ in
           # Check available extensions (name usually matches the short name in the URL, in the addons store):
           # $ nix flake show "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons"
           # STATE: Requires enabling the extensions manually after first install
-          extensions.packages = with inputs.firefox-addons.packages.${pkgs.system}; [
-            # TODO/maybe:
-            # - tridactyl?
-            # - unhook?
+          extensions.packages =
+            with inputs.firefox-addons.packages.${pkgs.stdenv.hostPlatform.system};
+            let
+              inherit (inputs.firefox-addons.lib.${pkgs.stdenv.hostPlatform.system}) buildFirefoxXpiAddon;
+              bypass-paywalls-clean = buildFirefoxXpiAddon {
+                pname = "bypass-paywalls-clean";
+                version = "4.6.3";
+                addonId = "magnolia@12.34";
+                url = "https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass_paywalls_clean-latest.xpi";
+                sha256 = "sha256-9ON7dRylqQEdETbi7a0hKibtf6dBw8hROhQokdP2RBk=";
+                meta = with lib; {
+                  homepage = "https://twitter.com/Magnolia1234B";
+                  description = "Bypass Paywalls of (custom) news sites";
+                  license = licenses.mit;
+                  platforms = platforms.all;
+                };
+              };
+            in
+            [
+              # TODO/maybe:
+              # - tridactyl?
 
-            auto-tab-discard
+              # STATE:
+              # - Enable basically all exceptions in preferences
+              auto-tab-discard
 
-            # STATE:
-            # - Login
-            # - Settings > Auto-fill > Match Host
-            bitwarden
+              # STATE:
+              # - Login
+              # - Settings > Auto-fill > Match Host
+              bitwarden
 
-            # STATE:
-            # Select All, Save
-            # bypass-paywalls-clean # TODO temporarily commented out because it's broken
+              # # STATE:
+              # # - Opt into everything
+              # # - Select All, Save
+              # bypass-paywalls-clean # PERF: content scripts on many sites delay page loads
 
-            # STATE:
-            # - Lists:
-            #   - Annoyances
-            #   - AdGuard Portuguese
-            ublock-origin
-            return-youtube-dislikes
+              # STATE:
+              # - Log in
+              kagi-search
 
-            #STATE:
-            # - General > Add preface (for userChrome)
-            # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
-            sidebery
-            sponsorblock
-          ];
+              # STATE:
+              # - Lists:
+              #   - Annoyances
+              #   - AdGuard Portuguese
+              ublock-origin
+              return-youtube-dislikes
+
+              # # STATE:
+              # # - General > Add preface (for userChrome)
+              # # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
+              # sidebery # PERF: continuous DOM rendering in sidebar, scales with tab count
+              sponsorblock
+
+              # # STATE:
+              # # - Use system color scheme
+              # darkreader # PERF: injects CSS into every page; replaced by layout.css.prefers-color-scheme.content-override
+
+              # STATE:
+              # - disable auto play
+              # - disable show sidebar button
+              # - enable show button in homepage
+              # - disable scroll in fullscreen
+              # - hide left sidebar
+              remove-youtube-s-suggestions
+              youtube-no-translation
+            ];
 
           search = {
             force = true;
