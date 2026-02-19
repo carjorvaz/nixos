@@ -3,114 +3,63 @@
   config,
   inputs,
   lib,
-  options,
   pkgs,
   ...
 }:
 
-let
-  # TODO automatically make every pkg in pkgs/ available everywhere
-  brainworkshop = pkgs.callPackage "${self}/pkgs/brainworkshop.nix" { };
-in
 {
-  # Lowest input lag, from my experienece.
-  # Other options:
-  # - config.boot.zfs.package.latestCompatibleLinuxPackages;
-  # - pkgs.linuxPackages_zen;
-  boot.kernelPackages = pkgs.linuxPackages_cachyos;
-  boot.zfs.package = pkgs.zfs_cachyos;
-  services.scx.enable = true;
-  services.scx.scheduler = "scx_lavd";
-
-  # Prettier boot
-  boot = {
-    plymouth.enable = lib.mkDefault true;
-    initrd.systemd.enable = lib.mkDefault true;
-
-    # Enable "Silent Boot"
-    consoleLogLevel = 0;
-    initrd.verbose = false;
-    kernelParams = [
-      "quiet"
-      "splash"
-      "boot.shell_on_fail"
-      "loglevel=3"
-      "rd.systemd.show_status=false"
-      "rd.udev.log_level=3"
-      "udev.log_priority=3"
-    ];
-
-    # Hide the OS choice for bootloaders.
-    # It's still possible to open the bootloader list by pressing any key
-    # It will just not appear on screen unless a key is pressed
-    loader.timeout = 0;
-  };
-
-  # Improve desktop responsiveness when updating the system.
-  nix.daemonCPUSchedPolicy = "idle";
+  imports = [
+    ./performance.nix
+    ./quiet-boot.nix
+  ];
 
   # Enable nix-ld for standard ~Common Lisp~ and Julia development.
   programs.nix-ld.enable = true;
 
-  # Suckless software overlays
   nixpkgs.overlays = [
     (self: super: {
-      dmenu = super.dmenu.overrideAttrs (oldAttrs: rec {
-        patches = [ ./suckless/patches/dmenu-qalc-5.2.diff ];
-
-        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dmenu-5.3-config.h);
-        postPatch = ''
-          ${oldAttrs.postPatch}
-          cp ${configFile} config.h'';
-      });
-
-      dwm = super.dwm.overrideAttrs (oldAttrs: rec {
-        patches = [
-          # Move cursor to focused window/screen
-          (pkgs.fetchpatch {
-            url = "https://dwm.suckless.org/patches/warp/dwm-warp-6.4.diff";
-            sha256 = "sha256-8z41ld47/2WHNJi8JKQNw76umCtD01OUQKSr/fehfLw=";
-          })
-        ];
-
-        configFile = super.writeText "config.h" (builtins.readFile ./suckless/dwm-6.5-config.h);
-        postPatch = ''
-          ${oldAttrs.postPatch}
-          cp ${configFile} config.h'';
-      });
-
-      slock = super.slock.overrideAttrs (oldAttrs: rec {
-        patches = [
-          (pkgs.fetchpatch {
-            url = "https://tools.suckless.org/slock/patches/dpms/slock-dpms-1.4.diff";
-            sha256 = "sha256-hfe71OTpDbqOKhu/LY8gDMX6/c07B4sZ+mSLsbG6qtg=";
-          })
-        ];
-
-        configFile = super.writeText "config.h" (builtins.readFile ./suckless/slock-1.5-config.h);
-        postPatch = ''
-          ${oldAttrs.postPatch}
-          cp ${configFile} config.h'';
-      });
-
-      st = super.st.overrideAttrs (oldAttrs: rec {
-        patches = [
-          (pkgs.fetchpatch {
-            url = "https://st.suckless.org/patches/anysize/st-expected-anysize-0.9.diff";
-            sha256 = "sha256-q21HEZoTiVb+IIpjqYPa9idVyYlbG9RF3LD6yKW4muo=";
-          })
-        ];
-
-        configFile = super.writeText "config.h" (builtins.readFile ./suckless/st-0.9.2-config.h);
-        postPatch = ''
-          ${oldAttrs.postPatch}
-          cp ${configFile} config.h'';
-      });
-
-      # https://www.reddit.com/r/archlinux/comments/15sse7i/psa_chromium_dropped_gnomekeyring_support_use/
-      # https://www.reddit.com/r/archlinux/comments/18w78i5/comment/l87j82j/
       brave = super.brave.override {
-        commandLineArgs = "--password-store=libsecret";
+        commandLineArgs =
+          # https://www.reddit.com/r/archlinux/comments/15sse7i/psa_chromium_dropped_gnomekeyring_support_use/
+          # https://www.reddit.com/r/archlinux/comments/18w78i5/comment/l87j82j/
+          "--password-store=libsecret"
+
+          # https://github.com/basecamp/omarchy/blob/master/config/brave-flags.conf
+          + " --enable-features=TouchpadOverscrollHistoryNavigation"
+
+          # Load org-dump extension for saving URLs to org-roam
+          + " --load-extension=${self.org-dump-extension}";
+      };
+
+      # Install native messaging host manifests so brotab works with
+      # programs.firefox.nativeMessagingHosts and Brave's home.file.
+      # (mirrors tridactyl-native pattern in nixpkgs)
+      brotab = super.brotab.overrideAttrs (old: {
+        # Enable transport timeout so the mediator self-terminates when the
+        # native messaging pipe to the browser extension dies, instead of
+        # hanging forever and holding the port.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace brotab/mediator/brotab_mediator.py \
+            --replace-fail \
+              'transport = default_transport()' \
+              'transport = transport_with_timeout(sys.stdin.buffer, sys.stdout.buffer, DEFAULT_TRANSPORT_TIMEOUT)'
+        '';
+
+        postFixup = (old.postFixup or "") + ''
+          install -Dm444 $out/lib/python*/site-packages/brotab/mediator/firefox_mediator.json \
+            $out/lib/mozilla/native-messaging-hosts/brotab_mediator.json
+          substituteInPlace $out/lib/mozilla/native-messaging-hosts/brotab_mediator.json \
+            --replace-fail '$PWD/brotab_mediator.py' "$out/bin/bt_mediator"
+
+          install -Dm444 $out/lib/python*/site-packages/brotab/mediator/chromium_mediator.json \
+            $out/etc/chromium/native-messaging-hosts/brotab_mediator.json
+          substituteInPlace $out/etc/chromium/native-messaging-hosts/brotab_mediator.json \
+            --replace-fail '$PWD/brotab_mediator.py' "$out/bin/bt_mediator"
+        '';
+      });
+
+      vscodium = super.vscodium.override {
+        commandLineArgs = "--password-store=gnome-libsecret";
       };
     })
   ];
@@ -123,12 +72,53 @@ in
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
+
+    # RNNoise: neural noise suppression for the internal mic.
+    # Creates a virtual "Noise Canceling source" — select it in pavucontrol
+    # or per-app to route audio through the denoiser.
+    extraConfig.pipewire."99-input-denoising" = {
+      "context.modules" = [{
+        name = "libpipewire-module-filter-chain";
+        args = {
+          "node.description" = "Noise Canceling source";
+          "media.name" = "Noise Canceling source";
+          "filter.graph" = {
+            nodes = [{
+              type = "ladspa";
+              name = "rnnoise";
+              plugin = "${pkgs.rnnoise-plugin}/lib/ladspa/librnnoise_ladspa.so";
+              label = "noise_suppressor_mono";
+              control = { "VAD Threshold (%)" = 50.0; };
+            }];
+          };
+          "audio.rate" = 48000;
+          "capture.props" = {
+            "node.name" = "capture.rnnoise_source";
+            "node.passive" = true;
+            "audio.rate" = 48000;
+          };
+          "playback.props" = {
+            "node.name" = "rnnoise_source";
+            "media.class" = "Audio/Source";
+            "audio.rate" = 48000;
+          };
+        };
+      }];
+    };
   };
 
   fonts = {
+    enableDefaultPackages = true;
+    packages = with pkgs; [
+      nerd-fonts.jetbrains-mono
+      noto-fonts
+      noto-fonts-cjk-sans
+      noto-fonts-color-emoji
+    ];
+
     fontDir.enable = true;
     fontconfig.defaultFonts.monospace = [ "JetBrainsMono Nerd Font" ];
-    packages = with pkgs; [ nerd-fonts.jetbrains-mono ];
+    fontconfig.subpixel.rgba = "rgb";
   };
 
   security.pam.loginLimits = [
@@ -167,29 +157,75 @@ in
 
       desktopManager.wallpaper.mode = "fill";
     };
+
+    flatpak = {
+      enable = true;
+      # Keep false for autenticacao.gov
+      uninstallUnmanaged = false;
+      update.onActivation = true;
+      packages = [
+        # Find package names from URL, e.g.: https://flathub.org/en/apps/eu.betterbird.Betterbird
+
+        # STATE:
+        # - default sort unthreaded by descending date in all existing folders
+        # - unified folders
+        # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
+        # - dictionaries (download and enable)
+        # - disable thunderbird spam detection, move junk to junk folder
+        # - message preview on the right (Alt > View > Layout)
+        # - calendar
+        # - card view
+        "eu.betterbird.Betterbird"
+      ];
+    };
   };
 
-  programs.chromium = {
-    enable = true;
-    extensions = [
-      # STATE: Bypass Paywalls Clean
+  programs = {
+    chromium = {
+      enable = true;
+      extensions = [
+        # STATE: Bypass Paywalls Clean
 
-      # STATE: Auto-fill > Default URI match detection > Host
-      # STATE: Allow extensions in private windows
-      "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
-      "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
-      "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
-      "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
-      "khncfooichmfjbepaaaebmommgaepoid" # Unhook
-    ];
+        # STATE: Check discard exceptions in settings
+        "jhnleheckmknfcgijgkadoemagpecfol" # Auto Tab Discard
+
+        # STATE: Auto-fill > Default URI match detection > Host
+        # STATE: Allow extensions in private windows
+        "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+
+        #STATE: Follow system theme
+        "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
+        "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
+        "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
+        "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
+        "cdhdichomdnlaadbndgmagohccgpejae" # Remove YouTube Suggestions
+        "lmkeolibdeeglfglnncmfleojmakecjb" # YouTube No Translation
+        "mhpeahbikehnfkfnmopaigggliclhmnc" # BroTab
+      ];
+    };
+
+    localsend.enable = true;
+
+    nh = {
+      enable = true;
+      flake = "/home/cjv/Documents/nixos";
+    };
   };
 
   home-manager.users.cjv = {
+    imports = [
+      "${self}/profiles/home-manager/btop.nix"
+      "${self}/profiles/home-manager/helix.nix"
+      "${self}/profiles/home-manager/mpv.nix"
+      "${self}/profiles/home-manager/ssh.nix"
+    ];
+
     programs = {
       # STATE:
       # - account containers (gmail, im, uni)
       firefox = {
         enable = true;
+        nativeMessagingHosts = [ pkgs.brotab ];
 
         profiles.default = {
           isDefault = true;
@@ -200,26 +236,7 @@ in
           # STATE: Requires enabling the extensions manually after first install
           extensions.packages =
             with inputs.firefox-addons.packages.${pkgs.stdenv.hostPlatform.system};
-            let
-              inherit (inputs.firefox-addons.lib.${pkgs.stdenv.hostPlatform.system}) buildFirefoxXpiAddon;
-              bypass-paywalls-clean = buildFirefoxXpiAddon {
-                pname = "bypass-paywalls-clean";
-                version = "4.6.3";
-                addonId = "magnolia@12.34";
-                url = "https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass_paywalls_clean-latest.xpi";
-                sha256 = "sha256-9ON7dRylqQEdETbi7a0hKibtf6dBw8hROhQokdP2RBk=";
-                meta = with lib; {
-                  homepage = "https://twitter.com/Magnolia1234B";
-                  description = "Bypass Paywalls of (custom) news sites";
-                  license = licenses.mit;
-                  platforms = platforms.all;
-                };
-              };
-            in
             [
-              # TODO/maybe:
-              # - tridactyl?
-
               # STATE:
               # - Enable basically all exceptions in preferences
               auto-tab-discard
@@ -228,11 +245,6 @@ in
               # - Login
               # - Settings > Auto-fill > Match Host
               bitwarden
-
-              # # STATE:
-              # # - Opt into everything
-              # # - Select All, Save
-              # bypass-paywalls-clean # PERF: content scripts on many sites delay page loads
 
               # STATE:
               # - Log in
@@ -244,16 +256,7 @@ in
               #   - AdGuard Portuguese
               ublock-origin
               return-youtube-dislikes
-
-              # # STATE:
-              # # - General > Add preface (for userChrome)
-              # # - Tabs > After closing current tab activate next tab > Disable ignore discarded tabs
-              # sidebery # PERF: continuous DOM rendering in sidebar, scales with tab count
               sponsorblock
-
-              # # STATE:
-              # # - Use system color scheme
-              # darkreader # PERF: injects CSS into every page; replaced by layout.css.prefers-color-scheme.content-override
 
               # STATE:
               # - disable auto play
@@ -263,12 +266,39 @@ in
               # - hide left sidebar
               remove-youtube-s-suggestions
               youtube-no-translation
+
+              # STATE:
+              # - Custom key mappings: map J nextTab, map K previousTab
+              # - Exclusion rules: https://www.youtube.com/*
+              vimium-c
+              brotab
             ];
+
+          # Accessible via hamburger menu → Bookmarks, or Ctrl+B
+          bookmarks = {
+            force = true;
+            settings = [
+              {
+                name = "Send to SmartTube";
+                keyword = "st";
+                url = "javascript:(function(){var a=document.createElement('a');a.href='smarttube://'+encodeURIComponent(location.href);a.click()})()";
+              }
+              {
+                name = "Dump to Org";
+                keyword = "org";
+                url = "javascript:(function(){var a=document.createElement('a');a.href='org-dump://'+encodeURIComponent('%s')+'?url='+encodeURIComponent(location.href);a.click()})()";
+              }
+            ];
+          };
 
           search = {
             force = true;
-            default = "Brave Search";
+            default = "Kagi";
             engines = {
+              "Kagi" = {
+                urls = [ { template = "https://kagi.com/search?q={searchTerms}"; } ];
+              };
+
               "Brave Search" = {
                 urls = [ { template = "https://search.brave.com/search?q={searchTerms}"; } ];
               };
@@ -299,13 +329,14 @@ in
             "browser.startup.homepage" = "about:blank";
             "browser.newtabpage.enabled" = false;
 
-            # Never remember passwords
+            # Disable all autofill — passwords, addresses, credit cards (use Bitwarden)
             "signon.rememberSignons" = false;
+            "signon.autofillForms" = false;
+            "extensions.formautofill.addresses.enabled" = false;
+            "extensions.formautofill.creditCards.enabled" = false;
 
-            # Customize toolbar manually then copy from about:config to turn declarative
-            "browser.uiCustomization.state" = ''
-              {"placements":{"widget-overflow-fixed-list":["fxa-toolbar-menu-button"],"unified-extensions-area":["_3c078156-979c-498b-8990-85f7987dd929_-browser-action","sponsorblocker_ajay_app-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"nav-bar":["back-button","forward-button","stop-reload-button","urlbar-container","save-to-pocket-button","downloads-button","unified-extensions-button","ublock0_raymondhill_net-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action"],"toolbar-menubar":["menubar-items"],"TabsToolbar":["firefox-view-button","tabbrowser-tabs","new-tab-button","alltabs-button"],"PersonalToolbar":["import-button","personal-bookmarks"]},"seen":["save-to-pocket-button","developer-button","_3c078156-979c-498b-8990-85f7987dd929_-browser-action","_446900e4-71c2-419f-a6a7-df9c091e268b_-browser-action","addon_darkreader_org-browser-action","sponsorblocker_ajay_app-browser-action","ublock0_raymondhill_net-browser-action","_762f9885-5a13-4abd-9c77-433dcd38b8fd_-browser-action","gdpr_cavi_au_dk-browser-action","magnolia_12_34-browser-action"],"dirtyAreaCache":["nav-bar","PersonalToolbar","unified-extensions-area","toolbar-menubar","TabsToolbar","widget-overflow-fixed-list"],"currentVersion":20,"newElementCount":3}
-            '';
+            # To make toolbar layout declarative: customize toolbar manually,
+            # then copy browser.uiCustomization.state from about:config here.
 
             # Privacy settings
             "browser.topsites.contile.enabled" = false;
@@ -314,6 +345,55 @@ in
             "browser.newtabpage.activity-stream.showSponsoredTopSites" = false;
             "dom.security.https_only_mode" = true;
             "privacy.trackingprotection.enabled" = true;
+            "browser.contentblocking.category" = "strict";
+            "privacy.globalprivacycontrol.enabled" = true;
+            "privacy.globalprivacycontrol.functionality.enabled" = true;
+
+            # Disable search suggestions
+            "browser.search.suggest.enabled" = false;
+            "browser.urlbar.suggest.searches" = false;
+
+            # WebRTC: only expose default route IP (prevents VPN leak)
+            "media.peerconnection.ice.default_address_only" = true;
+
+            # Trim cross-origin referrers to scheme+host+port
+            "network.http.referer.XOriginTrimmingPolicy" = 2;
+
+            # DNS over HTTPS via Quad9
+            "network.trr.mode" = 2; # TRR first, fall back to system DNS
+            "network.trr.uri" = "https://dns.quad9.net/dns-query";
+            "network.trr.bootstrapAddress" = "9.9.9.9";
+
+            # Disable Normandy/Shield remote experiments
+            "app.normandy.enabled" = false;
+            "app.shield.optoutstudies.enabled" = false;
+
+            # Disable crash reporter and beacon tracking
+            "browser.tabs.crashReporting.sendReport" = false;
+            "breakpad.reportURL" = "";
+            "beacon.enabled" = false;
+
+            # Disable Safe Browsing download hash upload (keeps local list checks)
+            "browser.safebrowsing.downloads.remote.enabled" = false;
+
+            # Anti-phishing: show punycode for internationalized domains
+            "network.IDN_show_punycode" = true;
+
+            # Disable fingerprinting vectors
+            "dom.battery.enabled" = false;
+
+            # Disable OCSP phone-home to certificate authorities (CRLite handles revocation locally)
+            "security.OCSP.enabled" = 0;
+
+            # Block media autoplay (click to play)
+            "media.autoplay.default" = 5;
+
+            # Disable JavaScript in the built-in PDF viewer
+            "pdfjs.enableScripting" = false;
+
+            # Disable captive portal and connectivity checks (Mozilla server pings)
+            "network.captive-portal-service.enabled" = false;
+            "network.connectivity-service.enabled" = false;
 
             # Disable Telemetry
             "datareporting.healthreport.uploadEnabled" = false;
@@ -344,80 +424,98 @@ in
             # Never show bookmarks bar
             "browser.toolbars.bookmarks.visibility" = "never";
 
-            # Enable userChrome.css
-            "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
-
-            # Force hardware vdeo decoding
+            # Force hardware video decoding
             "media.ffmpeg.vaapi.enabled" = true;
             "media.hardware-video-decoding.force-enabled" = true;
             "gfx.webrender.all" = true;
+
+            # Native vertical tabs
+            "sidebar.verticalTabs" = true;
+
+            # Enable userChrome.css
+            "toolkit.legacyUserProfileCustomization.stylesheets" = true;
+
+            # Follow system dark/light theme (works with darkman)
+            "layout.css.prefers-color-scheme.content-override" = 2;
 
             # Fix using KDE file picker
             # https://wiki.nixos.org/wiki/Firefox#Use_KDE_file_picker
             "widget.use-xdg-desktop-portal.file-picker" = 1;
           };
 
-          # https://github.com/mbnuqw/sidebery/wiki/Firefox-Styles-Snippets-(via-userChrome.css)#completely-hide-native-tabs-strip
-          userChrome =
-            let
-              preface = "[Sidebery] "; # Enable and set same preface in Sidebery settings
-            in
-            ''
-              /**
-               * Dynamic Horizontal Tabs Toolbar (with animations)
-               * sidebar.verticalTabs: false (with native horizontal tabs)
-               */
-              #main-window #TabsToolbar > .toolbar-items {
-                overflow: hidden;
-                transition: height 0.3s 0.3s !important;
-              }
-              /* Default state: Set initial height to enable animation */
-              #main-window #TabsToolbar > .toolbar-items { height: 3em !important; }
-              #main-window[uidensity="touch"] #TabsToolbar > .toolbar-items { height: 3.35em !important; }
-              #main-window[uidensity="compact"] #TabsToolbar > .toolbar-items { height: 2.7em !important; }
-              /* Hidden state: Hide native tabs strip */
-              #main-window[titlepreface*="${preface}"] #TabsToolbar > .toolbar-items { height: 0 !important; }
-              /* Hidden state: Fix z-index of active pinned tabs */
-              #main-window[titlepreface*="${preface}"] #tabbrowser-tabs { z-index: 0 !important; }
-              /* Hidden state: Hide window buttons in tabs-toolbar */
-              #main-window[titlepreface*="${preface}"] #TabsToolbar .titlebar-spacer,
-              #main-window[titlepreface*="${preface}"] #TabsToolbar .titlebar-buttonbox-container {
-                display: none !important;
-              }
-              /* [Optional] Uncomment block below to show window buttons in nav-bar (maybe, I didn't test it on non-linux-i3wm env) */
-              /* #main-window[titlepreface*="${preface}"] #nav-bar > .titlebar-buttonbox-container,
-              #main-window[titlepreface*="${preface}"] #nav-bar > .titlebar-buttonbox-container > .titlebar-buttonbox {
-                display: flex !important;
-              } */
-              /* [Optional] Uncomment one of the line below if you need space near window buttons */
-              /* #main-window[titlepreface*="${preface}"] #nav-bar > .titlebar-spacer[type="pre-tabs"] { display: flex !important; } */
-              /* #main-window[titlepreface*="${preface}"] #nav-bar > .titlebar-spacer[type="post-tabs"] { display: flex !important; } */
-            '';
+          userChrome = ''
+            /* Compact native vertical tabs */
+            sidebar-main:has(> #vertical-tabs) > #vertical-tabs {
+              --tab-min-height: 22px;
+              --tab-block-margin: 1px;
+              --border-radius-medium: 4px;
+              --tab-inner-inline-margin: 2px;
+            }
+
+
+          '';
         };
       };
 
       ghostty = {
         enable = true;
         settings = {
-          theme = "GruvboxDark";
-          # window-decoration = false; # Enable for window managers
+          working-directory = "home";
         };
+      };
+
+      git = {
+        enable = true;
+        # Reference: https://github.com/basecamp/omarchy/blob/master/config/git/config
+        settings = {
+          init.defaultBranch = "master";
+          pull.rebase = true; # Rebase (instead of merge) on pull
+          push.autoSetupRemote = true; # Automatically set upstream branch on push
+          commit.verbose = true; # Include diff comment in commit message template
+          column.ui = "auto"; # Output in columns when possible
+          branch.sort = "-committerdate"; # Sort branches by most recent commit first
+          tag.sort = "-version:refname"; # Sort version numbers as you would expect
+
+          diff = {
+            algorithm = "histogram"; # Clearer diffs on moved/edited lines
+            colorMoved = "plain"; # Highlight moved blocks in diffs
+            mnemonicPrefix = true; # More intuitive refs in diff output
+          };
+
+          rerere = {
+            enabled = true; # Record and reuse conflict resolutions
+            autoupdate = true; # Apply stored conflict resolutions automatically
+          };
+        };
+      };
+
+      neovim = {
+        enable = true;
+        extraConfig = ''
+          set clipboard+=unnamedplus
+        '';
       };
 
       vscode = {
         enable = true;
+        package = pkgs.vscodium;
 
         profiles.default = {
+          # STATE: Install anthropic.claude-code manually via Extensions UI
+          # (VSCode Marketplace updates break Nix hash pinning)
           extensions = with pkgs.vscode-extensions; [
             asvetliakov.vscode-neovim
-            github.copilot
-            mkhl.direnv
+            james-yu.latex-workshop
+            jdinhlife.gruvbox
             jnoortheen.nix-ide
+            julialang.language-julia
+            mkhl.direnv
+            rooveterinaryinc.roo-cline
+            tecosaur.latex-utilities
+            valentjn.vscode-ltex
           ];
 
           userSettings = {
-            "github.copilot.editor.enableAutoCompletions" = true;
-
             "extensions.experimental.affinity" = {
               "asvetliakov.vscode-neovim" = 1;
             };
@@ -425,6 +523,25 @@ in
             "telemetry.enableCrashReporter" = false;
             "telemetry.enableTelemetry" = false;
             "telemetry.telemetryLevel" = "off";
+
+            "window.autoDetectColorScheme" = true;
+            "workbench.preferredDarkColorTheme" = "Gruvbox Dark Hard";
+            "workbench.preferredLightColorTheme" = "Gruvbox Light Hard";
+
+            "terminal.integrated.commandsToSkipShell" = [
+              "language-julia.interrupt"
+            ];
+            "julia.symbolCacheDownload" = true;
+            "julia.executablePath" = "/run/current-system/sw/bin/julia";
+
+            "roo-cline.allowedCommands" = [
+              "git log"
+              "git diff"
+              "git show"
+            ];
+            "roo-cline.deniedCommands" = [ ];
+
+            "claudeCode.preferredLocation" = "panel";
           };
         };
       };
@@ -436,6 +553,55 @@ in
         };
       };
     };
+
+    services.darkman = {
+      enable = true;
+      settings = {
+        lat = 38.7;
+        lng = -9.14;
+      };
+
+      darkModeScripts = {
+        gtk-theme = ''
+          ${pkgs.dconf}/bin/dconf write \
+              /org/gnome/desktop/interface/color-scheme "'prefer-dark'"
+        '';
+      };
+
+      lightModeScripts = {
+        gtk-theme = ''
+          ${pkgs.dconf}/bin/dconf write \
+              /org/gnome/desktop/interface/color-scheme "'prefer-light'"
+        '';
+      };
+    };
+
+    xdg.desktopEntries.smarttube = {
+      name = "Send to SmartTube";
+      exec = "${lib.getExe pkgs.smarttube-cli} %u";
+      type = "Application";
+      mimeType = [ "x-scheme-handler/smarttube" ];
+      noDisplay = true;
+    };
+
+    xdg.desktopEntries.org-dump = {
+      name = "Dump to Org";
+      exec = "${lib.getExe pkgs.org-dump-cli} %u";
+      type = "Application";
+      mimeType = [ "x-scheme-handler/org-dump" ];
+      noDisplay = true;
+    };
+
+    home.file.".config/BraveSoftware/Brave-Browser/NativeMessagingHosts/brotab_mediator.json".source =
+      "${pkgs.brotab}/etc/chromium/native-messaging-hosts/brotab_mediator.json";
+
+    xdg.mimeApps = {
+      enable = true;
+      defaultApplications = {
+        "x-scheme-handler/smarttube" = [ "smarttube.desktop" ];
+        "x-scheme-handler/org-dump" = [ "org-dump.desktop" ];
+      };
+    };
   };
 
   environment.shellAliases = {
@@ -443,6 +609,12 @@ in
   };
 
   environment.systemPackages = with pkgs; [
+    # Helix dependencies
+    helix
+    basedpyright
+    ruff
+    nodePackages.prettier
+
     brainworkshop
 
     # STATE:
@@ -469,7 +641,7 @@ in
     #   - bypass paywalls clean
     #   - adguard url tracking protection
     # - Portuguese spell check
-    # - System > Memory Saver
+    # - System > Disable Memory Saver (because we have Auto Tab Discard)
     # - Pinned extensions:
     #   - Bitwarden
     # - Allow extensions in private windows
@@ -491,17 +663,11 @@ in
     metadata-cleaner
     monero-gui
 
+    mullvad-browser
     ungoogled-chromium
     orca-slicer
     signal-desktop
-
-    # TODO: declarative with home-manager?
-    # STATE:
-    # - descending cards https://superuser.com/questions/13518/change-the-default-sorting-order-in-thunderbird
-    # - unified folders
-    # - stop the nginx systemd service when logging in to gmail  https://support.mozilla.org/en-US/questions/1373706?page=2
-    # - dictionaries
-    thunderbird-latest
+    telegram-desktop
 
     nautilus
     seahorse
@@ -514,8 +680,15 @@ in
     openssl.out
     rlwrap
 
+    aider-chat-full
+    llm-agents.claude-code
+    llm-agents.codex
+    llm-agents.opencode
     python3
 
+    android-tools
+    smarttube-cli
+    org-dump-cli
     bashmount
     glib # gsettings
     imv
@@ -528,6 +701,9 @@ in
     xclip
     yt-dlp
     zathura
-    zoom-us
+
+    brotab
   ];
+
+  environment.persistence."/persist".directories = [ "/var/lib/flatpak" ];
 }

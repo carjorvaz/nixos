@@ -8,9 +8,6 @@
 }:
 
 {
-  # TODO
-  # - cups printing server
-
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
@@ -21,22 +18,23 @@
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry; announce exit node
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/email.nix"
+    "${self}/profiles/nixos/zfs/backupTarget.nix"
     "${self}/profiles/nixos/zramSwap.nix"
-
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/cl-olx-scraper.nix"
+    "${self}/profiles/nixos/pdf-translator.nix"
     "${self}/profiles/nixos/calibre.nix"
     "${self}/profiles/nixos/docker.nix"
     "${self}/profiles/nixos/home-assistant.nix"
-    "${self}/profiles/nixos/homer.nix"
+    # "${self}/profiles/nixos/homer.nix"
     "${self}/profiles/nixos/jellyfin.nix"
     "${self}/profiles/nixos/jellyseerr.nix"
     "${self}/profiles/nixos/msmtp.nix"
     "${self}/profiles/nixos/nextcloud.nix"
     "${self}/profiles/nixos/nginx/common.nix"
+    # "${self}/profiles/nixos/llama-server.nix"
     "${self}/profiles/nixos/open-webui.nix"
-    "${self}/profiles/nixos/plausible.nix"
     "${self}/profiles/nixos/prowlarr.nix"
     "${self}/profiles/nixos/radarr.nix"
     "${self}/profiles/nixos/samba.nix"
@@ -54,11 +52,10 @@
     "sd_mod"
   ];
 
-  # Would make it unbootable remotely because of backups
   boot.zfs.requestEncryptionCredentials = false;
 
-  boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
-  boot.zfs.package = pkgs.zfs_cachyos;
+  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
+  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
 
   networking = {
     useDHCP = false;
@@ -74,13 +71,13 @@
 
       ipv4.addresses = [
         {
-          address = "192.168.1.1";
+          address = "192.168.1.3";
           prefixLength = 24;
         }
       ];
     };
 
-    defaultGateway = "192.168.1.254";
+    defaultGateway = "192.168.1.1";
   };
 
   environment.shellAliases = {
@@ -93,7 +90,7 @@
       "router.vaz.ovh" = {
         forceSSL = true;
         useACMEHost = "vaz.ovh";
-        locations."/".proxyPass = "http://192.168.1.254";
+        locations."/".proxyPass = "http://192.168.1.1";
       };
     };
 
@@ -118,6 +115,18 @@
   };
 
   powerManagement.powertop.enable = true;
+
+  # ZFS backup target configuration
+  # STATE: After first deploy, create the backup dataset:
+  #   zfs create -o mountpoint=/mnt/backups zsafe/backups
+  services.zfsBackup.target = {
+    enable = true;
+    # Add SSH public keys from source machines' syncoid users here
+    sshPublicKeys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrrIpOBpX03+punCUL8ODQiqNuQ//RBdUNxIaLt+x0w syncoid@hadrianus"
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIKG4viU84jy3jZj2yvk9Esyem8pgkHGQnAHmDgTxdtK syncoid@trajanus"
+    ];
+  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 

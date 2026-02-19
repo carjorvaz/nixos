@@ -1,4 +1,4 @@
-{ ... }:
+{ lib, ... }:
 
 {
   networking = {
@@ -11,7 +11,7 @@
   };
 
   powerManagement.powertop.enable = true;
-  services.logind.lidSwitch = "ignore";
+  services.logind.settings.Login.HandleLidSwitch = "ignore";
 
   services.tlp = {
     enable = true;

@@ -21,12 +21,14 @@
     "${self}/profiles/nixos/lanzaboote.nix" # STATE: Set up after redeploying
     "${self}/profiles/nixos/laptop.nix"
     # "${self}/profiles/nixos/mullvad.nix"
-    "${self}/profiles/nixos/tuxedo.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/backupSource.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/cjv.nix"
+    # "${self}/profiles/nixos/claude-deepseek.nix"
+    # "${self}/profiles/nixos/claude-qwen.nix"
+    # "${self}/profiles/nixos/local-llm-clients.nix"
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/graphical/niri.nix"
@@ -49,14 +51,36 @@
     "sd_mod"
   ];
 
+  # Conexant SN6140 internal mic fixes:
+  # 1. GPIO 0 must be enabled for the mic to produce signal (not just noise).
+  #    Upstream fix needed: SND_PCI_QUIRK(0x1d05, 0x137d, ..., CXT_FIXUP_GPIO1)
+  #    Card 0 = HDMI (Radeon), Card 1 = Analog (Conexant SN6140)
+  # 2. snd_acp_pci (AMD ACP PDM) incorrectly claims this platform has a digital
+  #    mic, interfering with the analog internal mic. See:
+  #    https://github.com/alsa-project/alsa-ucm-conf/issues/612
+  boot.extraModprobeConfig = ''
+    options snd-hda-intel model=,gpio1
+    blacklist snd_acp_pci
+  '';
+
   # Kernel parameters for TUXEDO/WUJIE14XA hardware
   # Source: https://fnune.com/hardware/2025/07/20/nixos-on-a-tuxedo-infinitybook-pro-14-gen9-amd/
+  #
+  # Display notes:
+  #   - Panel uses DC dimming (no PWM) — no flicker at any brightness level.
+  #   - deep_color=0 prevents temporal dithering (frame-by-frame color cycling to
+  #     simulate 10/12 bpc on an 8-bit native panel). Costs nothing visually.
+  #   - ABM (Adaptive Backlight Management) adjusts backlight + pixel values to save
+  #     power. Tried level 2 for battery savings but it caused visible shimmer.
+  #   - PSR (Panel Self-Refresh) disabled — saves ~1-2W when enabled, but caused
+  #     visual issues. Comment out dcdebugmask to re-enable if battery life matters.
   boot.kernelParams = [
     "acpi.ec_no_wakeup=1" # Prevents random wake-ups and fan spin when laptop is shut down
-    "amdgpu.dcdebugmask=0x10" # Fixes Wayland performance issues
-    "amdgpu.abmlevel=0" # Disable Adaptive Backlight Management (prevents flickering/dithering)
+    "amdgpu.dcdebugmask=0x10" # Disables PSR, costing ~1-2W — enable if you see transition flashes
+    "amdgpu.abmlevel=0" # Fully disable ABM — abmlevel=2 caused visible shimmer
     "amdgpu.deep_color=0" # Disable 10/12 bpc to prevent temporal dithering
     "i8042.nomux" # Fixes keyboard issues after suspend/resume - https://github.com/sund3RRR/mechrevo14X-linux
+    "zfs.zfs_arc_max=4294967296" # Cap ARC at 4 GB — free RAM for browsers and llama.cpp
   ];
 
   networking = {
@@ -65,12 +89,6 @@
   };
 
   services.displayManager.autoLogin.user = "cjv";
-
-  home-manager.users.cjv = {
-    wayland.windowManager.hyprland.settings.workspace = [
-      "10, monitor:eDP-1, default:true"
-    ];
-  };
 
   # keyd: Up arrow = Right Shift on hold, Up on tap
   services.keyd = {
@@ -108,32 +126,6 @@
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-
-  # FIXME: Remove once https://github.com/NixOS/nixpkgs/commit/15d9ec6 is fixed upstream.
-  # The commit incorrectly placed lib.mkIf inside a list literal for services.udev.packages.
-  services.udev.packages =
-    let
-      cfg = config.hardware.tuxedo-drivers;
-      tuxedo-drivers = config.boot.kernelPackages.tuxedo-drivers;
-      optUdevRule = path: value:
-        lib.optional (value != null)
-          ''ACTION=="add", SUBSYSTEM=="platform", DRIVER=="tuxedo_keyboard", ATTR{${path}}="${value}"'';
-    in
-    lib.mkIf cfg.enable (
-      lib.mkForce (
-        [ tuxedo-drivers ]
-        ++ lib.optional (lib.any (v: v != null) (lib.attrValues cfg.settings)) (
-          pkgs.writeTextDir "etc/udev/rules.d/90-tuxedo.rules" (
-            lib.concatLines (
-              [ "# Custom rules for TUXEDO laptops" ]
-              ++ (optUdevRule "charging_profile/charging_profile" cfg.settings.charging-profile)
-              ++ (optUdevRule "charging_priority/charging_prio" cfg.settings.charging-priority)
-              ++ (optUdevRule "fn_lock" cfg.settings.fn-lock)
-            )
-          )
-        )
-      )
-    );
 
   system.stateVersion = "25.05";
   home-manager.users.cjv.home.stateVersion = "25.05";

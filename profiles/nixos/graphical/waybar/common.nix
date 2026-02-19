@@ -1,5 +1,14 @@
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 
+let
+  dnd-check = pkgs.writeShellScript "waybar-dnd" ''
+    if ${pkgs.mako}/bin/makoctl mode | grep -q do-not-disturb; then
+      printf '{"text": "󰂛", "tooltip": "Do Not Disturb"}\n'
+    else
+      printf '{}\n'
+    fi
+  '';
+in
 {
   home-manager.users.cjv.programs.waybar = {
     enable = true;
@@ -13,14 +22,37 @@
 
       modules-right = [
         "tray"
-        "network"
+        "custom/dnd"
         "pulseaudio"
         "backlight"
         "battery"
         "clock"
       ];
 
-      tray.spacing = 10;
+      "custom/dnd" = {
+        exec = "${dnd-check}";
+        return-type = "json";
+        interval = 5;
+        signal = 9;
+        on-click = "${pkgs.mako}/bin/makoctl mode -t do-not-disturb; ${pkgs.procps}/bin/pkill --signal RTMIN+9 waybar || true";
+      };
+
+      tray = {
+        spacing = 10;
+        reverse-direction = true;
+      };
+
+      power-profiles-daemon = {
+        format = "{icon} {profile}";
+        format-icons = {
+          default = "󰗑";
+          performance = "󱐋";
+          balanced = "󰗑";
+          power-saver = "󰌪";
+        };
+        tooltip-format = "Power profile: {profile}";
+        on-click = "${pkgs.power-profiles-daemon}/bin/powerprofilesctl set $(${pkgs.power-profiles-daemon}/bin/powerprofilesctl list | grep -v $(${pkgs.power-profiles-daemon}/bin/powerprofilesctl get) | head -1)";
+      };
 
       backlight = {
         format = "{icon} {percent}%";
@@ -94,9 +126,9 @@
       network = {
         format = "{icon}";
         format-alt = "{ifname}: {ipaddr}/{cidr}";
-        format-wifi = "{icon}  {essid}";
+        format-wifi = "󰞉 {essid}";
         format-ethernet = "󰈀 {ipaddr}/{cidr}";
-        format-disconnected = "󰤮 Disconnected";
+        format-disconnected = "󰪎 Disconnected";
 
         format-icons = [
           "󰤯"
@@ -109,7 +141,7 @@
         tooltip-format-wifi = "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}";
         tooltip-format-ethernet = "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}";
 
-        on-click-right = "${pkgs.foot}/bin/foot ${pkgs.networkmanager}/bin/nmtui";
+        on-click-right = "${config.graphical.defaultTerminal} ${pkgs.networkmanager}/bin/nmtui";
 
         interval = 3;
         spacing = 1;
@@ -209,7 +241,6 @@
       #waybar {
           background: @bg;
           color: @fg;
-          /* font-family: "JetBrains Mono", "Material Design Icons"; */
           font-family: "monospace";
           font-size: 15px;
           font-weight: bold;
@@ -220,7 +251,9 @@
       #backlight,
       #battery,
       #clock,
+      #custom-dnd,
       #network,
+      #power-profiles-daemon,
       #pulseaudio,
       #tray {
           padding-left: 0.4em;
@@ -300,6 +333,10 @@
       #tray {
           background-color: @bg;
           color: @fg;
+      }
+
+      #custom-dnd {
+          color: @warning;
       }
     '';
   };

@@ -19,6 +19,7 @@ in
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/email.nix"
+    "${self}/profiles/nixos/zfs/backupSource.nix"
     "${self}/profiles/nixos/zramSwap.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-one.nix"
@@ -34,8 +35,8 @@ in
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
-  boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
-  boot.zfs.package = pkgs.zfs_cachyos;
+  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
+  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
 
   boot.initrd.availableKernelModules = [
     "ata_piix"
@@ -112,6 +113,27 @@ in
   services.tailscale.useRoutingFeatures = "both";
 
   services.qemuGuest.enable = true;
+
+  # ZFS backup source configuration
+  age.secrets.syncoidSshKey = {
+    file = "${self}/secrets/syncoidHadrianusKey.age";
+    owner = "syncoid";
+    group = "syncoid";
+    mode = "0400";
+  };
+
+  services.zfsBackup.source = {
+    enable = true;
+    sshKey = config.age.secrets.syncoidSshKey.path;
+    targetHosts.pius = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55";
+    datasets."zroot/safe" = {
+      target = "syncoid@pius:zsafe/backups/hadrianus";
+      recursive = true;
+      # Decrypt on source, encrypt in transit via SSH.
+      # Stored unencrypted unless target dataset has encryption enabled.
+      sendOptions = "";
+    };
+  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 

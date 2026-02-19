@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Org Dump",
+  "version": "1.0",
+  "description": "Dump current URL to org-roam daily file",
+  "permissions": ["tabs"],
+  "omnibox": {
+    "keyword": "org"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

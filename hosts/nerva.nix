@@ -20,6 +20,9 @@
     "${self}/profiles/nixos/ssh.nix"
   ];
 
+  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
+  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
+
   boot.initrd.availableKernelModules = [
     "ahci"
     "ohci_pci"
@@ -133,7 +136,7 @@
       ];
     };
 
-    defaultGateway = "192.168.1.254";
+    defaultGateway = "192.168.1.1";
   };
 
   powerManagement.powertop.enable = true;

@@ -25,6 +25,12 @@ let
   domain = "frigate.vaz.ovh";
 in
 {
+  # OpenCL for OpenVINO
+  hardware.graphics.extraPackages = with pkgs; [
+    intel-ocl
+    intel-compute-runtime-legacy1
+  ];
+
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
@@ -90,12 +96,31 @@ in
 
         auth.enabled = false;
 
+        detectors.ov = {
+          type = "openvino";
+          device = "GPU";
+        };
+
+        # SETUP:
+        # - https://docs.frigate.video/configuration/object_detectors/#openvino-detector
+        model = {
+          model_type = "yolo-generic";
+          width = 320;
+          height = 320;
+          input_tensor = "nchw";
+          input_dtype = "float";
+
+          # https://docs.frigate.video/configuration/object_detectors/#yolov9
+          path = "/var/lib/frigate/yolov9-t-320.onnx";
+        };
+
         ffmpeg.hwaccel_args = "preset-vaapi";
 
         record = {
           enabled = true;
           retain.days = 14;
-          events.retain.default = 180;
+          alerts.retain.days = 180;
+          detections.retain.days = 180;
         };
 
         snapshots = {

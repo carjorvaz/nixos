@@ -3,16 +3,19 @@
 {
   services.xserver.videoDrivers = [ "modesetting" ];
 
+  # Reference: https://wiki.nixos.org/wiki/Jellyfin#VAAPI_and_Intel_QSV
   hardware.graphics = {
     enable = true;
     extraPackages = with pkgs; [
-      # For modern Intel CPU's
+      intel-ocl
       intel-media-driver # Enable Hardware Acceleration
-      vpl-gpu-rt # Enable QSV
     ];
   };
 
-  environment.sessionVariables = {
-    LIBVA_DRIVER_NAME = "iHD";
-  };
+  systemd.services.jellyfin.environment.LIBVA_DRIVER_NAME = "iHD";
+  environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
+
+  # May help if FFmpeg/VAAPI/QSV init fails (esp. on Arc with i915):
+  hardware.enableRedistributableFirmware = true;
+  boot.kernelParams = [ "i915.enable_guc=3" ];
 }

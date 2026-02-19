@@ -22,7 +22,7 @@ in
 
     open-webui = {
       enable = true;
-      package = pkgs.open-webui;
+      package = pkgs.unstable.open-webui;
       port = 11111;
 
       environment = {
@@ -34,9 +34,9 @@ in
         WEBUI_AUTH = "False";
 
         # Web Search
-        ENABLE_RAG_WEB_SEARCH = "True";
-        SEARXNG_QUERY_URL = "https://searx.vaz.ovh/search?q=<query>";
-        RAG_WEB_SEARCH_ENGINE = "searxng";
+        # ENABLE_RAG_WEB_SEARCH = "True";
+        # SEARXNG_QUERY_URL = "https://searx.vaz.ovh/search?q=<query>";
+        # RAG_WEB_SEARCH_ENGINE = "searxng";
 
         # STATE: environment file?
         # - disable ollama

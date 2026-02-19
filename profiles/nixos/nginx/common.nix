@@ -8,7 +8,6 @@
     recommendedOptimisation = true;
     recommendedProxySettings = true;
     recommendedTlsSettings = true;
-    recommendedZstdSettings = true;
 
     # For image uploads
     clientMaxBodySize = "1G";

@@ -126,7 +126,7 @@
   boot = {
     initrd = {
       systemd.enable = false;
-      postDeviceCommands = lib.mkAfter ''
+      postResumeCommands = lib.mkAfter ''
         zfs rollback -r zlocal/root@blank
       '';
     };

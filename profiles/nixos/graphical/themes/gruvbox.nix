@@ -1,80 +1,136 @@
-{ ... }:
+{ lib, ... }:
 
 {
+  # Reference: https://github.com/basecamp/omarchy/tree/master/themes/gruvbox
   programs.foot.theme = "gruvbox-dark";
 
   home-manager.users.cjv = {
-    programs.rofi.theme = "gruvbox-dark";
+    programs = {
+      # Reference https://github.com/basecamp/omarchy/blob/master/themes/gruvbox/btop.theme
+      btop = {
+        settings.color_theme = "gruvbox";
 
-    programs.niri.settings.layout.focus-ring.active.color = "#d79921";
+        themes.gruvbox = ''
+          #Bashtop gruvbox (https://github.com/morhetz/gruvbox) theme
+          #by BachoSeven
 
-    services.mako = {
-      backgroundColor = "#282828";
-      textColor = "#ebdbb2";
-      progressColor = "#ebdbb2";
-      borderColor = "#928374";
-      extraConfig = ''
-        border-size=3
-        border-radius=6
+          # Colors should be in 6 or 2 character hexadecimal or single spaced rgb decimal: "#RRGGBB", "#BW" or "0-255 0-255 0-255"
+          # example for white: "#FFFFFF", "#ff" or "255 255 255".
+
+          # All graphs and meters can be gradients
+          # For single color graphs leave "mid" and "end" variable empty.
+          # Use "start" and "end" variables for two color gradient
+          # Use "start", "mid" and "end" for three color gradient
+
+          # Main background, empty for terminal default, need to be empty if you want transparent background
+          theme[main_bg]="#282828"
+
+          # Main text color
+          theme[main_fg]="#a89984"
+
+          # Title color for boxes
+          theme[title]="#ebdbb2"
+
+          # Highlight color for keyboard shortcuts
+          theme[hi_fg]="#d79921"
+
+          # Background color of selected items
+          theme[selected_bg]="#282828"
+
+          # Foreground color of selected items
+          theme[selected_fg]="#fabd2f"
+
+          # Color of inactive/disabled text
+          theme[inactive_fg]="#282828"
+
+          # Color of text appearing on top of graphs, i.e uptime and current network graph scaling
+          theme[graph_text]="#585858"
+
+          # Misc colors for processes box including mini cpu graphs, details memory graph and details status text
+          theme[proc_misc]="#98971a"
+
+          # Cpu box outline color
+          theme[cpu_box]="#a89984"
+
+          # Memory/disks box outline color
+          theme[mem_box]="#a89984"
+
+          # Net up/down box outline color
+          theme[net_box]="#a89984"
+
+          # Processes box outline color
+          theme[proc_box]="#a89984"
+
+          # Box divider line and small boxes line color
+          theme[div_line]="#a89984"
+
+          # Temperature graph colors
+          theme[temp_start]="#458588"
+          theme[temp_mid]="#d3869b"
+          theme[temp_end]="#fb4394"
+
+          # CPU graph colors
+          theme[cpu_start]="#b8bb26"
+          theme[cpu_mid]="#d79921"
+          theme[cpu_end]="#fb4934"
+
+          # Mem/Disk free meter
+          theme[free_start]="#4e5900"
+          theme[free_mid]=""
+          theme[free_end]="#98971a"
+
+          # Mem/Disk cached meter
+          theme[cached_start]="#458588"
+          theme[cached_mid]=""
+          theme[cached_end]="#83a598"
+
+          # Mem/Disk available meter
+          theme[available_start]="#d79921"
+          theme[available_mid]=""
+          theme[available_end]="#fabd2f"
+
+          # Mem/Disk used meter
+          theme[used_start]="#cc241d"
+          theme[used_mid]=""
+          theme[used_end]="#fb4934"
+
+          # Download graph colors
+          theme[download_start]="#3d4070"
+          theme[download_mid]="#6c71c4"
+          theme[download_end]="#a3a8f7"
+
+          # Upload graph colors
+          theme[upload_start]="#701c45"
+          theme[upload_mid]="#b16286"
+          theme[upload_end]="#d3869b"
+        '';
+      };
+
+      rofi.theme = "gruvbox-dark";
+
+      niri.settings.layout.focus-ring.active.color = "#a89984";
+
+      waybar.style = lib.mkOrder 100 ''
+        @define-color bg #282828;
+        @define-color fg #ebdbb2;
+        @define-color green_accent #98971a;
+        @define-color blue_accent #458588;
+        @define-color warning #d79921;
+        @define-color critical #cc241d;
       '';
     };
 
-    wayland.windowManager = {
-      hyprland.settings = {
-        general = {
-          no_border_on_floating = false;
-          "col.active_border" = "rgb(d79921)";
-          "col.inactive_border" = "rgb(282828)";
-        };
+    services = {
+      mako.settings = {
+        background-color = "#282828";
+        text-color = "#d4be98";
+        border-color = "#a89984";
 
-        plugin.hy3.tabs = {
-          "col.active" = "rgb(d79921)";
-          "col.inactive" = "rgb(282828)";
-          "col.urgent" = "rgb(cc241d)";
-
-          "col.text.active" = "rgb(282828)";
-          "col.text.urgent" = "rgb(ebdbb2)";
-          "col.text.inactive" = "rgb(ebdbb2)";
-        };
       };
 
-      sway.config.colors = {
-        background = "#282828";
-
-        # https://github.com/a-schaefers/i3-wm-gruvbox-theme/blob/master/i3/config
-        # blue gruvbox
-        focused = {
-          border = "#458588";
-          background = "#458588";
-          text = "#1d2021";
-          indicator = "#b16286";
-          childBorder = "#1d2021";
-        };
-
-        focusedInactive = {
-          border = "#1d2021 ";
-          background = "#1d2021 ";
-          text = "#d79921 ";
-          indicator = "#b16286 ";
-          childBorder = "#1d2021";
-        };
-
-        unfocused = {
-          border = "#1d2021 ";
-          background = "#1d2021 ";
-          text = "#d79921 ";
-          indicator = "#b16286 ";
-          childBorder = "#1d2021";
-        };
-
-        urgent = {
-          border = "#cc241d ";
-          background = "#cc241d ";
-          text = "#ebdbb2 ";
-          indicator = "#cc241d ";
-          childBorder = "#cc241d";
-        };
-      };
+      wpaperd.settings.default.path = ./gruvbox.jpg;
     };
+
+    wayland.windowManager.hyprland.settings.general."col.active_border" = "rgb(a89984)";
   };
 }
