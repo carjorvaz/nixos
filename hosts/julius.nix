@@ -1,5 +1,6 @@
 {
   self,
+  config,
   lib,
   pkgs,
   modulesPath,
@@ -24,8 +25,8 @@
     "${self}/profiles/nixos/nginx/common.nix"
   ];
 
-  boot.kernelPackages = pkgs.linuxPackages_cachyos-server;
-  boot.zfs.package = pkgs.zfs_cachyos;
+  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
+  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
 
   boot.initrd.availableKernelModules = [
     "xhci_pci"

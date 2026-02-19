@@ -1,3 +1,4 @@
+# Conflicts: podman.nix (both set oci-containers.backend)
 { ... }:
 
 {

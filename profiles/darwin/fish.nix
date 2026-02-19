@@ -1,7 +1,9 @@
 { self, pkgs, ... }:
 
 {
-  imports = [ "${self}/profiles/home/shell/fish.nix" ];
+  home-manager.users.cjv.imports = [
+    "${self}/profiles/home-manager/shell/fish.nix"
+  ];
 
   environment.systemPackages = with pkgs; [
     fishPlugins.done

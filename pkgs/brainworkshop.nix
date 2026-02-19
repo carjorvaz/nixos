@@ -3,6 +3,8 @@
   fetchFromGitHub,
   python3Packages,
   ffmpeg-full,
+  copyDesktopItems,
+  makeDesktopItem,
 }:
 
 python3Packages.buildPythonApplication {
@@ -12,9 +14,11 @@ python3Packages.buildPythonApplication {
   src = fetchFromGitHub {
     owner = "brain-workshop";
     repo = "brainworkshop";
-    rev = "31b125162c63c111358ead73d9c02905363c8c1c";
-    sha256 = "sha256-w3q9CDrHev5s0e4DI90WI1JzyvGzu0Oj1YSC8K9HKL4=";
+    rev = "3476f724eb623b6e39605bd7a7e3df245787e73a";
+    hash = "sha256-oCiNX+ewZ5Inc9mGTYY0PamCpjo7eMbCHCsFYmvL5eE=";
   };
+
+  nativeBuildInputs = [ copyDesktopItems ];
 
   propagatedBuildInputs = [
     python3Packages.pyglet
@@ -23,14 +27,33 @@ python3Packages.buildPythonApplication {
 
   format = "other";
 
-  # TODO .desktop file
+  desktopItems = [
+    (makeDesktopItem {
+      name = "brainworkshop";
+      exec = "brainworkshop";
+      icon = "brainworkshop";
+      desktopName = "Brain Workshop";
+      comment = "A free open-source version of the Dual N-Back mental exercise";
+      categories = [ "Education" ];
+      terminal = false;
+    })
+  ];
+
   installPhase = ''
+    runHook preInstall
+
     mkdir -p $out/bin
     cp $src/brainworkshop.py $out/bin/brainworkshop
     chmod +x $out/bin/brainworkshop
     cp -r $src/data $out/bin/data
     cp -r $src/res $out/bin/res
     cp -r $src/tools $out/bin/tools
+
+    # Install icon
+    mkdir -p $out/share/icons/hicolor/256x256/apps
+    cp $src/res/misc/brain/brain.png $out/share/icons/hicolor/256x256/apps/brainworkshop.png
+
+    runHook postInstall
   '';
 
   meta = {

@@ -7,19 +7,46 @@
       "time"
     ];
 
-    # Thermald and TLP might be more harmful than good, leave disabled
-    # https://pointieststick.com/2020/06/08/lenovo-thinkpad-x1-yoga-impressions-bugs-workarounds-and-thoughts-about-the-future/#comment-10995
-    power-profiles-daemon.enable = false;
+    # Thermald is Intel-only, not useful for AMD
     thermald.enable = false;
-    tlp.enable = false;
 
-    tuned.ppdSettings = {
-      main.default = "desktop";
+    # TLP handles AC/battery switching for all power-related knobs.
+    # scx_lavd --autopower polls the EPP value TLP sets, so the scheduler
+    # automatically follows the power profile (performance ↔ powersave).
+    #
+    # Previous approach: PPD + udev rules
+    # https://pointieststick.com/2020/06/08/lenovo-thinkpad-x1-yoga-impressions-bugs-workarounds-and-thoughts-about-the-future/#comment-10995
+    # https://community.frame.work/t/responded-amd-7040-sleep-states/38101/13
+    power-profiles-daemon.enable = false;
 
-      # Available profiles: tuned-adm list
-      profiles = {
-        balanced = "desktop";
-        power-saver = "laptop-battery-powersave";
+    tlp = {
+      enable = true;
+      settings = {
+        # -- CPU --
+        # amd-pstate-epp handles governor internally, just set EPP
+        CPU_ENERGY_PERF_POLICY_ON_AC = "performance";
+        CPU_ENERGY_PERF_POLICY_ON_BAT = "balance_power";
+        CPU_BOOST_ON_AC = 1;
+        CPU_BOOST_ON_BAT = 0;
+        CPU_HWP_DYN_BOOST_ON_AC = 1;
+        CPU_HWP_DYN_BOOST_ON_BAT = 0;
+
+        # -- Runtime PM (PCI devices) --
+        RUNTIME_PM_ON_AC = "on";
+        RUNTIME_PM_ON_BAT = "auto";
+
+        # -- PCIe ASPM --
+        PCIE_ASPM_ON_AC = "performance";
+        PCIE_ASPM_ON_BAT = "powersupersave";
+
+        # -- USB --
+        USB_AUTOSUSPEND = 1;
+        USB_EXCLUDE_PHONE = 1;
+
+        # -- WiFi --
+        WIFI_PWR_ON_AC = "off";
+        WIFI_PWR_ON_BAT = "on";
+
       };
     };
   };

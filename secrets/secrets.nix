@@ -43,14 +43,17 @@ in
   ]
   ++ users;
   "ovh.age".publicKeys = systems ++ users;
-  "plausibleSecretKeybase.age".publicKeys = [
-    piusSystem
-  ]
-  ++ users;
 
   # cl-olx-scraper (webhook/URL pairs, see flake.nix for format)
   "cl-olx-scraper-config.age".publicKeys = [
     piusSystem
+  ]
+  ++ users;
+
+  # pdf-translator DeepSeek API key
+  "deepseek-api-key.age".publicKeys = [
+    piusSystem
+    trajanusSystem
   ]
   ++ users;
 

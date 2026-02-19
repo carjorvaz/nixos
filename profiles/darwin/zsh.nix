@@ -1,8 +1,9 @@
 { self, ... }:
 
 {
-
-  imports = [ "${self}/profiles/home/shell/zsh.nix" ];
+  home-manager.users.cjv.imports = [
+    "${self}/profiles/home-manager/shell/zsh.nix"
+  ];
 
   programs.zsh = {
     enable = true;

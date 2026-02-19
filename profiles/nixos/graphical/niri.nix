@@ -1,27 +1,23 @@
-{ inputs, pkgs, ... }:
+{
+  inputs,
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 
 # Reference:
 # - https://github.com/sodiboo/niri-flake/blob/main/docs.md
 # - https://github.com/sodiboo/system/blob/main/personal/niri.mod.nix
 let
   my-lockscreen = pkgs.writeShellScriptBin "my-lockscreen" ''
-    # Get output names
-    outputs=$(${pkgs.niri}/bin/niri msg outputs | ${pkgs.gnugrep}/bin/grep "Output" | ${pkgs.gnugrep}/bin/grep -o '([^)]*)' | ${pkgs.coreutils-full}/bin/tr -d '()')
+    # Exit if swaylock is already running (prevents double-lock on suspend)
+    ${pkgs.procps}/bin/pgrep -x swaylock && exit 0
 
-    # Build output control commands
-    off_cmd=""
-    on_cmd=""
-    for output in $outputs; do
-      off_cmd+="${pkgs.niri}/bin/niri msg output $output off && "
-      on_cmd+="${pkgs.niri}/bin/niri msg output $output on && "
-    done
-    off_cmd="''${off_cmd% && }"
-    on_cmd="''${on_cmd% && }"
-
-    # Launch swayidle with dynamic output control
+    # Launch swayidle to switch off screen after 5 seconds
     ${pkgs.swayidle}/bin/swayidle -w \
-      timeout 5 "$off_cmd" \
-      resume "$on_cmd" &
+      timeout 5 '${pkgs.niri}/bin/niri msg action power-off-monitors' \
+      resume '${pkgs.niri}/bin/niri msg action power-on-monitors' &
 
     # Lock the screen
     ${pkgs.swaylock}/bin/swaylock
@@ -33,7 +29,7 @@ in
 {
   imports = [
     ./swaylock.nix
-    ./themes/modus-operandi.nix
+    ./themes/gruvbox.nix
     ./waybar/niri.nix
     ./wayland.nix
   ];
@@ -65,7 +61,7 @@ in
             "loginctl"
             "lock-session"
           ];
-          "Mod+Return".action.spawn = "foot";
+          "Mod+Return".action.spawn = config.graphical.defaultTerminal;
           "Mod+Shift+Q".action.close-window = [ ];
           "Mod+Shift+E".action.quit = [ ];
           "Mod+Shift+Space".action.toggle-window-floating = [ ];
@@ -73,28 +69,29 @@ in
           # Brightness - logarithmic scale
           "XF86MonBrightnessDown".action.spawn-sh = "${pkgs.light}/bin/light -T 0.618";
           "XF86MonBrightnessUp".action.spawn-sh = "${pkgs.light}/bin/light -T 1.618";
+          "Shift+XF86MonBrightnessDown".action.spawn-sh = "${pkgs.light}/bin/light -T 0.786";
+          "Shift+XF86MonBrightnessUp".action.spawn-sh = "${pkgs.light}/bin/light -T 1.272";
 
           # Audio - logarithmic scale
           "XF86AudioLowerVolume".action.spawn-sh =
             "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -2dB";
           "XF86AudioRaiseVolume".action.spawn-sh =
             "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +2dB";
+          "Shift+XF86AudioLowerVolume".action.spawn-sh =
+            "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ -1dB";
+          "Shift+XF86AudioRaiseVolume".action.spawn-sh =
+            "${pkgs.pulseaudio}/bin/pactl set-sink-volume @DEFAULT_SINK@ +1dB";
           "XF86AudioMute".action.spawn-sh = "${pkgs.pamixer}/bin/pamixer -t";
           "XF86AudioMicMute".action.spawn-sh = "${pkgs.pamixer}/bin/pamixer --default-source -t";
 
-          "Mod+D".action.spawn = [
+          "Mod+Space".action.spawn = [
             "rofi"
             "-modes"
             "combi"
+            "-combi-modes"
+            "run,drun"
             "-show"
             "combi"
-          ];
-          "Mod+Shift+D".action.spawn = [
-            "rofi"
-            "-modes"
-            "drun"
-            "-show"
-            "drun"
           ];
           "Mod+C".action.spawn = [
             "rofi"
@@ -104,8 +101,32 @@ in
             "calc"
           ];
 
+          # Org capture
+          "Mod+X".action.spawn = [
+            "emacsclient"
+            "-e"
+            "(+org-capture/open-frame nil \"i\")"
+          ];
+          "Mod+Shift+X".action.spawn = [
+            "emacsclient"
+            "-e"
+            "(+org-capture/open-frame nil \"n\")"
+          ];
+
           "Print".action.screenshot = [ ];
           "Mod+P".action.screenshot = [ ];
+
+          # Notifications
+          "Mod+N".action.spawn = [
+            "${pkgs.mako}/bin/makoctl"
+            "dismiss"
+          ];
+          "Mod+Shift+N".action.spawn = [
+            "${pkgs.mako}/bin/makoctl"
+            "dismiss"
+            "--all"
+          ];
+          "Mod+Ctrl+N".action.spawn-sh = "${pkgs.mako}/bin/makoctl mode -t do-not-disturb; ${pkgs.procps}/bin/pkill --signal RTMIN+9 waybar || true";
 
           "Mod+H".action.focus-column-left = [ ];
           "Mod+J".action.focus-window-or-workspace-down = [ ];
@@ -129,6 +150,12 @@ in
           "Mod+Shift+Down".action.move-window-down-or-to-workspace-down = [ ];
           "Mod+Shift+Up".action.move-window-up-or-to-workspace-up = [ ];
           "Mod+Shift+Right".action.move-column-right = [ ];
+
+          "Mod+Ctrl+J".action.move-workspace-down = [ ];
+          "Mod+Ctrl+K".action.move-workspace-up = [ ];
+
+          "Mod+Ctrl+Down".action.move-workspace-down = [ ];
+          "Mod+Ctrl+Up".action.move-workspace-up = [ ];
 
           # "Mod+1".action.focus-workspace = 1;
           # "Mod+2".action.focus-workspace = 2;
@@ -167,7 +194,10 @@ in
 
           touchpad = {
             accel-profile = "adaptive";
-            scroll-factor = 0.1;
+            click-method = "clickfinger";
+            dwt = true;
+            tap = false;
+            scroll-factor = 0.2;
           };
         };
 
@@ -181,7 +211,17 @@ in
 
         prefer-no-csd = true;
 
+        # Eye care concerns
+        outputs."*".variable-refresh-rate = false;
+
         screenshot-path = "~/Pictures/Screenshots/%Y-%m-%dT%H:%M:%S.png";
+
+        window-rules = [
+          {
+            matches = [{ title = "doom-capture"; }];
+            open-floating = true;
+          }
+        ];
       };
     };
 
@@ -190,10 +230,8 @@ in
         enable = true;
         tray = true;
 
-        # latitude = 38.7;
-        # longitude = -9.14;
-        latitude = 51.5;
-        longitude = -0.12;
+        latitude = 38.7;
+        longitude = -9.14;
 
         temperature = {
           day = 6500;
@@ -201,26 +239,35 @@ in
         };
       };
 
-      mako.enable = true;
+      mako = {
+        enable = true;
+
+        # Reference: https://github.com/basecamp/omarchy/blob/master/default/mako/core.ini
+        settings = {
+          anchor = "top-right";
+          default-timeout = "10000";
+          width = "420";
+          outer-margin = "20";
+          padding = "10,15";
+          border-size = "2";
+          max-icon-size = "32";
+          font = "sans-serif 14px";
+
+          "urgency=critical".default-timeout = 0;
+
+          "mode=do-not-disturb".invisible = "true";
+        };
+      };
 
       swayidle = {
         enable = true;
-        events = [
-          {
-            event = "before-sleep";
-            command = "${my-lockscreen}/bin/my-lockscreen";
-          }
-          {
-            event = "lock";
-            command = "${my-lockscreen}/bin/my-lockscreen";
-          }
-        ];
+        events = {
+          before-sleep = "${pkgs.systemd}/bin/loginctl lock-session";
+          lock = "${my-lockscreen}/bin/my-lockscreen";
+        };
       };
 
-      wpaperd = {
-        enable = true;
-        settings.default.path = ./wallpaper.jpg;
-      };
+      wpaperd.enable = true;
     };
   };
 }

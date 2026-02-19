@@ -21,11 +21,6 @@
 {
   imports = [
     "${self}/profiles/darwin/fish.nix"
-    "${self}/profiles/home/helix.nix"
-    "${self}/profiles/home/mpv.nix"
-    "${self}/profiles/home/neovim.nix"
-    "${self}/profiles/home/qutebrowser.nix"
-    "${self}/profiles/home/ssh.nix"
   ];
 
   nix = {
@@ -36,6 +31,8 @@
         "nix-command"
         "flakes"
       ];
+      substituters = [ "https://cache.numtide.com" ];
+      trusted-public-keys = [ "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=" ];
     };
 
     registry = {
@@ -66,7 +63,7 @@
     uutils-coreutils-noprefix
 
     # Emacs related
-    nixfmt-rfc-style
+    nixfmt
     cmake
     ccls
     nodejs
@@ -88,7 +85,7 @@
     # STATE: venv with pyglet installed with direnv
     ffmpeg
 
-    claude-code
+    llm-agents.claude-code
     delta
     fzf
     hugo
@@ -96,7 +93,7 @@
     neovim
     wget
     yt-dlp
-    inputs.agenix.packages."${system}".default
+    inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
   ];
 
   nixpkgs.config.allowUnfreePredicate =
@@ -300,6 +297,14 @@
   users.users.cjv.home = "/Users/cjv";
 
   home-manager.users.cjv = {
+    imports = [
+      "${self}/profiles/home-manager/helix.nix"
+      "${self}/profiles/home-manager/mpv.nix"
+      "${self}/profiles/home-manager/neovim.nix"
+      "${self}/profiles/home-manager/qutebrowser.nix"
+      "${self}/profiles/home-manager/ssh.nix"
+    ];
+
     home.sessionPath = [
       # STATE: install juliaup manually with curl method
       "/Users/cjv/.juliaup/bin/"

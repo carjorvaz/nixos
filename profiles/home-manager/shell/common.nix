@@ -14,7 +14,22 @@
 
     eza.enable = true;
 
-    fzf.enable = true;
+    fd = {
+      enable = true;
+      hidden = true;
+      ignores = [
+        ".git/"
+        ".cache/"
+        ".direnv/"
+      ];
+    };
+
+    fzf = {
+      enable = true;
+      defaultCommand = "fd --type f --hidden";
+      fileWidgetCommand = "fd --type f --hidden";
+      changeDirWidgetCommand = "fd --type d --hidden";
+    };
 
     starship.enable = true;
 

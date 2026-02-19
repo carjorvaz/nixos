@@ -7,7 +7,7 @@
 }:
 
 # ZFS-based impermanence but instead of rolling back on every start, roll back on safe shutdown/halt/reboot.
-# Copied from: https://github.com/chaotic-cx/nyx/blob/d214d9f692140d2777f78e050b0757f577d14ed3/modules/nixos/zfs-impermanence-on-shutdown.nix
+# Originally based on: https://github.com/chaotic-cx/nyx/blob/d214d9f692140d2777f78e050b0757f577d14ed3/modules/nixos/zfs-impermanence-on-shutdown.nix (archived)
 
 let
   cfgZfs = config.boot.zfs;

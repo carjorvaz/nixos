@@ -10,7 +10,7 @@
       show-failed-attempts = true;
 
       font = "monospace";
-      image = "${./wallpaper.jpg}";
+      image = "${./themes/gruvbox.jpg}";
 
       # https://github.com/swayos/swayos.github.io/blob/main/home/.swaylock/config
       color = "dcdccc55";

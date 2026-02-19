@@ -89,4 +89,11 @@
       "/var/log/journal"
     ];
   };
+
+  # Fix permissions for /var/lib/private on ephemeral root.
+  # Required for DynamicUser services with StateDirectory.
+  # Impermanence creates parent dirs with 0755, but systemd requires 0700.
+  systemd.tmpfiles.rules = [
+    "z /var/lib/private 0700 root root -"
+  ];
 }

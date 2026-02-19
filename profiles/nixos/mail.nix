@@ -70,6 +70,9 @@
         # Use Let's Encrypt certificates. Note that this needs to set up a stripped
         # down nginx and opens port 80.
         certificateScheme = "acme-nginx";
+
+        # https://nixos-mailserver.readthedocs.io/en/latest/migrations.html
+        stateVersion = 3;
       };
     }
   ];

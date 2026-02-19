@@ -24,11 +24,17 @@ in
 
   users.users.media = {
     isNormalUser = true;
+
+    # Required for hardware transcoding.
     extraGroups = [
       "render"
       "video"
-    ]; # Required for hardware transcoding.
+    ];
   };
+
+  environment.systemPackages = with pkgs; [
+    jellyfin-ffmpeg
+  ];
 
   environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
 }
