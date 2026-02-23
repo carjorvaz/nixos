@@ -11,6 +11,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry; announce exit node
@@ -19,9 +20,6 @@
 
     "${self}/profiles/nixos/ssh.nix"
   ];
-
-  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
-  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
 
   boot.initrd.availableKernelModules = [
     "ahci"
@@ -117,12 +115,8 @@
   };
 
   networking = {
-    useDHCP = false;
     hostName = "nerva";
     hostId = "36d0d8f3";
-
-    networkmanager.enable = false;
-    wireless.enable = false;
 
     interfaces.enp2s0 = {
       useDHCP = false;

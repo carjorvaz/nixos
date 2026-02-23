@@ -1,15 +1,6 @@
 { lib, ... }:
 
 {
-  networking = {
-    networkmanager.enable = false;
-
-    wireless = {
-      enable = false;
-      iwd.enable = false;
-    };
-  };
-
   powerManagement.powertop.enable = true;
   services.logind.settings.Login.HandleLidSwitch = "ignore";
 
