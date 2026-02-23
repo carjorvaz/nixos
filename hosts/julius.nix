@@ -11,6 +11,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
@@ -25,9 +26,6 @@
     "${self}/profiles/nixos/nginx/common.nix"
   ];
 
-  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
-  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
-
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "nvme"
@@ -37,7 +35,6 @@
   ];
 
   networking = {
-    useDHCP = false;
     hostName = "julius";
     hostId = "236fb370";
 

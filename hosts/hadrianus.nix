@@ -15,6 +15,7 @@ in
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
     "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/dns/resolved.nix"
     "${self}/profiles/nixos/zfs/common.nix"
@@ -35,9 +36,6 @@ in
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
-  boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
-  boot.zfs.package = config.boot.kernelPackages.zfs_cachyos;
-
   boot.initrd.availableKernelModules = [
     "ata_piix"
     "uhci_hcd"
@@ -50,8 +48,6 @@ in
   networking = {
     hostName = "hadrianus";
     hostId = "ce9c10db";
-    networkmanager.enable = false;
-    useDHCP = false;
 
     interfaces.${networkInterface} = {
       useDHCP = false;
