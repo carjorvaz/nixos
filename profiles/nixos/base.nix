@@ -35,6 +35,8 @@ in
   # boot.kernelPackages =
   #   lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
 
+  environment.localBinInPath = true;
+
   environment.systemPackages = with pkgs; [
     inputs.agenix.packages."${pkgs.stdenv.hostPlatform.system}".default
     bubblewrap # for Claude Code sandboxing
@@ -54,6 +56,8 @@ in
   ];
 
   nix = {
+    channel.enable = lib.mkDefault false;
+
     gc = {
       automatic = lib.mkDefault true;
       randomizedDelaySec = "14m";
@@ -79,6 +83,25 @@ in
         "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
         "lanzaboote.cachix.org-1:Nt9//zGmqkg1k5iu+B3bkj3OmHPC30CL3ENQBOH9aVM="
       ];
+
+      # Fail fast if substituters are unreachable.
+      connect-timeout = 5;
+
+      # Build from source if any substituter fails, instead of erroring.
+      fallback = true;
+
+      # Show more build log lines on failure (default 10 is often too few).
+      log-lines = 25;
+
+      # GC trigger: free space until max-free when free drops below min-free.
+      min-free = lib.mkDefault (512 * 1024 * 1024);
+      max-free = lib.mkDefault (3000 * 1024 * 1024);
+
+      # Remote builders download from caches instead of uploading from here.
+      builders-use-substitutes = true;
+
+      # Allow wheel users to use trusted substituters.
+      trusted-users = [ "@wheel" ];
     };
 
     registry = lib.mkDefault {
@@ -169,6 +192,18 @@ in
     mutableUsers = lib.mkDefault false;
 
     users.root.hashedPassword = lib.mkDefault "$y$j9T$uuLxhbxqtdSRCjsxgbA2E/$8Y5cHKjUeQTHedJCg1EvX0xoAgML3K9t.XQGQushguD";
+  };
+
+  # Only allow wheel group members to execute sudo.
+  security.sudo.execWheelOnly = true;
+  security.sudo.extraConfig = ''
+    Defaults lecture = never
+  '';
+
+  # Pre-populate known hosts for common forges (avoids TOFU).
+  programs.ssh.knownHosts = {
+    "github.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+    "gitlab.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf";
   };
 
   # Following section copied from: https://github.com/numtide/srvos/
@@ -292,6 +327,16 @@ in
   nix.daemonCPUSchedPolicy = "idle";
   nix.daemonIOSchedClass = "idle";
   nix.daemonIOSchedPriority = 7;
+
+  # Prefer killing nix-daemon over running services under memory pressure.
+  systemd.services.nix-daemon.serviceConfig.OOMScoreAdjust = lib.mkDefault 250;
+
+  # Apply idle scheduling to nix-gc as well.
+  systemd.services.nix-gc.serviceConfig = {
+    CPUSchedulingPolicy = "batch";
+    IOSchedulingClass = "idle";
+    IOSchedulingPriority = 7;
+  };
 
   # Ensure a clean & sparkling /tmp on fresh boots.
   boot.tmp.cleanOnBoot = lib.mkDefault true;

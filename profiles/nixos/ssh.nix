@@ -8,6 +8,9 @@
     settings = {
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
+      X11Forwarding = false;
+      UseDns = false;
+      StreamLocalBindUnlink = true;
     };
 
     # Only allow SSH keys explictly set here, in the NixOS configuration.
