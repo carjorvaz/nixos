@@ -7,6 +7,10 @@
     enable = true;
     dnsovertls = "opportunistic";
     dnssec = "allow-downgrade";
+    llmnr = "false";
     domains = [ "~." ];
   };
+
+  # Don't restart resolved during nixos-rebuild switch to avoid DNS gaps.
+  systemd.services.systemd-resolved.stopIfChanged = false;
 }
