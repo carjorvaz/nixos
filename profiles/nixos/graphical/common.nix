@@ -41,6 +41,12 @@
         postPatch = (old.postPatch or "") + ''
           substituteInPlace brotab/mediator/brotab_mediator.py \
             --replace-fail \
+              'from brotab.mediator.transport import default_transport' \
+              'import sys
+          from brotab.mediator.const import DEFAULT_TRANSPORT_TIMEOUT
+          from brotab.mediator.transport import default_transport
+          from brotab.mediator.transport import transport_with_timeout' \
+            --replace-fail \
               'transport = default_transport()' \
               'transport = transport_with_timeout(sys.stdin.buffer, sys.stdout.buffer, DEFAULT_TRANSPORT_TIMEOUT)'
         '';
@@ -267,10 +273,7 @@
               remove-youtube-s-suggestions
               youtube-no-translation
 
-              # STATE:
-              # - Custom key mappings: map J nextTab, map K previousTab
-              # - Exclusion rules: https://www.youtube.com/*
-              vimium-c
+              bypass-paywalls-clean
               brotab
             ];
 
