@@ -57,6 +57,16 @@ in
   ]
   ++ users;
 
+  # ott-monitor Telegram API credentials
+  "ott-monitor-telegram-api-id.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+  "ott-monitor-telegram-api-hash.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
   # Syncoid SSH keys for ZFS replication
   "syncoidTrajanusKey.age".publicKeys = [
     trajanusSystem

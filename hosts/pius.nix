@@ -99,6 +99,30 @@
     tailscale.useRoutingFeatures = "both";
   };
 
+  age.secrets.ottMonitorTelegramApiId = {
+    file = "${self}/secrets/ott-monitor-telegram-api-id.age";
+    owner = "ott-monitor";
+  };
+  age.secrets.ottMonitorTelegramApiHash = {
+    file = "${self}/secrets/ott-monitor-telegram-api-hash.age";
+    owner = "ott-monitor";
+  };
+
+  # STATE:
+  #   1. Deploy, then authenticate once:
+  #        sudo -u ott-monitor ott-monitor \
+  #          --api-id "$(cat /run/agenix/ottMonitorTelegramApiId)" \
+  #          --api-hash "$(cat /run/agenix/ottMonitorTelegramApiHash)" \
+  #          --session-dir /var/lib/ott-monitor \
+  #          auth
+  services.ott-monitor = {
+    enable = true;
+    chatId = -1001826584858;
+    messageId = 11535;
+    telegramApiIdFile = config.age.secrets.ottMonitorTelegramApiId.path;
+    telegramApiHashFile = config.age.secrets.ottMonitorTelegramApiHash.path;
+  };
+
   age.secrets.mailPiusPassword = {
     file = "${self}/secrets/mailPiusPassword.age";
     mode = "444";
@@ -113,7 +137,38 @@
     passwordeval = "${pkgs.coreutils}/bin/cat ${config.age.secrets.mailPiusPassword.path}";
   };
 
-  powerManagement.powertop.enable = true;
+  # AesSedai Q4_K_M: KLD champion (0.0102), 8.64 tok/s with all flags enabled.
+  # Flags benchmarked on 2025-03-02 — best combo: -fa auto -rtr -muge -mqkv --spec-type ngram-mod
+  #
+  # TODO: Check ubergarm's Qwen3.5-35B-A3B quants when released (IQ4_XSS etc).
+  #   https://huggingface.co/ubergarm
+  #
+  # TODO: When Qwen3.5-0.8B-GGUF is released, download a Q8_0 quant and set
+  #   draftModelPath for model-based speculative decoding (same family/tokenizer
+  #   = high acceptance rate). See llama-server.nix STATE comments for download.
+  #
+  # TODO: When ik-llama.cpp gains MTP (Multi-Token Prediction) support, switch
+  #   from ngram-mod to --spec-type mtp for ~1.8-2.5x speedup with <1% extra RAM.
+  #   Qwen3.5 already ships MTP heads but they're silently skipped today.
+  #   Track: https://github.com/ggml-org/llama.cpp/discussions/12130
+  # services.llm = {
+  #   # backend defaults to "ik-llama"
+  #   modelPath = "/persist/models/Qwen3.5-35B-A3B-Q4_K_M-00001-of-00002.gguf";
+  #   modelAlias = "qwen3.5-35b-a3b";
+  #   threads = 6;           # i5-8400: 6C/6T
+  #   contextSize = 65536;   # 64GB RAM with ~10GB used — room to spare
+  #   mlock = true;          # lock model in RAM, prevents swapping
+  #   enableNginx = true;    # expose via llm.vaz.ovh for opencode on trajanus
+  #   reasoningBudget = 0;   # disable thinking — agentic coding gains little from it on CPU
+  # };
+
+  # powersave governor (from cpu/intel.nix) already allows full turbo under
+  # intel_pstate active mode. hwp_dynamic_boost lets firmware boost more
+  # aggressively during sustained load (inference).
+  boot.kernelParams = [
+    "intel_pstate.hwp_dynamic_boost=1"
+    "transparent_hugepage=always" # THP for model weights loaded via --run-time-repack
+  ];
 
   # ZFS backup target configuration
   # STATE: After first deploy, create the backup dataset:

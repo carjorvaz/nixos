@@ -43,6 +43,7 @@ in
     fd
     file
     delta
+    gh
     git
     jq
     pv
