@@ -137,6 +137,8 @@
     passwordeval = "${pkgs.coreutils}/bin/cat ${config.age.secrets.mailPiusPassword.path}";
   };
 
+  powerManagement.powertop.enable = true;
+
   # AesSedai Q4_K_M: KLD champion (0.0102), 8.64 tok/s with all flags enabled.
   # Flags benchmarked on 2025-03-02 — best combo: -fa auto -rtr -muge -mqkv --spec-type ngram-mod
   #
