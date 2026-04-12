@@ -67,6 +67,12 @@ in
   ]
   ++ users;
 
+  # Rustab Firefox AMO signing credentials
+  "rustabWebExtCredentials.age".publicKeys = [
+    trajanusSystem
+  ]
+  ++ users;
+
   # Syncoid SSH keys for ZFS replication
   "syncoidTrajanusKey.age".publicKeys = [
     trajanusSystem
