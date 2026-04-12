@@ -27,7 +27,7 @@
         {
           name = "html";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "html"
@@ -37,7 +37,7 @@
         {
           name = "json";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "json"
@@ -47,7 +47,7 @@
         {
           name = "css";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "css"
@@ -57,7 +57,7 @@
         {
           name = "javascript";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "typescript"
@@ -67,7 +67,7 @@
         {
           name = "typescript";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "typescript"
@@ -77,7 +77,7 @@
         {
           name = "markdown";
           formatter = {
-            command = "${pkgs.nodePackages.prettier}/bin/nodePackages.prettier";
+            command = "${pkgs.prettier}/bin/prettier";
             args = [
               "--parser"
               "markdown"
@@ -103,7 +103,7 @@
         basedpyright.config.basedpyright.analysis.typeCheckingMode = "basic";
 
         ruff = {
-          comman = "ruff";
+          command = "ruff";
           args = [ "server" ];
 
           config.settings.lineLength = 100;

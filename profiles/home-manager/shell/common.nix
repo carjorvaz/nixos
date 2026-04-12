@@ -5,6 +5,10 @@
   programs = {
     bat.enable = true;
 
+    btop.enable = true;
+
+    htop.enable = true;
+
     dircolors.enable = true;
 
     direnv = {
@@ -22,6 +26,16 @@
         ".cache/"
         ".direnv/"
       ];
+    };
+
+    delta = {
+      enable = true;
+      enableGitIntegration = true;
+    };
+
+    git = {
+      enable = true;
+      settings.init.defaultBranch = "master";
     };
 
     fzf = {
