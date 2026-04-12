@@ -66,8 +66,8 @@ in
           "󰃠"
         ];
 
-        on-scroll-down = "${pkgs.light}/bin/light -T 0.618";
-        on-scroll-up = "${pkgs.light}/bin/light -T 1.618";
+        on-scroll-down = "${lib.getExe pkgs.brightnessctl} -e set 5%-";
+        on-scroll-up = "${lib.getExe pkgs.brightnessctl} -e set +5%";
 
         tooltip = false;
       };

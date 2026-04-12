@@ -38,19 +38,20 @@ in
   niri-flake.cache.enable = true;
 
   programs = {
-    light.enable = true;
-
     niri = {
       enable = true;
       package = pkgs.niri-stable;
     };
   };
 
-  users.users.cjv.extraGroups = [ "video" ]; # For rootless light.
+  users.users.cjv.extraGroups = [ "video" ];
 
-  environment.systemPackages = with pkgs; [
-    alacritty
-    xwayland-satellite
+  services.udev.packages = [ pkgs.brightnessctl ];
+
+  environment.systemPackages = [
+    pkgs.alacritty
+    pkgs.brightnessctl
+    pkgs.xwayland-satellite
   ];
 
   home-manager.users.cjv = {
@@ -66,11 +67,31 @@ in
           "Mod+Shift+E".action.quit = [ ];
           "Mod+Shift+Space".action.toggle-window-floating = [ ];
 
-          # Brightness - logarithmic scale
-          "XF86MonBrightnessDown".action.spawn-sh = "${pkgs.light}/bin/light -T 0.618";
-          "XF86MonBrightnessUp".action.spawn-sh = "${pkgs.light}/bin/light -T 1.618";
-          "Shift+XF86MonBrightnessDown".action.spawn-sh = "${pkgs.light}/bin/light -T 0.786";
-          "Shift+XF86MonBrightnessUp".action.spawn-sh = "${pkgs.light}/bin/light -T 1.272";
+          # Brightness - perceptual steps via brightnessctl's exponential mode
+          "XF86MonBrightnessDown".action.spawn = [
+            "${lib.getExe pkgs.brightnessctl}"
+            "-e"
+            "set"
+            "5%-"
+          ];
+          "XF86MonBrightnessUp".action.spawn = [
+            "${lib.getExe pkgs.brightnessctl}"
+            "-e"
+            "set"
+            "+5%"
+          ];
+          "Shift+XF86MonBrightnessDown".action.spawn = [
+            "${lib.getExe pkgs.brightnessctl}"
+            "-e"
+            "set"
+            "2%-"
+          ];
+          "Shift+XF86MonBrightnessUp".action.spawn = [
+            "${lib.getExe pkgs.brightnessctl}"
+            "-e"
+            "set"
+            "+2%"
+          ];
 
           # Audio - logarithmic scale
           "XF86AudioLowerVolume".action.spawn-sh =
