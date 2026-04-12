@@ -1,6 +1,7 @@
 {
   config,
   self,
+  inputs,
   lib,
   pkgs,
   modulesPath,
@@ -112,6 +113,13 @@
     mode = "0400";
   };
 
+  age.secrets.rustabWebExtCredentials = {
+    file = "${self}/secrets/rustabWebExtCredentials.age";
+    owner = "cjv";
+    group = "users";
+    mode = "0400";
+  };
+
   services.zfsBackup.source = {
     enable = true;
     sshKey = config.age.secrets.syncoidSshKey.path;
@@ -134,5 +142,8 @@
   home-manager.users.cjv = {
     home.stateVersion = "25.05";
     xdg.configFile."waybar/style.css".force = true;
+    home.activation.rustabWebExtCredentials = inputs.home-manager.lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      $DRY_RUN_CMD ln -sfn ${config.age.secrets.rustabWebExtCredentials.path} "$HOME/.web-ext-credentials"
+    '';
   };
 }
