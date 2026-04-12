@@ -8,6 +8,8 @@
 }:
 
 {
+  home-manager.backupFileExtension = "hm-backup";
+
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
 
@@ -31,6 +33,7 @@
     # "${self}/profiles/nixos/local-llm-clients.nix"
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
+    "${self}/profiles/nixos/syncthing.nix"
     "${self}/profiles/nixos/graphical/niri.nix"
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/ssh.nix"
@@ -128,5 +131,8 @@
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   system.stateVersion = "25.05";
-  home-manager.users.cjv.home.stateVersion = "25.05";
+  home-manager.users.cjv = {
+    home.stateVersion = "25.05";
+    xdg.configFile."waybar/style.css".force = true;
+  };
 }
