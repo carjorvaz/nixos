@@ -23,7 +23,7 @@ in
       # Instructions at https://hub.docker.com/_/ghost
       # Must upgrade to latest minor version before upgrading major version
       # or database issues will occur
-      image = "ghost:6.9.1";
+      image = "ghost:6.19.1";
       autoStart = true;
       ports = [ "${toString port}:2368" ];
 
