@@ -27,6 +27,7 @@ in
     "${self}/profiles/nixos/fail2ban.nix"
     "${self}/profiles/nixos/ghost.nix"
     "${self}/profiles/nixos/mail.nix"
+    "${self}/profiles/nixos/ntfy.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/nginx/bastion.nix"
     "${self}/profiles/nixos/nginx/blog.nix"
