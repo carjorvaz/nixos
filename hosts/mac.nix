@@ -59,6 +59,7 @@
     nixos-rebuild
     signal-desktop
     telegram-desktop
+    vesktop-discord
 
     delta
     dua
@@ -121,7 +122,6 @@
       "brave-browser"
       "comfyui"
       "diffusionbee"
-      "discord"
       "dolphin"
       "draw-things"
       "flux-app"
