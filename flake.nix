@@ -75,6 +75,11 @@
           value = pkgs.callPackage (pkgsDir + "/${name}") { };
         }) packageEntries;
 
+      availableLocalPackages = pkgs:
+        inputs.nixpkgs.lib.filterAttrs (
+          _: pkg: inputs.nixpkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pkg
+        ) (mkLocalPackages pkgs);
+
       localPackagesOverlay = final: _: mkLocalPackages final;
 
       baseModules = [
@@ -198,13 +203,8 @@
       };
 
       packages =
-        let
-          linuxSystems = inputs.nixpkgs.lib.filter
-            (inputs.nixpkgs.lib.hasSuffix "-linux")
-            inputs.nixpkgs.lib.systems.flakeExposed;
-        in
-        inputs.nixpkgs.lib.genAttrs linuxSystems (system:
-          mkLocalPackages (import inputs.nixpkgs { inherit system; })
+        inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (system:
+          availableLocalPackages (import inputs.nixpkgs { inherit system; })
         );
     };
 }
