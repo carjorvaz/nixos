@@ -20,7 +20,9 @@
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
   imports = [
+    "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
+    "${self}/profiles/darwin/qmk.nix"
   ];
 
   nix = {
@@ -62,25 +64,6 @@
     ripgrep-all
     uutils-coreutils-noprefix
 
-    # Emacs related
-    nixfmt
-    cmake
-    ccls
-    nodejs
-    clang-tools
-    graphviz
-    black
-    shellcheck
-    shfmt
-    nil # nix LSP
-    nodePackages.js-beautify
-    nodePackages.stylelint
-    pyright
-    python3Packages.pygments
-    rust-analyzer
-    texlab
-    texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
-
     brainworkshop
 
     llm-agents.claude-code
@@ -121,86 +104,6 @@
       "trash"
       "uv"
 
-      "qmk"
-      # QMK dependencies
-      "avr-binutils"
-      "avr-gcc@8"
-      "boost"
-      "confuse"
-      "hidapi"
-      "libftdi"
-      "libusb-compat"
-      "avrdude"
-      "bootloadhid"
-      "clang-format"
-      "dfu-programmer"
-      "dfu-util"
-      "libimagequant"
-      "libraqm"
-      "pillow"
-      "teensy_loader_cli"
-      "osx-cross/arm/arm-none-eabi-binutils"
-      "osx-cross/arm/arm-none-eabi-gcc@8"
-      "osx-cross/avr/avr-gcc@9"
-      "qmk/qmk/hid_bootloader_cli"
-      "qmk/qmk/mdloader"
-
-      {
-        # Emacs
-        # STATE: ln -s /usr/local/opt/emacs-plus/Emacs.app /Applications/Emacs.app
-        name = "emacs-plus@31";
-        args = [
-          "with-c9rgreen-sonoma-icon"
-        ];
-      }
-      # Emacs dependencies
-      "awk"
-      "fribidi"
-      "gdk-pixbuf"
-      "giflib"
-      "gnu-sed"
-      "gnu-tar"
-      "graphite2"
-      "harfbuzz"
-      "jansson"
-      "jpeg"
-      "pango"
-      "librsvg"
-      "make"
-      "texinfo"
-      "tree-sitter"
-      "webp"
-      "zlib"
-      # Doom Emacs dependencies
-      "coreutils"
-      "gcc"
-      "git"
-      "grep"
-      "libgccjit"
-      "marked"
-      "direnv"
-      # pdf-tools dependencies
-      "pkg-config"
-      "autoconf"
-      "automake"
-      "poppler"
-      # poppler dependencies
-      "xorgproto"
-      "libxau"
-      "libxdmcp"
-      "libxcb"
-      "libx11"
-      "libxext"
-      "libxrender"
-      "lzo"
-      "pixman"
-      "cairo"
-      "xz"
-      "nspr"
-      "nss"
-      # vterm dependencies
-      "libtool"
-      "libvterm"
     ];
 
     # Update these applicatons manually.
@@ -229,7 +132,6 @@
       "orcaslicer"
       "orion"
       "pale-moon"
-      "qmk-toolbox"
       "qutebrowser"
       "racket"
       "signal"
@@ -241,7 +143,6 @@
       "ukelele"
       "unnaturalscrollwheels"
       "utm"
-      "vial"
       # "visual-studio-code"
       "vscodium"
       "whatsapp"
@@ -262,10 +163,6 @@
     };
 
     taps = [
-      "d12frosted/emacs-plus"
-      "osx-cross/arm"
-      "osx-cross/avr"
-      "qmk/qmk"
     ];
   };
 
