@@ -82,7 +82,11 @@
 
   environment.persistence."/persist" = {
     hideMounts = true;
-    files = [ "/etc/machine-id" ];
+    files = [
+      "/etc/machine-id"
+      "/var/log/wtmp"
+      "/var/log/btmp"
+    ];
     directories = [
       "/var/db/sudo/lectured"
       "/var/lib/nixos"
