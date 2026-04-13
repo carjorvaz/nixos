@@ -82,6 +82,16 @@
 
       localPackagesOverlay = final: _: mkLocalPackages final;
 
+      # Some local wrappers target redistributable frontends around upstream
+      # unfree apps; allow those specific inputs when exposing flake package
+      # outputs without broadening host-level package policy.
+      localPackagesNixpkgsConfig = {
+        allowUnfreePredicate = pkg:
+          builtins.elem (inputs.nixpkgs.lib.getName pkg) [
+            "discord"
+          ];
+      };
+
       baseModules = [
         inputs.agenix.nixosModules.default
         inputs.disko.nixosModules.disko
@@ -204,7 +214,10 @@
 
       packages =
         inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (system:
-          availableLocalPackages (import inputs.nixpkgs { inherit system; })
+          availableLocalPackages (import inputs.nixpkgs {
+            inherit system;
+            config = localPackagesNixpkgsConfig;
+          })
         );
     };
 }
