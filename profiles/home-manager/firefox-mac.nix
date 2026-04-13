@@ -14,7 +14,7 @@ in
   programs.firefox = {
     enable = true;
 
-    # Firefox.app is installed outside Home Manager on macOS.
+    # Firefox.app is installed via environment.systemPackages on macOS.
     package = null;
 
     profiles = {
@@ -51,7 +51,7 @@ in
 
   home.packages = [
     (pkgs.writeShellScriptBin "firefox-managed" ''
-      exec /usr/bin/open -na "/Applications/Firefox.app" --args -P managed
+      exec /usr/bin/open -na "/Applications/Nix Apps/Firefox.app" --args -P managed
     '')
   ];
 }
