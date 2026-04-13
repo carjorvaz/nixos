@@ -19,13 +19,11 @@ in
 
     calibre-server = {
       enable = true;
-      user = "media";
       libraries = [ library ];
     };
 
     calibre-web = {
       enable = true;
-      user = "media";
       listen.ip = "0.0.0.0";
       options = {
         calibreLibrary = library;
@@ -44,7 +42,12 @@ in
     ];
   };
 
+  users.users.calibre-web.extraGroups = [ "media" ];
+  users.users.calibre-server.extraGroups = [ "media" ];
+
   systemd.services.calibre-server.serviceConfig.ExecStart = lib.mkForce "${pkgs.calibre}/bin/calibre-server --userdb ${library}/users.sqlite --enable-auth ${library}";
 
-  environment.persistence."/persist".directories = [ "/var/lib/calibre-web" ];
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/calibre-web"; user = "calibre-web"; group = "calibre-web"; }
+  ];
 }

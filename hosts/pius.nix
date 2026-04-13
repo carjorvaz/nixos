@@ -1,3 +1,16 @@
+# STATE: Media user migration (from shared `media` user to per-service users)
+#   After deploying, run on pius:
+#     chown -R sonarr:sonarr /persist/var/lib/sonarr
+#     chown -R radarr:radarr /persist/var/lib/radarr
+#     chown -R bazarr:bazarr /persist/var/lib/bazarr
+#     chown -R jellyfin:jellyfin /persist/var/lib/jellyfin
+#     chown -R transmission:transmission /persist/var/lib/transmission
+#     chown -R calibre-web:calibre-web /persist/var/lib/calibre-web
+#     chgrp -R media /persist/media
+#     chmod -R g+rwX /persist/media
+#     find /persist/media -type d -exec chmod g+s {} +
+#   Then restart affected services:
+#     systemctl restart sonarr radarr bazarr jellyfin transmission calibre-web calibre-server
 {
   self,
   config,
