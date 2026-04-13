@@ -52,6 +52,7 @@
   environment.systemPackages = with pkgs; [
     colima # Streamlines Docker, just run `colima start`.
     docker
+    ghostty-bin
     htop
     firefox-bin
     llama-cpp
@@ -125,7 +126,6 @@
       "draw-things"
       "flux-app"
       "font-jetbrains-mono-nerd-font"
-      "ghostty"
       "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "mattermost"
