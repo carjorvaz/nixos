@@ -136,7 +136,6 @@
       "orcaslicer"
       "orion"
       "pale-moon"
-      "qutebrowser"
       "racket"
       "stremio"
       "syncthing-app"
@@ -200,7 +199,6 @@
       "${self}/profiles/home-manager/helix.nix"
       "${self}/profiles/home-manager/mpv.nix"
       "${self}/profiles/home-manager/neovim.nix"
-      "${self}/profiles/home-manager/qutebrowser.nix"
       "${self}/profiles/home-manager/ssh.nix"
     ];
 
