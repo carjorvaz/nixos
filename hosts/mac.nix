@@ -72,6 +72,7 @@
     brainworkshop
 
     llm-agents.claude-code
+    android-tools
     delta
     fzf
     hugo
@@ -128,6 +129,7 @@
       "font-jetbrains-mono-nerd-font"
       "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
+      "keepingyouawake" # Simple open-source menu bar wrapper around caffeinate. If I want a more custom toggle later, SwiftBar plus a small plugin is a good fallback.
       "mattermost"
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
       "microsoft-teams" # Only have installed when needed (has some sinister telemetry).
