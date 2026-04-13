@@ -73,6 +73,16 @@ in
   ]
   ++ users;
 
+  # Recyclarr API keys for Radarr/Sonarr
+  "radarrApiKey.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+  "sonarrApiKey.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
   # Syncoid SSH keys for ZFS replication
   "syncoidTrajanusKey.age".publicKeys = [
     trajanusSystem
