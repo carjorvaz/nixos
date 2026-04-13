@@ -1,6 +1,17 @@
 { lib, pkgs, ... }:
 
 {
+  # Battery notifications via UPower D-Bus, without polling.
+  systemd.user.services.batsignal = {
+    description = "Battery level notification daemon";
+    after = [ "graphical-session.target" ];
+    wantedBy = [ "graphical-session.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.batsignal}/bin/batsignal -w 20 -c 15 -d 10 -D '${pkgs.systemd}/bin/systemctl suspend'";
+      Restart = "on-failure";
+    };
+  };
+
   services = {
     dwm-status.settings.order = [
       "battery"
@@ -25,7 +36,7 @@
         # -- CPU --
         # amd-pstate-epp handles governor internally, just set EPP
         CPU_ENERGY_PERF_POLICY_ON_AC = "performance";
-        CPU_ENERGY_PERF_POLICY_ON_BAT = "balance_power";
+        CPU_ENERGY_PERF_POLICY_ON_BAT = "power";
         CPU_BOOST_ON_AC = 1;
         CPU_BOOST_ON_BAT = 0;
         CPU_HWP_DYN_BOOST_ON_AC = 1;
@@ -42,6 +53,10 @@
         # -- USB --
         USB_AUTOSUSPEND = 1;
         USB_EXCLUDE_PHONE = 1;
+
+        # -- Audio --
+        SOUND_POWER_SAVE_ON_AC = 0;
+        SOUND_POWER_SAVE_ON_BAT = 1;
 
         # -- WiFi --
         WIFI_PWR_ON_AC = "off";
