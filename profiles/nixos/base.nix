@@ -187,7 +187,7 @@ in
   };
 
   # Enable the use of apropos(1).
-  documentation.man.generateCaches = true;
+  documentation.man.cache.enable = true;
 
   users = {
     mutableUsers = lib.mkDefault false;
