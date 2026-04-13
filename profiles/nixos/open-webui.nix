@@ -46,6 +46,16 @@ in
         # base url: https://api.deepseek.com
       };
     };
+
+    homer.entries = [
+      {
+        name = "Open WebUI";
+        subtitle = "Chat";
+        url = "https://${domain}";
+        logo = "/assets/icons/open-webui.svg";
+        group = "ai";
+      }
+    ];
   };
 
   systemd = {

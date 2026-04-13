@@ -15,6 +15,16 @@ in
       enable = true;
       user = "media";
     };
+
+    homer.entries = [
+      {
+        name = "Sonarr";
+        subtitle = "TV shows";
+        url = "https://${domain}";
+        logo = "/assets/icons/sonarr.svg";
+        group = "arr";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/sonarr" ];

@@ -12,6 +12,16 @@ in
     };
 
     prowlarr.enable = true;
+
+    homer.entries = [
+      {
+        name = "Prowlarr";
+        subtitle = "Indexers";
+        url = "https://${domain}";
+        logo = "/assets/icons/prowlarr.svg";
+        group = "arr";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/private/prowlarr" ];

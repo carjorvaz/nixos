@@ -20,6 +20,16 @@ in
       enable = true;
       user = "media";
     };
+
+    homer.entries = [
+      {
+        name = "Jellyfin";
+        subtitle = "Media streaming";
+        url = "https://${domain}";
+        logo = "/assets/icons/jellyfin.svg";
+        group = "media";
+      }
+    ];
   };
 
   users.users.media = {

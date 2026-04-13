@@ -79,6 +79,16 @@ in
     perl
   ];
 
+  services.homer.entries = [
+    {
+      name = "Nextcloud";
+      subtitle = "Cloud storage";
+      url = "https://${domain}";
+      logo = "/assets/icons/nextcloud.svg";
+      group = "productivity";
+    }
+  ];
+
   environment.persistence."/persist".directories = [
     {
       directory = "/var/lib/nextcloud";
