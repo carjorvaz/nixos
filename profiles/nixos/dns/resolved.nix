@@ -5,10 +5,12 @@
 
   services.resolved = {
     enable = true;
-    dnsovertls = "opportunistic";
-    dnssec = "allow-downgrade";
-    llmnr = "false";
-    domains = [ "~." ];
+    settings.Resolve = {
+      DNSOverTLS = "opportunistic";
+      DNSSEC = "allow-downgrade";
+      LLMNR = false;
+      Domains = [ "~." ];
+    };
   };
 
   # Don't restart resolved during nixos-rebuild switch to avoid DNS gaps.
