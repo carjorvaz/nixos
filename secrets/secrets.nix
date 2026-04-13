@@ -82,4 +82,10 @@ in
     hadrianusSystem
   ]
   ++ users;
+
+  # Umami analytics session signing secret
+  "umamiAppSecret.age".publicKeys = [
+    hadrianusSystem
+  ]
+  ++ users;
 }

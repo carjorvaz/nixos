@@ -1,0 +1,38 @@
+{ self, config, ... }:
+
+let
+  domain = "umami.carjorvaz.com";
+in
+{
+  age.secrets.umamiAppSecret.file = "${self}/secrets/umamiAppSecret.age";
+
+  services = {
+    nginx.virtualHosts.${domain} = {
+      forceSSL = true;
+      enableACME = true;
+      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.umami.settings.PORT}";
+      # TODO: Remove after changing default admin password (admin/umami)
+      locations."/".extraConfig = ''
+        allow 100.64.0.0/10;
+        deny all;
+      '';
+    };
+
+    umami = {
+      enable = true;
+      createPostgresqlDatabase = true;
+      settings = {
+        DISABLE_TELEMETRY = true;
+        TRACKER_SCRIPT_NAME = [
+          "script.js"
+          "beacon.js"
+          "app.js"
+        ];
+        COLLECT_API_ENDPOINT = "/api/v2/collect";
+        APP_SECRET_FILE = config.age.secrets.umamiAppSecret.path;
+      };
+    };
+  };
+
+  environment.persistence."/persist".directories = [ "/var/lib/postgresql" ];
+}
