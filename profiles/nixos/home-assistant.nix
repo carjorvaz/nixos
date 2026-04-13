@@ -40,6 +40,7 @@ in
         default_config = { };
 
         http = {
+          server_host = "127.0.0.1";
           server_port = 8124;
           trusted_proxies = [
             "127.0.0.1"
