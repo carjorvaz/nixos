@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ config, pkgs, ... }:
 
 let
   domain = "transmission.vaz.ovh";
@@ -20,7 +15,6 @@ in
     transmission = {
       enable = true;
       package = pkgs.transmission_4;
-      user = "media";
       openFirewall = true;
       openPeerPorts = true;
       webHome = pkgs.flood-for-transmission;
@@ -45,5 +39,9 @@ in
     ];
   };
 
-  environment.persistence."/persist".directories = [ "/var/lib/transmission" ];
+  users.users.transmission.extraGroups = [ "media" ];
+
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/transmission"; user = "transmission"; group = "transmission"; }
+  ];
 }

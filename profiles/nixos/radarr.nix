@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 let
   domain = "radarr.vaz.ovh";
@@ -16,10 +11,7 @@ in
       locations."/".proxyPass = "http://127.0.0.1:7878";
     };
 
-    radarr = {
-      enable = true;
-      user = "media";
-    };
+    radarr.enable = true;
 
     homer.entries = [
       {
@@ -32,5 +24,9 @@ in
     ];
   };
 
-  environment.persistence."/persist".directories = [ "/var/lib/radarr" ];
+  users.users.radarr.extraGroups = [ "media" ];
+
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/radarr"; user = "radarr"; group = "radarr"; }
+  ];
 }

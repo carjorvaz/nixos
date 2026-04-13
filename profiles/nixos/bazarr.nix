@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ ... }:
 
 let
   domain = "bazarr.vaz.ovh";
@@ -16,10 +11,7 @@ in
       locations."/".proxyPass = "http://127.0.0.1:6767";
     };
 
-    bazarr = {
-      enable = true;
-      user = "media";
-    };
+    bazarr.enable = true;
 
     homer.entries = [
       {
@@ -32,5 +24,9 @@ in
     ];
   };
 
-  environment.persistence."/persist".directories = [ "/var/lib/bazarr" ];
+  users.users.bazarr.extraGroups = [ "media" ];
+
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/bazarr"; user = "bazarr"; group = "bazarr"; }
+  ];
 }

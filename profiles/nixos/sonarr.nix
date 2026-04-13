@@ -11,10 +11,7 @@ in
       locations."/".proxyPass = "http://127.0.0.1:8989";
     };
 
-    sonarr = {
-      enable = true;
-      user = "media";
-    };
+    sonarr.enable = true;
 
     homer.entries = [
       {
@@ -27,5 +24,9 @@ in
     ];
   };
 
-  environment.persistence."/persist".directories = [ "/var/lib/sonarr" ];
+  users.users.sonarr.extraGroups = [ "media" ];
+
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/sonarr"; user = "sonarr"; group = "sonarr"; }
+  ];
 }

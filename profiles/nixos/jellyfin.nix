@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ pkgs, ... }:
 
 let
   domain = "jellyfin.vaz.ovh";
@@ -19,10 +14,7 @@ in
       };
     };
 
-    jellyfin = {
-      enable = true;
-      user = "media";
-    };
+    jellyfin.enable = true;
 
     homer.entries = [
       {
@@ -35,19 +27,28 @@ in
     ];
   };
 
-  users.users.media = {
-    isNormalUser = true;
+  users.groups.media = { };
 
-    # Required for hardware transcoding.
-    extraGroups = [
-      "render"
-      "video"
-    ];
-  };
+  users.users.jellyfin.extraGroups = [
+    "media"
+    "render"
+    "video"
+  ];
+
+  systemd.tmpfiles.rules = [
+    "d /persist/media               2775 root media -"
+    "d /persist/media/downloads     2775 root media -"
+    "d /persist/media/books         2775 root media -"
+    "d /persist/media/movies        2775 root media -"
+    "d /persist/media/tv            2775 root media -"
+    "d /persist/media/documentaries 2775 root media -"
+  ];
 
   environment.systemPackages = with pkgs; [
     jellyfin-ffmpeg
   ];
 
-  environment.persistence."/persist".directories = [ "/var/lib/jellyfin" ];
+  environment.persistence."/persist".directories = [
+    { directory = "/var/lib/jellyfin"; user = "jellyfin"; group = "jellyfin"; }
+  ];
 }
