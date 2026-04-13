@@ -53,6 +53,7 @@
     colima # Streamlines Docker, just run `colima start`.
     docker
     htop
+    firefox-bin
     llama-cpp
     nixos-rebuild
 
@@ -81,6 +82,8 @@
     pkg:
     builtins.elem (lib.getName pkg) [
       "claude-code"
+      "firefox-bin"
+      "firefox-bin-unwrapped"
     ];
 
   homebrew = {
@@ -118,7 +121,6 @@
       "discord"
       "dolphin"
       "draw-things"
-      "firefox"
       "flux-app"
       "font-jetbrains-mono-nerd-font"
       "ghostty"
