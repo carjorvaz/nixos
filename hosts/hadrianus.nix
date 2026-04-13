@@ -31,6 +31,7 @@ in
     "${self}/profiles/nixos/nginx/bastion.nix"
     "${self}/profiles/nixos/nginx/blog.nix"
     "${self}/profiles/nixos/ssh.nix"
+    "${self}/profiles/nixos/umami.nix"
 
     # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/tailscale.nix"
