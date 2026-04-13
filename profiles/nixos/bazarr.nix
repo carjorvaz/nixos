@@ -20,6 +20,16 @@ in
       enable = true;
       user = "media";
     };
+
+    homer.entries = [
+      {
+        name = "Bazarr";
+        subtitle = "Subtitles";
+        url = "https://${domain}";
+        logo = "/assets/icons/bazarr.svg";
+        group = "arr";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/bazarr" ];

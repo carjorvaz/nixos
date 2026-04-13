@@ -33,6 +33,16 @@ in
         rpc-host-whitelist = "*.vaz.ovh,*.rome.vaz.ovh";
       };
     };
+
+    homer.entries = [
+      {
+        name = "Transmission";
+        subtitle = "Downloads";
+        url = "https://${domain}";
+        logo = "/assets/icons/transmission.svg";
+        group = "arr";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/transmission" ];

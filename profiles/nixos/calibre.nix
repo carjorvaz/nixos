@@ -32,6 +32,16 @@ in
         enableBookConversion = true;
       };
     };
+
+    homer.entries = [
+      {
+        name = "Calibre";
+        subtitle = "E-books";
+        url = "https://${domain}";
+        logo = "/assets/icons/calibre-web.svg";
+        group = "media";
+      }
+    ];
   };
 
   systemd.services.calibre-server.serviceConfig.ExecStart = lib.mkForce "${pkgs.calibre}/bin/calibre-server --userdb ${library}/users.sqlite --enable-auth ${library}";

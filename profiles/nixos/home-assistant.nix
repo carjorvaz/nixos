@@ -48,6 +48,16 @@ in
         };
       };
     };
+
+    homer.entries = [
+      {
+        name = "Home Assistant";
+        subtitle = "Smart home";
+        url = "https://${domain}";
+        logo = "/assets/icons/home-assistant.svg";
+        group = "home";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [

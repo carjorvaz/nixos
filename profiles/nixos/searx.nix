@@ -27,5 +27,15 @@ in
         ];
       };
     };
+
+    homer.entries = [
+      {
+        name = "SearXNG";
+        subtitle = "Search";
+        url = "https://${domain}";
+        logo = "/assets/icons/searxng.svg";
+        group = "productivity";
+      }
+    ];
   };
 }

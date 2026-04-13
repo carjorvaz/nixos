@@ -20,6 +20,16 @@ in
       enable = true;
       user = "media";
     };
+
+    homer.entries = [
+      {
+        name = "Radarr";
+        subtitle = "Movies";
+        url = "https://${domain}";
+        logo = "/assets/icons/radarr.svg";
+        group = "arr";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/radarr" ];

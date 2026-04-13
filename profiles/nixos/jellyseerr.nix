@@ -17,6 +17,16 @@ in
     };
 
     jellyseerr.enable = true;
+
+    homer.entries = [
+      {
+        name = "Jellyseerr";
+        subtitle = "Media requests";
+        url = "https://${domain}";
+        logo = "/assets/icons/jellyseerr.svg";
+        group = "media";
+      }
+    ];
   };
 
   environment.persistence."/persist".directories = [ "/var/lib/private/jellyseerr" ];
