@@ -298,6 +298,8 @@
 
   home-manager.users.cjv = {
     imports = [
+      "${self}/profiles/home-manager/brave.nix"
+      "${self}/profiles/home-manager/firefox-mac.nix"
       "${self}/profiles/home-manager/helix.nix"
       "${self}/profiles/home-manager/mpv.nix"
       "${self}/profiles/home-manager/neovim.nix"

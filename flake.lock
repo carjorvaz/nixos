@@ -1068,6 +1068,7 @@
         "nixpkgs-unstable": "nixpkgs-unstable",
         "ott-monitor": "ott-monitor",
         "pdf-translator": "pdf-translator",
+        "rustab": "rustab",
         "simple-nixos-mailserver": "simple-nixos-mailserver",
         "tuxedo-nixos": "tuxedo-nixos"
       }
@@ -1111,6 +1112,26 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rustab": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1775991069,
+        "narHash": "sha256-aAQIj7tSjVMGfK5I4lgaVq5BCPRuc8QhdtIzWUy/8tI=",
+        "owner": "carjorvaz",
+        "repo": "rustab",
+        "rev": "61e8fc1ffcb48deee89ceb677d05604311144988",
+        "type": "github"
+      },
+      "original": {
+        "owner": "carjorvaz",
+        "repo": "rustab",
         "type": "github"
       }
     },

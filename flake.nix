@@ -47,6 +47,9 @@
     pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
+    rustab.url = "github:carjorvaz/rustab";
+    rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
     llm-agents.url = "github:numtide/llm-agents.nix";
 
     tuxedo-nixos.url = "github:sund3RRR/tuxedo-nixos";
@@ -181,6 +184,7 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
+            home-manager.extraSpecialArgs = { inherit inputs; };
             nixpkgs.overlays = [ inputs.llm-agents.overlays.default ];
           }
           inputs.nix-index-database.darwinModules.nix-index
