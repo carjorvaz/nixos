@@ -12,6 +12,7 @@
       createHome = true;
       description = "Carlos Vaz";
       extraGroups = [
+        "audio"
         "wheel"
 
         # For using this tool: https://xteink.dve.al/
