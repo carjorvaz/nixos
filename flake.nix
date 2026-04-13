@@ -186,7 +186,10 @@
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.extraSpecialArgs = { inherit inputs; };
-            nixpkgs.overlays = [ inputs.llm-agents.overlays.default ];
+            nixpkgs.overlays = [
+              localPackagesOverlay
+              inputs.llm-agents.overlays.default
+            ];
           }
           inputs.nix-index-database.darwinModules.nix-index
           { programs.nix-index-database.comma.enable = true; }
