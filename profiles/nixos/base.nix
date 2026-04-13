@@ -7,6 +7,8 @@
 }:
 
 let
+  hasManCacheEnable = lib.versionAtLeast lib.version "26.05pre";
+
   allowedUnfree = [
     "claude-code"
     "discord"
@@ -26,7 +28,7 @@ let
     in
     lib.mapAttrsToList (name: _: "${moduleDir}/${name}") nixFiles;
 in
-{
+({
   imports = [
     "${self}/profiles/nixos/shell/fish.nix"
     "${self}/profiles/nixos/locale.nix"
@@ -187,7 +189,6 @@ in
   };
 
   # Enable the use of apropos(1).
-  documentation.man.cache.enable = true;
 
   users = {
     mutableUsers = lib.mkDefault false;
@@ -342,3 +343,9 @@ in
   # Ensure a clean & sparkling /tmp on fresh boots.
   boot.tmp.cleanOnBoot = lib.mkDefault true;
 }
+// lib.optionalAttrs hasManCacheEnable {
+  documentation.man.cache.enable = true;
+}
+// lib.optionalAttrs (!hasManCacheEnable) {
+  documentation.man.generateCaches = true;
+})
