@@ -56,6 +56,8 @@
     firefox-bin
     llama-cpp
     nixos-rebuild
+    signal-desktop
+    telegram-desktop
 
     delta
     dua
@@ -136,10 +138,8 @@
       "pale-moon"
       "qutebrowser"
       "racket"
-      "signal"
       "stremio"
       "syncthing-app"
-      "telegram"
       "transmission"
       "tunnelblick"
       "ukelele"
