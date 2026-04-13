@@ -8,10 +8,13 @@
   boot.kernelPackages = lib.mkDefault pkgs.cachyosKernels.linuxPackages-cachyos-latest-lto;
   boot.zfs.package = lib.mkDefault config.boot.kernelPackages.zfs_cachyos;
 
+  # Prevent the AMD watchdog module from loading.
+  boot.blacklistedKernelModules = [ "sp5100_tco" ];
+
   boot.kernelParams = [
     "mitigations=off"
 
-    # https://wiki.cachyos.org/configuration/general_system_tweaks/#disabling-split-lock-mitigate
+    # Don't throttle processes that do misaligned atomic ops.
     "kernel.split_lock_mitigate=0"
 
     # Disable kernel lockup detectors (saves overhead, complements kernel.nmi_watchdog=0 sysctl).
