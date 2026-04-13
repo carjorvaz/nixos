@@ -63,6 +63,10 @@ in
       serviceConfig = {
         DynamicUser = lib.mkForce false;
         User = user;
+
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [ "/var/lib/open-webui" ];
       };
     };
   };
