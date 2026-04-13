@@ -40,7 +40,7 @@
       unstable.flake = inputs.nixpkgs-unstable;
     };
 
-    extraOptions = lib.optionalString (pkgs.system == "aarch64-darwin") ''
+    extraOptions = lib.optionalString (pkgs.stdenv.hostPlatform.system == "aarch64-darwin") ''
       extra-platforms = x86_64-darwin aarch64-darwin
     '';
   };
@@ -81,9 +81,7 @@
     texlab
     texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
 
-    # brainworkshop dependencies
-    # STATE: venv with pyglet installed with direnv
-    ffmpeg
+    brainworkshop
 
     llm-agents.claude-code
     delta
