@@ -94,6 +94,30 @@
     ];
   };
 
+  system.activationScripts = {
+    # Seed existing login records into persistent storage once so the
+    # impermanence mount step does not trip over non-empty files.
+    seedPersistentLoginRecords = {
+      deps = [ "createPersistentStorageDirs" ];
+      text = ''
+        seed_login_record() {
+          local file="$1"
+          local target="/persist$file"
+
+          if [ -e "$file" ] && [ ! -e "$target" ]; then
+            cp -a "$file" "$target"
+            : > "$file"
+          fi
+        }
+
+        seed_login_record /var/log/wtmp
+        seed_login_record /var/log/btmp
+      '';
+    };
+
+    persist-files.deps = lib.mkAfter [ "seedPersistentLoginRecords" ];
+  };
+
   # Fix permissions for /var/lib/private on ephemeral root.
   # Required for DynamicUser services with StateDirectory.
   # Impermanence creates parent dirs with 0755, but systemd requires 0700.
