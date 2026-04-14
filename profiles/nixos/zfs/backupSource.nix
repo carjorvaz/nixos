@@ -28,6 +28,21 @@ in
   options.services.zfsBackup.source = {
     enable = lib.mkEnableOption "Enable ZFS backup source (snapshots + replication)";
 
+    snapshotMode = lib.mkOption {
+      type = lib.types.enum [
+        "ephemeral"
+        "existing"
+      ];
+      default = "ephemeral";
+      description = ''
+        How syncoid chooses snapshots to replicate.
+
+        - `ephemeral`: create semi-ephemeral `syncoid_*` snapshots during each run.
+        - `existing`: replicate snapshots that already exist on the source
+          (for example, sanoid `autosnap_*` snapshots).
+      '';
+    };
+
     datasets = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule {
         options = {
@@ -81,6 +96,26 @@ in
       description = "How often to run syncoid replication";
     };
 
+    includeSnapshots = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Regular expressions passed to `syncoid --include-snaps`.
+        When empty, syncoid may use any source snapshot name.
+      '';
+      example = [ "^autosnap_.*_(hourly|daily|weekly|monthly|yearly)$" ];
+    };
+
+    excludeSnapshots = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Regular expressions passed to `syncoid --exclude-snaps`.
+        Useful for omitting short-lived source snapshots such as `frequently`.
+      '';
+      example = [ "^autosnap_.*_frequently$" ];
+    };
+
     sshKey = lib.mkOption {
       type = lib.types.path;
       description = "Path to SSH private key for authenticating to backup targets (e.g., agenix secret path)";
@@ -102,14 +137,33 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Send each snapshot individually instead of as a continuous stream.
-        Highly recommended for roaming devices with unreliable connections.
+        Use `syncoid --no-stream`, which updates the target to the newest
+        matching source snapshot without sending intermediate snapshots as part
+        of the same replication run.
 
-        With streaming (default): if transfer fails mid-way, all progress is lost.
-        With --no-stream: each snapshot that completes is preserved on target,
-        so interrupted transfers resume from the last successful snapshot.
+        This is often a good fit for roaming devices with unreliable links, but
+        it can skip snapshot names between runs. If you need the target to see
+        every source snapshot, leave this disabled.
+      '';
+    };
 
-        Trade-off: slightly less efficient, but much more robust against interruptions.
+    createBookmark = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Create a bookmark for the newest replicated snapshot after a successful run.
+        This is only valid with `snapshotMode = "existing"` and is especially useful
+        for irregular replication from roaming machines whose older source snapshots
+        may be pruned before the next backup.
+      '';
+    };
+
+    keepSyncSnapshots = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep `syncoid_*` snapshots created during replication instead of letting
+        syncoid prune older ones. Only applies to `snapshotMode = "ephemeral"`.
       '';
     };
 
@@ -125,6 +179,17 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = (!cfg.createBookmark) || cfg.snapshotMode == "existing";
+        message = "services.zfsBackup.source.createBookmark requires snapshotMode = \"existing\".";
+      }
+      {
+        assertion = (!cfg.keepSyncSnapshots) || cfg.snapshotMode == "ephemeral";
+        message = "services.zfsBackup.source.keepSyncSnapshots only applies to snapshotMode = \"ephemeral\".";
+      }
+    ];
+
     # Enable sanoid snapshots for all configured datasets
     services.sanoid.datasets = lib.mapAttrs (_dataset: _opts: {
       use_template = [ "default" ];
@@ -142,8 +207,13 @@ in
       interval = cfg.interval;
       sshKey = cfg.sshKey;
       commonArgs =
-        lib.optionals cfg.noResume [ "--no-resume" ]
-        ++ lib.optionals cfg.noStream [ "--no-stream" ];
+        lib.optionals (cfg.snapshotMode == "existing") [ "--no-sync-snap" ]
+        ++ lib.optionals cfg.createBookmark [ "--create-bookmark" ]
+        ++ lib.optionals cfg.keepSyncSnapshots [ "--keep-sync-snap" ]
+        ++ lib.optionals cfg.noResume [ "--no-resume" ]
+        ++ lib.optionals cfg.noStream [ "--no-stream" ]
+        ++ builtins.concatMap (pattern: [ "--include-snaps=${pattern}" ]) cfg.includeSnapshots
+        ++ builtins.concatMap (pattern: [ "--exclude-snaps=${pattern}" ]) cfg.excludeSnapshots;
 
       commands = lib.mapAttrs (dataset: opts: {
         target = opts.target;
