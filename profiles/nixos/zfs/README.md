@@ -39,6 +39,9 @@ services.zfsBackup.source = {
   enable = true;
   sshKey = config.age.secrets.syncoidSshKey.path;
   targetHosts.pius = "ssh-ed25519 AAAA...";  # pius's host key
+  snapshotMode = "existing";
+  createBookmark = true;
+  excludeSnapshots = [ "^autosnap_.*_frequently$" ];
   datasets."zroot/safe" = {
     target = "syncoid@pius:zsafe/backups/hostname";
     recursive = true;
@@ -53,8 +56,35 @@ Options:
 - `datasets.<name>.recvOptions`: ZFS receive options (default: "-o canmount=noauto")
 - `targetHosts`: Map of hostname to SSH public key for declarative known_hosts
 - `interval`: Replication frequency (default: "hourly")
+- `snapshotMode`: `ephemeral` for transient `syncoid_*` snapshots, or `existing` to reuse source snapshots such as sanoid `autosnap_*` (default: `ephemeral`)
+- `includeSnapshots` / `excludeSnapshots`: Optional regex filters passed to `syncoid --include-snaps/--exclude-snaps`
+- `createBookmark`: Keep incremental replication viable when older source snapshots are pruned before the next backup. Requires `snapshotMode = "existing"`
 - `sshKey`: Path to SSH private key (required, typically an agenix secret)
 - `noResume`: Disable resumable transfers (default: true). Recommended for roaming devices to avoid stale resume token errors. See [sanoid#304](https://github.com/jimsalterjrs/sanoid/issues/304)
+- `noStream`: Replicate only the newest matching snapshot each run instead of the full chain of intermediate snapshots. Good for unreliable links, but it can skip intermediate snapshot names.
+- `keepSyncSnapshots`: Preserve `syncoid_*` snapshots created during replication. Usually less clean than `snapshotMode = "existing"` because sanoid does not manage those snapshots.
+
+Recommended for roaming laptops:
+
+```nix
+services.zfsBackup.source = {
+  enable = true;
+  sshKey = config.age.secrets.syncoidSshKey.path;
+  targetHosts.pius = "ssh-ed25519 AAAA...";
+  snapshotMode = "existing";
+  createBookmark = true;
+  excludeSnapshots = [ "^autosnap_.*_frequently$" ];
+  noResume = true;
+  noStream = true;
+  datasets."zroot/safe" = {
+    target = "syncoid@pius:zsafe/backups/hostname";
+    recursive = true;
+  };
+};
+```
+
+This keeps the target's history based on source-managed snapshots while still
+favoring interrupted-link resilience over replicating every intermediate snapshot.
 
 ### backupTarget.nix
 
@@ -86,9 +116,9 @@ trajanus (laptop)
 pius (server)
     zsafe/backups/
         trajanus/
-            safe/
-                persist/
-                ...
+            home/
+            persist/
+            ...
 ```
 
 ## Initial Setup
@@ -259,8 +289,8 @@ zfs unmount zsafe/backups/trajanus/home
 To restore a dataset from backup:
 
 ```bash
-# On the backup target, send to the original host
-zfs send -R zsafe/backups/trajanus/safe@autosnap_... | \
+# On the backup target, send the replicated root dataset back to the source
+zfs send -R zsafe/backups/trajanus@autosnap_... | \
   ssh root@trajanus zfs receive -F zroot/safe
 ```
 

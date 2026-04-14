@@ -124,8 +124,16 @@
     enable = true;
     sshKey = config.age.secrets.syncoidSshKey.path;
     targetHosts.pius = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55";
-    # Send each snapshot individually instead of streaming.
-    # If interrupted, completed snapshots are preserved - much more robust for roaming.
+    # Reuse sanoid snapshots so pius can retain a real backup history.
+    # Bookmarks keep incrementals viable even if this roaming laptop misses runs
+    # and older source snapshots get pruned before the next sync.
+    snapshotMode = "existing";
+    createBookmark = true;
+    # Skip short-lived 15-minute snapshots on the backup target. Hourly and
+    # longer-lived autosnap snapshots still accumulate there.
+    excludeSnapshots = [ "^autosnap_.*_frequently$" ];
+    # Update pius to the newest eligible snapshot each run instead of sending
+    # every intermediate snapshot name. Better suited to roaming links.
     noStream = true;
     datasets."zroot/safe" = {
       target = "syncoid@pius:zsafe/backups/trajanus";

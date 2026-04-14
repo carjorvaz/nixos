@@ -20,6 +20,7 @@
 ## Nix Patterns
 
 - Before hand-rolling a systemd service, check whether nixpkgs already provides a NixOS module (`services.*`); prefer upstream modules when they exist.
+- For `services.zfsBackup.source` on roaming hosts where the target should retain real snapshot history, prefer `snapshotMode = "existing"` with `createBookmark = true` over keeping `syncoid_*` snapshots; filtering out `autosnap_*_frequently` is usually a good fit.
 - `pkgs.unstable.*` is available on stable hosts via the overlay in `profiles/nixos/base.nix`.
 - `trajanus` uses `nixpkgs-unstable` as its base in `flake.nix`, so `pkgs.*` there is already unstable; no `pkgs.unstable` prefix needed.
 - Shared modules are used across both stable and unstable nixpkgs pins; when option paths are renamed between channels, prefer a small version guard over an unconditional rewrite.
