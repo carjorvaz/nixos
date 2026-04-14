@@ -71,7 +71,6 @@
 
     brainworkshop
 
-    llm-agents.claude-code
     android-tools
     delta
     fzf
@@ -86,7 +85,6 @@
   nixpkgs.config.allowUnfreePredicate =
     pkg:
     builtins.elem (lib.getName pkg) [
-      "claude-code"
       "firefox-bin"
       "firefox-bin-unwrapped"
     ];
@@ -121,7 +119,10 @@
       "balenaetcher"
       "betterdisplay" # Custom fractional scaling resolutions, brightness and volume control for non-Apple external displays.
       "brave-browser"
+      "claude-code@latest"
+      "cmux"
       "comfyui"
+      "codex"
       "diffusionbee"
       "dolphin"
       "draw-things"
@@ -140,6 +141,7 @@
       "pale-moon"
       "racket"
       "stremio"
+      "stillcolor"
       "syncthing-app"
       "transmission"
       "tunnelblick"
