@@ -203,7 +203,6 @@
             home-manager.extraSpecialArgs = { inherit inputs; };
             nixpkgs.overlays = [
               localPackagesOverlay
-              inputs.llm-agents.overlays.default
             ];
           }
           inputs.nix-index-database.darwinModules.nix-index

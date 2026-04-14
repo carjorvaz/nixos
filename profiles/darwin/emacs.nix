@@ -2,6 +2,7 @@
 
 {
   environment.systemPackages = with pkgs; [
+    emacs
     nixfmt
     cmake
     ccls
@@ -22,15 +23,7 @@
   ];
 
   homebrew = {
-    taps = [ "d12frosted/emacs-plus" ];
-
     brews = [
-      {
-        # STATE: ln -s /usr/local/opt/emacs-plus/Emacs.app /Applications/Emacs.app
-        name = "emacs-plus@31";
-        args = [ "with-c9rgreen-sonoma-icon" ];
-      }
-
       # Emacs dependencies
       "awk"
       "fribidi"
