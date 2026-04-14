@@ -117,42 +117,29 @@
     # version, it could lead to data loss.
     casks = [
       "balenaetcher"
-      "betterdisplay" # Custom fractional scaling resolutions, brightness and volume control for non-Apple external displays.
       "brave-browser"
       "claude-code@latest"
       "cmux"
       "comfyui"
       "codex"
-      "diffusionbee"
-      "dolphin"
-      "draw-things"
       "flux-app"
-      "font-jetbrains-mono-nerd-font"
-      "inkscape"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "keepingyouawake" # Simple open-source menu bar wrapper around caffeinate. If I want a more custom toggle later, SwiftBar plus a small plugin is a good fallback.
-      "mattermost"
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
       "microsoft-teams" # Only have installed when needed (has some sinister telemetry).
       # "monitorcontrol" # Brightness and volume controls for external monitors.
-      "mullvad-browser"
       "orcaslicer"
       "orion"
-      "pale-moon"
-      "racket"
       "stremio"
       "stillcolor"
       "syncthing-app"
       "transmission"
-      "tunnelblick"
+      # "tunnelblick" # OpenVPN client - re-enable if needed.
       "ukelele"
       "unnaturalscrollwheels"
       "utm"
-      # "visual-studio-code"
-      "vscodium"
       "whatsapp"
       "zed@preview"
-      "zen@twilight"
       "zoom"
     ];
 
