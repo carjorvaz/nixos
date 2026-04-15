@@ -157,6 +157,43 @@
       "${self}/profiles/home-manager/ssh.nix"
     ];
 
+    xdg.configFile = {
+      "opencode/opencode.json".text = builtins.toJSON {
+        autoupdate = false;
+        share = "disabled";
+        theme = "gruvbox";
+        permission = {
+          bash = "ask";
+          edit = "ask";
+          webfetch = "allow";
+        };
+        compaction = {
+          auto = true;
+          prune = true;
+        };
+        provider.local-qwen = {
+          npm = "@ai-sdk/openai-compatible";
+          name = "Qwen3 Coder (pius)";
+          options = {
+            baseURL = "https://llm.vaz.ovh/v1";
+            apiKey = "not-needed";
+          };
+          models."qwen3-coder-30b-a3b" = {
+            name = "Qwen3 Coder 30B A3B";
+            limit.context = 131072;
+            limit.output = 16384;
+          };
+        };
+        model = "local-qwen/qwen3-coder-30b-a3b";
+        small_model = "local-qwen/qwen3-coder-30b-a3b";
+      };
+
+      "opencode/tui.json".text = builtins.toJSON {
+        "$schema" = "https://opencode.ai/tui.json";
+        theme = "gruvbox";
+      };
+    };
+
     programs = {
       ghostty = {
         enable = true;
