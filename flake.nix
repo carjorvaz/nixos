@@ -41,9 +41,6 @@
     cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
     cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    ott-monitor.url = "git+ssh://git@github.com/carjorvaz/ott-monitor";
-    ott-monitor.inputs.nixpkgs.follows = "nixpkgs-unstable";
-
     pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
@@ -148,7 +145,6 @@
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
             inputs.cl-olx-scraper.nixosModules.default
-            inputs.ott-monitor.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             ./hosts/pius.nix
             ./disko/pius.nix

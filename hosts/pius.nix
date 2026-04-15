@@ -113,30 +113,6 @@
     tailscale.useRoutingFeatures = "both";
   };
 
-  age.secrets.ottMonitorTelegramApiId = {
-    file = "${self}/secrets/ott-monitor-telegram-api-id.age";
-    owner = "ott-monitor";
-  };
-  age.secrets.ottMonitorTelegramApiHash = {
-    file = "${self}/secrets/ott-monitor-telegram-api-hash.age";
-    owner = "ott-monitor";
-  };
-
-  # STATE:
-  #   1. Deploy, then authenticate once:
-  #        sudo -u ott-monitor ott-monitor \
-  #          --api-id "$(cat /run/agenix/ottMonitorTelegramApiId)" \
-  #          --api-hash "$(cat /run/agenix/ottMonitorTelegramApiHash)" \
-  #          --session-dir /var/lib/ott-monitor \
-  #          auth
-  services.ott-monitor = {
-    enable = true;
-    chatId = -1001826584858;
-    messageId = 11535;
-    telegramApiIdFile = config.age.secrets.ottMonitorTelegramApiId.path;
-    telegramApiHashFile = config.age.secrets.ottMonitorTelegramApiHash.path;
-  };
-
   age.secrets.mailPiusPassword = {
     file = "${self}/secrets/mailPiusPassword.age";
     mode = "400";
