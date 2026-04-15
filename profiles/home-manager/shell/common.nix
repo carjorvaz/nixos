@@ -49,7 +49,7 @@
 
     yazi = {
       enable = true;
-      shellWrapperName = "yy";
+      shellWrapperName = "y";
     };
 
     zellij.enable = true;
