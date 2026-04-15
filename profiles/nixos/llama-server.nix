@@ -82,7 +82,7 @@ in
 
   config = {
     services = {
-      # OpenAI-compatible API (used by Open WebUI, qwen-code, opencode, etc.)
+      # OpenAI-compatible API (used by Open WebUI, opencode, etc.)
       nginx.virtualHosts."llm.vaz.ovh" = {
         forceSSL = true;
         useACMEHost = "vaz.ovh";
