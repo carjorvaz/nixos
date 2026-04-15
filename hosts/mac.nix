@@ -196,6 +196,7 @@
     home.sessionPath = [
       # STATE: install juliaup manually with curl method
       "/Users/cjv/.juliaup/bin/"
+      "/Users/cjv/.local/bin"
     ];
 
     home.stateVersion = "23.05";
