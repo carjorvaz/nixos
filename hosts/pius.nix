@@ -139,7 +139,7 @@
 
   age.secrets.mailPiusPassword = {
     file = "${self}/secrets/mailPiusPassword.age";
-    mode = "444";
+    mode = "400";
   };
 
   programs.msmtp.accounts.default = {
