@@ -977,26 +977,6 @@
         "type": "github"
       }
     },
-    "ott-monitor": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs-unstable"
-        ]
-      },
-      "locked": {
-        "lastModified": 1772917552,
-        "narHash": "sha256-xOYpwcusAuqmW/5n62oohM7zcY6Aud21FIs+hE56k70=",
-        "ref": "refs/heads/master",
-        "rev": "0336e3900b12e4b423e40288da19a8ee3a08f298",
-        "revCount": 3,
-        "type": "git",
-        "url": "ssh://git@github.com/carjorvaz/ott-monitor"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/carjorvaz/ott-monitor"
-      }
-    },
     "pdf-translator": {
       "inputs": {
         "crane": "crane_2",
@@ -1066,7 +1046,6 @@
         "nixpkgs": "nixpkgs_6",
         "nixpkgs-darwin": "nixpkgs-darwin",
         "nixpkgs-unstable": "nixpkgs-unstable",
-        "ott-monitor": "ott-monitor",
         "pdf-translator": "pdf-translator",
         "rustab": "rustab",
         "simple-nixos-mailserver": "simple-nixos-mailserver",

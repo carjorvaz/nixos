@@ -57,16 +57,6 @@ in
   ]
   ++ users;
 
-  # ott-monitor Telegram API credentials
-  "ott-monitor-telegram-api-id.age".publicKeys = [
-    piusSystem
-  ]
-  ++ users;
-  "ott-monitor-telegram-api-hash.age".publicKeys = [
-    piusSystem
-  ]
-  ++ users;
-
   # Rustab Firefox AMO signing credentials
   "rustabWebExtCredentials.age".publicKeys = [
     trajanusSystem
