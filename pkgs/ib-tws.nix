@@ -232,7 +232,7 @@ stdenvNoCC.mkDerivation {
       exec = pname;
       icon = pname;
       comment = meta.description;
-      categories = [ "Office" "Finance" "Trading" ];
+      categories = [ "Office" ];
     })
   ];
 }
