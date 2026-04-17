@@ -12,6 +12,8 @@ let
   allowedUnfree = [
     "claude-code"
     "discord"
+    "ib-tws"
+    "ib-tws-unwrapped"
     "intel-ocl"
     "nvidia-persistenced"
     "nvidia-settings"
