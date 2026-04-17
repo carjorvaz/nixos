@@ -36,7 +36,7 @@ in
       mouse.hide-when-typing = "yes";
     };
 
-    theme = lib.mkDefault "gruvbox-dark";
+    theme = lib.mkDefault config.graphical.theme.appNames.foot;
   };
 
   services.xserver.displayManager.lightdm.enable = false;
@@ -73,7 +73,7 @@ in
           font-size = fontSize;
 
           # Reference: https://github.com/basecamp/omarchy/blob/master/config/ghostty/config
-          theme = "Gruvbox Dark Hard";
+          theme = config.graphical.theme.appNames.ghostty;
           window-theme = "ghostty";
           window-padding-x = 14;
           window-padding-y = 14;

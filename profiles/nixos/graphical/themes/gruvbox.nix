@@ -1,6 +1,28 @@
-{ lib, ... }:
+{ config, lib, ... }:
 
 {
+  graphical.theme = {
+    wallpaper = ./gruvbox.jpg;
+    palette = {
+      bg = "282828";
+      fg = "ebdbb2";
+      softFg = "d4be98";
+      border = "a89984";
+      accent = "d79921";
+      warning = "d6995c";
+      critical = "fb4934";
+    };
+    appNames = {
+      foot = "gruvbox-dark";
+      ghostty = "Gruvbox Dark Hard";
+      helix = "gruvbox_dark_hard";
+      opencode = "gruvbox";
+      vscodeDark = "Gruvbox Dark Hard";
+      vscodeLight = "Gruvbox Light Hard";
+      zellij = "gruvbox-dark";
+    };
+  };
+
   # Reference: https://github.com/basecamp/omarchy/tree/master/themes/gruvbox
   programs.foot.theme = "gruvbox-dark";
 
@@ -128,7 +150,7 @@
 
       };
 
-      wpaperd.settings.default.path = ./gruvbox.jpg;
+      wpaperd.settings.default.path = lib.mkDefault config.graphical.theme.wallpaper;
     };
 
     wayland.windowManager.hyprland.settings.general."col.active_border" = "rgb(a89984)";
