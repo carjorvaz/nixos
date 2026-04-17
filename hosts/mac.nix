@@ -102,7 +102,6 @@
 
     brews = [
       "guile"
-      "ollama"
       "pipx"
       "python-tk"
       "rlwrap"
@@ -199,8 +198,47 @@
       "/Users/cjv/.local/bin"
     ];
 
+    # cmux only looks in ~/.config/ghostty/themes and /Applications/Ghostty.app
+    # for Ghostty themes. Expose the Nix-provided themes at the user path so
+    # cmux can pick up Gruvbox and friends while Ghostty itself stays managed
+    # via Nix Apps.
+    home.file.".config/ghostty/themes".source =
+      "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/themes";
+
+    # Keep cmux's embedded browser available for deliberate use, but route
+    # automatic link opening to the system browser instead of unexpectedly
+    # hijacking terminal links, `open https://...`, PR links, or detected
+    # localhost ports.
+    home.file.".config/cmux/settings.json".text = builtins.toJSON {
+      app = {
+        sendAnonymousTelemetry = false;
+      };
+      browser = {
+        defaultSearchEngine = "kagi";
+        openTerminalLinksInCmuxBrowser = false;
+        interceptTerminalOpenCommandInCmuxBrowser = false;
+      };
+      sidebar = {
+        openPullRequestLinksInCmuxBrowser = false;
+        openPortLinksInCmuxBrowser = false;
+      };
+    };
+
     home.stateVersion = "23.05";
   };
+
+  # cmux still ships without Ghostty shell integration files. Link the Nix
+  # Ghostty integration into the app bundle so shells spawned from cmux get the
+  # usual prompt marks and cwd reporting.
+  system.activationScripts.postActivation.text = ''
+    cmux="/Applications/cmux.app/Contents/Resources/ghostty"
+    si="${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/shell-integration"
+    target="$cmux/shell-integration"
+
+    if [ -d "$cmux" ] && [ -d "$si" ] && { [ ! -e "$target" ] || [ -L "$target" ]; }; then
+      ln -sfn "$si" "$target"
+    fi
+  '';
 
   ids.gids.nixbld = 350;
   system.primaryUser = "cjv";
