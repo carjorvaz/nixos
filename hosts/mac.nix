@@ -3,6 +3,7 @@
   lib,
   pkgs,
   inputs,
+  config,
   ...
 }:
 
@@ -146,6 +147,11 @@ in
     wget
     yt-dlp
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
+
+    # HM's mpv module doesn't support package = null, so reference its
+    # finalPackage to land mpv.app in /Applications/Nix Apps without
+    # duplicating the override from profiles/home-manager/mpv.nix.
+    config.home-manager.users.cjv.programs.mpv.finalPackage
   ];
 
   nixpkgs.config.allowUnfreePredicate =
@@ -264,6 +270,18 @@ in
       "/Users/cjv/.juliaup/bin/"
       "/Users/cjv/.local/bin"
     ];
+
+    # Ghostty is installed via environment.systemPackages so it lands in
+    # /Applications/Nix Apps. package = null avoids HM double-installing it
+    # under ~/Applications/Home Manager Apps.
+    programs.ghostty = {
+      enable = true;
+      package = null;
+      settings = {
+        theme = "light:Gruvbox Light,dark:Gruvbox Dark Hard";
+        font-size = 18;
+      };
+    };
 
     # cmux only looks in ~/.config/ghostty/themes and /Applications/Ghostty.app
     # for Ghostty themes. Expose the Nix-provided themes at the user path so
