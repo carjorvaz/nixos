@@ -1,5 +1,6 @@
 {
   self,
+  config,
   lib,
   pkgs,
   ...
@@ -352,6 +353,14 @@
       noDisplay = true;
     };
 
+    xdg.desktopEntries.tv-cast = {
+      name = "Cast to TV";
+      exec = "${lib.getExe pkgs.${config.graphical.defaultTerminal}} -e ${lib.getExe pkgs.tv-cast} %u";
+      type = "Application";
+      mimeType = [ "x-scheme-handler/tv" ];
+      noDisplay = true;
+    };
+
     xdg.desktopEntries.org-dump = {
       name = "Dump to Org";
       exec = "${lib.getExe pkgs.org-dump-cli} %u";
@@ -363,6 +372,7 @@
       enable = true;
       defaultApplications = {
         "x-scheme-handler/smarttube" = [ "smarttube.desktop" ];
+        "x-scheme-handler/tv" = [ "tv-cast.desktop" ];
         "x-scheme-handler/org-dump" = [ "org-dump.desktop" ];
       };
     };
@@ -384,6 +394,7 @@
     # STATE: Settings > Linux Settings > Disable Opening Discord at Startup and Minimizing to Tray
     (discord.override { withOpenASAR = true; }) # Disable if on aarch64
     foliate
+    ib-tws
     libreoffice-fresh
     mattermost-desktop
     metadata-cleaner
@@ -414,6 +425,7 @@
 
     android-tools
     smarttube-cli
+    tv-cast
     org-dump-cli
     bashmount
     glib # gsettings
