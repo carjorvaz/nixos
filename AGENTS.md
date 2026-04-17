@@ -24,6 +24,7 @@
 - `pkgs.unstable.*` is available on stable hosts via the overlay in `profiles/nixos/base.nix`.
 - `trajanus` uses `nixpkgs-unstable` as its base in `flake.nix`, so `pkgs.*` there is already unstable; no `pkgs.unstable` prefix needed.
 - Shared modules are used across both stable and unstable nixpkgs pins; when option paths are renamed between channels, prefer a small version guard over an unconditional rewrite.
+- On impermanent hosts using libvirt's encrypted secrets, persist `/var/lib/systemd/credential.secret`; if `virt-secret-init-encryption.service` assumes `/usr/bin/sh`, override it to use `${pkgs.runtimeShell}`.
 - Paths in `environment.persistence."/persist".directories` are relative to root, not to `/persist`. Example: `[ "/var/lib/foo" ]` bind-mounts `/persist/var/lib/foo` to `/var/lib/foo`.
 - Avoid `inputs.*.inputs.nixpkgs.follows` for fast-moving forks; they often depend on newer nixpkgs features than the stable channel pin.
 
