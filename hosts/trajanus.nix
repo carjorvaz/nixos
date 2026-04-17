@@ -66,7 +66,7 @@
     blacklist snd_acp_pci
   '';
 
-  # Kernel parameters for TUXEDO/WUJIE14XA hardware
+  # Kernel parameters for the GXxHRXx / WUJIE14XA hardware family
   # Source: https://fnune.com/hardware/2025/07/20/nixos-on-a-tuxedo-infinitybook-pro-14-gen9-amd/
   #
   # Display notes:
@@ -93,9 +93,8 @@
 
   services.displayManager.autoLogin.user = "cjv";
 
-  # Keep the Uniwill platform-profile support that is currently only present in
-  # the booted generation. Without this, a future reboot would lose the working
-  # quiet/balanced/performance interface exposed by uniwill_laptop.
+  # Carry the local GXxHRXx uniwill_laptop platform-profile patch until this
+  # EC-backed quiet/balanced/performance mapping lands upstream.
   boot.extraModulePackages = let kp = config.boot.kernelPackages; in [
     (pkgs.stdenv.mkDerivation {
       pname = "uniwill-laptop-patched";
@@ -112,7 +111,8 @@
     })
   ];
 
-  # Let uniwill_laptop claim the shared WMI GUID instead of eeepc_wmi/asus_wmi.
+  # Let uniwill_laptop claim the shared WMI GUID. eeepc_wmi is the competing
+  # claimant we have actually observed on this hardware.
   boot.blacklistedKernelModules = [ "eeepc_wmi" ];
 
   # keyd: Up arrow = Right Shift on hold, Up on tap
