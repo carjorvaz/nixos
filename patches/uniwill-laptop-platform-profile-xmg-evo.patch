@@ -20,7 +20,6 @@
  	struct mutex input_lock;	/* Protects input sequence during notify */
  	struct input_dev *input_device;
  	struct notifier_block nb;
-+	struct device *ppdev;
  };
  
  struct uniwill_battery_entry {
@@ -61,6 +60,8 @@
 +
 +static int uniwill_platform_profile_probe(void *drvdata, unsigned long *choices)
 +{
++	(void)drvdata;
++
 +	set_bit(PLATFORM_PROFILE_QUIET, choices);
 +	set_bit(PLATFORM_PROFILE_BALANCED, choices);
 +	set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
@@ -71,7 +72,7 @@
 +static int uniwill_platform_profile_get(struct device *dev,
 +					enum platform_profile_option *profile)
 +{
-+	struct uniwill_data *data = dev_get_drvdata(dev->parent);
++	struct uniwill_data *data = dev_get_drvdata(dev);
 +	unsigned int value;
 +	int ret;
 +
@@ -97,7 +98,7 @@
 +static int uniwill_platform_profile_set(struct device *dev,
 +					enum platform_profile_option profile)
 +{
-+	struct uniwill_data *data = dev_get_drvdata(dev->parent);
++	struct uniwill_data *data = dev_get_drvdata(dev);
 +	unsigned int value;
 +
 +	switch (profile) {
@@ -129,13 +130,10 @@
 +	if (!(supported_features & UNIWILL_FEATURE_PLATFORM_PROFILE))
 +		return 0;
 +
-+	data->ppdev = devm_platform_profile_register(data->dev, "uniwill-laptop",
-+						     NULL,
-+						     &uniwill_platform_profile_ops);
-+	if (IS_ERR(data->ppdev))
-+		return PTR_ERR(data->ppdev);
-+
-+	return 0;
++	return PTR_ERR_OR_ZERO(devm_platform_profile_register(data->dev,
++							      "uniwill-laptop",
++							      data,
++							      &uniwill_platform_profile_ops));
 +}
 +
  static int uniwill_notifier_call(struct notifier_block *nb, unsigned long action, void *dummy)
@@ -169,6 +167,11 @@
  		},
  	},
  	{
++		/*
++		 * Verified on the Schenker-branded GXxHRXx variant (XMG EVO M24).
++		 * Leave the existing TUXEDO-branded GXxHRXx entry unchanged until
++		 * that EC mapping has been tested separately.
++		 */
 +		.ident = "XMG EVO 14/15 M24",
 +		.matches = {
 +			DMI_MATCH(DMI_SYS_VENDOR, "SchenkerTechnologiesGmbH"),
