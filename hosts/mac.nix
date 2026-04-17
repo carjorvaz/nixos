@@ -6,6 +6,72 @@
   ...
 }:
 
+let
+  key = key_code: { inherit key_code; };
+  topCaseKey = apple_vendor_top_case_key_code: { inherit apple_vendor_top_case_key_code; };
+
+  remap = from: to: {
+    inherit from;
+    to = [ to ];
+  };
+
+  swap = a: b: [
+    (remap a b)
+    (remap b a)
+  ];
+
+  keyboard = vendor_id: product_id: {
+    identifiers = {
+      is_keyboard = true;
+      inherit product_id vendor_id;
+    };
+  };
+
+  builtInAppleIsoKeyboard = keyboard 1452 834;
+
+  leftCommandSwap = swap (key "left_command") (key "left_option");
+
+  globalModifierPolicy =
+    [
+      (remap (key "right_command") (key "right_option"))
+      (remap (key "caps_lock") (key "left_control"))
+    ]
+    ++ leftCommandSwap;
+
+  karabinerConfig = {
+    global.show_in_menu_bar = false;
+
+    profiles = [
+      {
+        name = "Default profile";
+        selected = true;
+
+        simple_modifications = globalModifierPolicy;
+
+        devices = [
+          ((builtInAppleIsoKeyboard) // {
+            simple_modifications = [
+              (remap (topCaseKey "keyboard_fn") (key "left_control"))
+              (remap (key "left_control") (topCaseKey "keyboard_fn"))
+              (remap (key "left_command") (key "left_command"))
+              (remap (key "left_option") (key "left_option"))
+            ];
+          })
+        ];
+
+        virtual_hid_keyboard.keyboard_type_v2 = "iso";
+      }
+    ];
+  };
+
+  karabinerJson = pkgs.writeText "karabiner.json" (builtins.toJSON karabinerConfig);
+
+  karabinerConfigDir = pkgs.runCommandLocal "karabiner-config" { } ''
+    mkdir -p "$out/assets/complex_modifications"
+    cp ${karabinerJson} "$out/karabiner.json"
+  '';
+in
+
 # Bootstrapping:
 # 1. Install Nix with determinate installer (install upstream Nix, not Determinate Nix)
 #   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
@@ -206,6 +272,10 @@
     home.file.".config/ghostty/themes".source =
       "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/themes";
 
+    # Keep the whole directory store-backed. Karabiner watches the parent
+    # directory and warns against symlinking only karabiner.json.
+    home.file.".config/karabiner".source = karabinerConfigDir;
+
     # Keep cmux's embedded browser available for deliberate use, but route
     # automatic link opening to the system browser instead of unexpectedly
     # hijacking terminal links, `open https://...`, PR links, or detected
@@ -223,6 +293,36 @@
         openPullRequestLinksInCmuxBrowser = false;
         openPortLinksInCmuxBrowser = false;
       };
+    };
+
+    home.activation.karabinerConfigMigration = {
+      before = [ "checkLinkTargets" ];
+      after = [ ];
+      data = ''
+        target="$HOME/.config/karabiner"
+        backup="$HOME/.config/karabiner.pre-declarative"
+
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+          if [ -e "$backup" ]; then
+            echo "Refusing to replace $target because $backup already exists." >&2
+            exit 1
+          fi
+
+          $DRY_RUN_CMD mv "$target" "$backup"
+        fi
+      '';
+    };
+
+    home.activation.karabinerReload = {
+      before = [ ];
+      after = [ "writeBoundary" ];
+      data = ''
+        if /bin/launchctl print "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server" >/dev/null 2>&1; then
+          $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server"
+        elif /bin/launchctl print "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server" >/dev/null 2>&1; then
+          $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server"
+        fi
+      '';
     };
 
     home.stateVersion = "23.05";
