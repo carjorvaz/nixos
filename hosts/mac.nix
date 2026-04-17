@@ -133,6 +133,7 @@
       "stillcolor"
       "syncthing-app"
       "transmission"
+      "trader-workstation"
       # "tunnelblick" # OpenVPN client - re-enable if needed.
       "ukelele"
       "unnaturalscrollwheels"
