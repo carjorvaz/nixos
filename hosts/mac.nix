@@ -146,8 +146,11 @@ in
     fzf
     hugo
     go
+    guile
     neovim
+    pipx
     rlwrap
+    sbcl
     uv
     wget
     yt-dlp
@@ -179,10 +182,7 @@ in
     };
 
     brews = [
-      "guile"
-      "pipx"
       "python-tk"
-      "sbcl"
       "trash"
     ];
 
