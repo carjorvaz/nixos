@@ -135,19 +135,20 @@ in
     delta
     dua
     fd
+    gh
     hyperfine
-    ripgrep
     ripgrep-all
     uutils-coreutils-noprefix
 
     brainworkshop
 
     android-tools
-    delta
     fzf
     hugo
     go
     neovim
+    rlwrap
+    uv
     wget
     yt-dlp
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
@@ -181,11 +182,8 @@ in
       "guile"
       "pipx"
       "python-tk"
-      "rlwrap"
       "sbcl"
       "trash"
-      "uv"
-
     ];
 
     # Update these applicatons manually.
