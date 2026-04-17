@@ -1,0 +1,187 @@
+--- a/drivers/platform/x86/uniwill/uniwill-acpi.c	2026-03-23 09:16:58.403186626 +0000
++++ b/drivers/platform/x86/uniwill/uniwill-acpi.c	2026-03-23 09:27:46.522764458 +0000
+@@ -39,6 +39,7 @@
+ #include <linux/mutex.h>
+ #include <linux/notifier.h>
+ #include <linux/platform_device.h>
++#include <linux/platform_profile.h>
+ #include <linux/pm.h>
+ #include <linux/printk.h>
+ #include <linux/regmap.h>
+@@ -317,6 +318,7 @@
+ #define UNIWILL_FEATURE_LIGHTBAR		BIT(3)
+ #define UNIWILL_FEATURE_BATTERY			BIT(4)
+ #define UNIWILL_FEATURE_HWMON			BIT(5)
++#define UNIWILL_FEATURE_PLATFORM_PROFILE	BIT(6)
+ 
+ struct uniwill_data {
+ 	struct device *dev;
+@@ -334,6 +336,7 @@
+ 	struct mutex input_lock;	/* Protects input sequence during notify */
+ 	struct input_dev *input_device;
+ 	struct notifier_block nb;
++	struct device *ppdev;
+ };
+ 
+ struct uniwill_battery_entry {
+@@ -485,6 +488,7 @@
+ static bool uniwill_writeable_reg(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
++	case EC_ADDR_MANUAL_FAN_CTRL:
+ 	case EC_ADDR_AP_OEM:
+ 	case EC_ADDR_LIGHTBAR_AC_CTRL:
+ 	case EC_ADDR_LIGHTBAR_AC_RED:
+@@ -507,6 +511,7 @@
+ static bool uniwill_readable_reg(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
++	case EC_ADDR_MANUAL_FAN_CTRL:
+ 	case EC_ADDR_CPU_TEMP:
+ 	case EC_ADDR_GPU_TEMP:
+ 	case EC_ADDR_MAIN_FAN_RPM_1:
+@@ -540,6 +545,7 @@
+ static bool uniwill_volatile_reg(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
++	case EC_ADDR_MANUAL_FAN_CTRL:
+ 	case EC_ADDR_CPU_TEMP:
+ 	case EC_ADDR_GPU_TEMP:
+ 	case EC_ADDR_MAIN_FAN_RPM_1:
+@@ -1247,6 +1253,92 @@
+ 	return devm_battery_hook_register(data->dev, &data->hook);
+ }
+ 
++/* Platform profile support using EC_ADDR_MANUAL_FAN_CTRL (0x0751) */
++
++#define FAN_CTRL_PROFILE_MASK	(FAN_MODE_HIGH | FAN_MODE_USER | FAN_MODE_TURBO)
++#define FAN_CTRL_QUIET		(FAN_MODE_HIGH | FAN_MODE_USER)	/* 0xa0 */
++#define FAN_CTRL_BALANCED	0				/* 0x00 */
++#define FAN_CTRL_PERFORMANCE	FAN_MODE_TURBO			/* 0x10 */
++
++static int uniwill_platform_profile_probe(void *drvdata, unsigned long *choices)
++{
++	set_bit(PLATFORM_PROFILE_QUIET, choices);
++	set_bit(PLATFORM_PROFILE_BALANCED, choices);
++	set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
++
++	return 0;
++}
++
++static int uniwill_platform_profile_get(struct device *dev,
++					enum platform_profile_option *profile)
++{
++	struct uniwill_data *data = dev_get_drvdata(dev->parent);
++	unsigned int value;
++	int ret;
++
++	ret = regmap_read(data->regmap, EC_ADDR_MANUAL_FAN_CTRL, &value);
++	if (ret < 0)
++		return ret;
++
++	switch (value & FAN_CTRL_PROFILE_MASK) {
++	case FAN_CTRL_QUIET:
++		*profile = PLATFORM_PROFILE_QUIET;
++		break;
++	case FAN_CTRL_PERFORMANCE:
++		*profile = PLATFORM_PROFILE_PERFORMANCE;
++		break;
++	default:
++		*profile = PLATFORM_PROFILE_BALANCED;
++		break;
++	}
++
++	return 0;
++}
++
++static int uniwill_platform_profile_set(struct device *dev,
++					enum platform_profile_option profile)
++{
++	struct uniwill_data *data = dev_get_drvdata(dev->parent);
++	unsigned int value;
++
++	switch (profile) {
++	case PLATFORM_PROFILE_QUIET:
++		value = FAN_CTRL_QUIET;
++		break;
++	case PLATFORM_PROFILE_BALANCED:
++		value = FAN_CTRL_BALANCED;
++		break;
++	case PLATFORM_PROFILE_PERFORMANCE:
++		value = FAN_CTRL_PERFORMANCE;
++		break;
++	default:
++		return -EOPNOTSUPP;
++	}
++
++	return regmap_update_bits(data->regmap, EC_ADDR_MANUAL_FAN_CTRL,
++				 FAN_CTRL_PROFILE_MASK, value);
++}
++
++static const struct platform_profile_ops uniwill_platform_profile_ops = {
++	.probe = uniwill_platform_profile_probe,
++	.profile_get = uniwill_platform_profile_get,
++	.profile_set = uniwill_platform_profile_set,
++};
++
++static int uniwill_platform_profile_init(struct uniwill_data *data)
++{
++	if (!(supported_features & UNIWILL_FEATURE_PLATFORM_PROFILE))
++		return 0;
++
++	data->ppdev = devm_platform_profile_register(data->dev, "uniwill-laptop",
++						     NULL,
++						     &uniwill_platform_profile_ops);
++	if (IS_ERR(data->ppdev))
++		return PTR_ERR(data->ppdev);
++
++	return 0;
++}
++
+ static int uniwill_notifier_call(struct notifier_block *nb, unsigned long action, void *dummy)
+ {
+ 	struct uniwill_data *data = container_of(nb, struct uniwill_data, nb);
+@@ -1267,6 +1359,12 @@
+ 		 */
+ 
+ 		return NOTIFY_OK;
++	case UNIWILL_OSD_PERFORMANCE_MODE_TOGGLE:
++		if (supported_features & UNIWILL_FEATURE_PLATFORM_PROFILE) {
++			platform_profile_cycle();
++			return NOTIFY_OK;
++		}
++		fallthrough;
+ 	default:
+ 		mutex_lock(&data->input_lock);
+ 		sparse_keymap_report_event(data->input_device, action, 1, true);
+@@ -1373,6 +1471,10 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	ret = uniwill_platform_profile_init(data);
++	if (ret < 0)
++		return ret;
++
+ 	return uniwill_input_init(data);
+ }
+ 
+@@ -1593,6 +1695,19 @@
+ 		},
+ 	},
+ 	{
++		.ident = "XMG EVO 14/15 M24",
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "SchenkerTechnologiesGmbH"),
++			DMI_EXACT_MATCH(DMI_BOARD_NAME, "GXxHRXx"),
++		},
++		.driver_data = (void *)(UNIWILL_FEATURE_FN_LOCK_TOGGLE |
++					UNIWILL_FEATURE_SUPER_KEY_TOGGLE |
++					UNIWILL_FEATURE_TOUCHPAD_TOGGLE |
++					UNIWILL_FEATURE_BATTERY |
++					UNIWILL_FEATURE_HWMON |
++					UNIWILL_FEATURE_PLATFORM_PROFILE),
++	},
++	{
+ 		.ident = "TUXEDO InfinityBook Pro 14/15 Gen9 Intel/Commodore Omnia-Book 15 Gen9",
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "TUXEDO"),
