@@ -22,7 +22,6 @@
   imports = [
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
-    "${self}/profiles/darwin/qmk.nix"
   ];
 
   nix = {
@@ -55,6 +54,7 @@
     ghostty-bin
     htop
     firefox-bin
+    freerdp
     llama-cpp
     nixos-rebuild
     signal-desktop
