@@ -93,6 +93,8 @@
 
   services.displayManager.autoLogin.user = "cjv";
 
+  graphical.theme.name = "gruvbox";
+
   # Carry the local GXxHRXx uniwill_laptop platform-profile patch until this
   # EC-backed quiet/balanced/performance mapping lands upstream.
   boot.extraModulePackages = let kp = config.boot.kernelPackages; in [

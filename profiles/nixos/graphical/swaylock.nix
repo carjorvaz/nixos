@@ -1,4 +1,4 @@
-{ ... }:
+{ config, ... }:
 
 {
   home-manager.users.cjv.programs.swaylock = {
@@ -10,7 +10,7 @@
       show-failed-attempts = true;
 
       font = "monospace";
-      image = "${./themes/gruvbox.jpg}";
+      image = "${config.graphical.theme.wallpaper}";
 
       # https://github.com/swayos/swayos.github.io/blob/main/home/.swaylock/config
       color = "dcdccc55";

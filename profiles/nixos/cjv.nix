@@ -1,6 +1,7 @@
 {
   self,
   inputs,
+  config,
   lib,
   ...
 }:
@@ -37,7 +38,7 @@
       };
       gitui.enable = true;
       ssh.enableDefaultConfig = false;
-      zellij.settings.theme = "gruvbox-dark";
+      zellij.settings.theme = config.graphical.theme.appNames.zellij;
     };
 
     nix.registry = lib.mkDefault {

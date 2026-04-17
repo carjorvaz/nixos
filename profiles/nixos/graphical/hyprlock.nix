@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 {
   # Reference:
@@ -18,7 +18,7 @@
       background = [
         {
           monitor = "";
-          path = "${./themes/gruvbox.jpg}";
+          path = "${config.graphical.theme.wallpaper}";
           blur_passes = 3;
         }
       ];

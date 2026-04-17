@@ -162,7 +162,7 @@
       "opencode/opencode.json".text = builtins.toJSON {
         autoupdate = false;
         share = "disabled";
-        theme = "gruvbox";
+        theme = config.graphical.theme.appNames.opencode;
         permission = {
           bash = "ask";
           edit = "ask";
@@ -191,7 +191,7 @@
 
       "opencode/tui.json".text = builtins.toJSON {
         "$schema" = "https://opencode.ai/tui.json";
-        theme = "gruvbox";
+        theme = config.graphical.theme.appNames.opencode;
       };
 
       "opencode/commands/commit.md".text = ''
@@ -294,8 +294,8 @@
             "telemetry.telemetryLevel" = "off";
 
             "window.autoDetectColorScheme" = true;
-            "workbench.preferredDarkColorTheme" = "Gruvbox Dark Hard";
-            "workbench.preferredLightColorTheme" = "Gruvbox Light Hard";
+            "workbench.preferredDarkColorTheme" = config.graphical.theme.appNames.vscodeDark;
+            "workbench.preferredLightColorTheme" = config.graphical.theme.appNames.vscodeLight;
 
             "terminal.integrated.commandsToSkipShell" = [
               "language-julia.interrupt"

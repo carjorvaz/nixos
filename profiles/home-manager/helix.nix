@@ -1,12 +1,17 @@
-{ pkgs, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 
 {
-  programs.helix = {
+  programs.helix = let theme = lib.attrByPath [ "graphical" "theme" "appNames" "helix" ] "gruvbox_dark_hard" config; in {
     enable = true;
     package = pkgs.evil-helix;
 
     settings = {
-      theme = "gruvbox_dark_hard";
+      theme = theme;
 
       editor = {
         file-picker.hidden = false;
