@@ -86,6 +86,8 @@ in
 # - https://github.com/LnL7/nix-darwin
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
+  home-manager.backupFileExtension = "hm-backup";
+
   imports = [
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
@@ -114,6 +116,8 @@ in
   };
 
   networking.hostName = "mac";
+
+  fonts.packages = [ pkgs.nerd-fonts.jetbrains-mono ];
 
   environment.systemPackages = with pkgs; [
     colima # Streamlines Docker, just run `colima start`.
@@ -165,10 +169,11 @@ in
     # STATE: requires manually installing Homebrew: brew.sh
     # If not installed, nix-darwin will instruct on how to install
     enable = true;
+    enableFishIntegration = true;
 
     onActivation = {
       autoUpdate = true;
-      cleanup = "zap";
+      cleanup = "uninstall";
       upgrade = true;
     };
 
@@ -222,8 +227,9 @@ in
       # - Unlock with biometrics, both in extension settings and desktop app settings
       # - Enable browser integration in desktop app settings)
       Bitwarden = 1352778147;
-      # "Davinci Resolve" = 571213070;
+      "Davinci Resolve" = 571213070;
       Tailscale = 1475387142;
+      "uBlock Origin Lite" = 6745342698;
     };
 
     taps = [
@@ -234,6 +240,7 @@ in
 
   environment.variables = {
     EDITOR = "nvim";
+    GHOSTTY_RESOURCES_DIR = "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty";
     HOMEBREW_NO_ANALYTICS = "1";
   };
 
@@ -244,7 +251,14 @@ in
 
   # https://tonsky.me/blog/monitors/#turn-off-font-smoothing
   # https://www.reddit.com/r/MacOS/comments/16tow2w/psa_turn_off_font_smoothing/
-  system.defaults.NSGlobalDomain.AppleFontSmoothing = 2;
+  system.defaults.NSGlobalDomain.AppleFontSmoothing = 1;
+
+  system.defaults.trackpad = {
+    ActuateDetents = true;
+    ActuationStrength = 0;
+    FirstClickThreshold = 0;
+    ForceSuppressed = true;
+  };
 
   # Keyboard
   system.keyboard.enableKeyMapping = true;
@@ -253,7 +267,12 @@ in
   security.pam.services.sudo_local.touchIdAuth = true;
 
   # Required by home-manager.
-  users.users.cjv.home = "/Users/cjv";
+  users.knownUsers = [ "cjv" ];
+  users.users.cjv = {
+    uid = 501;
+    home = "/Users/cjv";
+    shell = pkgs.fish;
+  };
 
   home-manager.users.cjv = {
     imports = [
@@ -298,18 +317,21 @@ in
     # automatic link opening to the system browser instead of unexpectedly
     # hijacking terminal links, `open https://...`, PR links, or detected
     # localhost ports.
-    home.file.".config/cmux/settings.json".text = builtins.toJSON {
-      app = {
-        sendAnonymousTelemetry = false;
-      };
-      browser = {
-        defaultSearchEngine = "kagi";
-        openTerminalLinksInCmuxBrowser = false;
-        interceptTerminalOpenCommandInCmuxBrowser = false;
-      };
-      sidebar = {
-        openPullRequestLinksInCmuxBrowser = false;
-        openPortLinksInCmuxBrowser = false;
+    home.file.".config/cmux/settings.json" = {
+      force = true;
+      text = builtins.toJSON {
+        app = {
+          sendAnonymousTelemetry = false;
+        };
+        browser = {
+          defaultSearchEngine = "kagi";
+          openTerminalLinksInCmuxBrowser = false;
+          interceptTerminalOpenCommandInCmuxBrowser = false;
+        };
+        sidebar = {
+          openPullRequestLinksInCmuxBrowser = false;
+          openPortLinksInCmuxBrowser = false;
+        };
       };
     };
 
@@ -357,6 +379,13 @@ in
     if [ -d "$cmux" ] && [ -d "$si" ] && { [ ! -e "$target" ] || [ -L "$target" ]; }; then
       ln -sfn "$si" "$target"
     fi
+
+    # Brave reads managed preferences from this path, but off-store
+    # force-installed extensions are blocked on unmanaged macOS browsers.
+    # Remove any previous plist so brave://policy stops showing stale blocked
+    # Rustab/BPC entries after we move back to the supported manual path here.
+    rm -f "/Library/Managed Preferences/cjv/com.brave.Browser.plist"
+    /usr/bin/killall cfprefsd 2>/dev/null || true
   '';
 
   ids.gids.nixbld = 350;
