@@ -182,7 +182,6 @@ in
     };
 
     brews = [
-      "python-tk"
       "trash"
     ];
 
