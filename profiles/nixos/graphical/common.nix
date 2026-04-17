@@ -192,6 +192,36 @@
         "$schema" = "https://opencode.ai/tui.json";
         theme = "gruvbox";
       };
+
+      "opencode/commands/commit.md".text = ''
+        ---
+        description: Create a git commit with a meaningful message
+        ---
+        Analyze the current changes and create a git commit:
+
+        1. Run `git status` and `git diff` (staged + unstaged) to understand all changes
+        2. Run `git log --oneline -5` to match the repo's commit message style
+        3. Stage relevant files individually (avoid `git add -A` to prevent committing secrets)
+        4. Draft a concise commit message that explains the **why**, not just the **what**
+        5. Create the commit. Use a heredoc for the message: `git commit -m "$(cat <<'EOF' ... EOF)"`
+        6. Do NOT push to remote unless explicitly asked
+        7. Do NOT commit files that may contain secrets (.env, credentials, API keys)
+      '';
+
+      "opencode/commands/pr.md".text = ''
+        ---
+        description: Create a GitHub pull request
+        ---
+        Create a pull request for the current branch:
+
+        1. Run `git status`, `git log`, and `git diff main...HEAD` to understand all changes
+        2. Check if the branch is pushed to remote; push with `-u` if needed
+        3. Draft a short PR title (under 70 chars) and a body with:
+           - `## Summary` - 1-3 bullet points
+           - `## Test plan` - checklist of testing steps
+        4. Create the PR with `gh pr create`
+        5. Return the PR URL
+      '';
     };
 
     programs = {
