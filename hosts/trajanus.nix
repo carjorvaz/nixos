@@ -93,6 +93,28 @@
 
   services.displayManager.autoLogin.user = "cjv";
 
+  # Keep the Uniwill platform-profile support that is currently only present in
+  # the booted generation. Without this, a future reboot would lose the working
+  # quiet/balanced/performance interface exposed by uniwill_laptop.
+  boot.extraModulePackages = let kp = config.boot.kernelPackages; in [
+    (pkgs.stdenv.mkDerivation {
+      pname = "uniwill-laptop-patched";
+      version = kp.kernel.version;
+      src = kp.kernel.src;
+      patches = [ "${self}/patches/uniwill-laptop-platform-profile-xmg-evo.patch" ];
+      nativeBuildInputs = [ pkgs.kmod ] ++ kp.kernel.moduleBuildDependencies;
+      makeFlags = kp.kernelModuleMakeFlags ++ [
+        "M=$(PWD)/drivers/platform/x86/uniwill"
+        "INSTALL_MOD_PATH=$(out)"
+      ];
+      buildFlags = [ "modules" ];
+      installTargets = [ "modules_install" ];
+    })
+  ];
+
+  # Let uniwill_laptop claim the shared WMI GUID instead of eeepc_wmi/asus_wmi.
+  boot.blacklistedKernelModules = [ "eeepc_wmi" ];
+
   # keyd: Up arrow = Right Shift on hold, Up on tap
   services.keyd = {
     enable = true;
