@@ -1,6 +1,7 @@
 {
   self,
   config,
+  lib,
   ...
 }:
 
@@ -108,6 +109,19 @@
         ];
       };
     };
+  };
+
+  systemd.services.recyclarr = {
+    serviceConfig = {
+      # The generated config contains live API keys after secret substitution.
+      UMask = "0077";
+      StateDirectoryMode = "0700";
+    };
+
+    preStart = lib.mkAfter ''
+      chmod 0700 /var/lib/recyclarr
+      chmod 0600 /var/lib/recyclarr/config.json
+    '';
   };
 
   environment.persistence."/persist".directories = [
