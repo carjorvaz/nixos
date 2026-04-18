@@ -42,6 +42,7 @@ in
     "ata_piix"
     "uhci_hcd"
     "virtio_pci"
+    "virtio_net"
     "virtio_scsi"
     "sd_mod"
     "sr_mod"
@@ -69,7 +70,10 @@ in
       ];
     };
 
-    defaultGateway = "46.38.240.1";
+    defaultGateway = {
+      address = "46.38.240.1";
+      interface = networkInterface;
+    };
     defaultGateway6 = {
       address = "fe80::1";
       interface = "ens3";
@@ -96,7 +100,7 @@ in
     # https://nixos.wiki/wiki/Agenix#Using_secrets_in_initrd
     hostKeyFile = "/etc/initrd-hostkey";
 
-    driver = "virtio_pci";
+    driver = "virtio_net";
     static = {
       enable = true;
       # Gets the first IP address from the system network configuration.
