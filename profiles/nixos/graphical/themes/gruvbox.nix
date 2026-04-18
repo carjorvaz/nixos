@@ -1,6 +1,6 @@
 { config, lib, ... }:
 
-{
+lib.mkIf (config.graphical.theme.name == "gruvbox") {
   graphical.theme = {
     wallpaper = ./gruvbox.jpg;
     palette = {
@@ -9,6 +9,7 @@
       softFg = "d4be98";
       border = "a89984";
       accent = "d79921";
+      info = "458588";
       warning = "d6995c";
       critical = "fb4934";
     };
@@ -130,29 +131,30 @@
 
       rofi.theme = "gruvbox-dark";
 
-      niri.settings.layout.focus-ring.active.color = "#a89984";
+      niri.settings.layout.focus-ring.active.color = "#${config.graphical.theme.palette.border}";
 
       waybar.style = lib.mkOrder 100 ''
-        @define-color bg #282828;
-        @define-color fg #ebdbb2;
+        @define-color bg #${config.graphical.theme.palette.bg};
+        @define-color fg #${config.graphical.theme.palette.fg};
         @define-color green_accent #98971a;
-        @define-color blue_accent #458588;
-        @define-color warning #d79921;
-        @define-color critical #cc241d;
+        @define-color blue_accent #${config.graphical.theme.palette.info};
+        @define-color warning #${config.graphical.theme.palette.accent};
+        @define-color critical #${config.graphical.theme.palette.critical};
       '';
     };
 
     services = {
       mako.settings = {
-        background-color = "#282828";
-        text-color = "#d4be98";
-        border-color = "#a89984";
+        background-color = "#${config.graphical.theme.palette.bg}";
+        text-color = "#${config.graphical.theme.palette.softFg}";
+        border-color = "#${config.graphical.theme.palette.border}";
 
       };
 
       wpaperd.settings.default.path = lib.mkDefault config.graphical.theme.wallpaper;
     };
 
-    wayland.windowManager.hyprland.settings.general."col.active_border" = "rgb(a89984)";
+    wayland.windowManager.hyprland.settings.general."col.active_border" =
+      "rgb(${config.graphical.theme.palette.border})";
   };
 }

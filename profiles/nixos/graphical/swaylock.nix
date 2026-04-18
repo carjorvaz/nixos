@@ -12,8 +12,8 @@
       font = "monospace";
       image = "${config.graphical.theme.wallpaper}";
 
-      # https://github.com/swayos/swayos.github.io/blob/main/home/.swaylock/config
-      color = "dcdccc55";
+      # Keep the shared wallpaper and drive the chrome from the active palette.
+      color = "${config.graphical.theme.palette.bg}55";
       indicator-radius = "100";
       indicator-thickness = "50";
       line-color = "ffffff22";
@@ -21,20 +21,20 @@
       line-caps-lock-color = "00000000";
       line-ver-color = "00000000";
       line-wrong-color = "00000000";
-      inside-color = "dcdccc55";
-      ring-color = "dcdcdc55";
-      ring-ver-color = "33445555";
-      key-hl-color = "FFFFFF66";
+      inside-color = "${config.graphical.theme.palette.bg}55";
+      ring-color = "${config.graphical.theme.palette.border}55";
+      ring-ver-color = "${config.graphical.theme.palette.info}55";
+      key-hl-color = "${config.graphical.theme.palette.accent}66";
       separator-color = "00000000";
       layout-bg-color = "00000000";
       layout-border-color = "00000000";
       inside-ver-color = "ffffff22";
       font-size = "24";
-      text-color = "FFFFFFFF";
-      text-clear-color = "FFFFFFFF";
-      text-caps-lock-color = "FFFFFFFF";
-      text-ver-color = "FFFFFFFF";
-      text-wrong-color = "FFFFFFFF";
+      text-color = "${config.graphical.theme.palette.fg}FF";
+      text-clear-color = "${config.graphical.theme.palette.fg}FF";
+      text-caps-lock-color = "${config.graphical.theme.palette.fg}FF";
+      text-ver-color = "${config.graphical.theme.palette.fg}FF";
+      text-wrong-color = "${config.graphical.theme.palette.fg}FF";
     };
   };
 }

@@ -41,6 +41,11 @@
             description = "Primary accent color (6-char hex, no #).";
           };
 
+          info = lib.mkOption {
+            type = lib.types.str;
+            description = "Informational/verification color (6-char hex, no #).";
+          };
+
           warning = lib.mkOption {
             type = lib.types.str;
             description = "Warning/check color (6-char hex, no #).";
