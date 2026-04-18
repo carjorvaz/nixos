@@ -1,5 +1,7 @@
-{ disks, lib, ... }:
+{ disks, ... }:
 {
+  cjv.impermanence.zfsBootRollback.rootDataset = "zlocal/root";
+
   disko.devices = {
     disk =
       let
@@ -120,31 +122,5 @@
           };
         };
       };
-  };
-
-  # Impermanence
-  boot = {
-    initrd = {
-      systemd.enable = false;
-      postResumeCommands = lib.mkAfter ''
-        zfs rollback -r zlocal/root@blank
-      '';
-    };
-
-    plymouth.enable = false;
-  };
-
-  # Disko takes care of filesystem configuration but this
-  # is needed because of the impermanence module.
-  fileSystems."/persist".neededForBoot = true;
-
-  environment.persistence."/persist" = {
-    hideMounts = true;
-    files = [ "/etc/machine-id" ];
-    directories = [
-      "/var/db/sudo/lectured"
-      "/var/lib/nixos"
-      "/var/log/journal"
-    ];
   };
 }

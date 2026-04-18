@@ -51,7 +51,6 @@
     device = "zroot/safe/persist";
     fsType = "zfs";
     options = [ "zfsutil" ];
-    neededForBoot = true;
   };
 
   fileSystems."/boot1" = {

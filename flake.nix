@@ -117,6 +117,11 @@
           home-manager.extraSpecialArgs = { inherit inputs; };
         }
       ];
+
+      impermanenceBaseModule = ./profiles/nixos/impermanence/base.nix;
+      impermanenceLoginRecordsModule = ./profiles/nixos/impermanence/login-records.nix;
+      zfsBootRollbackModule = ./profiles/nixos/impermanence/rollback-zfs-boot.nix;
+      zfsShutdownRollbackModule = ./profiles/nixos/impermanence/rollback-zfs-shutdown.nix;
     in
     {
       nixosConfigurations = {
@@ -127,7 +132,10 @@
             ./hosts/hadrianus.nix
             ./disko/base.nix
             ./disko/encryption.nix
-            ./disko/zfsImpermanence.nix
+            impermanenceBaseModule
+            impermanenceLoginRecordsModule
+            zfsBootRollbackModule
+            { cjv.impermanence.zfsBootRollback.rootDataset = "zroot/local/root"; }
             { _module.args.disks = [ "/dev/sda" ]; }
           ];
         };
@@ -137,6 +145,7 @@
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
             ./hosts/nerva.nix
+            impermanenceBaseModule
           ];
         };
 
@@ -148,6 +157,8 @@
             inputs.pdf-translator.nixosModules.pdf-translator
             ./hosts/pius.nix
             ./disko/pius.nix
+            impermanenceBaseModule
+            zfsBootRollbackModule
             {
               _module.args.disks = [
                 "/dev/nvme0n1"
@@ -164,7 +175,9 @@
           modules = baseModules ++ [
             ./hosts/julius.nix
             ./disko/base.nix
-            ./disko/zfsImpermanence.nix
+            impermanenceBaseModule
+            impermanenceLoginRecordsModule
+            zfsShutdownRollbackModule
             { _module.args.disks = [ "/dev/nvme0n1" ]; }
           ];
         };
@@ -182,7 +195,9 @@
               ./disko/base.nix
               ./disko/desktop.nix
               ./disko/encryption.nix
-              ./disko/zfsImpermanence.nix
+              impermanenceBaseModule
+              impermanenceLoginRecordsModule
+              zfsShutdownRollbackModule
               { _module.args.disks = [ "/dev/nvme0n1" ]; }
             ];
         };

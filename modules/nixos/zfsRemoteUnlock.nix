@@ -17,6 +17,19 @@ with lib;
 
 let
   cfg = config.cjv.zfsRemoteUnlock;
+  useSystemdInitrd = config.boot.initrd.systemd.enable;
+  systemdAskPasswordAgent = "${config.boot.initrd.systemd.package}/bin/systemd-tty-ask-password-agent";
+  systemdInitrdShell = pkgs.writeShellScript "initrd-zfs-remote-unlock" ''
+    ${systemdAskPasswordAgent} --watch
+    status=$?
+
+    if [ "$status" -eq 0 ]; then
+      printf '\nUnlock accepted, continuing boot...\n'
+      sleep 1
+    fi
+
+    exit "$status"
+  '';
 in
 {
   options = {
@@ -106,6 +119,20 @@ in
   };
 
   config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = !(useSystemdInitrd && cfg.tor.enable);
+        message = "cjv.zfsRemoteUnlock.tor is not yet supported with boot.initrd.systemd.enable";
+      }
+      {
+        assertion = !(useSystemdInitrd && config.boot.zfs.requestEncryptionCredentials == false);
+        message = ''
+          cjv.zfsRemoteUnlock with systemd initrd expects boot.zfs.requestEncryptionCredentials
+          to stay enabled so the initrd SSH session can answer the pending ZFS password prompt.
+        '';
+      }
+    ];
+
     boot = {
       plymouth.enable = false;
 
@@ -116,12 +143,12 @@ in
       initrd.kernelModules = [ cfg.driver ];
 
       # Include Tor in initrd when enabled
-      initrd.extraUtilsCommands = mkIf cfg.tor.enable ''
+      initrd.extraUtilsCommands = mkIf (cfg.tor.enable && !useSystemdInitrd) ''
         copy_bin_and_libs ${pkgs.tor}/bin/tor
       '';
 
       # Copy onion service keys to initrd
-      initrd.secrets = mkIf cfg.tor.enable {
+      initrd.secrets = mkIf (cfg.tor.enable && !useSystemdInitrd) {
         "/etc/tor/onion/bootup" = cfg.tor.onionServiceDir;
       };
 
@@ -136,7 +163,7 @@ in
           authorizedKeys = cfg.authorizedKeys;
         };
 
-        postCommands = ''
+        postCommands = mkIf (!useSystemdInitrd) ''
           # Import all pools
           zpool import -a
 
@@ -170,6 +197,9 @@ in
           echo "zfs load-key -a; killall zfs" >> /root/.profile
         '';
       };
+
+      initrd.systemd.extraBin.initrd-zfs-remote-unlock = mkIf useSystemdInitrd systemdInitrdShell;
+      initrd.systemd.users.root.shell = mkIf useSystemdInitrd "/bin/initrd-zfs-remote-unlock";
     };
   };
 }
