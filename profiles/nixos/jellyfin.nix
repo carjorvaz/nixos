@@ -27,6 +27,17 @@ in
     ];
   };
 
+  # Jellyfin's dynamic image generation needs actual fonts available even on
+  # headless servers; without them, collection/poster collage rendering throws.
+  fonts = {
+    fontconfig.enable = true;
+    packages = with pkgs; [
+      noto-fonts
+      noto-fonts-cjk-sans
+      noto-fonts-color-emoji
+    ];
+  };
+
   users.groups.media = { };
 
   users.users.jellyfin.extraGroups = [

@@ -25,7 +25,7 @@ in
 
   services.nextcloud = {
     enable = true;
-    package = pkgs.nextcloud32; # Need to manually increment with every update
+    package = pkgs.nextcloud33; # Need to manually increment with every update
     hostName = domain;
     database.createLocally = true;
     configureRedis = true;
@@ -34,26 +34,61 @@ in
     https = true;
 
     extraAppsEnable = true;
-    extraApps = {
-      inherit (config.services.nextcloud.package.packages.apps)
-        calendar
-        cookbook
-        contacts
-        cospend
-        mail
-        # TODO vaapi acceleration
-        memories # Requires setup in the admin panel
-        news
-        notes
-        previewgenerator # Memories dependency
-        tasks
-        ;
-    };
+    extraApps =
+      let
+        packagedApps = config.services.nextcloud.package.packages.apps;
+        memoriesApp = pkgs.nextcloud-app-memories;
+
+        # nixpkgs 25.11's Nextcloud 33 app index dropped `news`, but pius
+        # still has it enabled in production. Keep shipping the last
+        # known-good Nextcloud 33 release until nixpkgs reintroduces it.
+        newsApp =
+          if packagedApps ? news then
+            packagedApps.news
+          else
+            pkgs.fetchNextcloudApp {
+              appName = "news";
+              appVersion = "28.0.1";
+              url = "https://github.com/nextcloud/news/releases/download/28.0.1/news.tar.gz";
+              hash = "sha256-53zwBxm/vUqQvc3h9od73RYxqJhh0M6lVS4//bJHMuA=";
+              license = "agpl3Plus";
+              description = "An RSS/Atom feed reader";
+              homepage = "https://github.com/nextcloud/news";
+            };
+
+        # The app store listing is still stale for Nextcloud 33, but the
+        # upstream 0.9.0 release explicitly adds NC33 compatibility.
+        cameraRawPreviewsApp = pkgs.fetchNextcloudApp {
+          appName = "camerarawpreviews";
+          appVersion = "0.9.0";
+          url = "https://github.com/ariselseng/camerarawpreviews/releases/download/v0.9.0/camerarawpreviews_nextcloud.tar.gz";
+          hash = "sha256-UsvRbsNSnh4qS9nP/lEbRMMKHLZSp03azCf8lvIS7Pk=";
+          license = "agpl3Only";
+          description = "Preview and show camera RAW files in Nextcloud";
+          homepage = "https://github.com/ariselseng/camerarawpreviews";
+        };
+      in
+      {
+        inherit (packagedApps)
+          calendar
+          cookbook
+          contacts
+          cospend
+          mail
+          notes
+          previewgenerator # Useful on its own; required by Memories when enabled
+          tasks
+          ;
+
+        camerarawpreviews = cameraRawPreviewsApp;
+        memories = memoriesApp;
+
+        news = newsApp;
+      };
 
     settings = {
       default_phone_region = "PT";
       overwriteprotocol = "https";
-      trusted_domains = [ "https://${domain}/" ];
       trusted_proxies = [ "100.103.78.39" ];
       mail_smtpmode = "sendmail";
       mail_sendmailmode = "pipe";

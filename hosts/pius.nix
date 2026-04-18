@@ -162,6 +162,12 @@
     "transparent_hugepage=always" # THP for model weights loaded via --run-time-repack
   ];
 
+  # As a Tailscale exit node, pius enables IPv6 forwarding. Linux only accepts
+  # IPv6 router advertisements on forwarding interfaces when accept_ra=2.
+  # Without this, pius sees the LAN router but never installs its global IPv6
+  # address or default route.
+  boot.kernel.sysctl."net.ipv6.conf.enp1s0.accept_ra" = 2;
+
   # ZFS backup target configuration
   # STATE: After first deploy, create the backup dataset:
   #   zfs create -o mountpoint=/mnt/backups zsafe/backups
