@@ -71,6 +71,16 @@ let
     mkdir -p "$out/assets/complex_modifications"
     cp ${karabinerJson} "$out/karabiner.json"
   '';
+
+  fontconfigMacosConf = pkgs.writeText "fontconfig-macos-fonts.conf" ''
+    <?xml version="1.0"?>
+    <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+    <fontconfig>
+      <dir>/Library/Fonts</dir>
+      <dir>/System/Library/Fonts</dir>
+      <dir>~/Library/Fonts</dir>
+    </fontconfig>
+  '';
 in
 
 # Bootstrapping:
@@ -122,6 +132,11 @@ in
     pkgs.nerd-fonts.symbols-only
     pkgs.symbola
   ];
+
+  environment.etc = {
+    "fonts/fonts.conf".source = "${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
+    "fonts/conf.d/50-macos-fonts.conf".source = fontconfigMacosConf;
+  };
 
   environment.systemPackages = with pkgs; [
     colima # Streamlines Docker, just run `colima start`.
