@@ -21,6 +21,7 @@ in
       # Reference: https://github.com/transmission/transmission/blob/main/docs/Editing-Configuration-Files.md
       settings = {
         download-dir = "/persist/media/downloads";
+        umask = "002";
         rpc-whitelist-enabled = true;
         rpc-whitelist = "127.0.0.1,100.64.*.*";
         rpc-host-whitelist-enabled = true;
@@ -40,6 +41,12 @@ in
   };
 
   users.users.transmission.extraGroups = [ "media" ];
+
+  systemd.tmpfiles.rules = [
+    # Keep Arr-managed torrents segregated from unrelated/manual downloads.
+    "d /persist/media/downloads/movies-radarr 2775 root media -"
+    "d /persist/media/downloads/tv-sonarr     2775 root media -"
+  ];
 
   environment.persistence."/persist".directories = [
     { directory = "/var/lib/transmission"; user = "transmission"; group = "transmission"; }

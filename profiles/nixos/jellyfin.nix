@@ -59,6 +59,18 @@ in
     jellyfin-ffmpeg
   ];
 
+  systemd.services.jellyfin = {
+    environment = {
+      FONTCONFIG_FILE = "${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
+      FONTCONFIG_PATH = "${pkgs.fontconfig.out}/etc/fonts";
+      XDG_CACHE_HOME = "/var/cache/jellyfin";
+    };
+
+    serviceConfig = {
+      CacheDirectory = "jellyfin";
+    };
+  };
+
   environment.persistence."/persist".directories = [
     { directory = "/var/lib/jellyfin"; user = "jellyfin"; group = "jellyfin"; }
   ];
