@@ -36,8 +36,10 @@ in
     nixfmt
     cmake
     ccls
+    coreutils-prefixed # gls for dired on macOS
     nodejs
     clang-tools
+    fontconfig # fc-list for Doom's font checks
     graphviz
     black
     shellcheck
@@ -45,12 +47,14 @@ in
     nil # nix LSP
     nodePackages.js-beautify
     nodePackages.stylelint
+    pandoc # markdown preview/export
     pyright
     python3Packages.pygments
     rust-analyzer
     texlab
     texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
     sqlite # org-roam
+    zstd # undo-fu-session compression
     imagemagick
     (ripgrep.override { withPCRE2 = true; })
   ];
