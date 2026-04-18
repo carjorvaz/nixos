@@ -12,6 +12,10 @@
 # - /var/lib/nextcloud must be owned by nextcloud (sudo chown -R nextcloud: /var/lib/nextcloud)
 let
   domain = "cloud.vaz.one";
+  nextcloudOccHelpers = with pkgs; [
+    procps
+    which
+  ];
 in
 {
   # STATE: still requires running after deploying
@@ -132,4 +136,13 @@ in
     }
     "/var/lib/postgresql"
   ];
+
+  # Some apps shell out during `occ` maintenance/activation steps. The
+  # generated Nextcloud units have a deliberately small PATH, so add the
+  # helpers that enabled apps such as Memories expect.
+  systemd.services = {
+    nextcloud-cron.path = nextcloudOccHelpers;
+    nextcloud-setup.path = nextcloudOccHelpers;
+    nextcloud-update-db.path = nextcloudOccHelpers;
+  };
 }
