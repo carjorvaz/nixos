@@ -31,17 +31,16 @@
           rounding = 0;
           shadow_passes = 0;
 
-          # Omarchy gruvbox colors
-          inner_color = "rgba(40, 40, 40, 0.8)";
-          outer_color = "rgba(212, 190, 152, 1.0)";
-          font_color = "rgba(212, 190, 152, 1.0)";
-          check_color = "rgba(214, 153, 92, 1.0)";
+          inner_color = "rgba(${config.graphical.theme.palette.bg}cc)";
+          outer_color = "rgb(${config.graphical.theme.palette.softFg})";
+          font_color = "rgb(${config.graphical.theme.palette.softFg})";
+          check_color = "rgb(${config.graphical.theme.palette.warning})";
 
           fade_on_empty = false;
 
           placeholder_text = "Enter Password";
 
-          fail_color = "rgba(251, 73, 52, 1.0)";
+          fail_color = "rgb(${config.graphical.theme.palette.critical})";
           fail_text = ''<i>$FAIL ($ATTEMPTS)</i>'';
 
           position = "0, 0";
