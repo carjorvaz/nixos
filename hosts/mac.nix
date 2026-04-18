@@ -117,7 +117,11 @@ in
 
   networking.hostName = "mac";
 
-  fonts.packages = [ pkgs.nerd-fonts.jetbrains-mono ];
+  fonts.packages = [
+    pkgs.nerd-fonts.jetbrains-mono
+    pkgs.nerd-fonts.symbols-only
+    pkgs.symbola
+  ];
 
   environment.systemPackages = with pkgs; [
     colima # Streamlines Docker, just run `colima start`.
@@ -167,13 +171,19 @@ in
     builtins.elem (lib.getName pkg) [
       "firefox-bin"
       "firefox-bin-unwrapped"
+      "symbola"
     ];
 
   homebrew = {
     # STATE: requires manually installing Homebrew: brew.sh
     # If not installed, nix-darwin will instruct on how to install
     enable = true;
-    enableFishIntegration = true;
+    # Keep Homebrew on PATH declaratively instead of shelling out to
+    # `brew shellenv` during Fish startup. cmux's embedded Ghostty layer can
+    # currently hit a PermissionDenied opening TCC-protected cwd paths under
+    # ~/Documents, which then breaks the shellenv hook and leaves Fish without
+    # `brew` on PATH.
+    enableFishIntegration = false;
 
     onActivation = {
       autoUpdate = true;
@@ -238,7 +248,10 @@ in
   environment.variables = {
     EDITOR = "nvim";
     GHOSTTY_RESOURCES_DIR = "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty";
+    HOMEBREW_CELLAR = "/opt/homebrew/Cellar";
     HOMEBREW_NO_ANALYTICS = "1";
+    HOMEBREW_PREFIX = "/opt/homebrew";
+    HOMEBREW_REPOSITORY = "/opt/homebrew";
   };
 
   # Disable press and hold for diacritics.
@@ -285,6 +298,8 @@ in
       # STATE: install juliaup manually with curl method
       "/Users/cjv/.juliaup/bin/"
       "/Users/cjv/.local/bin"
+      "/opt/homebrew/bin"
+      "/opt/homebrew/sbin"
     ];
 
     # Ghostty is installed via environment.systemPackages so it lands in
@@ -364,6 +379,15 @@ in
 
     home.stateVersion = "23.05";
   };
+
+  programs.fish.interactiveShellInit = lib.mkAfter ''
+    if test -d "/opt/homebrew/share/fish/completions"
+      set -p fish_complete_path "/opt/homebrew/share/fish/completions"
+    end
+    if test -d "/opt/homebrew/share/fish/vendor_completions.d"
+      set -p fish_complete_path "/opt/homebrew/share/fish/vendor_completions.d"
+    end
+  '';
 
   # cmux still ships without Ghostty shell integration files. Link the Nix
   # Ghostty integration into the app bundle so shells spawned from cmux get the
