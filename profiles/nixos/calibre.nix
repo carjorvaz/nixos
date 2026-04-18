@@ -1,34 +1,46 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ config, lib, pkgs, ... }:
 
 let
   domain = "calibre.vaz.ovh";
+  port = 8083;
   library = "/persist/media/books";
+  # CWA consumes files placed here and removes them after processing.
+  ingest = "/persist/media/downloads/books-ingest";
+  image = "crocodilestick/calibre-web-automated:v4.0.6";
+  calibreWebUid = 982;
+  calibreWebGid = 997;
+  mediaGid = 973;
+  fixSharedMediaPerms = pkgs.writeShellApplication {
+    name = "calibre-web-fix-shared-media-perms";
+    runtimeInputs = with pkgs; [
+      coreutils
+      docker
+      findutils
+    ];
+    text = ''
+      for _ in $(seq 1 90); do
+        status="$(${pkgs.docker}/bin/docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' calibre-web-automated 2>/dev/null || true)"
+        if [ "$status" = "healthy" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      chgrp -R media ${library}
+      chmod -R g+rwX ${library}
+      find ${library} -type d -exec chmod g+s {} +
+
+      chgrp media ${ingest}
+      chmod 2775 ${ingest}
+    '';
+  };
 in
 {
   services = {
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.calibre-web.listen.port}";
-    };
-
-    calibre-server = {
-      enable = true;
-      libraries = [ library ];
-    };
-
-    calibre-web = {
-      enable = true;
-      listen.ip = "0.0.0.0";
-      options = {
-        calibreLibrary = library;
-        enableBookConversion = true;
-      };
+      locations."/".proxyPass = "http://127.0.0.1:${toString port}";
     };
 
     homer.entries = [
@@ -42,10 +54,43 @@ in
     ];
   };
 
-  users.users.calibre-web.extraGroups = [ "media" ];
-  users.users.calibre-server.extraGroups = [ "media" ];
+  users.groups = {
+    calibre-web.gid = lib.mkDefault calibreWebGid;
+    media.gid = lib.mkDefault mediaGid;
+  };
 
-  systemd.services.calibre-server.serviceConfig.ExecStart = lib.mkForce "${pkgs.calibre}/bin/calibre-server --userdb ${library}/users.sqlite --enable-auth ${library}";
+  users.users.calibre-web = {
+    isSystemUser = true;
+    uid = lib.mkDefault calibreWebUid;
+    group = "calibre-web";
+    extraGroups = [ "media" ];
+  };
+
+  systemd.tmpfiles.rules = [
+    "d /persist/media/downloads/books-ingest 2775 root media -"
+  ];
+
+  virtualisation.oci-containers.containers.calibre-web-automated = {
+    autoStart = true;
+    inherit image;
+    ports = [ "127.0.0.1:${toString port}:${toString port}" ];
+    environment = {
+      PUID = toString calibreWebUid;
+      PGID = toString calibreWebGid;
+      TZ = config.time.timeZone;
+      CWA_PORT_OVERRIDE = toString port;
+    };
+    volumes = [
+      "/var/lib/calibre-web:/config"
+      "${ingest}:/cwa-book-ingest"
+      "${library}:/calibre-library"
+    ];
+    extraOptions = [ "--group-add=${toString mediaGid}" ];
+  };
+
+  systemd.services."docker-calibre-web-automated".serviceConfig.ExecStartPost = lib.mkAfter [
+    "${fixSharedMediaPerms}/bin/calibre-web-fix-shared-media-perms"
+  ];
 
   environment.persistence."/persist".directories = [
     { directory = "/var/lib/calibre-web"; user = "calibre-web"; group = "calibre-web"; }

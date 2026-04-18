@@ -10,7 +10,7 @@
 #     chmod -R g+rwX /persist/media
 #     find /persist/media -type d -exec chmod g+s {} +
 #   Then restart affected services:
-#     systemctl restart sonarr radarr bazarr jellyfin transmission calibre-web calibre-server
+#     systemctl restart sonarr radarr bazarr jellyfin transmission docker-calibre-web-automated
 {
   self,
   config,
