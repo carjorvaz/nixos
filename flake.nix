@@ -197,7 +197,8 @@
               ./disko/encryption.nix
               impermanenceBaseModule
               impermanenceLoginRecordsModule
-              zfsShutdownRollbackModule
+              zfsBootRollbackModule
+              { cjv.impermanence.zfsBootRollback.rootDataset = "zroot/local/root"; }
               { _module.args.disks = [ "/dev/nvme0n1" ]; }
             ];
         };
