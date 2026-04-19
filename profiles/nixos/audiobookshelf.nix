@@ -15,14 +15,17 @@ in
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
+      locations."= /".return = "302 /audiobookshelf/";
       locations."/".proxyPass = "http://127.0.0.1:${toString port}";
+      locations."/".proxyWebsockets = true;
+      locations."/".recommendedProxySettings = true;
     };
 
     homer.entries = [
       {
         name = "Audiobookshelf";
         subtitle = "Audiobooks";
-        url = "https://${domain}";
+        url = "https://${domain}/audiobookshelf/";
         group = "media";
       }
     ];
