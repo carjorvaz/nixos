@@ -12,13 +12,20 @@ in
       inherit port;
     };
 
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."= /".return = "302 /audiobookshelf/";
-      locations."/".proxyPass = "http://127.0.0.1:${toString port}";
-      locations."/".proxyWebsockets = true;
-      locations."/".recommendedProxySettings = true;
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."= /".return = "302 /audiobookshelf/";
+        locations."/".proxyPass = "http://127.0.0.1:${toString port}";
+        locations."/".proxyWebsockets = true;
+        locations."/".recommendedProxySettings = true;
+      };
     };
 
     homer.entries = [
