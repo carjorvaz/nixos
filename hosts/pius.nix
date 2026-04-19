@@ -38,6 +38,7 @@
     # "${self}/modules/nixos/zfsRemoteUnlock.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
+    "${self}/profiles/nixos/audiobookshelf.nix"
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/cl-olx-scraper.nix"
     "${self}/profiles/nixos/pdf-translator.nix"
