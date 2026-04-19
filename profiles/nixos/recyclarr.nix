@@ -2,9 +2,18 @@
   self,
   config,
   lib,
+  utils,
   ...
 }:
 
+let
+  recyclarrStateDir = "/var/lib/recyclarr";
+  recyclarrRuntimeConfigDir = "/run/recyclarr";
+  recyclarrRuntimeConfigPath = "${recyclarrRuntimeConfigDir}/config.json";
+  recyclarrSecretsReplacement = utils.genJqSecretsReplacement {
+    loadCredential = true;
+  } config.services.recyclarr.configuration recyclarrRuntimeConfigPath;
+in
 {
   age.secrets.radarrApiKey = {
     file = "${self}/secrets/radarrApiKey.age";
@@ -112,19 +121,25 @@
   };
 
   systemd.services.recyclarr = {
-    serviceConfig = {
-      # The generated config contains live API keys after secret substitution.
-      UMask = "0077";
-      StateDirectoryMode = "0700";
-    };
-
-    preStart = lib.mkAfter ''
-      chmod 0700 /var/lib/recyclarr
-      chmod 0600 /var/lib/recyclarr/config.json
+    # Keep the secret-substituted config ephemeral so API keys never rest in
+    # the persistent app-data directory.
+    preStart = lib.mkForce ''
+      rm -f ${recyclarrStateDir}/config.json
+      ${recyclarrSecretsReplacement.script}
+      chmod 0600 ${recyclarrRuntimeConfigPath}
     '';
+
+    serviceConfig = {
+      ExecStart = lib.mkForce
+        "${lib.getExe config.services.recyclarr.package} ${config.services.recyclarr.command} --app-data ${recyclarrStateDir} --config ${recyclarrRuntimeConfigPath}";
+      LoadCredential = lib.mkForce recyclarrSecretsReplacement.credentials;
+      RuntimeDirectory = "recyclarr";
+      RuntimeDirectoryMode = "0700";
+      UMask = "0077";
+    };
   };
 
   environment.persistence."/persist".directories = [
-    { directory = "/var/lib/recyclarr"; user = "recyclarr"; group = "recyclarr"; }
+    { directory = recyclarrStateDir; user = "recyclarr"; group = "recyclarr"; }
   ];
 }
