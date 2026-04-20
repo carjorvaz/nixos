@@ -1,12 +1,16 @@
 {
   self,
+  lib,
   pkgs,
   ...
 }:
 
 let
+  # Keep the existing dataset and mountpoint names to avoid moving live backup
+  # data around on pius just for nomenclature.
   dataset = "zsafe/mac-backups";
   mountpoint = "/mnt/mac-backups";
+  hosts = [ "air" ];
 in
 {
   imports = [
@@ -14,7 +18,7 @@ in
   ];
 
   services.sanoid = {
-    templates.macFiles = {
+    templates.darwinFiles = {
       frequently = 0;
       hourly = 48;
       daily = 30;
@@ -26,13 +30,13 @@ in
     };
 
     datasets.${dataset} = {
-      use_template = [ "macFiles" ];
+      use_template = [ "darwinFiles" ];
       recursive = true;
     };
   };
 
-  systemd.services.mac-file-backups-dataset = {
-    description = "Create the ZFS dataset for plain-file Mac backups";
+  systemd.services.darwin-file-backups-dataset = {
+    description = "Create the ZFS dataset for plain-file Darwin backups";
     wantedBy = [ "multi-user.target" ];
     after = [ "zfs.target" ];
     serviceConfig = {
@@ -45,7 +49,7 @@ in
       fi
 
       ${pkgs.zfs}/bin/zfs mount ${dataset} >/dev/null 2>&1 || true
-      ${pkgs.coreutils}/bin/install -d -m 0750 ${mountpoint}/mac
+      ${lib.concatMapStringsSep "\n" (host: "${pkgs.coreutils}/bin/install -d -m 0750 ${mountpoint}/${host}") hosts}
     '';
   };
 

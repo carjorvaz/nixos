@@ -1,10 +1,17 @@
 {
+  config,
   pkgs,
+  lib,
   ...
 }:
 
 let
-  excludeFile = ./mac-file-backup.exclude;
+  # Keep the existing server-side mountpoint layout to avoid churn on pius.
+  backupRoot = "/mnt/mac-backups";
+  excludeFile = ./darwin-file-backup.exclude;
+  hostName = config.networking.hostName;
+  jobName = "${hostName}-file-backup";
+  remoteRoot = "${backupRoot}/${hostName}";
 
   sources = [
     "Desktop"
@@ -19,7 +26,7 @@ let
   ];
 
   backupScript = pkgs.writeShellApplication {
-    name = "mac-file-backup";
+    name = jobName;
     runtimeInputs = [
       pkgs.coreutils
       pkgs.openssh
@@ -29,14 +36,14 @@ let
       set -eu
 
       remote_host="pius"
-      remote_root="/mnt/mac-backups/mac"
-      cache_dir="$HOME/Library/Caches/mac-file-backup"
+      remote_root=${lib.escapeShellArg remoteRoot}
+      cache_dir="$HOME/Library/Caches/${jobName}"
       lock_dir="$cache_dir/lock"
 
       mkdir -p "$cache_dir"
 
       if ! mkdir "$lock_dir" 2>/dev/null; then
-        echo "mac-file-backup: another run is already active"
+        echo "${jobName}: another run is already active"
         exit 0
       fi
 
@@ -46,7 +53,7 @@ let
       trap cleanup EXIT
 
       if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$remote_host" true; then
-        echo "mac-file-backup: $remote_host is unreachable, skipping"
+        echo "${jobName}: $remote_host is unreachable, skipping"
         exit 0
       fi
 
@@ -57,11 +64,11 @@ let
         src="$HOME/$rel"
 
         if [ ! -e "$src" ]; then
-          echo "mac-file-backup: skipping missing $rel"
+          echo "${jobName}: skipping missing $rel"
           continue
         fi
 
-        echo "mac-file-backup: syncing $rel"
+        echo "${jobName}: syncing $rel"
 
         rsync \
           --archive \
@@ -80,17 +87,17 @@ let
   };
 in
 {
-  launchd.user.agents.mac-file-backup = {
+  launchd.user.agents."${jobName}" = {
     environment.HOME = "/Users/cjv";
     path = [ pkgs.coreutils ];
-    command = "${backupScript}/bin/mac-file-backup";
+    command = "${backupScript}/bin/${jobName}";
     serviceConfig = {
       ProcessType = "Background";
       RunAtLoad = true;
       StartInterval = 21600;
       WorkingDirectory = "/Users/cjv";
-      StandardOutPath = "/Users/cjv/Library/Logs/mac-file-backup.log";
-      StandardErrorPath = "/Users/cjv/Library/Logs/mac-file-backup.log";
+      StandardOutPath = "/Users/cjv/Library/Logs/${jobName}.log";
+      StandardErrorPath = "/Users/cjv/Library/Logs/${jobName}.log";
     };
   };
 }

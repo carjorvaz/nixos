@@ -49,7 +49,7 @@
     "${self}/profiles/nixos/jellyfin.nix"
     "${self}/profiles/nixos/jellyseerr.nix"
     "${self}/profiles/nixos/msmtp.nix"
-    "${self}/profiles/nixos/mac-file-backups.nix"
+    "${self}/profiles/nixos/darwin-file-backups.nix"
     "${self}/profiles/nixos/nextcloud.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     # "${self}/profiles/nixos/llama-server.nix"

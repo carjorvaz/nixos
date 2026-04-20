@@ -87,9 +87,9 @@ in
 # 1. Install Nix with determinate installer (install upstream Nix, not Determinate Nix)
 #   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
 # 2. Use nix run to run the first rebuild
-#   nix run nix-darwin -- switch --flake ~/Documents/nixos#mac
+#   nix run nix-darwin -- switch --flake ~/Documents/nixos#air
 # 3. Use darwin-rebuild normally
-#   darwin-rebuild switch --flake ~/Documents/nixos#mac
+#   darwin-rebuild switch --flake ~/Documents/nixos#air
 
 # References:
 # - https://gist.github.com/jmatsushita/5c50ef14b4b96cb24ae5268dab613050
@@ -99,13 +99,15 @@ in
   home-manager.backupFileExtension = "hm-backup";
 
   imports = [
-    "${self}/profiles/darwin/mac-file-backup.nix"
+    "${self}/profiles/darwin/darwin-file-backup.nix"
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
   ];
 
   nix = {
-    enable = true;
+    # Bootstrap installs Nix separately on macOS, so keep nix-darwin from
+    # trying to manage the Nix installation itself here.
+    enable = false;
 
     settings = {
       experimental-features = [
@@ -126,7 +128,7 @@ in
     '';
   };
 
-  networking.hostName = "mac";
+  networking.hostName = "air";
 
   fonts.packages = [
     pkgs.nerd-fonts.jetbrains-mono
@@ -148,7 +150,7 @@ in
     freerdp
     llama-cpp
     nixos-rebuild
-    signal-desktop
+    #signal-desktop
     telegram-desktop
     vesktop-discord
 
@@ -182,13 +184,24 @@ in
     config.home-manager.users.cjv.programs.mpv.finalPackage
   ];
 
-  nixpkgs.config.allowUnfreePredicate =
-    pkg:
-    builtins.elem (lib.getName pkg) [
-      "firefox-bin"
-      "firefox-bin-unwrapped"
-      "symbola"
+  nixpkgs = {
+    overlays = [
+      (_: prev: {
+        # Keep Signal on Nix for the Air while the pinned nixpkgs package catches
+        # up to the newer desktop DB schema already present in the migrated
+        # local profile.
+        signal-desktop = prev.callPackage ../overlays/signal-desktop-override/package.nix { };
+      })
     ];
+
+    config.allowUnfreePredicate =
+      pkg:
+      builtins.elem (lib.getName pkg) [
+        "firefox-bin"
+        "firefox-bin-unwrapped"
+        "symbola"
+      ];
+  };
 
   homebrew = {
     # STATE: requires manually installing Homebrew: brew.sh
@@ -303,7 +316,7 @@ in
   home-manager.users.cjv = {
     imports = [
       "${self}/profiles/home-manager/brave.nix"
-      "${self}/profiles/home-manager/firefox-mac.nix"
+      "${self}/profiles/home-manager/firefox-darwin.nix"
       "${self}/profiles/home-manager/helix.nix"
       "${self}/profiles/home-manager/mpv.nix"
       "${self}/profiles/home-manager/neovim.nix"
@@ -393,6 +406,19 @@ in
       '';
     };
 
+    home.activation.karabinerLegacyLaunchAgentCleanup = {
+      before = [ "karabinerReload" ];
+      after = [ "writeBoundary" ];
+      data = ''
+        legacy="$HOME/Library/LaunchAgents/org.nixos.activate_karabiner_system_ext.plist"
+
+        if [ -e "$legacy" ]; then
+          $DRY_RUN_CMD /bin/launchctl bootout "gui/$UID" "$legacy" 2>/dev/null || true
+          $DRY_RUN_CMD rm -f "$legacy"
+        fi
+      '';
+    };
+
     home.stateVersion = "23.05";
   };
 
@@ -416,6 +442,22 @@ in
     if [ -L "$legacy_cmux_ghostty_si" ]; then
       rm -f "$legacy_cmux_ghostty_si"
     fi
+
+    # Karabiner 15.9 now manages its own launchd jobs via ServiceManagement.
+    # Older nix-darwin jobs can linger in /Library and keep pointing at stale
+    # store paths after the repo stopped declaring them.
+    for legacy in \
+      "/Library/LaunchDaemons/org.nixos.start_karabiner_daemons.plist" \
+      "/Library/LaunchDaemons/org.nixos.setsuid_karabiner_session_monitor.plist" \
+      "/Library/LaunchDaemons/org.pqrs.Karabiner-DriverKit-VirtualHIDDeviceClient.plist" \
+      "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_grabber.plist" \
+      "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_observer.plist"
+    do
+      if [ -e "$legacy" ]; then
+        /bin/launchctl bootout system "$legacy" 2>/dev/null || true
+        rm -f "$legacy"
+      fi
+    done
 
     # Brave reads managed preferences from this path, but off-store
     # force-installed extensions are blocked on unmanaged macOS browsers.
