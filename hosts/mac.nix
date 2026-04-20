@@ -99,6 +99,7 @@ in
   home-manager.backupFileExtension = "hm-backup";
 
   imports = [
+    "${self}/profiles/darwin/mac-file-backup.nix"
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
   ];
@@ -404,16 +405,16 @@ in
     end
   '';
 
-  # cmux still ships without Ghostty shell integration files. Link the Nix
-  # Ghostty integration into the app bundle so shells spawned from cmux get the
-  # usual prompt marks and cwd reporting.
+  # Keep the remaining post-activation cleanup narrow. Avoid mutating app
+  # bundles here: patching /Applications/cmux.app breaks its code signature,
+  # which in turn makes macOS more likely to forget Files & Folders consent
+  # across updates. cmux can already consume Ghostty integration via the
+  # exported GHOSTTY_RESOURCES_DIR environment variable above. Remove the old
+  # symlink if it exists so the cask can return to its vendor layout.
   system.activationScripts.postActivation.text = ''
-    cmux="/Applications/cmux.app/Contents/Resources/ghostty"
-    si="${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/shell-integration"
-    target="$cmux/shell-integration"
-
-    if [ -d "$cmux" ] && [ -d "$si" ] && { [ ! -e "$target" ] || [ -L "$target" ]; }; then
-      ln -sfn "$si" "$target"
+    legacy_cmux_ghostty_si="/Applications/cmux.app/Contents/Resources/ghostty/shell-integration"
+    if [ -L "$legacy_cmux_ghostty_si" ]; then
+      rm -f "$legacy_cmux_ghostty_si"
     fi
 
     # Brave reads managed preferences from this path, but off-store
