@@ -387,7 +387,7 @@
     helix
     basedpyright
     ruff
-    nodePackages.prettier
+    prettier
 
     brainworkshop
 

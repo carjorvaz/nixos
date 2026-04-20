@@ -204,7 +204,7 @@
         };
       };
 
-      darwinConfigurations."mac" = inputs.nix-darwin.lib.darwinSystem {
+      darwinConfigurations.air = inputs.nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
         specialArgs = { inherit inputs self; };
         modules = [
@@ -219,7 +219,7 @@
           }
           inputs.nix-index-database.darwinModules.nix-index
           { programs.nix-index-database.comma.enable = true; }
-          ./hosts/mac.nix
+          ./hosts/air.nix
         ];
       };
 

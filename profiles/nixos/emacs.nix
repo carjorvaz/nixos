@@ -54,8 +54,8 @@ in
     graphviz
     julia-bin # Use binary to avoid GMP/GCC15 build failure
     nil # nix LSP
-    nodePackages.bash-language-server # sh +lsp
-    nodePackages.yaml-language-server # yaml +lsp
+    bash-language-server # sh +lsp
+    yaml-language-server # yaml +lsp
     nodejs
     pandoc
     pyright

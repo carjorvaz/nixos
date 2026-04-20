@@ -14,18 +14,18 @@
     overrideFolders = true;
 
     settings = {
-      # Reuse the Mac's existing Syncthing identity so we can revive the old
+      # Reuse the Air's existing Syncthing identity so we can revive the old
       # Org share instead of creating yet another peer/folder lineage.
-      devices.mac = {
+      devices.air = {
         id = "CO234N7-ZWONVE3-Q7YYPVR-WVQAULG-RU3WDKT-OJRV5EY-YSQTWVW-BUAAPAB";
-        name = "mac";
+        name = "air";
       };
 
       folders.org = {
         id = "mybuc-ckyui";
         label = "Org";
         path = "/home/cjv/org";
-        devices = [ "mac" ];
+        devices = [ "air" ];
         minDiskFree = {
           unit = "MiB";
           value = 256;
@@ -49,7 +49,7 @@
         id = "tese-sync";
         label = "Tese";
         path = "/home/cjv/Documents/tese";
-        devices = [ "mac" ];
+        devices = [ "air" ];
         minDiskFree = {
           unit = "MiB";
           value = 256;
