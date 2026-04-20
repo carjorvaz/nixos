@@ -5,6 +5,10 @@ let
 in
 {
   services = {
+    # Keep this reachable through the private tailnet/DNS layer, but do not
+    # add nginx-level Tailscale auth here: native TV/mobile Jellyfin clients
+    # speak directly to the app and do not handle browser-oriented auth gates
+    # nearly as gracefully as the Arr/browser tools do.
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";

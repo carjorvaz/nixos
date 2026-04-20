@@ -5,6 +5,9 @@ let
 in
 {
   services = {
+    # Home Assistant remains tailnet-private, but we avoid nginx-level
+    # Tailscale auth for now because the mobile app and API-style clients are
+    # better served by Home Assistant's own session/auth model.
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       useACMEHost = "vaz.ovh";
