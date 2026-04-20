@@ -49,6 +49,7 @@
     "${self}/profiles/nixos/jellyfin.nix"
     "${self}/profiles/nixos/jellyseerr.nix"
     "${self}/profiles/nixos/msmtp.nix"
+    "${self}/profiles/nixos/mac-file-backups.nix"
     "${self}/profiles/nixos/nextcloud.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     # "${self}/profiles/nixos/llama-server.nix"
@@ -100,11 +101,18 @@
   };
 
   services = {
-    nginx.virtualHosts = {
-      "router.vaz.ovh" = {
-        forceSSL = true;
-        useACMEHost = "vaz.ovh";
-        locations."/".proxyPass = "http://192.168.1.1";
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ "router.vaz.ovh" ];
+      };
+
+      virtualHosts = {
+        "router.vaz.ovh" = {
+          forceSSL = true;
+          useACMEHost = "vaz.ovh";
+          locations."/".proxyPass = "http://192.168.1.1";
+        };
       };
     };
 
