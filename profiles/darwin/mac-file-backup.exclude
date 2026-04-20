@@ -1,0 +1,14 @@
+# macOS Finder metadata and localization markers.
+.DS_Store
+.localized
+
+# Incomplete browser/download manager artifacts.
+*.crdownload
+*.download
+*.part
+
+# Local rebuildable app environments and caches stored under Documents.
+/ComfyUI/.bizyair_cache/
+/ComfyUI/.venv/
+/ComfyUI/temp/
+/open-webui/cache/
