@@ -26,9 +26,19 @@ in
         name = "emacs-liquid-glass";
         paths = [ myEmacs ];
         postBuild = ''
+          plist="$out/Applications/Emacs.app/Contents/Info.plist"
+
+          # Keep a legacy .icns fallback, but declare the liquid-glass asset
+          # catalog explicitly so the modern icon path is coherent.
           rm $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
           cp ${emacsLiquidGlassIcon} $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
           cp ${emacsLiquidGlassAssets} $out/Applications/Emacs.app/Contents/Resources/Assets.car
+
+          if ! grep -q '<key>CFBundleIconName</key>' "$plist"; then
+            sed -i '/<string>Emacs\.icns<\/string>/a\
+\t<key>CFBundleIconName</key>\
+\t<string>Emacs</string>' "$plist"
+          fi
         '';
       })
 
@@ -45,8 +55,8 @@ in
     shellcheck
     shfmt
     nil # nix LSP
-    nodePackages.js-beautify
-    nodePackages.stylelint
+    js-beautify
+    stylelint
     pandoc # markdown preview/export
     pyright
     python3Packages.pygments

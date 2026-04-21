@@ -10,9 +10,16 @@
     model = "deepseek-chat";
   };
 
-  services.nginx.virtualHosts."pdf-translator.vaz.ovh" = {
-    forceSSL = true;
-    useACMEHost = "vaz.ovh";
-    locations."/".proxyPass = "http://127.0.0.1:${toString config.services.pdf-translator.port}";
+  services.nginx = {
+    tailscaleAuth = {
+      enable = true;
+      virtualHosts = [ "pdf-translator.vaz.ovh" ];
+    };
+
+    virtualHosts."pdf-translator.vaz.ovh" = {
+      forceSSL = true;
+      useACMEHost = "vaz.ovh";
+      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.pdf-translator.port}";
+    };
   };
 }

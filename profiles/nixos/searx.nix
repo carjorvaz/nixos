@@ -6,10 +6,17 @@ let
 in
 {
   services = {
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.searx.settings.server.port}";
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."/".proxyPass = "http://127.0.0.1:${toString config.services.searx.settings.server.port}";
+      };
     };
 
     searx = {

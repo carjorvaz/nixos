@@ -12,6 +12,7 @@ let
     "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts"
     "Library/Application Support/Chromium/NativeMessagingHosts"
     "Library/Application Support/Google/Chrome/NativeMessagingHosts"
+    "Library/Application Support/Orion/NativeMessagingHosts"
   ];
   rustabDarwinNativeMessagingHostDirsArgs = lib.escapeShellArgs rustabDarwinNativeMessagingHostDirs;
   rustabNativeMessagingHostManifest = pkgs.writeText "rustab_mediator.json" (builtins.toJSON {
@@ -68,13 +69,19 @@ in
 # - Set up Kagi as default search engine
 #   - First enable index other search engines
 #   - https://github.com/kagisearch/chrome_extension_basic?tab=readme-ov-file#setting-default-search-on-linux
-# - (macOS) Brave refuses off-store auto-install on unmanaged browsers, so:
-#   - Rustab must still be loaded once from brave://extensions using
+# - (macOS) Extension caveats:
+#   - Chrome Web Store extensions are declared via External Extensions JSON
+#     and then copied to real files during activation because Brave appears
+#     not to honor symlinked descriptors from the Nix store
+#   - Kagi Search still needs the normal Brave-side default-search setup
+#   - Brave refuses off-store auto-install on unmanaged browsers, so Rustab
+#     must still be loaded once from brave://extensions using
 #     ~/Library/Application Support/rustab/chrome-extension
+#   - Orion can install that same unpacked Chrome extension via
+#     Tools > Extensions > Install from Disk
 #   - Bypass Paywalls Clean remains a manual install on macOS
-#   - Rustab's native host manifest is installed into Chromium-family
-#     fallback directories because current Brave releases do not reliably
-#     discover it from the branded Brave application-support path alone
+#   - Rustab's Chrome native host manifest is installed into Chromium-family
+#     fallback directories plus Orion's application-support path
 {
   home.packages = [ rustab ];
 
@@ -116,6 +123,33 @@ in
         done
       '');
 
+  # Brave on macOS appears not to load Chrome Web Store external extension
+  # descriptors when Home Manager exposes them as symlinks into the Nix
+  # store. Materialize those JSON files as real copies after link generation
+  # so Brave can discover and install the extensions.
+  home.activation.braveDarwinExternalExtensions =
+    lib.hm.dag.entryAfter [ "linkGeneration" ]
+      (lib.optionalString pkgs.stdenv.isDarwin ''
+        braveExternalExtensionsDir="$HOME/Library/Application Support/BraveSoftware/Brave-Browser/External Extensions"
+
+        if [ -d "$braveExternalExtensionsDir" ]; then
+          for braveExternalExtensionFile in "$braveExternalExtensionsDir"/*.json; do
+            if [ ! -L "$braveExternalExtensionFile" ]; then
+              continue
+            fi
+
+            braveExternalExtensionSource="$(${pkgs.coreutils}/bin/readlink "$braveExternalExtensionFile")"
+
+            if [ -z "$braveExternalExtensionSource" ]; then
+              continue
+            fi
+
+            $DRY_RUN_CMD rm -f "$braveExternalExtensionFile"
+            $DRY_RUN_CMD install -m 0644 "$braveExternalExtensionSource" "$braveExternalExtensionFile"
+          done
+        fi
+      '');
+
   programs.brave = {
     enable = true;
 
@@ -137,9 +171,10 @@ in
 
     nativeMessagingHosts = lib.optionals (!pkgs.stdenv.isDarwin) [ rustab ];
 
-    # Linux supports self-hosted external extensions declaratively via
-    # External Extensions JSON. macOS only allows off-store installs in
-    # enterprise-managed browsers, so keep those on the manual path there.
+    # Linux supports both self-hosted and Chrome Web Store external
+    # extensions declaratively here. On macOS, only the Chrome Web Store
+    # entries below stay declarative; off-store installs still require the
+    # manual path on unmanaged browsers.
     extensions =
       lib.optionals (!pkgs.stdenv.isDarwin) [
         {

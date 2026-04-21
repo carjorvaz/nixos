@@ -5,10 +5,17 @@ let
 in
 {
   services = {
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."/".proxyPass = "http://127.0.0.1:6767";
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."/".proxyPass = "http://127.0.0.1:6767";
+      };
     };
 
     bazarr.enable = true;

@@ -19,12 +19,19 @@ in
     };
   };
 
-  services.nginx.virtualHosts.${domain} = {
-    default = true;
-    forceSSL = true;
-    useACMEHost = "vaz.ovh";
-    locations."/assets/icons/" = {
-      alias = "${../../assets/homer-icons}/";
+  services.nginx = {
+    tailscaleAuth = {
+      enable = true;
+      virtualHosts = [ domain ];
+    };
+
+    virtualHosts.${domain} = {
+      default = true;
+      forceSSL = true;
+      useACMEHost = "vaz.ovh";
+      locations."/assets/icons/" = {
+        alias = "${../../assets/homer-icons}/";
+      };
     };
   };
 }
