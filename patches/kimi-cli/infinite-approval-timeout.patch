@@ -1,0 +1,11 @@
+--- a/src/kimi_cli/approval_runtime/runtime.py
++++ b/src/kimi_cli/approval_runtime/runtime.py
+@@ -83,7 +83,7 @@ class ApprovalRuntime:
+         return request
+ 
+     async def wait_for_response(
+-        self, request_id: str, timeout: float = 300.0
++        self, request_id: str, timeout: float | None = None
+     ) -> tuple[ApprovalResponseKind, str]:
+         waiter = self._waiters.get(request_id)
+         request = self._requests.get(request_id)

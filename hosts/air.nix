@@ -196,7 +196,7 @@ in
     hugo
     go
     guile
-    inputs.kimi-cli.packages.${pkgs.stdenv.hostPlatform.system}.kimi-cli
+    pkgs.kimi-cli
     neovim
     pipx
     rlwrap
@@ -214,11 +214,38 @@ in
 
   nixpkgs = {
     overlays = [
-      (_: prev: {
+      (final: prev: {
         # Keep Signal on Nix for the Air while the pinned nixpkgs package catches
         # up to the newer desktop DB schema already present in the migrated
         # local profile.
         signal-desktop = prev.callPackage ../overlays/signal-desktop-override/package.nix { };
+
+        kimi-cli = pkgs.runCommand "kimi-cli"
+          {
+            nativeBuildInputs = [ pkgs.makeWrapper pkgs.ripgrep ];
+            passthru.version = inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli.version;
+          }
+          ''
+            original=${inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli}
+
+            # Extract virtual env path from the original wrapper script.
+            venvPath=$(sed -n 's|.*exec "\(/nix/store/[^"]*\)".*|\1|p' "$original/bin/kimi")
+            venvPath=$(dirname "$(dirname "$venvPath")")
+
+            # Copy the virtual env so we can patch it.
+            cp -rL "$venvPath" $out
+            chmod -R u+w $out
+
+            substituteInPlace $out/lib/python3.13/site-packages/kimi_cli/approval_runtime/runtime.py \
+              --replace-fail 'timeout: float = 300.0' 'timeout: float | None = None'
+            rm -f $out/lib/python3.13/site-packages/kimi_cli/approval_runtime/__pycache__/runtime.cpython-313.pyc
+
+            # Recreate the wrapper around the patched virtual env.
+            mv $out/bin/kimi $out/bin/.kimi-unwrapped
+            makeWrapper $out/bin/.kimi-unwrapped $out/bin/kimi \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ripgrep ]} \
+              --set KIMI_CLI_NO_AUTO_UPDATE "1"
+          '';
       })
     ];
 

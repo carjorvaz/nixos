@@ -8,7 +8,7 @@
 let
   jobName = "kimi-cli-update-reminder";
   repoDir = "/Users/cjv/Documents/nixos";
-  kimiCliPackage = inputs.kimi-cli.packages.${pkgs.stdenv.hostPlatform.system}.kimi-cli;
+  kimiCliPackage = pkgs.kimi-cli;
   currentVersion = kimiCliPackage.version;
   updateCommand = "cd ${repoDir} && nix flake update kimi-cli && darwin-rebuild switch --flake ${repoDir}#air";
   latestVersionUrl = "https://cdn.kimi.com/binaries/kimi-cli/latest";
