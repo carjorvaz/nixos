@@ -32,9 +32,16 @@ in
   ];
 
   services = {
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+      };
     };
 
     frigate = {

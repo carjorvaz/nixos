@@ -11,33 +11,55 @@ let
   key = key_code: { inherit key_code; };
   topCaseKey = apple_vendor_top_case_key_code: { inherit apple_vendor_top_case_key_code; };
 
-  remap = from: to: {
-    inherit from;
+  basicRemap = from: to: {
+    type = "basic";
+    from = from // {
+      modifiers.optional = [ "any" ];
+    };
     to = [ to ];
   };
 
-  swap = a: b: [
+  conditionedRemap = condition: from: to: (basicRemap from to) // {
+    conditions = [ condition ];
+  };
+
+  swap = remap: a: b: [
     (remap a b)
     (remap b a)
   ];
 
-  keyboard = vendor_id: product_id: {
-    identifiers = {
-      is_keyboard = true;
-      inherit product_id vendor_id;
-    };
+  builtInKeyboardCondition = {
+    type = "device_if";
+    identifiers = [
+      { is_built_in_keyboard = true; }
+    ];
   };
 
-  builtInAppleIsoKeyboard = keyboard 1452 834;
+  nonBuiltInKeyboardCondition = {
+    type = "device_unless";
+    identifiers = [
+      { is_built_in_keyboard = true; }
+    ];
+  };
 
-  leftCommandSwap = swap (key "left_command") (key "left_option");
+  allKeyboardModifierPolicy = [
+    (basicRemap (key "right_command") (key "right_option"))
+  ];
 
-  globalModifierPolicy =
+  externalKeyboardModifierPolicy =
     [
-      (remap (key "right_command") (key "right_option"))
-      (remap (key "caps_lock") (key "left_control"))
+      (conditionedRemap nonBuiltInKeyboardCondition (key "caps_lock") (key "left_control"))
     ]
-    ++ leftCommandSwap;
+    ++ (swap
+      (conditionedRemap nonBuiltInKeyboardCondition)
+      (key "left_command")
+      (key "left_option"));
+
+  builtInKeyboardModifierPolicy =
+    (swap
+      (conditionedRemap builtInKeyboardCondition)
+      (topCaseKey "keyboard_fn")
+      (key "left_control"));
 
   karabinerConfig = {
     global.show_in_menu_bar = false;
@@ -47,17 +69,21 @@ let
         name = "Default profile";
         selected = true;
 
-        simple_modifications = globalModifierPolicy;
-
-        devices = [
-          ((builtInAppleIsoKeyboard) // {
-            simple_modifications = [
-              (remap (topCaseKey "keyboard_fn") (key "left_control"))
-              (remap (key "left_control") (topCaseKey "keyboard_fn"))
-              (remap (key "left_command") (key "left_command"))
-              (remap (key "left_option") (key "left_option"))
-            ];
-          })
+        # Use complex modifications here so the built-in keyboard can stay
+        # native while external keyboards still inherit the modifier policy.
+        complex_modifications.rules = [
+          {
+            description = "Map right command to right option on every keyboard";
+            manipulators = allKeyboardModifierPolicy;
+          }
+          {
+            description = "Swap fn and left control on the built-in keyboard";
+            manipulators = builtInKeyboardModifierPolicy;
+          }
+          {
+            description = "Apply modifier swaps to external keyboards only";
+            manipulators = externalKeyboardModifierPolicy;
+          }
         ];
 
         virtual_hid_keyboard.keyboard_type_v2 = "iso";
@@ -102,6 +128,7 @@ in
     "${self}/profiles/darwin/darwin-file-backup.nix"
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
+    "${self}/profiles/darwin/kimi-cli-update-reminder.nix"
   ];
 
   nix = {
@@ -169,6 +196,7 @@ in
     hugo
     go
     guile
+    inputs.kimi-cli.packages.${pkgs.stdenv.hostPlatform.system}.kimi-cli
     neovim
     pipx
     rlwrap
@@ -339,7 +367,6 @@ in
       package = null;
       settings = {
         theme = "light:Gruvbox Light,dark:Gruvbox Dark Hard";
-        font-size = 18;
       };
     };
 
@@ -462,7 +489,8 @@ in
     # Brave reads managed preferences from this path, but off-store
     # force-installed extensions are blocked on unmanaged macOS browsers.
     # Remove any previous plist so brave://policy stops showing stale blocked
-    # Rustab/BPC entries after we move back to the supported manual path here.
+    # Rustab/BPC entries while Chrome Web Store extensions continue through
+    # Home Manager's External Extensions path instead.
     rm -f "/Library/Managed Preferences/cjv/com.brave.Browser.plist"
     /usr/bin/killall cfprefsd 2>/dev/null || true
   '';

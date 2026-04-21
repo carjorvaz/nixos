@@ -1,9 +1,10 @@
-{ ... }:
+{ pkgs, ... }:
 
 let
   user = "samba";
   privatePath = "/mnt/samba/private";
   tmPath = "/mnt/samba/tm_share";
+  tmDataset = "zsafe/timemachine";
 in
 {
   # https://wiki.nixos.org/wiki/Samba#Server_setup
@@ -49,6 +50,7 @@ in
           # Change the above to suit your needs
           "fruit:aapl" = "yes";
           "fruit:time machine" = "yes";
+          "fruit:time machine max size" = "2T";
           "vfs objects" = "catia fruit streams_xattr";
         };
       };
@@ -103,9 +105,24 @@ in
   };
 
   fileSystems."${tmPath}" = {
-    device = "zsafe/timemachine";
+    device = tmDataset;
     fsType = "zfs";
     options = [ "zfsutil" ];
+  };
+
+  # Enforce a 2TB quota on the Time Machine dataset. macOS ignores the Samba
+  # fruit:time machine max size setting and uses the actual volume size.
+  systemd.services.zfs-timemachine-quota = {
+    description = "Enforce ZFS quota on Time Machine dataset";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "zfs.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      ${pkgs.zfs}/bin/zfs set quota=2T ${tmDataset}
+    '';
   };
 
   # Set up password: https://wiki.nixos.org/wiki/Samba#User_Authentication
@@ -115,5 +132,16 @@ in
   systemd.tmpfiles.rules = [
     "d ${privatePath} 0755 ${user} users"
     "d ${tmPath} 0755 ${user} users"
+    "d /var/lib/samba 0755 root root -"
+    "d /var/lib/samba/lock 0755 root root -"
+    "d /var/lib/samba/private 0700 root root -"
+    "d /var/lib/samba/private/msg.sock 0700 root root -"
+  ];
+
+  # Samba keeps its local account database and machine identity under
+  # /var/lib/samba. On impermanent hosts, losing that state breaks SMB auth
+  # for existing clients until the accounts are recreated.
+  environment.persistence."/persist".directories = [
+    "/var/lib/samba"
   ];
 }

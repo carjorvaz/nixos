@@ -1,39 +1,58 @@
 {
-  lib,
   discord,
+  jq,
+  lib,
+  perl,
   runCommand,
-  symlinkJoin,
   undmg,
   vesktop,
 }:
 
-# Vesktop with Discord's icon, in a Discord.app bundle.
-#
-# Editing Info.plist (for example to change CFBundleDisplayName) breaks
-# Electron's runtime bundle checks even after re-signing, so leave the
-# upstream metadata alone and only swap the app icon.
 let
   discordIcns = runCommand "discord-icns" { nativeBuildInputs = [ undmg ]; } ''
     undmg ${discord.src}
     cp Discord.app/Contents/Resources/electron.icns $out
   '';
 in
-symlinkJoin {
-  name = "vesktop-discord";
-  paths = [ vesktop ];
+vesktop.overrideAttrs (old: {
+  pname = "vesktop-discord";
 
-  postBuild = ''
-    mv $out/Applications/Vesktop.app $out/Applications/Discord.app
-    contents=$out/Applications/Discord.app/Contents
-    rm $contents/Resources/icon.icns
-    cp ${discordIcns} $contents/Resources/icon.icns
+  nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ perl ];
+
+  postPatch = (old.postPatch or "") + ''
+    cp ${discordIcns} build/icon.icns
+
+    ${jq}/bin/jq '
+      .build.productName = "Discord" |
+      .build.executableName = "Discord" |
+      .build.appId = "dev.vencord.vesktop-discord" |
+      .build.mac.icon = "build/icon.icns" |
+      .build.mac.extendInfo.CFBundleDisplayName = "Discord" |
+      .build.mac.extendInfo.CFBundleName = "Discord" |
+      del(.build.afterPack) |
+      del(.build.mac.extendInfo.CFBundleIconName)
+    ' package.json > package.json.tmp
+    mv package.json.tmp package.json
+
+    # Keep using Vesktop's existing macOS profile directory even though the
+    # bundle metadata now presents as Discord.app.
+    ${perl}/bin/perl -0pi -e 's@process\.env\.VENCORD_USER_DATA_DIR \|\| \(PORTABLE \? join\(vesktopDir, "Data"\) : join\(app\.getPath\("userData"\)\)\)@process.env.VENCORD_USER_DATA_DIR || (PORTABLE ? join(vesktopDir, "Data") : join(app.getPath("appData"), "Vesktop"))@' src/main/constants.ts
   '';
 
-  meta = {
-    description = "Vesktop wrapped in a Discord.app bundle with Discord's icon";
-    homepage = "https://github.com/Vencord/Vesktop";
-    license = vesktop.meta.license;
-    mainProgram = "Discord";
+  installPhase = ''
+    runHook preInstall
+    mkdir -p $out/{Applications,bin}
+    mv dist/mac*/Discord.app $out/Applications/Discord.app
+    runHook postInstall
+  '';
+
+  postFixup = ''
+    makeBinaryWrapper $out/Applications/Discord.app/Contents/MacOS/Discord $out/bin/vesktop-discord
+  '';
+
+  meta = old.meta // {
+    description = "Vesktop built as a native-looking Discord.app for macOS";
+    mainProgram = "vesktop-discord";
     platforms = lib.platforms.darwin;
   };
-}
+})

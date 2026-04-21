@@ -11,12 +11,19 @@ let
 in
 {
   services = {
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString config.services.open-webui.port}";
-        proxyWebsockets = true;
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString config.services.open-webui.port}";
+          proxyWebsockets = true;
+        };
       };
     };
 

@@ -47,6 +47,8 @@
     rustab.url = "github:carjorvaz/rustab";
     rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
+    kimi-cli.url = "github:MoonshotAI/kimi-cli";
+
     llm-agents.url = "github:numtide/llm-agents.nix";
 
     tuxedo-nixos.url = "github:sund3RRR/tuxedo-nixos";
@@ -61,21 +63,28 @@
       pkgsDir = ./pkgs;
       packageEntries =
         let
-          isPackage = name: type:
+          isPackage =
+            name: type:
             (type == "directory") || (type == "regular" && inputs.nixpkgs.lib.hasSuffix ".nix" name);
         in
         inputs.nixpkgs.lib.filterAttrs isPackage (builtins.readDir pkgsDir);
 
-      mkLocalPackages = pkgs:
+      mkLocalPackages =
+        pkgs:
         inputs.nixpkgs.lib.mapAttrs' (name: _: {
           name = inputs.nixpkgs.lib.removeSuffix ".nix" name;
           value = pkgs.callPackage (pkgsDir + "/${name}") { };
         }) packageEntries;
 
-      availableLocalPackages = pkgs:
+      availableLocalPackages =
+        pkgs:
         inputs.nixpkgs.lib.filterAttrs (
           _: pkg: inputs.nixpkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pkg
         ) (mkLocalPackages pkgs);
+
+      localPackagesNixpkgs =
+        system:
+        if inputs.nixpkgs.lib.hasSuffix "darwin" system then inputs.nixpkgs-darwin else inputs.nixpkgs;
 
       localPackagesOverlay = final: _: mkLocalPackages final;
 
@@ -83,7 +92,8 @@
       # unfree apps; allow those specific inputs when exposing flake package
       # outputs without broadening host-level package policy.
       localPackagesNixpkgsConfig = {
-        allowUnfreePredicate = pkg:
+        allowUnfreePredicate =
+          pkg:
           builtins.elem (inputs.nixpkgs.lib.getName pkg) [
             "discord"
           ];
@@ -223,12 +233,14 @@
         ];
       };
 
-      packages =
-        inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (system:
-          availableLocalPackages (import inputs.nixpkgs {
+      packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
+        system:
+        availableLocalPackages (
+          import (localPackagesNixpkgs system) {
             inherit system;
             config = localPackagesNixpkgsConfig;
-          })
-        );
+          }
+        )
+      );
     };
 }
