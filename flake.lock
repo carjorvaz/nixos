@@ -1194,11 +1194,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1776605170,
-        "narHash": "sha256-/7wBqyHEot2ekJhav+BnQi9eOGGYZ5EZEh0gYE9cJMc=",
+        "lastModified": 1777215489,
+        "narHash": "sha256-sckd+DWEa3Mb2FnbYJJx/4tmorGe/y5gbp5siMzknCw=",
         "owner": "carjorvaz",
         "repo": "rustab",
-        "rev": "4af8e19cdb147c870bbf5261e7bfd94eb1a15dcf",
+        "rev": "4b5c2402067a61730440c9fea5ea73b6b499efbe",
         "type": "github"
       },
       "original": {
