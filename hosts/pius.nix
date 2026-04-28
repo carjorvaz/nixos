@@ -34,7 +34,7 @@
     "${self}/profiles/nixos/zfs/email.nix"
     "${self}/profiles/nixos/zfs/backupTarget.nix"
     "${self}/profiles/nixos/zramSwap.nix"
-    # TODO: Enable after encryption migration (see docs/pius-encryption-migration.md)
+    # TODO: Enable after encryption migration (see ~/agents/nixos/pius-encryption-migration.md)
     # "${self}/modules/nixos/zfsRemoteUnlock.nix"
 
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
@@ -72,7 +72,7 @@
     "sd_mod"
   ];
 
-  # TODO: Enable after encryption migration (see docs/pius-encryption-migration.md)
+  # TODO: Enable after encryption migration (see ~/agents/nixos/pius-encryption-migration.md)
   # boot.zfs.requestEncryptionCredentials = true;
   boot.zfs.requestEncryptionCredentials = false;
 
