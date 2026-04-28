@@ -1,5 +1,6 @@
 {
   self,
+  config,
   lib,
   pkgs,
   inputs,
@@ -7,6 +8,8 @@
 }:
 
 let
+  bootstrapPassword = config.cjv.bootstrap.initialHashedPassword;
+  loginPasswordFile = config.age.secrets.cjvHashedPassword.path;
   hasManCacheEnable = lib.versionAtLeast lib.version "26.05pre";
 
   allowedUnfree = [
@@ -30,11 +33,12 @@ let
     in
     lib.mapAttrsToList (name: _: "${moduleDir}/${name}") nixFiles;
 in
-({
+{
   imports = [
     "${self}/profiles/nixos/shell/fish.nix"
     "${self}/profiles/nixos/locale.nix"
-  ] ++ nixosModules;
+  ]
+  ++ nixosModules;
 
   # boot.kernelPackages =
   #   lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages;
@@ -195,8 +199,17 @@ in
   users = {
     mutableUsers = lib.mkDefault false;
 
-    users.root.hashedPassword = lib.mkDefault "!";
+    users.root = lib.mkMerge [
+      (lib.mkIf (bootstrapPassword == null) {
+        hashedPasswordFile = lib.mkDefault loginPasswordFile;
+      })
+      (lib.mkIf (bootstrapPassword != null) {
+        initialHashedPassword = lib.mkDefault bootstrapPassword;
+      })
+    ];
   };
+
+  age.secrets.cjvHashedPassword.file = "${self}/secrets/cjvHashedPassword.age";
 
   # Only allow wheel group members to execute sudo.
   security.sudo.execWheelOnly = true;
@@ -206,8 +219,10 @@ in
 
   # Pre-populate known hosts for common forges (avoids TOFU).
   programs.ssh.knownHosts = {
-    "github.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
-    "gitlab.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf";
+    "github.com".publicKey =
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+    "gitlab.com".publicKey =
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf";
   };
 
   # Following section copied from: https://github.com/numtide/srvos/
@@ -350,4 +365,4 @@ in
 }
 // lib.optionalAttrs (!hasManCacheEnable) {
   documentation.man.generateCaches = true;
-})
+}

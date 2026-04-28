@@ -18,6 +18,7 @@ let
   ];
 in
 {
+  "cjvHashedPassword.age".publicKeys = systems ++ users;
   "hadrianusInitrdHostKey.age".publicKeys = [
     hadrianusSystem
   ]

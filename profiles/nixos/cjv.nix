@@ -6,6 +6,10 @@
   ...
 }:
 
+let
+  bootstrapPassword = config.cjv.bootstrap.initialHashedPassword;
+  passwordFile = config.age.secrets.cjvHashedPassword.path;
+in
 {
   users.users = {
     cjv = {
@@ -20,7 +24,10 @@
         # Reference: https://wiki.nixos.org/wiki/Serial_Console
         "dialout"
       ];
-      hashedPassword = lib.mkDefault "!";
+      hashedPasswordFile = lib.mkIf (bootstrapPassword == null) (lib.mkDefault passwordFile);
+      initialHashedPassword = lib.mkIf (bootstrapPassword != null) (
+        lib.mkDefault bootstrapPassword
+      );
       openssh.authorizedKeys.keys = import ./ssh-keys.nix;
     };
   };

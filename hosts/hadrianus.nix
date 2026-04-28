@@ -25,7 +25,6 @@ in
 
     "${self}/profiles/nixos/acme/dns-vaz-one.nix"
     "${self}/profiles/nixos/fail2ban.nix"
-    "${self}/profiles/nixos/ghost.nix"
     "${self}/profiles/nixos/mail.nix"
     "${self}/profiles/nixos/ntfy.nix"
     "${self}/profiles/nixos/nginx/common.nix"
