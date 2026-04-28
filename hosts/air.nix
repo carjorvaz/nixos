@@ -107,6 +107,69 @@ let
       <dir>~/Library/Fonts</dir>
     </fontconfig>
   '';
+
+  braveBpcExtensionId = "lkbebcjgcmobigpeffafkodonchffocl";
+  braveManagedPolicyPlist = pkgs.writeText "com.brave.Browser.plist" (
+    lib.generators.toPlist { escape = true; } {
+      # Allow the signed BPC CRX to stay enabled after manual install so it can
+      # use its own update manifest. Keep off-store auto-install policies out of
+      # this plist; unmanaged macOS Brave has rejected those before.
+      ExtensionInstallAllowlist = [ braveBpcExtensionId ];
+    }
+  );
+
+  piLocalModelId = "gemma-4-e4b-heretic";
+  piLocalModelPort = 8080;
+  piLocalModelPath = "/Users/cjv/Models/pi/gemma-4-E4B-it-ultra-uncensored-heretic-Q8_0.gguf";
+
+  piLlamaE4b = pkgs.writeShellScriptBin "pi-llama-e4b" ''
+    set -eu
+
+    model_path=${lib.escapeShellArg piLocalModelPath}
+    if [ ! -f "$model_path" ]; then
+      printf '%s\n' \
+        "Missing model: $model_path" \
+        "" \
+        "Copy it from pius with:" \
+        "  rsync -ah --progress root@pius:/persist/models/gemma-4-e4b-ultra-heretic/llmfan46/gemma-4-E4B-it-ultra-uncensored-heretic-Q8_0.gguf /Users/cjv/Models/pi/" >&2
+      exit 1
+    fi
+
+    # Gemma 4 model-card sampler defaults include temp=1.0, top_p=0.95,
+    # top_k=64, and min_p=0.0. Keep min-p explicit because llama.cpp's
+    # server default is nonzero. Tested 2026-04-28: --swa-full did not fix
+    # Gemma 4 prompt reuse on b8770 and cost ~660 MiB extra Metal memory.
+    exec ${pkgs.llama-cpp}/bin/llama-server \
+      --model "$model_path" \
+      --alias ${lib.escapeShellArg piLocalModelId} \
+      --host 127.0.0.1 \
+      --port ${toString piLocalModelPort} \
+      --no-webui \
+      --parallel 1 \
+      --ctx-size 32768 \
+      --gpu-layers auto \
+      --flash-attn auto \
+      --reasoning off \
+      --jinja \
+      --cache-type-k q8_0 \
+      --cache-type-v q8_0 \
+      --temp 1.0 \
+      --top-p 0.95 \
+      --top-k 64 \
+      --min-p 0.0
+  '';
+
+  tailscaleMacAppCli = pkgs.writeShellScriptBin "tailscale" ''
+    set -eu
+
+    tailscale_app=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    if [ ! -x "$tailscale_app" ]; then
+      printf '%s\n' "Tailscale.app is not installed at $tailscale_app" >&2
+      exit 127
+    fi
+
+    exec "$tailscale_app" "$@"
+  '';
 in
 
 # Bootstrapping:
@@ -177,7 +240,8 @@ in
     freerdp
     llama-cpp
     nixos-rebuild
-    #signal-desktop
+    signal-desktop
+    tailscaleMacAppCli
     telegram-desktop
     vesktop-discord
 
@@ -189,6 +253,7 @@ in
     ripgrep-all
     uutils-coreutils-noprefix
 
+    piLlamaE4b
     brainworkshop
 
     android-tools
@@ -204,6 +269,7 @@ in
     uv
     wget
     yt-dlp
+    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
 
     # HM's mpv module doesn't support package = null, so reference its
@@ -215,37 +281,45 @@ in
   nixpkgs = {
     overlays = [
       (final: prev: {
-        # Keep Signal on Nix for the Air while the pinned nixpkgs package catches
-        # up to the newer desktop DB schema already present in the migrated
-        # local profile.
-        signal-desktop = prev.callPackage ../overlays/signal-desktop-override/package.nix { };
+        kimi-cli =
+          pkgs.runCommand "kimi-cli"
+            {
+              nativeBuildInputs = [
+                pkgs.makeWrapper
+                pkgs.patch
+                pkgs.ripgrep
+              ];
+              passthru.version = inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli.version;
+            }
+            ''
+              original=${inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli}
 
-        kimi-cli = pkgs.runCommand "kimi-cli"
-          {
-            nativeBuildInputs = [ pkgs.makeWrapper pkgs.ripgrep ];
-            passthru.version = inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli.version;
-          }
-          ''
-            original=${inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli}
+              # Extract virtual env path from the original wrapper script.
+              venvPath=$(sed -n 's|.*exec "\(/nix/store/[^"]*\)".*|\1|p' "$original/bin/kimi")
+              venvPath=$(dirname "$(dirname "$venvPath")")
 
-            # Extract virtual env path from the original wrapper script.
-            venvPath=$(sed -n 's|.*exec "\(/nix/store/[^"]*\)".*|\1|p' "$original/bin/kimi")
-            venvPath=$(dirname "$(dirname "$venvPath")")
+              # Copy the virtual env so we can patch it.
+              cp -rL "$venvPath" $out
+              chmod -R u+w $out
 
-            # Copy the virtual env so we can patch it.
-            cp -rL "$venvPath" $out
-            chmod -R u+w $out
+              sitePackages=
+              for candidate in "$out"/lib/python*/site-packages; do
+                if [ -d "$candidate" ]; then
+                  sitePackages="$candidate"
+                  break
+                fi
+              done
+              [ -n "$sitePackages" ]
 
-            substituteInPlace $out/lib/python3.13/site-packages/kimi_cli/approval_runtime/runtime.py \
-              --replace-fail 'timeout: float = 300.0' 'timeout: float | None = None'
-            rm -f $out/lib/python3.13/site-packages/kimi_cli/approval_runtime/__pycache__/runtime.cpython-313.pyc
+              patch --fuzz=0 -d "$sitePackages" -p0 < ${self}/patches/kimi-cli/infinite-approval-timeout.patch
+              find "$sitePackages/kimi_cli" -type d -name __pycache__ -prune -exec rm -rf {} +
 
-            # Recreate the wrapper around the patched virtual env.
-            mv $out/bin/kimi $out/bin/.kimi-unwrapped
-            makeWrapper $out/bin/.kimi-unwrapped $out/bin/kimi \
-              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ripgrep ]} \
-              --set KIMI_CLI_NO_AUTO_UPDATE "1"
-          '';
+              # Recreate the wrapper around the patched virtual env.
+              mv $out/bin/kimi $out/bin/.kimi-unwrapped
+              makeWrapper $out/bin/.kimi-unwrapped $out/bin/kimi \
+                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ripgrep ]} \
+                --set KIMI_CLI_NO_AUTO_UPDATE "1"
+            '';
       })
     ];
 
@@ -336,6 +410,8 @@ in
     HOMEBREW_NO_ANALYTICS = "1";
     HOMEBREW_PREFIX = "/opt/homebrew";
     HOMEBREW_REPOSITORY = "/opt/homebrew";
+    PI_SKIP_VERSION_CHECK = "1";
+    PI_TELEMETRY = "0";
   };
 
   # Disable press and hold for diacritics.
@@ -369,6 +445,11 @@ in
   };
 
   home-manager.users.cjv = {
+    # Home Manager's generated manpage currently triggers a context warning in
+    # the pinned docs builder during darwin evaluation; keep the rest of the
+    # HM config and nix-darwin docs intact by disabling only that output.
+    manual.manpages.enable = false;
+
     imports = [
       "${self}/profiles/home-manager/brave.nix"
       "${self}/profiles/home-manager/firefox-darwin.nix"
@@ -427,6 +508,51 @@ in
           openPullRequestLinksInCmuxBrowser = false;
           openPortLinksInCmuxBrowser = false;
         };
+      };
+    };
+
+    home.file.".pi/agent/models.json".text = builtins.toJSON {
+      providers.llama-cpp = {
+        baseUrl = "http://localhost:${toString piLocalModelPort}/v1";
+        api = "openai-completions";
+        apiKey = "none";
+        compat = {
+          supportsDeveloperRole = false;
+          supportsReasoningEffort = false;
+        };
+        models = [
+          {
+            id = piLocalModelId;
+            name = "Gemma 4 E4B Heretic (local llama.cpp)";
+            reasoning = false;
+            input = [ "text" ];
+            contextWindow = 32768;
+            maxTokens = 8192;
+            cost = {
+              input = 0;
+              output = 0;
+              cacheRead = 0;
+              cacheWrite = 0;
+            };
+          }
+        ];
+      };
+    };
+
+    home.file.".pi/agent/settings.json".text = builtins.toJSON {
+      defaultProvider = "llama-cpp";
+      defaultModel = piLocalModelId;
+      defaultThinkingLevel = "off";
+      enableInstallTelemetry = false;
+      enabledModels = [ piLocalModelId ];
+      compaction = {
+        enabled = true;
+        reserveTokens = 4096;
+        keepRecentTokens = 12000;
+      };
+      retry.provider = {
+        timeoutMs = 600000;
+        maxRetries = 0;
       };
     };
 
@@ -513,12 +639,22 @@ in
       fi
     done
 
-    # Brave reads managed preferences from this path, but off-store
-    # force-installed extensions are blocked on unmanaged macOS browsers.
-    # Remove any previous plist so brave://policy stops showing stale blocked
-    # Rustab/BPC entries while Chrome Web Store extensions continue through
-    # Home Manager's External Extensions path instead.
-    rm -f "/Library/Managed Preferences/cjv/com.brave.Browser.plist"
+    # Allow Bypass Paywalls Clean's signed CRX install/update path. Brave reads
+    # Chromium policies from macOS managed preferences; keep the policy narrow
+    # so Rustab and Chrome Web Store extensions remain handled elsewhere.
+    brave_managed_preferences="/Library/Managed Preferences"
+    mkdir -p "$brave_managed_preferences"
+    chown root:wheel "$brave_managed_preferences"
+    chmod 755 "$brave_managed_preferences"
+    install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/com.brave.Browser.plist"
+
+    # macOS configuration profiles materialize user-scoped managed preferences
+    # here. Overwrite that path too, rather than removing it, so only the narrow
+    # allowlist survives from earlier experiments.
+    mkdir -p "$brave_managed_preferences/cjv"
+    chown root:wheel "$brave_managed_preferences/cjv"
+    chmod 755 "$brave_managed_preferences/cjv"
+    install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/cjv/com.brave.Browser.plist"
     /usr/bin/killall cfprefsd 2>/dev/null || true
   '';
 

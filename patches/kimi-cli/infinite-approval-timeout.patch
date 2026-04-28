@@ -1,6 +1,6 @@
---- a/src/kimi_cli/approval_runtime/runtime.py
-+++ b/src/kimi_cli/approval_runtime/runtime.py
-@@ -83,7 +83,7 @@ class ApprovalRuntime:
+--- kimi_cli/approval_runtime/runtime.py
++++ kimi_cli/approval_runtime/runtime.py
+@@ -83,7 +83,7 @@
          return request
  
      async def wait_for_response(
@@ -9,3 +9,54 @@
      ) -> tuple[ApprovalResponseKind, str]:
          waiter = self._waiters.get(request_id)
          request = self._requests.get(request_id)
+--- kimi_cli/config.py
++++ kimi_cli/config.py
+@@ -106,12 +106,12 @@
+         default=False,
+         description="Keep background tasks alive when CLI exits. Default: kill on exit.",
+     )
+-    agent_task_timeout_s: int = Field(default=900, ge=60)
+-    """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
++    agent_task_timeout_s: int | None = Field(default=None, ge=60)
++    """Maximum runtime in seconds for a background agent task. Default: unlimited."""
+     print_wait_ceiling_s: int = Field(default=3600, ge=1)
+     """Hard ceiling for how long ``--print`` mode waits for background tasks before
+     killing them and exiting. The effective wait is
+-    ``min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)``.
++    ``print_wait_ceiling_s`` when any active task is unbounded, otherwise ``min(max(active task timeout), print_wait_ceiling_s)``.
+     Default: 3600 (1 hour)."""
+
+
+--- kimi_cli/tools/agent/__init__.py
++++ kimi_cli/tools/agent/__init__.py
+@@ -49,7 +49,7 @@
+         description=(
+             "Timeout in seconds for the agent task. "
+             "Foreground: no default timeout (runs until completion), max 3600s (1hr). "
+-            "Background: default from config (15min), max 3600s (1hr). "
++            "Background: no default timeout unless configured, max 3600s (1hr). "
+             "The agent is stopped if it exceeds this limit."
+         ),
+         ge=30,
+--- kimi_cli/ui/print/__init__.py
++++ kimi_cli/ui/print/__init__.py
+@@ -142,13 +142,17 @@
+                             # Use an explicit None check — the falsy idiom
+                             # ``v.spec.timeout_s or agent_default`` would
+                             # silently promote a legitimate ``timeout_s=0``
+-                            # to the agent default (900s), contradicting
++                            # to the agent default, contradicting
+                             # the caller's explicit intent.
+                             task_timeouts = [
+                                 v.spec.timeout_s if v.spec.timeout_s is not None else agent_default
+                                 for v in initial_views
+                             ]
+-                            wait_cap = min(max(task_timeouts), bg_config.print_wait_ceiling_s)
++                            wait_cap = (
++                                bg_config.print_wait_ceiling_s
++                                if any(timeout is None for timeout in task_timeouts)
++                                else min(max(task_timeouts), bg_config.print_wait_ceiling_s)
++                            )
+                         else:
+                             # No active tasks at snapshot time — fall back to
+                             # the ceiling so a pending re-entry that spawns

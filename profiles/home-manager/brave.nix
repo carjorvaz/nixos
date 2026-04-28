@@ -79,7 +79,8 @@ in
 #     ~/Library/Application Support/rustab/chrome-extension
 #   - Orion can install that same unpacked Chrome extension via
 #     Tools > Extensions > Install from Disk
-#   - Bypass Paywalls Clean remains a manual install on macOS
+#   - Bypass Paywalls Clean uses a self-hosted CRX/update manifest; on macOS
+#     air.nix allowlists the signed CRX so Brave can install and auto-update it
 #   - Rustab's Chrome native host manifest is installed into Chromium-family
 #     fallback directories plus Orion's application-support path
 {
@@ -171,16 +172,18 @@ in
 
     nativeMessagingHosts = lib.optionals (!pkgs.stdenv.isDarwin) [ rustab ];
 
-    # Linux supports both self-hosted and Chrome Web Store external
-    # extensions declaratively here. On macOS, only the Chrome Web Store
-    # entries below stay declarative; off-store installs still require the
-    # manual path on unmanaged browsers.
+    # Linux supports both self-hosted and Chrome Web Store external extensions
+    # directly. On macOS, BPC also stays declarative because air.nix installs a
+    # matching ExtensionInstallAllowlist managed policy; Rustab's unpacked
+    # extension still uses the manual path on unmanaged browsers.
     extensions =
-      lib.optionals (!pkgs.stdenv.isDarwin) [
+      [
         {
           id = "lkbebcjgcmobigpeffafkodonchffocl"; # Bypass Paywalls Clean
           updateUrl = bpcExtensionUpdateUrl;
         }
+      ]
+      ++ lib.optionals (!pkgs.stdenv.isDarwin) [
         {
           id = inputs.rustab.lib.chromeExtensionId;
           updateUrl = rustabExtensionUpdateUrl;
