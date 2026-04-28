@@ -9,9 +9,6 @@
 #
 # Direct unlock:
 #   ssh -4 -p 2222 root@host
-#
-# Tor unlock:
-#   torify ssh root@<onion>.onion
 
 with lib;
 
@@ -71,6 +68,16 @@ in
         '';
       };
 
+      testHoldSeconds = mkOption {
+        type = types.ints.unsigned;
+        default = 0;
+        description = lib.mdDoc ''
+          Temporarily block the initrd before mounting the real root so remote
+          unlock reachability can be tested without committing to an encrypted
+          boot dependency. Leave this at 0 for normal operation.
+        '';
+      };
+
       static = {
         enable = mkEnableOption (lib.mdDoc "Static IP configuration");
 
@@ -98,37 +105,23 @@ in
           description = lib.mdDoc "The network interface device to be used.";
         };
       };
-
-      tor = {
-        enable = mkEnableOption (lib.mdDoc "Tor hidden service for remote unlock");
-
-        onionServiceDir = mkOption {
-          type = types.path;
-          description = lib.mdDoc ''
-            Path to directory containing Tor onion service keys:
-            - hostname
-            - hs_ed25519_public_key
-            - hs_ed25519_secret_key
-
-            Generate with: nix-shell -p mkp224o --run "mkp224o -n 1 -d ./onion unlock"
-            (use a vanity prefix like "unlock" or generate random with empty filter)
-          '';
-        };
-      };
     };
   };
 
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = !(useSystemdInitrd && cfg.tor.enable);
-        message = "cjv.zfsRemoteUnlock.tor is not yet supported with boot.initrd.systemd.enable";
-      }
-      {
-        assertion = !(useSystemdInitrd && config.boot.zfs.requestEncryptionCredentials == false);
+        assertion =
+          !(
+            useSystemdInitrd
+            && cfg.testHoldSeconds == 0
+            && config.boot.zfs.requestEncryptionCredentials == false
+          );
         message = ''
           cjv.zfsRemoteUnlock with systemd initrd expects boot.zfs.requestEncryptionCredentials
           to stay enabled so the initrd SSH session can answer the pending ZFS password prompt.
+          Set cjv.zfsRemoteUnlock.testHoldSeconds for a temporary reachability test
+          before encrypted datasets are part of boot.
         '';
       }
     ];
@@ -142,23 +135,12 @@ in
       initrd.supportedFilesystems = [ "zfs" ];
       initrd.kernelModules = [ cfg.driver ];
 
-      # Include Tor in initrd when enabled
-      initrd.extraUtilsCommands = mkIf (cfg.tor.enable && !useSystemdInitrd) ''
-        copy_bin_and_libs ${pkgs.tor}/bin/tor
-      '';
-
-      # Copy onion service keys to initrd
-      initrd.secrets = mkIf (cfg.tor.enable && !useSystemdInitrd) {
-        "/etc/tor/onion/bootup" = cfg.tor.onionServiceDir;
-      };
-
       initrd.network = {
         enable = cfg.enable;
 
         ssh = {
           enable = true;
-          # When using Tor, SSH listens on localhost only
-          port = if cfg.tor.enable then 22 else cfg.port;
+          port = cfg.port;
           hostKeys = [ "${cfg.hostKeyFile}" ];
           authorizedKeys = cfg.authorizedKeys;
         };
@@ -167,39 +149,38 @@ in
           # Import all pools
           zpool import -a
 
-          ${optionalString cfg.tor.enable ''
-            # Create Tor configuration
-            cat > /etc/tor/torrc << EOF
-          DataDirectory /etc/tor
-          SOCKSPort 0
-          HiddenServiceDir /etc/tor/onion/bootup
-          HiddenServicePort 22 127.0.0.1:22
-          EOF
-
-            # Fix permissions on onion service directory
-            chmod 700 /etc/tor/onion/bootup
-
-            # Start Tor in background
-            echo "Starting Tor hidden service..."
-            tor -f /etc/tor/torrc &
-
-            # Wait for Tor to bootstrap (check for hostname file being readable)
-            for i in $(seq 1 60); do
-              if [ -f /etc/tor/onion/bootup/hostname ]; then
-                echo "Tor hidden service ready: $(cat /etc/tor/onion/bootup/hostname)"
-                break
-              fi
-              sleep 1
-            done
-          ''}
-
           # Add the load-key command to the .profile
           echo "zfs load-key -a; killall zfs" >> /root/.profile
         '';
       };
 
-      initrd.systemd.extraBin.initrd-zfs-remote-unlock = mkIf useSystemdInitrd systemdInitrdShell;
-      initrd.systemd.users.root.shell = mkIf useSystemdInitrd "/bin/initrd-zfs-remote-unlock";
+      initrd.systemd = mkIf useSystemdInitrd (mkMerge [
+        {
+          extraBin.initrd-zfs-remote-unlock = systemdInitrdShell;
+          users.root.shell = "/bin/initrd-zfs-remote-unlock";
+        }
+        (mkIf (cfg.testHoldSeconds > 0) {
+          services.remote-unlock-test-hold = {
+            description = "Hold initrd for remote unlock reachability testing";
+            requiredBy = [ "sysroot.mount" ];
+            after = [
+              "network.target"
+              "sshd.service"
+            ];
+            before = [
+              "sysroot.mount"
+              "shutdown.target"
+            ];
+            conflicts = [ "shutdown.target" ];
+            unitConfig.DefaultDependencies = false;
+            script = ''
+              echo "Holding initrd for ${toString cfg.testHoldSeconds} seconds to test remote unlock reachability..."
+              sleep ${toString cfg.testHoldSeconds}
+            '';
+            serviceConfig.Type = "oneshot";
+          };
+        })
+      ]);
     };
   };
 }
