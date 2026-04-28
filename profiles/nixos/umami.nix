@@ -2,6 +2,7 @@
 
 let
   domain = "umami.carjorvaz.com";
+  upstream = "http://127.0.0.1:${toString config.services.umami.settings.PORT}";
 in
 {
   age.secrets.umamiAppSecret.file = "${self}/secrets/umamiAppSecret.age";
@@ -10,12 +11,22 @@ in
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       enableACME = true;
-      locations."/".proxyPass = "http://127.0.0.1:${toString config.services.umami.settings.PORT}";
-      # TODO: Remove after changing default admin password (admin/umami)
-      locations."/".extraConfig = ''
-        allow 100.64.0.0/10;
-        deny all;
-      '';
+      locations = {
+        # Public endpoints needed by visitors' browsers for analytics.
+        "= /script.js".proxyPass = upstream;
+        "= /beacon.js".proxyPass = upstream;
+        "= /app.js".proxyPass = upstream;
+        "= /api/v2/collect".proxyPass = upstream;
+
+        # Keep the dashboard and management API private to the tailnet.
+        "/" = {
+          proxyPass = upstream;
+          extraConfig = ''
+            allow 100.64.0.0/10;
+            deny all;
+          '';
+        };
+      };
     };
 
     umami = {
