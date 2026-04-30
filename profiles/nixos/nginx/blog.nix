@@ -8,6 +8,21 @@
 {
   imports = [ ./common.nix ];
 
+  users = {
+    groups.carlosvaz-deploy = { };
+
+    users.carlosvaz-deploy = {
+      isSystemUser = true;
+      group = "carlosvaz-deploy";
+      home = "/var/empty";
+      createHome = false;
+      shell = pkgs.bashInteractive;
+      openssh.authorizedKeys.keys = [
+        "restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuy5fn0e3ine80QNNa9TS2apicrsv+JDLZjpfEnPKZC github-actions-carlosvaz.com-20260430"
+      ];
+    };
+  };
+
   services.nginx.virtualHosts = {
     "www.carjorvaz.com" = {
       forceSSL = true;
@@ -87,6 +102,11 @@
       globalRedirect = "mafaldaribeiro.com";
     };
   };
+
+  systemd.tmpfiles.rules = [
+    "d /var/www/carlosvaz.com 0755 carlosvaz-deploy carlosvaz-deploy - -"
+    "Z /var/www/carlosvaz.com 0755 carlosvaz-deploy carlosvaz-deploy - -"
+  ];
 
   environment.persistence."/persist".directories = [ "/var/www" ];
 }
