@@ -8,6 +8,11 @@ in
   age.secrets.umamiAppSecret.file = "${self}/secrets/umamiAppSecret.age";
 
   services = {
+    nginx.appendHttpConfig = ''
+      limit_req_zone $binary_remote_addr zone=umami_login:10m rate=10r/m;
+      limit_req_status 429;
+    '';
+
     nginx.virtualHosts.${domain} = {
       forceSSL = true;
       enableACME = true;
@@ -18,13 +23,16 @@ in
         "= /app.js".proxyPass = upstream;
         "= /api/v2/collect".proxyPass = upstream;
 
-        # Keep the dashboard and management API private to the tailnet.
-        "/" = {
+        # Public dashboard; Umami's own login protects the application.
+        "= /api/auth/login" = {
           proxyPass = upstream;
           extraConfig = ''
-            allow 100.64.0.0/10;
-            deny all;
+            limit_req zone=umami_login burst=5 nodelay;
           '';
+        };
+
+        "/" = {
+          proxyPass = upstream;
         };
       };
     };
