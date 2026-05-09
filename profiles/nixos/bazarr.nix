@@ -33,6 +33,8 @@ in
 
   users.users.bazarr.extraGroups = [ "media" ];
 
+  systemd.services.bazarr.serviceConfig.UMask = "0002";
+
   environment.persistence."/persist".directories = [
     { directory = "/var/lib/bazarr"; user = "bazarr"; group = "bazarr"; }
   ];

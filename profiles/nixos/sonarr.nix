@@ -34,6 +34,8 @@ in
 
   users.users.sonarr.extraGroups = [ "media" ];
 
+  systemd.services.sonarr.serviceConfig.UMask = "0002";
+
   systemd.services.sonarr-configure-transmission = lib.mkIf (config.age.secrets ? sonarrApiKey) {
     description = "Ensure Sonarr uses a dedicated Transmission category";
     after = [

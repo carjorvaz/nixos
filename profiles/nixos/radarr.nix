@@ -34,6 +34,8 @@ in
 
   users.users.radarr.extraGroups = [ "media" ];
 
+  systemd.services.radarr.serviceConfig.UMask = "0002";
+
   systemd.services.radarr-configure-transmission = lib.mkIf (config.age.secrets ? radarrApiKey) {
     description = "Ensure Radarr uses a dedicated Transmission category";
     after = [
