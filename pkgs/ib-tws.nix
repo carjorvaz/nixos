@@ -51,7 +51,7 @@ let
 
   src = fetchurl {
     url = "https://download2.interactivebrokers.com/installers/tws/stable-standalone/tws-stable-standalone-linux-x64.sh";
-    hash = "sha256-rGsJDvhcw2klGYOCwVFiPmGWh2CKGQa1wTZh2JGIyWc=";
+    hash = "sha256-MckASmGzxnkFO8OYldnLwZEB7Ng5OikHlTZ98vvkuBI=";
   };
 
   installerFhs = buildFHSEnv {
