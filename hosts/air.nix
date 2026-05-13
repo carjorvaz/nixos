@@ -363,6 +363,7 @@ in
       "cmux"
       "comfyui"
       "codex"
+      "feather"
       "flux-app"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "keepingyouawake" # Simple open-source menu bar wrapper around caffeinate. If I want a more custom toggle later, SwiftBar plus a small plugin is a good fallback.
