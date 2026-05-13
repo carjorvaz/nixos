@@ -4,12 +4,14 @@
   lib,
   pkgs,
   inputs,
+  options,
   ...
 }:
 
 let
   bootstrapPassword = config.cjv.bootstrap.initialHashedPassword;
   loginPasswordFile = config.age.secrets.cjvHashedPassword.path;
+  hasCoredumpSettings = options.systemd.coredump ? settings;
   hasManCacheEnable = lib.versionAtLeast lib.version "26.05pre";
 
   allowedUnfree = [
@@ -257,11 +259,21 @@ in
       DefaultLimitNOFILE = "524288:524288";
     };
 
-    # Disable coredumps (saves disk I/O and space).
-    coredump.extraConfig = ''
-      Storage=none
-      ProcessSizeMax=0
-    '';
+    coredump =
+      lib.optionalAttrs hasCoredumpSettings {
+        # Disable coredumps (saves disk I/O and space).
+        settings.Coredump = {
+          Storage = "none";
+          ProcessSizeMax = "0";
+        };
+      }
+      // lib.optionalAttrs (!hasCoredumpSettings) {
+        # Disable coredumps (saves disk I/O and space).
+        extraConfig = ''
+          Storage=none
+          ProcessSizeMax=0
+        '';
+      };
   };
 
   boot.kernel.sysctl = {
