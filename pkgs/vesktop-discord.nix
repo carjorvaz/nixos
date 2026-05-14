@@ -48,6 +48,10 @@ vesktop.overrideAttrs (old: {
 
   postFixup = ''
     makeBinaryWrapper $out/Applications/Discord.app/Contents/MacOS/Discord $out/bin/vesktop-discord
+
+    # Seal the patched bundle metadata so macOS services such as Dock badges,
+    # notifications, and TCC see the same bundle identifier as Info.plist.
+    /usr/bin/codesign --force --deep --sign - $out/Applications/Discord.app
   '';
 
   meta = old.meta // {

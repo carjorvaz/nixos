@@ -624,6 +624,14 @@ in
       rm -f "$legacy_cmux_ghostty_si"
     fi
 
+    # Nix Apps are copied out of the store with 1970 mtimes. Discord.app
+    # deliberately reuses Vesktop's bundle lineage, so refresh only mtimes
+    # after activation to keep Dock/IconServices from reusing a stale icon.
+    discord_app="/Applications/Nix Apps/Discord.app"
+    if [ -f "$discord_app/Contents/Resources/icon.icns" ]; then
+      /usr/bin/touch "$discord_app" "$discord_app/Contents" "$discord_app/Contents/Resources" "$discord_app/Contents/Resources/icon.icns" 2>/dev/null || true
+    fi
+
     # Karabiner 15.9 now manages its own launchd jobs via ServiceManagement.
     # Older nix-darwin jobs can linger in /Library and keep pointing at stale
     # store paths after the repo stopped declaring them.
