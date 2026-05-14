@@ -51,6 +51,18 @@ in
   ]
   ++ users;
 
+  # cl-ott Telegram API credentials and target chat/topic IDs
+  "clOttTelegramEnv.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
+  # Jellyfin API key used by cl-ott integration services
+  "jellyfinClOttApiKey.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
   # pdf-translator DeepSeek API key
   "deepseek-api-key.age".publicKeys = [
     piusSystem

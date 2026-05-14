@@ -151,6 +151,26 @@
         "type": "github"
       }
     },
+    "cl-ott": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778592053,
+        "narHash": "sha256-CrPW//5FjZINCo5RDdNsO23Gevi4B742gFVoxMv3Smk=",
+        "ref": "refs/heads/master",
+        "rev": "68705c5034e099d259a5f4692fb02c68480ed7bb",
+        "revCount": 37,
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1754269165,
@@ -1122,6 +1142,7 @@
       "inputs": {
         "agenix": "agenix",
         "cl-olx-scraper": "cl-olx-scraper",
+        "cl-ott": "cl-ott",
         "disko": "disko",
         "firefox-addons": "firefox-addons",
         "home-manager": "home-manager_2",

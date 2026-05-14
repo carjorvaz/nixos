@@ -41,6 +41,9 @@
     cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
     cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
+    cl-ott.url = "git+ssh://git@github.com/carjorvaz/cl-ott.git";
+    cl-ott.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
     pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
@@ -154,6 +157,7 @@
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
+            inputs.cl-ott.nixosModules.default
             inputs.cl-olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             ./hosts/pius.nix
