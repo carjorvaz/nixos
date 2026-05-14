@@ -136,6 +136,7 @@ in
       candidatesPerChannel = 2;
       timeout = 5;
       rotateDaily = true;
+      selectedFailureThreshold = 2;
     };
   };
 
