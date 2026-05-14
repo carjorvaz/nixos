@@ -132,6 +132,8 @@ in
       interval = "*-*-* 09:30:00";
       randomizedDelaySec = "15min";
       outputPath = "/var/lib/cl-ott/health.json";
+      statusPath = "/var/lib/cl-ott/health-status.json";
+      statusStaleAfterHours = 36;
       limit = 25;
       candidatesPerChannel = 2;
       timeout = 5;
