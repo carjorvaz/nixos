@@ -111,6 +111,13 @@ in
     mode = "0400";
   };
 
+  age.secrets.clOttClientApiToken = {
+    file = "${self}/secrets/clOttClientApiToken.age";
+    owner = "cl-ott";
+    group = "cl-ott";
+    mode = "0400";
+  };
+
   age.secrets.jellyfinClOttApiKey = {
     file = "${self}/secrets/jellyfinClOttApiKey.age";
     owner = "root";
@@ -127,6 +134,12 @@ in
     stateFile = "/var/lib/cl-ott/state.json";
     outputGroup = "media";
     searchLimit = 50;
+    clientApi = {
+      enable = true;
+      bindAddress = "127.0.0.1";
+      port = 8787;
+      tokenFile = config.age.secrets.clOttClientApiToken.path;
+    };
     healthSample = {
       enable = true;
       interval = "*-*-* 09:30:00";

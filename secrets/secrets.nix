@@ -57,6 +57,12 @@ in
   ]
   ++ users;
 
+  # Bearer token for cl-ott's loopback client API on pius
+  "clOttClientApiToken.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
   # Jellyfin API key used by cl-ott integration services
   "jellyfinClOttApiKey.age".publicKeys = [
     piusSystem
