@@ -127,6 +127,16 @@ in
     stateFile = "/var/lib/cl-ott/state.json";
     outputGroup = "media";
     searchLimit = 50;
+    healthSample = {
+      enable = true;
+      interval = "*-*-* 09:30:00";
+      randomizedDelaySec = "15min";
+      outputPath = "/var/lib/cl-ott/health.json";
+      limit = 25;
+      candidatesPerChannel = 2;
+      timeout = 5;
+      rotateDaily = true;
+    };
   };
 
   environment.persistence."/persist".directories = [
