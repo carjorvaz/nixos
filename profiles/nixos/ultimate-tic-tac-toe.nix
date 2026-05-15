@@ -12,6 +12,7 @@ let
 
     export HOME="$state_directory"
     export XDG_CACHE_HOME="$state_directory/cache"
+    export UTTT_ROOM_DB="$state_directory/rooms.sqlite3"
 
     if [ ! -s "$state_directory/session-secret" ]; then
       umask 077

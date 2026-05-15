@@ -67,3 +67,14 @@
           (aref (game-board-outcomes game) 8) :o
           (game-winner game) :o)
     (is (= 6 (global-winning-line game)))))
+
+(test game-snapshot-round-trips
+  (let ((game (make-game)))
+    (play-move game 0 4)
+    (play-move game 4 8)
+    (let ((restored (game-from-snapshot (game-snapshot game))))
+      (is (eql (game-next-player game) (game-next-player restored)))
+      (is (= (game-active-board game) (game-active-board restored)))
+      (is (= (game-move-count game) (game-move-count restored)))
+      (is (eql :x (aref (game-cells restored) 0 4)))
+      (is (eql :o (aref (game-cells restored) 4 8))))))

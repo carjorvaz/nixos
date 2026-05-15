@@ -18,6 +18,8 @@
    #:legal-move-p
    #:available-board-p
    #:play-move
+   #:game-snapshot
+   #:game-from-snapshot
    #:game-over-p
    #:player-label
    #:outcome-label))
@@ -36,6 +38,8 @@
                 #:legal-move-p
                 #:available-board-p
                 #:play-move
+                #:game-snapshot
+                #:game-from-snapshot
                 #:game-over-p
                 #:player-label
                 #:outcome-label)

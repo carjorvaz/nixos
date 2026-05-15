@@ -12,6 +12,7 @@ let
       bordeaux-threads
       fiveam
       hunchentoot
+      sqlite
     ]
   );
 in

@@ -146,5 +146,32 @@ was accepted. GAME is mutated in place so it can live directly in a web session.
           (other-player (game-next-player game))))
   (values game t))
 
+(defun game-snapshot (game)
+  (list :cells (loop for board below +board-count+
+                     collect (loop for cell below +board-count+
+                                   collect (aref (game-cells game) board cell)))
+        :board-outcomes (loop for board below +board-count+
+                              collect (aref (game-board-outcomes game) board))
+        :next-player (game-next-player game)
+        :active-board (game-active-board game)
+        :winner (game-winner game)
+        :move-count (game-move-count game)))
+
+(defun game-from-snapshot (snapshot)
+  (let ((game (make-game)))
+    (loop for board below +board-count+
+          for row in (getf snapshot :cells)
+          do (loop for cell below +board-count+
+                   for mark in row
+                   do (setf (aref (game-cells game) board cell) mark)))
+    (loop for board below +board-count+
+          for outcome in (getf snapshot :board-outcomes)
+          do (setf (aref (game-board-outcomes game) board) outcome))
+    (setf (game-next-player game) (getf snapshot :next-player)
+          (game-active-board game) (getf snapshot :active-board)
+          (game-winner game) (getf snapshot :winner)
+          (game-move-count game) (getf snapshot :move-count 0))
+    game))
+
 (defun game-over-p (game)
   (not (null (game-winner game))))

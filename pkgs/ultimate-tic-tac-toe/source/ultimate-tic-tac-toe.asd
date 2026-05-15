@@ -5,7 +5,7 @@
   :author "Contributors"
   :license "AGPL-3.0-or-later"
   :version "0.1.0"
-  :depends-on ("bordeaux-threads" "hunchentoot" "cl-who")
+  :depends-on ("bordeaux-threads" "hunchentoot" "cl-who" "sqlite")
   :serial t
   :components ((:file "src/package")
                (:file "src/game")
@@ -18,7 +18,8 @@
   :depends-on ("ultimate-tic-tac-toe" "fiveam")
   :serial t
   :components ((:file "t/package")
-               (:file "t/game-tests"))
+               (:file "t/game-tests")
+               (:file "t/room-tests"))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call :fiveam '#:run! :ultimate-tic-tac-toe)

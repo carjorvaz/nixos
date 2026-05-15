@@ -21,13 +21,13 @@ nix develop -c sbcl --script scripts/run.lisp
 
 The app listens on `http://127.0.0.1:4242/` by default. Set `PORT` to change
 the port. Set `SESSION_SECRET` for a stable Hunchentoot session secret in a
-deployed service.
+deployed service. Room state is stored in `rooms.sqlite3` under
+`STATE_DIRECTORY` or `HOME`; set `UTTT_ROOM_DB` to override the database path.
 
 ## Rooms
 
-Use the `Room` button to create a shareable friend room. Rooms are in-memory
-and ephemeral: they are suitable for casual games, but they are cleared when
-the service restarts.
+Use the `Room` button to create a shareable friend room. Rooms are persisted in
+SQLite and pruned after a period of inactivity.
 
 ## Test
 

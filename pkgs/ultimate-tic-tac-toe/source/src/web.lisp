@@ -5,9 +5,13 @@
 (defparameter *acceptor* nil)
 (defparameter *rooms* (make-hash-table :test #'equal))
 (defparameter *rooms-lock* (bordeaux-threads:make-lock "ultimate-tic-tac-toe rooms"))
+(defparameter *room-database* nil)
+(defparameter *room-database-path* nil)
 (defparameter +room-code-alphabet+ "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 (defparameter +room-code-length+ 6)
 (defparameter +room-ttl-seconds+ (* 18 60 60))
+(defparameter +visitor-cookie-name+ "uttt-visitor")
+(defparameter +visitor-cookie-max-age+ (* 365 24 60 60))
 
 (defstruct (game-room (:constructor make-game-room))
   id
@@ -71,6 +75,25 @@
                          (random alphabet-length)))
      'string)))
 
+(defun token-string-p (value &optional (length nil length-provided-p))
+  (and (stringp value)
+       (or (not length-provided-p)
+           (= (length value) length))
+       (loop for character across value
+             always (find character +room-code-alphabet+ :test #'char=))))
+
+(defun visitor-id ()
+  (or (let ((cookie-value (hunchentoot:cookie-in +visitor-cookie-name+)))
+        (when (token-string-p cookie-value 18)
+          cookie-value))
+      (let ((new-id (random-token 18)))
+        (hunchentoot:set-cookie +visitor-cookie-name+
+                                :value new-id
+                                :path "/"
+                                :max-age +visitor-cookie-max-age+
+                                :http-only t)
+        new-id)))
+
 (defun fresh-game-room-id ()
   (loop repeat 128
         for game-room-id = (random-token)
@@ -78,12 +101,113 @@
           return game-room-id
         finally (error "Could not make a room id.")))
 
+(defun room-database-path ()
+  (or (uiop:getenv "UTTT_ROOM_DB")
+      (let ((state-directory (uiop:getenv "STATE_DIRECTORY")))
+        (when (and state-directory (plusp (length state-directory)))
+          (namestring (merge-pathnames "rooms.sqlite3"
+                                       (uiop:ensure-directory-pathname state-directory)))))
+      (namestring (merge-pathnames "rooms.sqlite3"
+                                   (user-homedir-pathname)))))
+
+(defun print-readable-to-string (value)
+  (with-standard-io-syntax
+    (write-to-string value :readably t :pretty nil)))
+
+(defun read-readable-from-string (value)
+  (with-standard-io-syntax
+    (let ((*read-eval* nil))
+      (read-from-string value))))
+
+(defun encode-game (game)
+  (print-readable-to-string (game-snapshot game)))
+
+(defun decode-game (serialized-game)
+  (game-from-snapshot (read-readable-from-string serialized-game)))
+
+(defun ensure-room-schema (database)
+  (sqlite:execute-non-query
+   database
+   "create table if not exists rooms (
+      id text primary key,
+      game text not null,
+      x_player text,
+      o_player text,
+      created_at integer not null,
+      updated_at integer not null
+    )"))
+
+(defun database-row-room (row)
+  (destructuring-bind (id serialized-game x-player o-player created-at updated-at) row
+    (make-game-room :id id
+                    :game (decode-game serialized-game)
+                    :x-player x-player
+                    :o-player o-player
+                    :created-at created-at
+                    :updated-at updated-at)))
+
+(defun load-rooms-from-database ()
+  (setf *rooms* (make-hash-table :test #'equal))
+  (when *room-database*
+    (dolist (row (sqlite:execute-to-list
+                  *room-database*
+                  "select id, game, x_player, o_player, created_at, updated_at from rooms"))
+      (let ((room (database-row-room row)))
+        (setf (gethash (game-room-id room) *rooms*) room)))))
+
+(defun persist-room-unlocked (room)
+  (when *room-database*
+    (sqlite:execute-non-query
+     *room-database*
+     "insert into rooms (id, game, x_player, o_player, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?)
+      on conflict(id) do update set
+        game = excluded.game,
+        x_player = excluded.x_player,
+        o_player = excluded.o_player,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at"
+     (game-room-id room)
+     (encode-game (game-room-game room))
+     (game-room-x-player room)
+     (game-room-o-player room)
+     (game-room-created-at room)
+     (game-room-updated-at room))))
+
+(defun delete-room-unlocked (game-room-id)
+  (when *room-database*
+    (sqlite:execute-non-query *room-database*
+                              "delete from rooms where id = ?"
+                              game-room-id)))
+
+(defun initialize-room-store (&optional (path (room-database-path)))
+  (bordeaux-threads:with-lock-held (*rooms-lock*)
+    (when *room-database*
+      (sqlite:disconnect *room-database*))
+    (setf *room-database-path* path
+          *room-database* (sqlite:connect path :busy-timeout 5000))
+    (ensure-room-schema *room-database*)
+    (load-rooms-from-database)
+    (prune-rooms)))
+
+(defun close-room-store ()
+  (bordeaux-threads:with-lock-held (*rooms-lock*)
+    (when *room-database*
+      (sqlite:disconnect *room-database*))
+    (setf *room-database* nil
+          *room-database-path* nil
+          *rooms* (make-hash-table :test #'equal))))
+
 (defun prune-rooms ()
-  (let ((oldest (- (get-universal-time) +room-ttl-seconds+)))
+  (let ((oldest (- (get-universal-time) +room-ttl-seconds+))
+        expired-room-ids)
     (maphash (lambda (game-room-id room)
                (when (< (game-room-updated-at room) oldest)
-                 (remhash game-room-id *rooms*)))
-             *rooms*)))
+                 (push game-room-id expired-room-ids)))
+             *rooms*)
+    (dolist (game-room-id expired-room-ids)
+      (remhash game-room-id *rooms*)
+      (delete-room-unlocked game-room-id))))
 
 (defun create-room ()
   (bordeaux-threads:with-lock-held (*rooms-lock*)
@@ -95,6 +219,7 @@
                                   :created-at now
                                   :updated-at now)))
       (setf (gethash game-room-id *rooms*) room)
+      (persist-room-unlocked room)
       room)))
 
 (defun find-room (game-room-id)
@@ -103,23 +228,21 @@
       (bordeaux-threads:with-lock-held (*rooms-lock*)
         (gethash normalized-id *rooms*)))))
 
-(defun visitor-id ()
-  (hunchentoot:start-session)
-  (or (hunchentoot:session-value :visitor-id)
-      (setf (hunchentoot:session-value :visitor-id)
-            (random-token 18))))
-
 (defun claim-room-player (room)
   (let ((visitor-id (visitor-id)))
     (bordeaux-threads:with-lock-held (*rooms-lock*)
       (cond
-        ((or (null (game-room-x-player room))
-             (equal visitor-id (game-room-x-player room)))
-         (setf (game-room-x-player room) visitor-id)
+        ((equal visitor-id (game-room-x-player room))
          :x)
-        ((or (null (game-room-o-player room))
-             (equal visitor-id (game-room-o-player room)))
+        ((null (game-room-x-player room))
+         (setf (game-room-x-player room) visitor-id)
+         (persist-room-unlocked room)
+         :x)
+        ((equal visitor-id (game-room-o-player room))
+         :o)
+        ((null (game-room-o-player room))
          (setf (game-room-o-player room) visitor-id)
+         (persist-room-unlocked room)
          :o)
         (t :spectator)))))
 
@@ -179,7 +302,8 @@
 (defmacro with-room-locked ((room) &body body)
   `(bordeaux-threads:with-lock-held (*rooms-lock*)
      (setf (game-room-updated-at ,room) (get-universal-time))
-     ,@body))
+     (multiple-value-prog1 (progn ,@body)
+       (persist-room-unlocked ,room))))
 
 (defun current-game ()
   (hunchentoot:start-session)
@@ -638,6 +762,7 @@
   (stop)
   (seed-random-state)
   (configure-session-secret)
+  (initialize-room-store)
   (setf *acceptor*
         (hunchentoot:start
          (make-instance 'hunchentoot:easy-acceptor
@@ -649,6 +774,7 @@
   (when *acceptor*
     (hunchentoot:stop *acceptor*)
     (setf *acceptor* nil))
+  (close-room-store)
   nil)
 
 (defun server-port ()

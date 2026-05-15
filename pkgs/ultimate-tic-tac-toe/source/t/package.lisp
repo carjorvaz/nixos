@@ -9,8 +9,11 @@
                 #:game-next-player
                 #:game-active-board
                 #:game-winner
+                #:game-move-count
                 #:board-outcome
                 #:board-winning-line
                 #:global-winning-line
                 #:legal-move-p
-                #:play-move))
+                #:play-move
+                #:game-snapshot
+                #:game-from-snapshot))
