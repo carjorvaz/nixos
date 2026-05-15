@@ -32,6 +32,7 @@ in
     "${self}/profiles/nixos/nginx/blog.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/umami.nix"
+    "${self}/profiles/nixos/ultimate-tic-tac-toe.nix"
 
     # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/tailscale.nix"
