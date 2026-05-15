@@ -58,7 +58,7 @@ let
       return false
     end
 
-    local function register_rule(name, score, description, callback)
+    local function register_rule(name, score, description, dependencies, callback)
       rspamd_config:register_symbol({
         name = name,
         score = score,
@@ -66,12 +66,25 @@ let
         description = description,
         callback = callback,
       })
+
+      for _, dependency in ipairs(dependencies) do
+        rspamd_config:register_dependency(name, dependency)
+      end
     end
 
     register_rule(
       'LOCAL_UNAUTH_HTML_DIRECT',
       5.0,
       'HTML mail with no SPF, DKIM, or DMARC arriving directly at the MX',
+      {
+        'AUTH_NA',
+        'R_SPF_NA',
+        'R_DKIM_NA',
+        'DMARC_CALLBACK',
+        'MIME_HTML_ONLY',
+        'ONCE_RECEIVED',
+        'RCVD_COUNT_ZERO',
+      },
       function(task)
         return has_all(task, {
           'AUTH_NA',
@@ -90,6 +103,12 @@ let
       'LOCAL_AUTHENTICATED_FUZZY_HAM_HINT',
       -5.0,
       'Reduce false positives from fuzzy matches on fully authenticated mail',
+      {
+        'FUZZY_DENIED',
+        'R_SPF_ALLOW',
+        'R_DKIM_ALLOW',
+        'DMARC_CALLBACK',
+      },
       function(task)
         return has_all(task, {
           'FUZZY_DENIED',
@@ -104,6 +123,13 @@ let
       'LOCAL_AUTHENTICATED_LIST_HAM_HINT',
       -4.0,
       'Reduce false positives from authenticated list mail hit by abuse URL reputation',
+      {
+        'ABUSE_SURBL',
+        'R_SPF_ALLOW',
+        'R_DKIM_ALLOW',
+        'DMARC_CALLBACK',
+        'HAS_LIST_UNSUB',
+      },
       function(task)
         return has_all(task, {
           'ABUSE_SURBL',
@@ -119,6 +145,9 @@ let
       'LOCAL_ABUSED_GOOGLE_GROUPS_LIST',
       8.0,
       'Known abused Google Groups/list domains seen in catchall spam',
+      {
+        'MAILLIST',
+      },
       function(task)
         return task:has_symbol('MAILLIST') and (
           header_contains_any_domain(task, 'List-ID', abused_google_groups_domains)
