@@ -91,6 +91,54 @@
     hostId = "d7ba56e3";
   };
 
+  boot.zfs.extraPools = [ "zdata" ];
+
+  # Local model store on the spare 1 TB Crucial NVMe.
+  # `zdata` can later grow backup/syncoid datasets when trajanus becomes the
+  # home server; keep huge GGUF/HF artifacts off the cramped zroot datasets.
+  fileSystems."/models" = {
+    device = "zdata/models";
+    fsType = "zfs";
+    options = [
+      "zfsutil"
+      "nofail"
+    ];
+  };
+
+  systemd.tmpfiles.rules = [
+    "d /models 0775 cjv users -"
+    "d /models/incoming 0775 cjv users -"
+    "d /models/gguf 0775 cjv users -"
+    "d /models/hf-cache 0775 cjv users -"
+    "d /models/run-artifacts 0775 cjv users -"
+  ];
+
+  systemd.services.zfs-models-tuning = {
+    description = "Tune ZFS properties for the local model dataset";
+    wantedBy = [ "multi-user.target" ];
+    after = [
+      "zfs-import-zdata.service"
+      "zfs.target"
+    ];
+    wants = [ "zfs-import-zdata.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      if ${pkgs.zfs}/bin/zfs list -H -o name zdata/models >/dev/null 2>&1; then
+        ${pkgs.zfs}/bin/zfs set \
+          recordsize=1M \
+          compression=off \
+          primarycache=all \
+          logbias=throughput \
+          zdata/models
+      else
+        echo "zdata/models is not available; skipping model dataset tuning"
+      fi
+    '';
+  };
+
   services.displayManager.autoLogin.user = "cjv";
 
   graphical.theme.name = "gruvbox";
