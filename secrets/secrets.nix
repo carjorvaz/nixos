@@ -76,6 +76,18 @@ in
   ]
   ++ users;
 
+  # Private Lisp corpus share credential
+  "lispCorpusShareHtpasswd.age".publicKeys = [
+    piusSystem
+    hadrianusSystem
+  ]
+  ++ users;
+  "lispCorpusSharePassword.age".publicKeys = [
+    piusSystem
+    hadrianusSystem
+  ]
+  ++ users;
+
   # Rustab Firefox AMO signing credentials
   "rustabWebExtCredentials.age".publicKeys = [
     trajanusSystem
