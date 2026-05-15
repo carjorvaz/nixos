@@ -1,7 +1,8 @@
 # Ultimate Tic Tac Toe
 
 Server-rendered Ultimate Tic Tac Toe in Common Lisp, using Hunchentoot,
-CL-WHO, and HTMX for small partial updates.
+CL-WHO, and HTMX for small partial updates. Friend rooms use a small
+server-sent event stream for live updates, with HTMX polling as a fallback.
 
 HTMX is vendored at `static/htmx.min.js`; its 0BSD license is included at
 `static/htmx.LICENSE`.
@@ -27,7 +28,8 @@ deployed service. Room state is stored in `rooms.sqlite3` under
 ## Rooms
 
 Use the `Room` button to create a shareable friend room. Rooms are persisted in
-SQLite and pruned after a period of inactivity.
+SQLite and pruned after a period of inactivity. A room link seats the first
+visitor as X, the second as O, and later visitors as spectators.
 
 ## Test
 

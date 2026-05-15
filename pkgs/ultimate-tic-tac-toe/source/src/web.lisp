@@ -10,6 +10,8 @@
 (defparameter +room-code-alphabet+ "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 (defparameter +room-code-length+ 6)
 (defparameter +room-ttl-seconds+ (* 18 60 60))
+(defparameter +room-poll-trigger+ "every 10s")
+(defparameter +room-event-timeout-seconds+ 25)
 (defparameter +visitor-cookie-name+ "uttt-visitor")
 (defparameter +visitor-cookie-max-age+ (* 365 24 60 60))
 
@@ -18,6 +20,7 @@
   game
   x-player
   o-player
+  (version 0)
   created-at
   updated-at)
 
@@ -51,11 +54,28 @@
           index))
     (error () nil)))
 
+(defun parse-nonnegative-integer (value &optional (default 0))
+  (handler-case
+      (let ((integer (parse-integer value :junk-allowed nil)))
+        (if (minusp integer)
+            default
+            integer))
+    (error () default)))
+
+(defun normalized-version (value)
+  (cond
+    ((integerp value) (max value 0))
+    ((stringp value) (parse-nonnegative-integer value))
+    (t 0)))
+
 (defun room-id-path (game-room-id)
   (format nil "/room?id=~A" game-room-id))
 
 (defun room-state-path (game-room-id)
   (format nil "/room/state?id=~A" game-room-id))
+
+(defun room-events-path (game-room-id version)
+  (format nil "/room/events?id=~A&version=~D" game-room-id version))
 
 (defun redirect-see-other (path)
   (setf (hunchentoot:header-out :location) path
@@ -125,6 +145,17 @@
 (defun decode-game (serialized-game)
   (game-from-snapshot (read-readable-from-string serialized-game)))
 
+(defun sqlite-row-value (row index)
+  (etypecase row
+    (list (nth index row))
+    (vector (aref row index))))
+
+(defun room-schema-column-p (database column-name)
+  (loop for row in (sqlite:execute-to-list database "pragma table_info(rooms)")
+        for row-column-name = (sqlite-row-value row 1)
+        thereis (and row-column-name
+                     (string-equal (string row-column-name) column-name))))
+
 (defun ensure-room-schema (database)
   (sqlite:execute-non-query
    database
@@ -133,16 +164,22 @@
       game text not null,
       x_player text,
       o_player text,
+      version integer not null default 0,
       created_at integer not null,
       updated_at integer not null
-    )"))
+    )")
+  (unless (room-schema-column-p database "version")
+    (sqlite:execute-non-query
+     database
+     "alter table rooms add column version integer not null default 0")))
 
 (defun database-row-room (row)
-  (destructuring-bind (id serialized-game x-player o-player created-at updated-at) row
+  (destructuring-bind (id serialized-game x-player o-player version created-at updated-at) row
     (make-game-room :id id
                     :game (decode-game serialized-game)
                     :x-player x-player
                     :o-player o-player
+                    :version (normalized-version version)
                     :created-at created-at
                     :updated-at updated-at)))
 
@@ -151,7 +188,7 @@
   (when *room-database*
     (dolist (row (sqlite:execute-to-list
                   *room-database*
-                  "select id, game, x_player, o_player, created_at, updated_at from rooms"))
+                  "select id, game, x_player, o_player, version, created_at, updated_at from rooms"))
       (let ((room (database-row-room row)))
         (setf (gethash (game-room-id room) *rooms*) room)))))
 
@@ -159,18 +196,20 @@
   (when *room-database*
     (sqlite:execute-non-query
      *room-database*
-     "insert into rooms (id, game, x_player, o_player, created_at, updated_at)
-      values (?, ?, ?, ?, ?, ?)
+     "insert into rooms (id, game, x_player, o_player, version, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?)
       on conflict(id) do update set
         game = excluded.game,
         x_player = excluded.x_player,
         o_player = excluded.o_player,
+        version = excluded.version,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at"
      (game-room-id room)
      (encode-game (game-room-game room))
      (game-room-x-player room)
      (game-room-o-player room)
+     (game-room-version room)
      (game-room-created-at room)
      (game-room-updated-at room))))
 
@@ -222,6 +261,15 @@
       (persist-room-unlocked room)
       room)))
 
+(defun touch-room-unlocked (room)
+  (setf (game-room-updated-at room) (get-universal-time))
+  room)
+
+(defun note-room-change-unlocked (room)
+  (setf (game-room-version room) (1+ (normalized-version
+                                      (game-room-version room))))
+  (touch-room-unlocked room))
+
 (defun find-room (game-room-id)
   (let ((normalized-id (normalize-game-room-id game-room-id)))
     (when normalized-id
@@ -236,15 +284,51 @@
          :x)
         ((null (game-room-x-player room))
          (setf (game-room-x-player room) visitor-id)
+         (note-room-change-unlocked room)
          (persist-room-unlocked room)
          :x)
         ((equal visitor-id (game-room-o-player room))
          :o)
         ((null (game-room-o-player room))
          (setf (game-room-o-player room) visitor-id)
+         (note-room-change-unlocked room)
          (persist-room-unlocked room)
          :o)
         (t :spectator)))))
+
+(defun current-room-version (game-room-id)
+  (let ((normalized-id (normalize-game-room-id game-room-id)))
+    (if normalized-id
+        (bordeaux-threads:with-lock-held (*rooms-lock*)
+          (let ((room (gethash normalized-id *rooms*)))
+            (if room
+                (values (normalized-version (game-room-version room)) t)
+                (values nil nil))))
+        (values nil nil))))
+
+(defun wait-for-room-event (game-room-id known-version)
+  (let ((deadline (+ (get-universal-time) +room-event-timeout-seconds+))
+        (known-version (or known-version 0))
+        (last-seen-version known-version))
+    (loop
+      (multiple-value-bind (current-version foundp)
+          (current-room-version game-room-id)
+        (unless foundp
+          (return (values :gone nil)))
+        (setf last-seen-version current-version)
+        (when (> current-version known-version)
+          (return (values :room current-version)))
+        (when (>= (get-universal-time) deadline)
+          (return (values :ping last-seen-version))))
+      (sleep 0.25))))
+
+(defun event-stream-response (event data &key id)
+  (with-output-to-string (stream)
+    (format stream "retry: 1000~%")
+    (when id
+      (format stream "id: ~A~%" id))
+    (format stream "event: ~A~%" event)
+    (format stream "data: ~A~%~%" data)))
 
 (defun playable-player-p (player)
   (or (eql player :x)
@@ -301,7 +385,7 @@
 
 (defmacro with-room-locked ((room) &body body)
   `(bordeaux-threads:with-lock-held (*rooms-lock*)
-     (setf (game-room-updated-at ,room) (get-universal-time))
+     (touch-room-unlocked ,room)
      (multiple-value-prog1 (progn ,@body)
        (persist-room-unlocked ,room))))
 
@@ -515,8 +599,14 @@
                                     "is-any-board")
                                   (when (game-over-p game) "is-over"))
               :hx-get (when poll (room-state-path room-id))
-              :hx-trigger (when poll "every 2s")
+              :hx-trigger (when poll +room-poll-trigger+)
               :hx-swap (when poll "outerHTML")
+              :data-room-id room-id
+              :data-room-version (when room
+                                   (game-room-version room))
+              :data-room-events (when room
+                                  (room-events-path room-id
+                                                    (game-room-version room)))
       (:header :class "topbar"
         (:div :class "title-block"
           (:p :class "eyebrow" "Ultimate Tic Tac Toe")
@@ -547,7 +637,7 @@
                                           (when (eql player :o) "is-you")
                                           (unless (game-room-o-player room) "is-open"))
                  (:span "O")
-                 (:strong (cl-who:str (room-seat-state-label room :o player)))))))
+                 (:strong (cl-who:str (room-seat-state-label room :o player))))))
             (unless room-id
               (cl-who:htm
                (:span :class "status-pill"
@@ -572,7 +662,7 @@
                                      :player player
                                      :play-enabled-p (if room-id
                                                          (room-ready-p room)
-                                                         t)))))))
+                                                         t))))))))
 
 (defun render-page (game &key notice room-id room player poll)
   (cl-who:with-html-output-to-string (stream nil :prologue t)
@@ -588,6 +678,9 @@
         (:link :rel "stylesheet"
                :href "/style.css")
         (:script :src "/htmx.min.js"
+                 :defer "defer"
+                 " ")
+        (:script :src "/room-events.js"
                  :defer "defer"
                  " "))
       (:body
@@ -700,6 +793,8 @@
                  (multiple-value-bind (updated-game acceptedp)
                      (play-move game board-index cell-index)
                    (declare (ignore updated-game))
+                   (when acceptedp
+                     (note-room-change-unlocked room))
                    (render-game-fragment
                     game
                     :room-id (game-room-id room)
@@ -729,6 +824,7 @@
             (if (playable-player-p player)
                 (progn
                   (setf (game-room-game room) (make-game))
+                  (note-room-change-unlocked room)
                   (render-game-fragment (game-room-game room)
                                         :room-id (game-room-id room)
                                         :room room
@@ -743,11 +839,25 @@
         (render-game-fragment (current-game)
                               :notice "Room not found."))))
 
+(hunchentoot:define-easy-handler (room-events :uri "/room/events") (id version)
+  (setf (hunchentoot:content-type*) "text/event-stream; charset=utf-8"
+        (hunchentoot:header-out :cache-control) "no-cache")
+  (multiple-value-bind (event event-version)
+      (wait-for-room-event id (parse-nonnegative-integer version))
+    (case event
+      (:room (event-stream-response "room" event-version :id event-version))
+      (:gone (event-stream-response "gone" "gone"))
+      (otherwise (event-stream-response "ping" (or event-version 0)
+                                        :id (or event-version 0))))))
+
 (hunchentoot:define-easy-handler (style :uri "/style.css") ()
   (handle-asset "static/style.css" "text/css; charset=utf-8"))
 
 (hunchentoot:define-easy-handler (htmx :uri "/htmx.min.js") ()
   (handle-asset "static/htmx.min.js" "application/javascript; charset=utf-8"))
+
+(hunchentoot:define-easy-handler (room-events-script :uri "/room-events.js") ()
+  (handle-asset "static/room-events.js" "application/javascript; charset=utf-8"))
 
 (hunchentoot:define-easy-handler (icon :uri "/icon.svg") ()
   (handle-asset "static/icon.svg" "image/svg+xml"))

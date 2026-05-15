@@ -24,6 +24,7 @@
            (room-id (ultimate-tic-tac-toe.web::game-room-id room)))
       (setf (ultimate-tic-tac-toe.web::game-room-x-player room) "XPLAYER"
             (ultimate-tic-tac-toe.web::game-room-o-player room) "OPLAYER")
+      (ultimate-tic-tac-toe.web::note-room-change-unlocked room)
       (play-move (ultimate-tic-tac-toe.web::game-room-game room) 0 4)
       (ultimate-tic-tac-toe.web::persist-room-unlocked room)
       (ultimate-tic-tac-toe.web::close-room-store)
@@ -34,6 +35,8 @@
                    (ultimate-tic-tac-toe.web::game-room-x-player restored)))
         (is (equal "OPLAYER"
                    (ultimate-tic-tac-toe.web::game-room-o-player restored)))
+        (is (= 1
+               (ultimate-tic-tac-toe.web::game-room-version restored)))
         (is (eql :o
                  (game-next-player
                   (ultimate-tic-tac-toe.web::game-room-game restored))))
@@ -56,3 +59,27 @@
       (ultimate-tic-tac-toe.web::close-room-store)
       (ultimate-tic-tac-toe.web::initialize-room-store database-path)
       (is (null (ultimate-tic-tac-toe.web::find-room room-id))))))
+
+(test room-store-migrates-room-version-column
+  (let ((database-path (test-database-path "migrate")))
+    (unwind-protect
+         (progn
+           (let ((database (sqlite:connect database-path :busy-timeout 5000)))
+             (unwind-protect
+                  (sqlite:execute-non-query
+                   database
+                   "create table rooms (
+                      id text primary key,
+                      game text not null,
+                      x_player text,
+                      o_player text,
+                      created_at integer not null,
+                      updated_at integer not null
+                    )")
+               (sqlite:disconnect database)))
+           (ultimate-tic-tac-toe.web::initialize-room-store database-path)
+           (let ((room (ultimate-tic-tac-toe.web::create-room)))
+             (is (= 0
+                    (ultimate-tic-tac-toe.web::game-room-version room)))))
+      (ultimate-tic-tac-toe.web::close-room-store)
+      (uiop:delete-file-if-exists database-path))))
