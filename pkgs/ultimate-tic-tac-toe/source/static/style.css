@@ -88,11 +88,13 @@ input {
 }
 
 .title-block {
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
 .eyebrow {
-  margin: 0 0 3px;
+  margin: 0;
   color: #aef3e9;
   font-size: 0.72rem;
   font-weight: 850;
@@ -105,6 +107,15 @@ h1 {
   font-size: clamp(1.48rem, 2.4vw, 2rem);
   line-height: 1.02;
   letter-spacing: 0;
+}
+
+.room-message {
+  max-width: 34rem;
+  margin: 0;
+  color: #d8d1c8;
+  font-size: 0.84rem;
+  font-weight: 780;
+  line-height: 1.24;
 }
 
 .topbar-controls {
@@ -136,9 +147,34 @@ h1 {
   font-weight: 800;
 }
 
+.status-pill span,
+.status-pill strong {
+  white-space: nowrap;
+}
+
 .status-pill strong {
   color: var(--target);
   font-size: 0.96rem;
+}
+
+.seat-pill.is-you {
+  background: rgba(255, 247, 232, 0.14);
+}
+
+.seat-pill.is-open {
+  border-color: rgba(255, 247, 232, 0.32);
+}
+
+.seat-pill.is-open strong {
+  color: #beb6ae;
+}
+
+.seat-x strong {
+  color: var(--x);
+}
+
+.seat-o strong {
+  color: var(--o);
 }
 
 .reset-form {
@@ -191,10 +227,15 @@ h1 {
   transform: translateX(-50%);
 }
 
+.game-shell.has-room .notice {
+  top: 72px;
+}
+
 .play-layout {
   display: grid;
   place-items: start center;
   min-height: 0;
+  overflow: hidden;
 }
 
 .macro-board {
@@ -211,6 +252,10 @@ h1 {
   padding: clamp(6px, 1.3svh, 10px);
   background: var(--table);
   box-shadow: 0 18px 44px var(--shadow), 0 5px 0 rgba(0, 0, 0, 0.62);
+}
+
+.game-shell.has-room .macro-board {
+  width: min(92vw, calc(100svh - 132px), 704px);
 }
 
 .local-board {
@@ -438,7 +483,6 @@ h1 {
   }
 
   .eyebrow {
-    margin-bottom: 2px;
     font-size: 0.66rem;
   }
 
@@ -446,13 +490,22 @@ h1 {
     font-size: 1.36rem;
   }
 
+  .room-message {
+    font-size: 0.78rem;
+  }
+
   .status-pill,
   .reset-button {
     min-height: 30px;
+    padding-inline: 9px;
   }
 
   .macro-board {
     width: min(92vw, calc(100svh - 98px), 668px);
+  }
+
+  .game-shell.has-room .macro-board {
+    width: min(92vw, calc(100svh - 116px), 668px);
   }
 }
 
@@ -484,6 +537,10 @@ h1 {
     transform: none;
   }
 
+  .play-layout {
+    overflow: visible;
+  }
+
   .topbar-controls {
     justify-content: space-between;
   }
@@ -513,6 +570,10 @@ h1 {
 
   .status-pills {
     display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .game-shell.has-room .status-pills {
     grid-template-columns: 1fr 1fr;
   }
 

@@ -127,6 +127,11 @@
   (or (eql player :x)
       (eql player :o)))
 
+(defun room-ready-p (room)
+  (and room
+       (game-room-x-player room)
+       (game-room-o-player room)))
+
 (defun player-seat-label (player)
   (case player
     (:x "X")
@@ -138,6 +143,38 @@
   (or (null player)
       (and (playable-player-p player)
            (eql player (game-next-player game)))))
+
+(defun room-seat-state-label (room seat player)
+  (let ((claimedp (ecase seat
+                    (:x (game-room-x-player room))
+                    (:o (game-room-o-player room)))))
+    (cond
+      ((not claimedp) "Open")
+      ((eql seat player) "You")
+      (t "Ready"))))
+
+(defun room-headline-label (game room player)
+  (cond
+    ((game-over-p game) (result-label game))
+    ((not (room-ready-p room)) "Waiting for O")
+    ((not (playable-player-p player)) "Watching live")
+    ((eql player (game-next-player game)) "Your move")
+    (t (format nil "Waiting for ~A"
+               (player-label (game-next-player game))))))
+
+(defun room-message-label (game room player)
+  (cond
+    ((game-over-p game) "Start a new game when both players are ready.")
+    ((not (room-ready-p room)) "Share the link. The board opens when O joins.")
+    ((not (playable-player-p player))
+     (format nil "Watching ~A choose ~A."
+             (player-label (game-next-player game))
+             (target-label game)))
+    ((eql player (game-next-player game))
+     (format nil "Choose ~A." (target-label game)))
+    (t (format nil "Waiting for ~A to choose ~A."
+               (player-label (game-next-player game))
+               (target-label game)))))
 
 (defmacro with-room-locked ((room) &body body)
   `(bordeaux-threads:with-lock-held (*rooms-lock*)
@@ -220,9 +257,10 @@
           :src (mark-asset mark)
           :alt (player-label mark))))
 
-(defun emit-cell (stream game board cell &key room-id player)
+(defun emit-cell (stream game board cell &key room-id player (play-enabled-p t))
   (let ((mark (mark-at game board cell))
         (legalp (and (legal-move-p game board cell)
+                     play-enabled-p
                      (player-turn-p game player))))
     (cl-who:with-html-output (stream)
       (:div :class (css-classes "micro-cell"
@@ -260,7 +298,7 @@
             (:span :class "cell-blank"
                    :aria-hidden "true"))))))))
 
-(defun emit-local-board (stream game board &key room-id player)
+(defun emit-local-board (stream game board &key room-id player (play-enabled-p t))
   (let ((outcome (board-outcome game board)))
     (cl-who:with-html-output (stream)
       (:section :class (css-classes "local-board"
@@ -284,7 +322,8 @@
           (loop for cell below 9
                 do (emit-cell stream game board cell
                               :room-id room-id
-                              :player player))
+                              :player player
+                              :play-enabled-p play-enabled-p))
           (when (player-label-p outcome)
             (cl-who:htm
              (:img :class (css-classes "board-win-glyph"
@@ -310,8 +349,9 @@
           (cl-who:htm
            (:button :class "reset-button secondary-button"
                     :type "button"
-                    :onclick "navigator.clipboard && navigator.clipboard.writeText(window.location.href)"
-                    "Copy")
+                    :data-room-path (room-id-path room-id)
+                    :onclick "const b=this,u=window.location.origin+b.dataset.roomPath;navigator.clipboard&&navigator.clipboard.writeText(u);b.textContent=\"Copied\";setTimeout(()=>b.textContent=\"Copy link\",900)"
+                    "Copy link")
            (:form :class "reset-form"
                   :method "post"
                   :action "/room/reset"
@@ -341,10 +381,11 @@
                       :type "submit"
                       "New")))))))
 
-(defun render-game-fragment (game &key notice room-id player poll)
+(defun render-game-fragment (game &key notice room-id room player poll)
   (cl-who:with-html-output-to-string (stream)
     (:section :id "game"
               :class (css-classes "game-shell"
+                                  (when room-id "has-room")
                                   (when (and (null (game-winner game))
                                              (null (game-active-board game)))
                                     "is-any-board")
@@ -355,7 +396,14 @@
       (:header :class "topbar"
         (:div :class "title-block"
           (:p :class "eyebrow" "Ultimate Tic Tac Toe")
-          (:h1 (cl-who:str (result-label game))))
+          (:h1 (cl-who:str (if room-id
+                                (room-headline-label game room player)
+                                (result-label game))))
+          (when room-id
+            (cl-who:htm
+             (:p :class "room-message"
+                 :aria-live "polite"
+                 (cl-who:str (room-message-label game room player))))))
         (:div :class "topbar-controls"
           (:div :class "status-pills"
             (when room-id
@@ -363,14 +411,26 @@
                (:span :class "status-pill"
                  (:span "Room")
                  (:strong (cl-who:str room-id)))
+               (:span :class (css-classes "status-pill"
+                                          "seat-pill"
+                                          "seat-x"
+                                          (when (eql player :x) "is-you"))
+                 (:span "X")
+                 (:strong (cl-who:str (room-seat-state-label room :x player))))
+               (:span :class (css-classes "status-pill"
+                                          "seat-pill"
+                                          "seat-o"
+                                          (when (eql player :o) "is-you")
+                                          (unless (game-room-o-player room) "is-open"))
+                 (:span "O")
+                 (:strong (cl-who:str (room-seat-state-label room :o player)))))))
+            (unless room-id
+              (cl-who:htm
                (:span :class "status-pill"
-                 (:span "You")
-                 (:strong (cl-who:str (player-seat-label player))))))
-            (:span :class "status-pill"
-              (:span "Next")
-              (:strong (cl-who:str (if (game-over-p game)
-                                       "-"
-                                       (player-label (game-next-player game))))))
+                 (:span "Next")
+                 (:strong (cl-who:str (if (game-over-p game)
+                                          "-"
+                                          (player-label (game-next-player game))))))))
             (:span :class "status-pill"
               (:span "Target")
               (:strong (cl-who:str (target-label game)))))
@@ -385,9 +445,12 @@
           (loop for board below 9
                 do (emit-local-board stream game board
                                      :room-id room-id
-                                     :player player)))))))
+                                     :player player
+                                     :play-enabled-p (if room-id
+                                                         (room-ready-p room)
+                                                         t)))))))
 
-(defun render-page (game &key notice room-id player poll)
+(defun render-page (game &key notice room-id room player poll)
   (cl-who:with-html-output-to-string (stream nil :prologue t)
     (:html :lang "en"
       (:head
@@ -408,6 +471,7 @@
           (cl-who:str (render-game-fragment game
                                             :notice notice
                                             :room-id room-id
+                                            :room room
                                             :player player
                                             :poll poll)))))))
 
@@ -454,6 +518,7 @@
           (with-room-locked (room)
             (render-page (game-room-game room)
                          :room-id (game-room-id room)
+                         :room room
                          :player player
                          :poll t)))
         (render-page (current-game)
@@ -467,6 +532,7 @@
           (with-room-locked (room)
             (render-game-fragment (game-room-game room)
                                   :room-id (game-room-id room)
+                                  :room room
                                   :player player
                                   :poll t)))
         (render-game-fragment (current-game)
@@ -487,12 +553,21 @@
                 ((not (playable-player-p player))
                  (render-game-fragment game
                                        :room-id (game-room-id room)
+                                       :room room
                                        :player player
                                        :poll t
                                        :notice "This room is full."))
+                ((not (room-ready-p room))
+                 (render-game-fragment game
+                                       :room-id (game-room-id room)
+                                       :room room
+                                       :player player
+                                       :poll t
+                                       :notice "Waiting for O to join."))
                 ((not (eql player (game-next-player game)))
                  (render-game-fragment game
                                        :room-id (game-room-id room)
+                                       :room room
                                        :player player
                                        :poll t
                                        :notice (format nil "Waiting for ~A."
@@ -504,6 +579,7 @@
                    (render-game-fragment
                     game
                     :room-id (game-room-id room)
+                    :room room
                     :player player
                     :poll t
                     :notice (unless acceptedp
@@ -511,6 +587,7 @@
                 (t
                  (render-game-fragment game
                                        :room-id (game-room-id room)
+                                       :room room
                                        :player player
                                        :poll t
                                        :notice "That move was not understood."))))))
@@ -530,10 +607,12 @@
                   (setf (game-room-game room) (make-game))
                   (render-game-fragment (game-room-game room)
                                         :room-id (game-room-id room)
+                                        :room room
                                         :player player
                                         :poll t))
                 (render-game-fragment (game-room-game room)
                                       :room-id (game-room-id room)
+                                      :room room
                                       :player player
                                       :poll t
                                       :notice "This room is full."))))
