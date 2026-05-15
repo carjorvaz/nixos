@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 
 let
-  domain = "uttt.vaz.one";
+  domain = "ultimate-tic-tac-toe.carjorvaz.com";
   port = 4242;
   stateDir = "/var/lib/ultimate-tic-tac-toe";
   runService = pkgs.writeShellScript "run-ultimate-tic-tac-toe" ''
@@ -27,7 +27,7 @@ in
 {
   services.nginx.virtualHosts.${domain} = {
     forceSSL = true;
-    useACMEHost = "vaz.one";
+    enableACME = true;
 
     locations."/" = {
       proxyPass = "http://127.0.0.1:${toString port}";

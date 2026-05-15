@@ -50,7 +50,7 @@ stdenvNoCC.mkDerivation {
 
   meta = {
     description = "Server-rendered Ultimate Tic Tac Toe with HTMX";
-    homepage = "https://uttt.vaz.one";
+    homepage = "https://ultimate-tic-tac-toe.carjorvaz.com";
     license = lib.licenses.agpl3Plus;
     mainProgram = "ultimate-tic-tac-toe";
     platforms = lib.platforms.unix;
