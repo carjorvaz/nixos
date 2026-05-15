@@ -9,6 +9,7 @@ let
   lisp = sbcl.withPackages (
     ps: with ps; [
       cl-who
+      bordeaux-threads
       fiveam
       hunchentoot
     ]

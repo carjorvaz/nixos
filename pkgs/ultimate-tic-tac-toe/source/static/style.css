@@ -118,6 +118,8 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .status-pill {
@@ -141,6 +143,13 @@ h1 {
 
 .reset-form {
   flex: 0 0 auto;
+  margin: 0;
+}
+
+.action-forms {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .reset-button {
@@ -153,6 +162,11 @@ h1 {
   cursor: pointer;
   font-weight: 900;
   box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.secondary-button {
+  background: rgba(255, 247, 232, 0.08);
+  color: var(--edge);
 }
 
 .reset-button:active {
@@ -474,6 +488,10 @@ h1 {
     justify-content: space-between;
   }
 
+  .status-pills {
+    justify-content: flex-start;
+  }
+
   .macro-board {
     width: min(100%, 680px);
   }
@@ -501,6 +519,15 @@ h1 {
   .status-pill {
     justify-content: space-between;
     min-width: 0;
+  }
+
+  .action-forms {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reset-button {
+    width: 100%;
   }
 
   .macro-board {

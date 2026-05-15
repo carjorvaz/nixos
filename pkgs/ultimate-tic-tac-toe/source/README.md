@@ -23,6 +23,12 @@ The app listens on `http://127.0.0.1:4242/` by default. Set `PORT` to change
 the port. Set `SESSION_SECRET` for a stable Hunchentoot session secret in a
 deployed service.
 
+## Rooms
+
+Use the `Room` button to create a shareable friend room. Rooms are in-memory
+and ephemeral: they are suitable for casual games, but they are cleared when
+the service restarts.
+
 ## Test
 
 ```sh

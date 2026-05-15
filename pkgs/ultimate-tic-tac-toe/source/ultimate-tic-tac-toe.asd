@@ -5,7 +5,7 @@
   :author "Contributors"
   :license "AGPL-3.0-or-later"
   :version "0.1.0"
-  :depends-on ("hunchentoot" "cl-who")
+  :depends-on ("bordeaux-threads" "hunchentoot" "cl-who")
   :serial t
   :components ((:file "src/package")
                (:file "src/game")
