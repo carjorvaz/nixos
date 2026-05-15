@@ -171,7 +171,7 @@
         active.id === info.id &&
         active.version === info.version &&
         active.source.readyState !== EventSource.CLOSED) {
-      setLiveState(active.source.readyState === EventSource.OPEN ? "live" : "syncing");
+      setLiveState("live");
       return;
     }
 
@@ -184,10 +184,7 @@
       version: info.version,
       source: source
     };
-
-    source.addEventListener("open", function () {
-      setLiveState("live");
-    });
+    setLiveState("live");
 
     source.addEventListener("room", function (event) {
       var latest = roomInfo();
