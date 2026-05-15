@@ -2,6 +2,7 @@
 
 let
   domain = "ultimate-tic-tac-toe.carjorvaz.com";
+  oldDomain = "uttt.vaz.one";
   port = 4242;
   stateDir = "/var/lib/ultimate-tic-tac-toe";
   runService = pkgs.writeShellScript "run-ultimate-tic-tac-toe" ''
@@ -33,6 +34,12 @@ in
       proxyPass = "http://127.0.0.1:${toString port}";
       proxyWebsockets = true;
     };
+  };
+
+  services.nginx.virtualHosts.${oldDomain} = {
+    forceSSL = true;
+    useACMEHost = "vaz.one";
+    globalRedirect = domain;
   };
 
   systemd.services.ultimate-tic-tac-toe = {
