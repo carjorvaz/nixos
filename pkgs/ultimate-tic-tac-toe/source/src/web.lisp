@@ -555,11 +555,12 @@
     (:div :class "action-forms"
       (if room-id
           (cl-who:htm
-           (:button :class "reset-button secondary-button"
+           (:button :class "reset-button secondary-button invite-button"
                     :type "button"
+                    :aria-label "Invite a player to this room"
                     :data-room-path (room-id-path room-id)
-                    :onclick "const b=this,u=window.location.origin+b.dataset.roomPath;navigator.clipboard&&navigator.clipboard.writeText(u);b.textContent=\"Copied\";setTimeout(()=>b.textContent=\"Copy link\",900)"
-                    "Copy link")
+                    :data-room-share "true"
+                    "Invite")
            (:form :class "reset-form"
                   :method "post"
                   :action "/room/reset"
@@ -622,9 +623,15 @@
           (:div :class "status-pills"
             (when room-id
               (cl-who:htm
-               (:span :class "status-pill"
+               (:span :class "status-pill room-pill"
                  (:span "Room")
-                 (:strong (cl-who:str room-id)))
+                 (:strong (cl-who:str room-id))
+                 (:span :class "live-state"
+                        :data-live-state "syncing"
+                        :aria-label "Live updates connecting"
+                   (:span :class "live-dot"
+                          :aria-hidden "true")
+                   (:span :class "live-label" "Sync")))
                (:span :class (css-classes "status-pill"
                                           "seat-pill"
                                           "seat-x"
@@ -645,7 +652,7 @@
                  (:strong (cl-who:str (if (game-over-p game)
                                           "-"
                                           (player-label (game-next-player game))))))))
-            (:span :class "status-pill"
+            (:span :class "status-pill target-pill"
               (:span "Target")
               (:strong (cl-who:str (target-label game)))))
           (emit-actions stream room-id)))

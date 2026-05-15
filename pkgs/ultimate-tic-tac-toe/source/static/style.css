@@ -157,6 +157,44 @@ h1 {
   font-size: 0.96rem;
 }
 
+.room-pill {
+  gap: 7px;
+}
+
+.live-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 1px;
+  border-left: 1px solid rgba(255, 247, 232, 0.24);
+  padding-left: 7px;
+  color: #aef3e9;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--target);
+  box-shadow: 0 0 0 3px rgba(255, 209, 102, 0.18);
+}
+
+.live-state[data-live-state="live"] .live-dot {
+  background: var(--o);
+  box-shadow: 0 0 0 3px rgba(0, 155, 141, 0.18);
+}
+
+.live-state[data-live-state="polling"] {
+  color: #d7d0c6;
+}
+
+.live-state[data-live-state="polling"] .live-dot {
+  background: var(--draw);
+  box-shadow: 0 0 0 3px rgba(141, 123, 242, 0.16);
+}
+
 .seat-pill.is-you {
   background: rgba(255, 247, 232, 0.14);
 }
@@ -202,6 +240,16 @@ h1 {
 
 .secondary-button {
   background: rgba(255, 247, 232, 0.08);
+  color: var(--edge);
+}
+
+.invite-button {
+  min-width: 78px;
+}
+
+.invite-button.is-copied {
+  border-color: var(--o);
+  background: var(--o);
   color: var(--edge);
 }
 
@@ -559,18 +607,32 @@ h1 {
     padding: 10px;
   }
 
+  .topbar {
+    gap: 8px;
+  }
+
+  .title-block {
+    gap: 2px;
+  }
+
   h1 {
     font-size: 1.32rem;
+  }
+
+  .room-message {
+    font-size: 0.76rem;
   }
 
   .topbar-controls {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
   }
 
   .status-pills {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 6px;
   }
 
   .game-shell.has-room .status-pills {
@@ -580,14 +642,37 @@ h1 {
   .status-pill {
     justify-content: space-between;
     min-width: 0;
+    min-height: 31px;
+    gap: 6px;
+    padding-inline: 8px;
+    font-size: 0.74rem;
+  }
+
+  .status-pill strong {
+    font-size: 0.86rem;
+  }
+
+  .room-pill {
+    grid-column: 1 / -1;
+  }
+
+  .game-shell.has-room .target-pill {
+    grid-column: 1 / -1;
+  }
+
+  .live-state {
+    margin-left: auto;
+    padding-left: 8px;
   }
 
   .action-forms {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 6px;
   }
 
   .reset-button {
+    min-height: 32px;
     width: 100%;
   }
 
