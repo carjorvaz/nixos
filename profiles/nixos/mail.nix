@@ -2,6 +2,7 @@
   self,
   config,
   inputs,
+  lib,
   ...
 }:
 
@@ -27,7 +28,37 @@ let
       return false
     end
 
-    local function register_rule(name, score, description, dependencies, callback)
+    local abused_google_groups_domains = {
+      ['13083977115.com'] = true,
+      ['bwty-sports.com'] = true,
+      ['chinacvcn.com'] = true,
+      ['youejia8.com'] = true,
+      ['yuanzhevip.com'] = true,
+      ['zjgk895.com'] = true,
+    }
+
+    local function header_contains_any_domain(task, header_name, domains)
+      local value = task:get_header(header_name)
+      if not value then
+        return false
+      end
+
+      if type(value) == 'table' then
+        value = table.concat(value, '\n')
+      end
+
+      value = string.lower(tostring(value))
+
+      for domain, _ in pairs(domains) do
+        if value:find(domain, 1, true) then
+          return true
+        end
+      end
+
+      return false
+    end
+
+    local function register_rule(name, score, description, callback)
       rspamd_config:register_symbol({
         name = name,
         score = score,
@@ -35,25 +66,12 @@ let
         description = description,
         callback = callback,
       })
-
-      for _, dependency in ipairs(dependencies) do
-        rspamd_config:register_dependency(name, dependency)
-      end
     end
 
     register_rule(
       'LOCAL_UNAUTH_HTML_DIRECT',
       5.0,
       'HTML mail with no SPF, DKIM, or DMARC arriving directly at the MX',
-      {
-        'AUTH_NA',
-        'R_SPF_NA',
-        'R_DKIM_NA',
-        'DMARC_CALLBACK',
-        'MIME_HTML_ONLY',
-        'ONCE_RECEIVED',
-        'RCVD_COUNT_ZERO',
-      },
       function(task)
         return has_all(task, {
           'AUTH_NA',
@@ -72,12 +90,6 @@ let
       'LOCAL_AUTHENTICATED_FUZZY_HAM_HINT',
       -5.0,
       'Reduce false positives from fuzzy matches on fully authenticated mail',
-      {
-        'FUZZY_DENIED',
-        'R_SPF_ALLOW',
-        'R_DKIM_ALLOW',
-        'DMARC_CALLBACK',
-      },
       function(task)
         return has_all(task, {
           'FUZZY_DENIED',
@@ -92,13 +104,6 @@ let
       'LOCAL_AUTHENTICATED_LIST_HAM_HINT',
       -4.0,
       'Reduce false positives from authenticated list mail hit by abuse URL reputation',
-      {
-        'ABUSE_SURBL',
-        'R_SPF_ALLOW',
-        'R_DKIM_ALLOW',
-        'DMARC_CALLBACK',
-        'HAS_LIST_UNSUB',
-      },
       function(task)
         return has_all(task, {
           'ABUSE_SURBL',
@@ -107,6 +112,19 @@ let
           'DMARC_POLICY_ALLOW',
           'HAS_LIST_UNSUB',
         })
+      end
+    )
+
+    register_rule(
+      'LOCAL_ABUSED_GOOGLE_GROUPS_LIST',
+      8.0,
+      'Known abused Google Groups/list domains seen in catchall spam',
+      function(task)
+        return task:has_symbol('MAILLIST') and (
+          header_contains_any_domain(task, 'List-ID', abused_google_groups_domains)
+          or header_contains_any_domain(task, 'X-BeenThere', abused_google_groups_domains)
+          or header_contains_any_domain(task, 'Mailing-list', abused_google_groups_domains)
+        )
       end
     )
   '';
@@ -184,6 +202,32 @@ in
   ];
 
   services.rspamd.localLuaRules = rspamdLocalRules;
+  services.rspamd.locals."options.inc".text = ''
+    dns {
+      nameserver = ["127.0.0.1"];
+    }
+  '';
+  services.rspamd.locals."classifier-bayes.conf".text = lib.mkAfter ''
+    autolearn {
+      spam_threshold = 12.0;
+      junk_threshold = 10.0;
+      ham_threshold = -2.0;
+      check_balance = true;
+      min_balance = 0.6;
+    }
+  '';
+  services.rspamd.locals."rbl.conf".text = ''
+    rbls {
+      senderscore_reputation {
+        disable_monitoring = true;
+      }
+    }
+  '';
+
+  systemd.services.rspamd = {
+    after = [ "kresd@1.service" ];
+    wants = [ "kresd@1.service" ];
+  };
 
   environment.persistence."/persist".directories = [
     "/var/lib/rspamd"

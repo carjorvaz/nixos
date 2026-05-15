@@ -32,6 +32,14 @@
         maxretry = 3;
       };
 
+      postfix-sasl.settings = {
+        enabled = true;
+        filter = "postfix[mode=auth]";
+        backend = "systemd";
+        journalmatch = "_SYSTEMD_UNIT=postfix.service";
+        maxretry = 3;
+      };
+
       nextcloud.settings = {
         enabled = true;
         filter = "nextcloud";
