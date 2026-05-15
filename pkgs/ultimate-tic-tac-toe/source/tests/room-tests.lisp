@@ -18,6 +18,15 @@
        (ultimate-tic-tac-toe.web::close-room-store)
        (uiop:delete-file-if-exists ,path-var))))
 
+(test room-code-normalization-is-forgiving
+  (is (equal "ABC2DE"
+             (ultimate-tic-tac-toe.web::normalize-game-room-id " ab-c2 de ")))
+  (is (equal "98S46R"
+             (ultimate-tic-tac-toe.web::normalize-game-room-id "98s 46r")))
+  (is (null (ultimate-tic-tac-toe.web::normalize-game-room-id "ABC2D")))
+  (is (null (ultimate-tic-tac-toe.web::normalize-game-room-id "ABC2DEF")))
+  (is (null (ultimate-tic-tac-toe.web::normalize-game-room-id "ABC1DE"))))
+
 (test room-store-persists-game-and-seats
   (with-test-room-store (database-path "persist")
     (let* ((room (ultimate-tic-tac-toe.web::create-room))

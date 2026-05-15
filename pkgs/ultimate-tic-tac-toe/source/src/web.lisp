@@ -82,10 +82,23 @@
         (hunchentoot:return-code*) hunchentoot:+http-see-other+)
   (hunchentoot:abort-request-handler))
 
+(defun mark-noindex-response ()
+  (setf (hunchentoot:header-out :x-robots-tag) "noindex, nofollow"))
+
+(defun room-code-characters (value)
+  (when value
+    (loop for character across value
+          for upper = (char-upcase character)
+          when (alphanumericp upper)
+            collect upper)))
+
 (defun normalize-game-room-id (game-room-id)
-  (when (and game-room-id (plusp (length game-room-id)))
-    (string-upcase
-     (string-trim '(#\Space #\Tab #\Newline #\Return) game-room-id))))
+  (let ((characters (room-code-characters game-room-id)))
+    (when (and (= (length characters) +room-code-length+)
+               (loop for character in characters
+                     always (find character +room-code-alphabet+
+                                  :test #'char=)))
+      (coerce characters 'string))))
 
 (defun random-token (&optional (length +room-code-length+))
   (let ((alphabet-length (length +room-code-alphabet+)))
@@ -602,7 +615,46 @@
               do (cl-who:htm
                   (:span :class (format nil "confetti-piece piece-~D" index))))))))
 
-(defun emit-actions (stream room-id)
+(defun emit-join-form (stream &key code error)
+  (cl-who:with-html-output (stream)
+    (:form :class (css-classes "join-form"
+                               (when error "has-error"))
+           :method "get"
+           :action "/room/join"
+      (:div :class "join-fields"
+        (:label :class "sr-only"
+                :for "room-code"
+                "Room code")
+        (:input :class "join-input"
+                :id "room-code"
+                :name "code"
+                :type "text"
+                :inputmode "text"
+                :autocomplete "off"
+                :autocapitalize "characters"
+                :spellcheck "false"
+                :maxlength 14
+                :placeholder "Room code"
+                :value (or code ""))
+        (:button :class "reset-button join-button"
+                 :type "submit"
+                 "Join"))
+      (when error
+        (cl-who:htm
+         (:p :class "join-error"
+             (cl-who:str error)))))))
+
+(defun emit-new-room-form (stream &key (label "New room") secondary)
+  (cl-who:with-html-output (stream)
+    (:form :class "reset-form"
+           :method "post"
+           :action "/room/new"
+      (:button :class (css-classes "reset-button"
+                                   (when secondary "secondary-button"))
+               :type "submit"
+               (cl-who:str label)))))
+
+(defun emit-actions (stream room-id &key join-code join-error)
   (cl-who:with-html-output (stream)
     (:div :class "action-forms"
       (if room-id
@@ -626,12 +678,10 @@
                       :type "submit"
                       "New")))
           (cl-who:htm
-           (:form :class "reset-form"
-                  :method "post"
-                  :action "/room/new"
-             (:button :class "reset-button secondary-button"
-                      :type "submit"
-                      "Room"))
+           (emit-join-form stream
+                           :code join-code
+                           :error join-error)
+           (emit-new-room-form stream :secondary t)
            (:form :class "reset-form"
                   :method "post"
                   :action "/reset"
@@ -640,9 +690,10 @@
                   :hx-swap "outerHTML"
              (:button :class "reset-button"
                       :type "submit"
-                      "New")))))))
+                      "Reset")))))))
 
-(defun render-game-fragment (game &key notice room-id room player poll)
+(defun render-game-fragment (game &key notice room-id room player poll
+                                    join-code join-error)
   (cl-who:with-html-output-to-string (stream)
     (:section :id "game"
               :class (css-classes "game-shell"
@@ -704,10 +755,12 @@
                  (:strong (cl-who:str (if (game-over-p game)
                                           "-"
                                           (player-label (game-next-player game))))))))
-            (:span :class "status-pill target-pill"
-              (:span "Target")
-              (:strong (cl-who:str (target-label game)))))
-          (emit-actions stream room-id)))
+              (:span :class "status-pill target-pill"
+                (:span "Target")
+                (:strong (cl-who:str (target-label game)))))
+          (emit-actions stream room-id
+                        :join-code join-code
+                        :join-error join-error)))
       (emit-confetti stream game)
       (when notice
         (cl-who:htm
@@ -723,13 +776,44 @@
                                                          (room-ready-p room)
                                                          t))))))))
 
-(defun render-page (game &key notice room-id room player poll)
+(defun render-missing-room-fragment (&key room-id join-code join-error)
+  (cl-who:with-html-output-to-string (stream)
+    (:section :id "game"
+              :class "game-shell is-missing-room"
+      (:header :class "topbar"
+        (:div :class "title-block"
+          (:p :class "eyebrow" "Ultimate Tic Tac Toe")
+          (:h1 "Room not found")
+          (:p :class "room-message"
+              "Try another code or start a new room."))
+        (:div :class "topbar-controls"
+          (:div :class "status-pills"
+            (when room-id
+              (cl-who:htm
+               (:span :class "status-pill room-pill"
+                 (:span "Code")
+                 (:strong (cl-who:str room-id))))))))
+      (:div :class "missing-room-panel"
+        (:div :class "missing-room-code"
+              (cl-who:str (or room-id "------")))
+        (emit-join-form stream
+                        :code (or join-code room-id)
+                        :error join-error)
+        (emit-new-room-form stream)))))
+
+(defun render-app-page (content &key noindex)
+  (when noindex
+    (mark-noindex-response))
   (cl-who:with-html-output-to-string (stream nil :prologue t)
     (:html :lang "en"
       (:head
         (:meta :charset "utf-8")
         (:meta :name "viewport"
                :content "width=device-width, initial-scale=1")
+        (when noindex
+          (cl-who:htm
+           (:meta :name "robots"
+                  :content "noindex, nofollow")))
         (:title "Ultimate Tic Tac Toe")
         (:link :rel "icon"
                :href "/icon.svg"
@@ -744,16 +828,39 @@
                  " "))
       (:body
         (:main :class "app"
-          (cl-who:str (render-game-fragment game
-                                            :notice notice
-                                            :room-id room-id
-                                            :room room
-                                            :player player
-                                            :poll poll)))))))
+          (cl-who:str content))))))
+
+(defun render-page (game &key notice room-id room player poll
+                          join-code join-error noindex)
+  (render-app-page (render-game-fragment game
+                                         :notice notice
+                                         :room-id room-id
+                                         :room room
+                                         :player player
+                                         :poll poll
+                                         :join-code join-code
+                                         :join-error join-error)
+                   :noindex noindex))
+
+(defun render-missing-room-page (&key room-id join-code join-error)
+  (render-app-page (render-missing-room-fragment
+                    :room-id room-id
+                    :join-code join-code
+                    :join-error join-error)
+                   :noindex t))
 
 (hunchentoot:define-easy-handler (home :uri "/") ()
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
   (render-page (current-game)))
+
+(hunchentoot:define-easy-handler (robots :uri "/robots.txt") ()
+  (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
+  (format nil "User-agent: *~%Disallow: /room?~%Disallow: /room/~%"))
+
+(hunchentoot:define-easy-handler (health :uri "/health") ()
+  (setf (hunchentoot:content-type*) "text/plain; charset=utf-8"
+        (hunchentoot:header-out :cache-control) "no-store")
+  (format nil "ok~%"))
 
 (hunchentoot:define-easy-handler (move :uri "/move"
                                        :default-request-type :post)
@@ -782,13 +889,27 @@
 (hunchentoot:define-easy-handler (new-room :uri "/room/new"
                                            :default-request-type :post)
     ()
+  (mark-noindex-response)
   (let ((room (create-room)))
     (claim-room-player room)
     (redirect-see-other (room-id-path (game-room-id room)))))
 
+(hunchentoot:define-easy-handler (join-room :uri "/room/join") (code)
+  (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
+  (mark-noindex-response)
+  (let ((room-id (normalize-game-room-id code)))
+    (if room-id
+        (redirect-see-other (room-id-path room-id))
+        (render-page (current-game)
+                     :join-code code
+                     :join-error "Enter a valid room code."
+                     :noindex t))))
+
 (hunchentoot:define-easy-handler (room-page :uri "/room") (id)
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (let ((room (find-room id)))
+  (mark-noindex-response)
+  (let* ((room-id (normalize-game-room-id id))
+         (room (and room-id (find-room room-id))))
     (if room
         (let ((player (claim-room-player room)))
           (with-room-locked (room)
@@ -796,13 +917,18 @@
                          :room-id (game-room-id room)
                          :room room
                          :player player
-                         :poll t)))
-        (render-page (current-game)
-                     :notice "Room not found."))))
+                         :poll t
+                         :noindex t)))
+        (render-missing-room-page
+         :room-id room-id
+         :join-code (or room-id id)
+         :join-error "No room with that code."))))
 
 (hunchentoot:define-easy-handler (room-state :uri "/room/state") (id)
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (let ((room (find-room id)))
+  (mark-noindex-response)
+  (let* ((room-id (normalize-game-room-id id))
+         (room (and room-id (find-room room-id))))
     (if room
         (let ((player (claim-room-player room)))
           (with-room-locked (room)
@@ -811,14 +937,18 @@
                                   :room room
                                   :player player
                                   :poll t)))
-        (render-game-fragment (current-game)
-                              :notice "Room not found."))))
+        (render-missing-room-fragment
+         :room-id room-id
+         :join-code (or room-id id)
+         :join-error "No room with that code."))))
 
 (hunchentoot:define-easy-handler (room-move :uri "/room/move"
                                             :default-request-type :post)
     (id board cell)
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (let ((room (find-room id)))
+  (mark-noindex-response)
+  (let* ((room-id (normalize-game-room-id id))
+         (room (and room-id (find-room room-id))))
     (if room
         (let ((player (claim-room-player room))
               (board-index (parse-index board))
@@ -869,14 +999,18 @@
                                        :player player
                                        :poll t
                                        :notice "That move was not understood."))))))
-        (render-game-fragment (current-game)
-                              :notice "Room not found."))))
+        (render-missing-room-fragment
+         :room-id room-id
+         :join-code (or room-id id)
+         :join-error "No room with that code."))))
 
 (hunchentoot:define-easy-handler (room-reset :uri "/room/reset"
                                              :default-request-type :post)
     (id)
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (let ((room (find-room id)))
+  (mark-noindex-response)
+  (let* ((room-id (normalize-game-room-id id))
+         (room (and room-id (find-room room-id))))
     (if room
         (let ((player (claim-room-player room)))
           (with-room-locked (room)
@@ -895,12 +1029,15 @@
                                       :player player
                                       :poll t
                                       :notice "This room is full."))))
-        (render-game-fragment (current-game)
-                              :notice "Room not found."))))
+        (render-missing-room-fragment
+         :room-id room-id
+         :join-code (or room-id id)
+         :join-error "No room with that code."))))
 
 (hunchentoot:define-easy-handler (room-events :uri "/room/events") (id version)
   (setf (hunchentoot:content-type*) "text/event-stream; charset=utf-8"
         (hunchentoot:header-out :cache-control) "no-cache")
+  (mark-noindex-response)
   (multiple-value-bind (event event-version)
       (wait-for-room-event id (parse-nonnegative-integer version))
     (case event
