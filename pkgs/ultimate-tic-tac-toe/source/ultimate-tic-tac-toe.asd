@@ -17,9 +17,9 @@
   :license "AGPL-3.0-or-later"
   :depends-on ("ultimate-tic-tac-toe" "fiveam")
   :serial t
-  :components ((:file "t/package")
-               (:file "t/game-tests")
-               (:file "t/room-tests"))
+  :components ((:file "tests/package")
+               (:file "tests/game-tests")
+               (:file "tests/room-tests"))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call :fiveam '#:run! :ultimate-tic-tac-toe)
