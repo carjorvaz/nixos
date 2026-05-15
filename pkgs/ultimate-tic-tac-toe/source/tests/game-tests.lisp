@@ -23,6 +23,12 @@
     (is (not (legal-move-p game 0 1)))
     (is (legal-move-p game 4 1))))
 
+(test accepted-move-records-last-move
+  (let ((game (make-game)))
+    (play-move game 0 4)
+    (is (equal '(:player :x :board 0 :cell 4 :target-board 4)
+               (game-last-move game)))))
+
 (test completed-target-board-opens-the-choice
   (let ((game (make-game)))
     (setf (aref (game-board-outcomes game) 4) :draw)
@@ -76,5 +82,12 @@
       (is (eql (game-next-player game) (game-next-player restored)))
       (is (= (game-active-board game) (game-active-board restored)))
       (is (= (game-move-count game) (game-move-count restored)))
+      (is (equal (game-last-move game) (game-last-move restored)))
       (is (eql :x (aref (game-cells restored) 0 4)))
       (is (eql :o (aref (game-cells restored) 4 8))))))
+
+(test old-game-snapshot-loads-without-last-move
+  (let* ((game (make-game))
+         (snapshot (game-snapshot game)))
+    (remf snapshot :last-move)
+    (is (null (game-last-move (game-from-snapshot snapshot))))))

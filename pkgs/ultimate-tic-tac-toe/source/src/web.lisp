@@ -371,17 +371,20 @@
 
 (defun room-message-label (game room player)
   (cond
+    ((and (game-over-p game)
+          (last-move-message game)))
     ((game-over-p game) "Start a new game when both players are ready.")
     ((not (room-ready-p room)) "Share the link. The board opens when O joins.")
+    ((last-move-message game))
     ((not (playable-player-p player))
      (format nil "Watching ~A choose ~A."
              (player-label (game-next-player game))
-             (target-label game)))
+             (target-instruction-label game)))
     ((eql player (game-next-player game))
-     (format nil "Choose ~A." (target-label game)))
+     (format nil "Choose ~A." (target-instruction-label game)))
     (t (format nil "Waiting for ~A to choose ~A."
                (player-label (game-next-player game))
-               (target-label game)))))
+               (target-instruction-label game)))))
 
 (defmacro with-room-locked ((room) &body body)
   `(bordeaux-threads:with-lock-held (*rooms-lock*)
@@ -421,8 +424,42 @@
   (cond
     ((game-winner game) "Done")
     ((game-active-board game)
-     (format nil "~A board" (board-position-label (game-active-board game))))
-    (t "Any open board")))
+     (board-position-label (game-active-board game)))
+    (t "Any board")))
+
+(defun target-instruction-label (game)
+  (cond
+    ((game-winner game) "the finished game")
+    ((game-active-board game)
+     (format nil "the ~A board"
+             (board-position-label (game-active-board game))))
+    (t "any open board")))
+
+(defun last-move-target-label (last-move)
+  (let ((target-board (getf last-move :target-board)))
+    (when target-board
+      (format nil "the ~A board" (board-position-label target-board)))))
+
+(defun last-move-message (game)
+  (let ((last-move (game-last-move game)))
+    (when last-move
+      (let ((last-player (getf last-move :player)))
+        (cond
+          ((eql (game-winner game) :draw)
+           (format nil "~A made the final move. The game is drawn."
+                   (player-label last-player)))
+          ((player-label-p (game-winner game))
+           (format nil "~A made the final move and won."
+                   (player-label last-player)))
+          ((last-move-target-label last-move)
+           (format nil "~A sent ~A to ~A."
+                   (player-label last-player)
+                   (player-label (game-next-player game))
+                   (last-move-target-label last-move)))
+          (t
+           (format nil "~A opened any board for ~A."
+                   (player-label last-player)
+                   (player-label (game-next-player game)))))))))
 
 (defun result-label (game)
   (let ((winner (game-winner game)))
@@ -452,6 +489,17 @@
     (and line
          (find board (aref +line-boards+ line) :test #'=))))
 
+(defun last-move-board-p (game board)
+  (let ((last-move (game-last-move game)))
+    (and last-move
+         (= board (getf last-move :board)))))
+
+(defun last-move-cell-p (game board cell)
+  (let ((last-move (game-last-move game)))
+    (and last-move
+         (= board (getf last-move :board))
+         (= cell (getf last-move :cell)))))
+
 (defun cell-aria-label (game board cell)
   (format nil "Play ~A in board ~D cell ~D"
           (player-label (game-next-player game))
@@ -473,6 +521,8 @@
     (cl-who:with-html-output (stream)
       (:div :class (css-classes "micro-cell"
                                 (when mark "is-filled")
+                                (when (last-move-cell-p game board cell)
+                                  "is-last-move")
                                 (when legalp "is-playable"))
         (cond
           (mark
@@ -522,7 +572,9 @@
                                     (when (eql outcome :o) "is-won-o")
                                     (when (eql outcome :draw) "is-draw")
                                     (when (global-winning-board-p game board)
-                                      "is-global-win-board"))
+                                      "is-global-win-board")
+                                    (when (last-move-board-p game board)
+                                      "has-last-move"))
                 :aria-label (format nil "Board ~D, ~A"
                                     (1+ board)
                                     (outcome-label outcome))

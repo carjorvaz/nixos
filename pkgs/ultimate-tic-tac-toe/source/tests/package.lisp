@@ -10,6 +10,7 @@
                 #:game-active-board
                 #:game-winner
                 #:game-move-count
+                #:game-last-move
                 #:board-outcome
                 #:board-winning-line
                 #:global-winning-line

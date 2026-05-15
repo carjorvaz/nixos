@@ -20,7 +20,8 @@
   (next-player :x)
   (active-board nil)
   (winner nil)
-  (move-count 0))
+  (move-count 0)
+  (last-move nil))
 
 (defun player-p (value)
   (or (eql value :x)
@@ -127,6 +128,13 @@
   (setf (game-winner game)
         (global-outcome game)))
 
+(defun record-last-move (game player board cell target-board)
+  (setf (game-last-move game)
+        (list :player player
+              :board board
+              :cell cell
+              :target-board target-board)))
+
 (defun play-move (game board cell)
   "Apply BOARD/CELL for the current player.
 
@@ -134,16 +142,18 @@ Returns two values: GAME and a generalized boolean indicating whether the move
 was accepted. GAME is mutated in place so it can live directly in a web session."
   (unless (legal-move-p game board cell)
     (return-from play-move (values game nil)))
-  (setf (aref (game-cells game) board cell)
-        (game-next-player game))
-  (incf (game-move-count game))
-  (update-outcomes-after-move game board)
-  (unless (game-winner game)
-    (setf (game-active-board game)
-          (unless (board-complete-p game cell)
-            cell))
-    (setf (game-next-player game)
-          (other-player (game-next-player game))))
+  (let ((player (game-next-player game))
+        (target-board nil))
+    (setf (aref (game-cells game) board cell) player)
+    (incf (game-move-count game))
+    (update-outcomes-after-move game board)
+    (unless (game-winner game)
+      (setf target-board (unless (board-complete-p game cell)
+                           cell))
+      (setf (game-active-board game) target-board)
+      (setf (game-next-player game)
+            (other-player player)))
+    (record-last-move game player board cell target-board))
   (values game t))
 
 (defun game-snapshot (game)
@@ -155,7 +165,8 @@ was accepted. GAME is mutated in place so it can live directly in a web session.
         :next-player (game-next-player game)
         :active-board (game-active-board game)
         :winner (game-winner game)
-        :move-count (game-move-count game)))
+        :move-count (game-move-count game)
+        :last-move (game-last-move game)))
 
 (defun game-from-snapshot (snapshot)
   (let ((game (make-game)))
@@ -170,7 +181,8 @@ was accepted. GAME is mutated in place so it can live directly in a web session.
     (setf (game-next-player game) (getf snapshot :next-player)
           (game-active-board game) (getf snapshot :active-board)
           (game-winner game) (getf snapshot :winner)
-          (game-move-count game) (getf snapshot :move-count 0))
+          (game-move-count game) (getf snapshot :move-count 0)
+          (game-last-move game) (getf snapshot :last-move))
     game))
 
 (defun game-over-p (game)
