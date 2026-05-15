@@ -60,7 +60,7 @@ in
       extraConfig = ''
         server_tokens off;
         add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
-        add_header Cache-Control "private" always;
+        add_header Cache-Control "private, no-store" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header Content-Security-Policy "default-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'" always;
@@ -76,6 +76,8 @@ in
 
           limit_req zone=lisp_corpus_share burst=60 nodelay;
           limit_req_status 429;
+          proxy_buffering off;
+          proxy_max_temp_file_size 0;
           proxy_set_header Authorization $http_authorization;
         '';
       };
