@@ -117,6 +117,7 @@
             command-not-found.enable = false;
             nix-index-database.comma.enable = true;
           };
+          system.configurationRevision = self.rev or self.dirtyRev or null;
         }
       ];
 

@@ -32,6 +32,12 @@
       ((not (boundp 'hunchentoot:*session-secret*))
        (hunchentoot:reset-session-secret)))))
 
+(defun configured-version ()
+  (let ((version (uiop:getenv "UTTT_VERSION")))
+    (if (and version (plusp (length version)))
+        version
+        "unknown")))
+
 (defun seed-random-state ()
   (setf *random-state* (make-random-state t)))
 
@@ -906,6 +912,11 @@
   (setf (hunchentoot:content-type*) "text/plain; charset=utf-8"
         (hunchentoot:header-out :cache-control) "no-store")
   (format nil "ok~%"))
+
+(hunchentoot:define-easy-handler (version :uri "/version") ()
+  (setf (hunchentoot:content-type*) "text/plain; charset=utf-8"
+        (hunchentoot:header-out :cache-control) "no-store")
+  (format nil "~A~%" (configured-version)))
 
 (hunchentoot:define-easy-handler (move :uri "/move"
                                        :default-request-type :post)

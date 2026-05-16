@@ -5,6 +5,8 @@ let
   oldDomain = "uttt.vaz.one";
   port = 4242;
   stateDir = "/var/lib/ultimate-tic-tac-toe";
+  revision = config.system.configurationRevision;
+  version = if revision == null then "unknown" else revision;
   runService = pkgs.writeShellScript "run-ultimate-tic-tac-toe" ''
     set -euo pipefail
 
@@ -21,6 +23,7 @@ let
     fi
 
     export PORT="${toString port}"
+    export UTTT_VERSION="${version}"
     export SESSION_SECRET="$(cat "$state_directory/session-secret")"
     exec ${pkgs.ultimate-tic-tac-toe}/bin/ultimate-tic-tac-toe
   '';

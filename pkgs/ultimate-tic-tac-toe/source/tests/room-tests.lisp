@@ -36,6 +36,10 @@
     (is (html-includes-p html "action=\"/room/new\""))
     (is (html-includes-p html "hx-post=\"/reset\""))))
 
+(test app-version-defaults-when-unset
+  (is (equal "unknown"
+             (ultimate-tic-tac-toe.web::configured-version))))
+
 (test room-render-keeps-live-room-contract
   (with-test-room-store (database-path "render")
     (declare (ignore database-path))
