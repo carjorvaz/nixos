@@ -399,6 +399,11 @@
                (player-label (game-next-player game))
                (target-instruction-label game)))))
 
+(defun game-message-label (game room player)
+  (if room
+      (room-message-label game room player)
+      (last-move-message game)))
+
 (defmacro with-room-locked ((room) &body body)
   `(bordeaux-threads:with-lock-held (*rooms-lock*)
      (touch-room-unlocked ,room)
@@ -452,6 +457,21 @@
   (let ((target-board (getf last-move :target-board)))
     (when target-board
       (format nil "the ~A board" (board-position-label target-board)))))
+
+(defun last-move-target-board-p (game board)
+  (let* ((last-move (game-last-move game))
+         (target-board (and last-move
+                            (getf last-move :target-board))))
+    (and target-board
+         (not (game-over-p game))
+         (= board target-board))))
+
+(defun last-move-open-choice-p (game board)
+  (let ((last-move (game-last-move game)))
+    (and last-move
+         (not (game-over-p game))
+         (null (getf last-move :target-board))
+         (available-board-p game board))))
 
 (defun last-move-message (game)
   (let ((last-move (game-last-move game)))
@@ -587,7 +607,11 @@
                                     (when (global-winning-board-p game board)
                                       "is-global-win-board")
                                     (when (last-move-board-p game board)
-                                      "has-last-move"))
+                                      "has-last-move")
+                                    (when (last-move-target-board-p game board)
+                                      "is-target-from-last")
+                                    (when (last-move-open-choice-p game board)
+                                      "is-open-from-last"))
                 :aria-label (format nil "Board ~D, ~A"
                                     (1+ board)
                                     (outcome-label outcome))
@@ -605,6 +629,16 @@
                    :src (mark-asset outcome)
                    :alt ""
                    :aria-hidden "true"))))))))
+
+(defun emit-global-win-line (stream game)
+  (let ((line (global-winning-line game))
+        (winner (game-winner game)))
+    (when (and line (player-label-p winner))
+      (cl-who:with-html-output (stream)
+        (:div :class (css-classes "global-win-line"
+                                  (format nil "line-~D" line)
+                                  (format nil "win-~(~A~)" winner))
+              :aria-hidden "true")))))
 
 (defun emit-confetti (stream game)
   (when (player-label-p (game-winner game))
@@ -654,7 +688,7 @@
                :type "submit"
                (cl-who:str label)))))
 
-(defun emit-actions (stream room-id &key join-code join-error)
+(defun emit-actions (stream game room-id &key join-code join-error)
   (cl-who:with-html-output (stream)
     (:div :class "action-forms"
       (if room-id
@@ -676,7 +710,9 @@
                      :value room-id)
              (:button :class "reset-button"
                       :type "submit"
-                      "New")))
+                      (cl-who:str (if (game-over-p game)
+                                      "Rematch"
+                                      "New")))))
           (cl-who:htm
            (emit-join-form stream
                            :code join-code
@@ -690,14 +726,22 @@
                   :hx-swap "outerHTML"
              (:button :class "reset-button"
                       :type "submit"
-                      "Reset")))))))
+                      (cl-who:str (if (game-over-p game)
+                                      "New game"
+                                      "Reset")))))))))
 
 (defun render-game-fragment (game &key notice room-id room player poll
                                     join-code join-error)
-  (cl-who:with-html-output-to-string (stream)
+  (let ((message (game-message-label game room player)))
+    (cl-who:with-html-output-to-string (stream)
     (:section :id "game"
               :class (css-classes "game-shell"
                                   (when room-id "has-room")
+                                  (when (and room-id
+                                             (not (room-ready-p room))
+                                             (not (game-over-p game)))
+                                    "is-waiting-room")
+                                  (when (game-last-move game) "has-last-move")
                                   (when (and (null (game-winner game))
                                              (null (game-active-board game)))
                                     "is-any-board")
@@ -717,11 +761,11 @@
           (:h1 (cl-who:str (if room-id
                                 (room-headline-label game room player)
                                 (result-label game))))
-          (when room-id
+          (when message
             (cl-who:htm
              (:p :class "room-message"
                  :aria-live "polite"
-                 (cl-who:str (room-message-label game room player))))))
+                 (cl-who:str message)))))
         (:div :class "topbar-controls"
           (:div :class "status-pills"
             (when room-id
@@ -758,7 +802,7 @@
               (:span :class "status-pill target-pill"
                 (:span "Target")
                 (:strong (cl-who:str (target-label game)))))
-          (emit-actions stream room-id
+          (emit-actions stream game room-id
                         :join-code join-code
                         :join-error join-error)))
       (emit-confetti stream game)
@@ -774,7 +818,8 @@
                                      :player player
                                      :play-enabled-p (if room-id
                                                          (room-ready-p room)
-                                                         t))))))))
+                                                         t)))
+          (emit-global-win-line stream game)))))))
 
 (defun render-missing-room-fragment (&key room-id join-code join-error)
   (cl-who:with-html-output-to-string (stream)

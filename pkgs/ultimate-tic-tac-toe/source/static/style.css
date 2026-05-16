@@ -423,9 +423,14 @@ h1 {
   width: min(92vw, calc(100svh - 132px), 704px);
 }
 
+.game-shell.has-last-move .macro-board {
+  width: min(92vw, calc(100svh - 132px), 704px);
+}
+
 .local-board {
   container-type: inline-size;
   position: relative;
+  z-index: 1;
   min-width: 0;
   min-height: 0;
   aspect-ratio: 1;
@@ -439,21 +444,45 @@ h1 {
     0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.local-board.is-active,
 .local-board.is-choice {
-  border-color: rgba(255, 209, 102, 0.82);
-  background: #fff6d9;
+  border-color: rgba(255, 209, 102, 0.55);
+  background: #fff8e8;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.82),
-    0 0 0 2px rgba(255, 209, 102, 0.18),
-    0 8px 22px rgba(255, 209, 102, 0.1);
+    0 0 0 1px rgba(255, 209, 102, 0.12),
+    0 6px 18px rgba(255, 209, 102, 0.07);
 }
 
-.local-board.is-active {
+.local-board.is-active,
+.local-board.is-target-from-last {
+  border-color: rgba(255, 209, 102, 0.92);
+  background: #fff3c5;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.82),
     0 0 0 3px rgba(255, 209, 102, 0.35),
     0 12px 28px rgba(255, 209, 102, 0.14);
+}
+
+.local-board.is-target-from-last {
+  animation: target-board-pop 0.42s ease-out both;
+}
+
+.local-board.is-target-from-last::before {
+  content: "";
+  position: absolute;
+  inset: clamp(4px, 2.7cqw, 8px);
+  z-index: 6;
+  border: 2px solid rgba(255, 209, 102, 0.92);
+  border-radius: 6px;
+  pointer-events: none;
+  animation: target-ring 1.2s ease-out 0.08s both;
+}
+
+.local-board.is-open-from-last {
+  border-color: rgba(255, 209, 102, 0.62);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.82),
+    0 0 0 2px rgba(255, 209, 102, 0.16);
 }
 
 .local-board.is-won-x {
@@ -523,6 +552,18 @@ h1 {
 
 .micro-cell.is-last-move {
   background: #fff1bd;
+}
+
+.micro-cell.is-last-move::before {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  z-index: 2;
+  border-radius: 50%;
+  background: rgba(255, 209, 102, 0.34);
+  box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.42);
+  pointer-events: none;
+  animation: last-move-flare 0.9s ease-out both;
 }
 
 .micro-cell.is-last-move::after {
@@ -610,6 +651,98 @@ h1 {
   filter: drop-shadow(0 2px 0 rgba(255, 255, 255, 0.58));
 }
 
+.global-win-line {
+  --line-color: var(--target);
+  position: absolute;
+  z-index: 9;
+  pointer-events: none;
+  border-radius: 999px;
+  background: var(--line-color);
+  box-shadow:
+    0 1px 0 rgba(255, 247, 232, 0.42),
+    0 0 20px color-mix(in srgb, var(--line-color) 40%, transparent);
+  clip-path: inset(0 100% 0 0 round 999px);
+  animation: win-line-reveal 0.82s cubic-bezier(0.2, 0.85, 0.16, 1) 0.18s forwards;
+}
+
+.global-win-line::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: inherit;
+  background: var(--line-color);
+  opacity: 0.1;
+  filter: blur(6px);
+}
+
+.global-win-line.win-x {
+  --line-color: var(--x);
+}
+
+.global-win-line.win-o {
+  --line-color: var(--o);
+}
+
+.global-win-line.line-0,
+.global-win-line.line-1,
+.global-win-line.line-2 {
+  left: 12%;
+  width: 76%;
+  height: clamp(3px, 0.62vw, 5px);
+  transform: translateY(-50%);
+}
+
+.global-win-line.line-0 {
+  top: 16.666%;
+}
+
+.global-win-line.line-1 {
+  top: 50%;
+}
+
+.global-win-line.line-2 {
+  top: 83.333%;
+}
+
+.global-win-line.line-3,
+.global-win-line.line-4,
+.global-win-line.line-5 {
+  top: 12%;
+  width: clamp(3px, 0.62vw, 5px);
+  height: 76%;
+  transform: translateX(-50%);
+}
+
+.global-win-line.line-3 {
+  left: 16.666%;
+}
+
+.global-win-line.line-4 {
+  left: 50%;
+}
+
+.global-win-line.line-5 {
+  left: 83.333%;
+}
+
+.global-win-line.line-6,
+.global-win-line.line-7 {
+  left: 12%;
+  width: 107.5%;
+  height: clamp(3px, 0.62vw, 5px);
+  transform-origin: left center;
+}
+
+.global-win-line.line-6 {
+  top: 12%;
+  transform: rotate(45deg);
+}
+
+.global-win-line.line-7 {
+  bottom: 12%;
+  transform: rotate(-45deg);
+}
+
 .confetti {
   position: fixed;
   inset: 0;
@@ -645,6 +778,64 @@ h1 {
 .piece-12 { left: 34%; background: var(--target); animation-delay: 0.34s; }
 .piece-13 { left: 66%; background: var(--x); animation-delay: 0.32s; }
 
+.game-shell.has-last-move .target-pill {
+  border-color: rgba(255, 209, 102, 0.86);
+  background: rgba(255, 209, 102, 0.14);
+}
+
+.game-shell.is-waiting-room .invite-button {
+  border-color: var(--target);
+  background: var(--target);
+  color: var(--ink);
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.45),
+    0 0 0 3px rgba(255, 209, 102, 0.14);
+}
+
+.game-shell.is-waiting-room .seat-pill.is-open {
+  animation: open-seat-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes target-board-pop {
+  0% {
+    transform: translateY(0) scale(0.985);
+  }
+
+  100% {
+    transform: translateY(-2px) scale(1);
+  }
+}
+
+@keyframes target-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.38;
+    transform: scale(1);
+  }
+}
+
+@keyframes last-move-flare {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.65);
+    box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.42);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+    box-shadow: 0 0 0 12px rgba(255, 209, 102, 0);
+  }
+}
+
 @keyframes confetti-drop {
   0% {
     opacity: 0;
@@ -658,6 +849,30 @@ h1 {
   100% {
     opacity: 0;
     transform: translateY(86vh) rotate(420deg);
+  }
+}
+
+@keyframes win-line-reveal {
+  0% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0 round 999px);
+  }
+
+  100% {
+    opacity: 0.88;
+    clip-path: inset(0 0 0 0 round 999px);
+  }
+}
+
+@keyframes open-seat-pulse {
+  0%,
+  100% {
+    border-color: rgba(255, 247, 232, 0.32);
+  }
+
+  50% {
+    border-color: rgba(255, 209, 102, 0.82);
+    background: rgba(255, 209, 102, 0.12);
   }
 }
 
@@ -694,6 +909,10 @@ h1 {
   }
 
   .game-shell.has-room .macro-board {
+    width: min(92vw, calc(100svh - 116px), 668px);
+  }
+
+  .game-shell.has-last-move .macro-board {
     width: min(92vw, calc(100svh - 116px), 668px);
   }
 }
@@ -844,7 +1063,16 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .confetti-piece {
+  .confetti-piece,
+  .global-win-line,
+  .local-board.is-target-from-last,
+  .local-board.is-target-from-last::before,
+  .micro-cell.is-last-move::before,
+  .game-shell.is-waiting-room .seat-pill.is-open {
     animation: none;
+  }
+
+  .global-win-line {
+    clip-path: none;
   }
 }
