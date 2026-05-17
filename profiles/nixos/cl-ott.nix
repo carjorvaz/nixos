@@ -134,6 +134,10 @@ in
     stateFile = "/var/lib/cl-ott/state.json";
     outputGroup = "media";
     searchLimit = 50;
+    guide = {
+      outputPath = "/var/lib/cl-ott/guide.json";
+      xmltvUrl = "https://github.com/LITUATUI/M3UPT/raw/main/EPG/epg-m3upt.xml.xz";
+    };
     clientApi = {
       enable = true;
       bindAddress = "127.0.0.1";
