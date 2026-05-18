@@ -41,6 +41,9 @@
     cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
     cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
+    cl-ultimate-tic-tac-toe.url = "github:carjorvaz/cl-ultimate-tic-tac-toe";
+    cl-ultimate-tic-tac-toe.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
     cl-ott.url = "git+ssh://git@github.com/carjorvaz/cl-ott.git";
     cl-ott.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
@@ -76,10 +79,22 @@
 
       mkLocalPackages =
         pkgs:
-        inputs.nixpkgs.lib.mapAttrs' (name: _: {
-          name = inputs.nixpkgs.lib.removeSuffix ".nix" name;
-          value = pkgs.callPackage (pkgsDir + "/${name}") { };
-        }) packageEntries;
+        inputs.nixpkgs.lib.mapAttrs' (
+          name: _:
+          let
+            packagePath = pkgsDir + "/${name}";
+            packageFunction = import packagePath;
+            extraArgs =
+              if builtins.hasAttr "inputs" (builtins.functionArgs packageFunction) then
+                { inherit inputs; }
+              else
+                { };
+          in
+          {
+            name = inputs.nixpkgs.lib.removeSuffix ".nix" name;
+            value = pkgs.callPackage packagePath extraArgs;
+          }
+        ) packageEntries;
 
       availableLocalPackages =
         pkgs:
@@ -145,6 +160,7 @@
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
+            inputs.cl-ultimate-tic-tac-toe.nixosModules.default
             ./hosts/hadrianus.nix
             ./disko/base.nix
             ./disko/encryption.nix

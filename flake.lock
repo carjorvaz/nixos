@@ -171,6 +171,26 @@
         "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
       }
     },
+    "cl-ultimate-tic-tac-toe": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1779122927,
+        "narHash": "sha256-lbNaVir33iLg261S30vy0EbKQmvJxsRhBDNHedC5PQk=",
+        "owner": "carjorvaz",
+        "repo": "cl-ultimate-tic-tac-toe",
+        "rev": "a8ba9ed3f13530187694f0bdbdee3bb3b66e3c36",
+        "type": "github"
+      },
+      "original": {
+        "owner": "carjorvaz",
+        "repo": "cl-ultimate-tic-tac-toe",
+        "type": "github"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1754269165,
@@ -1312,6 +1332,7 @@
         "agenix": "agenix",
         "cl-olx-scraper": "cl-olx-scraper",
         "cl-ott": "cl-ott",
+        "cl-ultimate-tic-tac-toe": "cl-ultimate-tic-tac-toe",
         "disko": "disko",
         "firefox-addons": "firefox-addons",
         "hermes-agent": "hermes-agent",
