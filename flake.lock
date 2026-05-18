@@ -178,11 +178,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1779122927,
-        "narHash": "sha256-lbNaVir33iLg261S30vy0EbKQmvJxsRhBDNHedC5PQk=",
+        "lastModified": 1779124080,
+        "narHash": "sha256-AJKlP+jW+UwZQL2MqZek6ms5xA364vCb/QtbgakpMlE=",
         "owner": "carjorvaz",
         "repo": "cl-ultimate-tic-tac-toe",
-        "rev": "a8ba9ed3f13530187694f0bdbdee3bb3b66e3c36",
+        "rev": "f563991ee00c500db9992e2ff9d52c1554d173c6",
         "type": "github"
       },
       "original": {
