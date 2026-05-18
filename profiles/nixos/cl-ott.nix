@@ -18,6 +18,8 @@ let
   jellyfinFallbackPlaylistPath = cfg.outputPath;
   tunerName = "cl-ott";
   internalApiHost = "cl-ott.pius.internal";
+  hadrianusTailscaleIPv4 = "100.103.78.39";
+  hadrianusTailscaleIPv6 = "fd7a:115c:a1e0:ab12:4843:cd96:6267:4e27";
 
   ensureJellyfinTuner = pkgs.writeShellApplication {
     name = "cl-ott-jellyfin-ensure-tuner";
@@ -232,8 +234,8 @@ in
 
   services.nginx.virtualHosts.${internalApiHost} = {
     extraConfig = ''
-      allow 100.64.0.0/10;
-      allow fd7a:115c:a1e0::/48;
+      allow ${hadrianusTailscaleIPv4};
+      allow ${hadrianusTailscaleIPv6};
       deny all;
 
       server_tokens off;
