@@ -23,6 +23,7 @@
     "${self}/profiles/nixos/iwd.nix"
     "${self}/profiles/nixos/lanzaboote.nix" # STATE: Set up after redeploying
     "${self}/profiles/nixos/laptop.nix"
+    "${self}/profiles/nixos/laptopServer.nix"
     # "${self}/profiles/nixos/mullvad.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/backupSource.nix"
@@ -86,10 +87,25 @@
     "zfs.zfs_arc_max=4294967296" # Cap ARC at 4 GB — free RAM for browsers and llama.cpp
   ];
 
+  specialisation.llm-vulkan-gtt.configuration = {
+    boot.kernelParams = [
+      # Raise AMD APU shared GPU memory from the default ~15.3 GiB to 22 GiB.
+      # This is for dense Qwen3.6-27B Q4-class Vulkan offload experiments.
+      "ttm.pages_limit=5767168"
+      "ttm.page_pool_size=5767168"
+    ];
+  };
+
   networking = {
     hostName = "trajanus";
     hostId = "d7ba56e3";
   };
+
+  # TODO: Once trajanus has wired Ethernet, enable cjv.zfsRemoteUnlock with a
+  # LAN static IP and initrd SSH host key. Wi-Fi-only initrd unlock is deferred
+  # because it is brittle and would pull Wi-Fi credentials into early boot.
+  # At the same desk visit, check firmware options: power on after AC loss,
+  # disable vendor sleep quirks, and enable Wake-on-LAN once wired.
 
   boot.zfs.extraPools = [ "zdata" ];
 
@@ -139,7 +155,19 @@
     '';
   };
 
-  services.displayManager.autoLogin.user = "cjv";
+  # Keep the graphical stack available as an emergency workstation, but require
+  # an explicit login so stale compositor sessions do not accumulate unattended.
+  services.displayManager.autoLogin.enable = false;
+
+  powerManagement.powertop.enable = lib.mkForce false;
+  services.tlp.settings = {
+    CPU_ENERGY_PERF_POLICY_ON_BAT = lib.mkForce "performance";
+    CPU_BOOST_ON_BAT = lib.mkForce 1;
+    CPU_HWP_DYN_BOOST_ON_BAT = lib.mkForce 1;
+    PCIE_ASPM_ON_BAT = lib.mkForce "performance";
+    RUNTIME_PM_ON_BAT = lib.mkForce "on";
+    WIFI_PWR_ON_BAT = lib.mkForce "off";
+  };
 
   graphical.theme.name = "gruvbox";
 

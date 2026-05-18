@@ -1,8 +1,36 @@
-{ lib, ... }:
+{ lib, options, ... }:
+
+let
+  disableSleepSettings = {
+    AllowSuspend = "no";
+    AllowHibernation = "no";
+    AllowSuspendThenHibernate = "no";
+    AllowHybridSleep = "no";
+  };
+in
 
 {
   powerManagement.powertop.enable = true;
-  services.logind.settings.Login.HandleLidSwitch = "ignore";
+
+  systemd.sleep =
+    if options.systemd.sleep ? settings then
+      {
+        settings.Sleep = disableSleepSettings;
+      }
+    else
+      {
+        extraConfig = lib.generators.toKeyValue { } disableSleepSettings;
+      };
+
+  systemd.user.services.batsignal.enable = false;
+
+  services.logind.settings.Login = {
+    HandleLidSwitch = "ignore";
+    HandleLidSwitchExternalPower = "ignore";
+    HandleLidSwitchDocked = "ignore";
+    HandleSuspendKey = "ignore";
+    HandleHibernateKey = "ignore";
+  };
 
   services.tlp = {
     enable = true;
