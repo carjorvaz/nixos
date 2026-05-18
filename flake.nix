@@ -52,6 +52,8 @@
 
     kimi-cli.url = "github:MoonshotAI/kimi-cli";
 
+    hermes-agent.url = "github:NousResearch/hermes-agent";
+
     llm-agents.url = "github:numtide/llm-agents.nix";
 
     tuxedo-nixos.url = "github:sund3RRR/tuxedo-nixos";
