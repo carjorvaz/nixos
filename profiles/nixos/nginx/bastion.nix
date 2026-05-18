@@ -8,6 +8,7 @@ let
   # Nginx resolves proxyPass hostnames at startup. Use pius's stable Tailscale
   # IPv4 address so hadrianus can switch before MagicDNS is warm.
   piusTailscaleIPv4 = "100.121.87.116";
+  clOttInternalHost = "cl-ott.pius.internal";
   lispCorpusHtpasswdFile = config.age.secrets.lispCorpusShareHtpasswd.path;
 in
 {
@@ -31,6 +32,7 @@ in
 
   services.nginx.appendHttpConfig = ''
     limit_req_zone $binary_remote_addr zone=lisp_corpus_share:10m rate=3r/s;
+    limit_req_zone $binary_remote_addr zone=cl_ott_api:10m rate=5r/s;
   '';
 
   services.nginx.virtualHosts = {
@@ -50,6 +52,55 @@ in
       forceSSL = true;
       useACMEHost = "vaz.one";
       locations."/".proxyPass = "http://${piusTailscaleIPv4}:${toString config.services.jellyseerr.port}";
+    };
+
+    "ott.vaz.one" = {
+      forceSSL = true;
+      useACMEHost = "vaz.one";
+
+      extraConfig = ''
+        server_tokens off;
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Cache-Control "no-store" always;
+      '';
+
+      locations."/" = {
+        return = "404";
+      };
+
+      locations."^~ /api/v1/" = {
+        proxyPass = "http://${piusTailscaleIPv4}:80";
+        recommendedProxySettings = false;
+        extraConfig = ''
+          client_max_body_size 1k;
+          limit_req zone=cl_ott_api burst=30 nodelay;
+          limit_req_status 429;
+
+          proxy_connect_timeout 5s;
+          proxy_read_timeout 20s;
+          proxy_send_timeout 20s;
+          proxy_buffering off;
+          proxy_max_temp_file_size 0;
+          proxy_set_header Host ${clOttInternalHost};
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Server $hostname;
+          proxy_set_header Connection "";
+          proxy_set_header Authorization $http_authorization;
+
+          if ($request_method !~ "^(GET|POST)$") {
+            return 405;
+          }
+
+          if ($http_authorization !~ "^Bearer .+") {
+            return 401;
+          }
+        '';
+      };
     };
 
     "lisp.vaz.one" = {

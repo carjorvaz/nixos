@@ -10,7 +10,14 @@ let
   cfg = config.services.cl-ott;
   jellyfinUrl = "http://127.0.0.1:8096";
   jellyfinApiKeyFile = config.age.secrets.jellyfinClOttApiKey.path;
+  jellyfinPlaylistPath =
+    if cfg.healthSample.applyOutputPath != null then
+      cfg.healthSample.applyOutputPath
+    else
+      cfg.outputPath;
+  jellyfinFallbackPlaylistPath = cfg.outputPath;
   tunerName = "cl-ott";
+  internalApiHost = "cl-ott.pius.internal";
 
   ensureJellyfinTuner = pkgs.writeShellApplication {
     name = "cl-ott-jellyfin-ensure-tuner";
@@ -22,9 +29,20 @@ let
     text = ''
       api_key="$(tr -d '\r\n' < ${lib.escapeShellArg jellyfinApiKeyFile})"
       jellyfin_url=${lib.escapeShellArg jellyfinUrl}
-      playlist=${lib.escapeShellArg cfg.outputPath}
+      playlist=${lib.escapeShellArg jellyfinPlaylistPath}
+      fallback_playlist=${lib.escapeShellArg jellyfinFallbackPlaylistPath}
       tuner_name=${lib.escapeShellArg tunerName}
       auth_header="X-Emby-Token: $api_key"
+
+      if [ ! -e "$playlist" ]; then
+        if [ -e "$fallback_playlist" ]; then
+          echo "Playlist $playlist is not present yet; using $fallback_playlist for now"
+          playlist="$fallback_playlist"
+        else
+          echo "Playlist $playlist is not present yet" >&2
+          exit 0
+        fi
+      fi
 
       for attempt in $(seq 1 60); do
         if curl -fsS "$jellyfin_url/System/Info/Public" >/dev/null; then
@@ -38,15 +56,6 @@ let
       done
 
       live_tv_config="$(curl -fsS -H "$auth_header" "$jellyfin_url/System/Configuration/LiveTv")"
-      stale_ids="$(printf '%s' "$live_tv_config" \
-        | jq -r --arg name "$tuner_name" --arg url "$playlist" \
-          '.TunerHosts[]? | select(.Type == "m3u" and .FriendlyName == $name and .Url != $url) | .Id')"
-      for id in $stale_ids; do
-        curl -fsS -X DELETE -H "$auth_header" "$jellyfin_url/LiveTv/TunerHosts?id=$id" >/dev/null
-        echo "Removed stale Jellyfin tuner $id for $tuner_name"
-      done
-
-      live_tv_config="$(curl -fsS -H "$auth_header" "$jellyfin_url/System/Configuration/LiveTv")"
       exists="$(printf '%s' "$live_tv_config" \
         | jq -r --arg name "$tuner_name" --arg url "$playlist" \
           'any(.TunerHosts[]?; .Type == "m3u" and .FriendlyName == $name and .Url == $url)')"
@@ -57,23 +66,38 @@ let
 
       payload="$(mktemp)"
       trap 'rm -f "$payload"' EXIT
-      jq -n --arg name "$tuner_name" --arg url "$playlist" '{
-        Type: "m3u",
-        FriendlyName: $name,
-        Url: $url,
-        TunerCount: 4,
-        AllowStreamSharing: true,
-        AllowHWTranscoding: true,
-        AllowFmp4TranscodingContainer: true,
-        EnableStreamLooping: false,
-        ImportFavoritesOnly: false,
-        IgnoreDts: false,
-        ReadAtNativeFramerate: false
-      }' > "$payload"
+      printf '%s' "$live_tv_config" \
+        | jq --arg name "$tuner_name" --arg url "$playlist" '
+          (.TunerHosts // []) as $hosts
+          | (
+              $hosts
+              | map(select(.Type == "m3u" and .FriendlyName == $name) | .Id)
+              | map(select(. != null and . != ""))
+              | first
+            ) as $id
+          | .TunerHosts = (
+              ($hosts | map(select(.Type != "m3u" or .FriendlyName != $name)))
+              + [{
+                  Id: $id,
+                  Type: "m3u",
+                  FriendlyName: $name,
+                  Url: $url,
+                  TunerCount: 4,
+                  AllowStreamSharing: true,
+                  AllowHWTranscoding: true,
+                  AllowFmp4TranscodingContainer: true,
+                  FallbackMaxStreamingBitrate: 30000000,
+                  EnableStreamLooping: false,
+                  ImportFavoritesOnly: false,
+                  IgnoreDts: false,
+                  ReadAtNativeFramerate: false
+                }]
+            )
+        ' > "$payload"
 
       curl -fsS -X POST -H "$auth_header" -H "Content-Type: application/json" \
-        --data-binary "@$payload" "$jellyfin_url/LiveTv/TunerHosts" >/dev/null
-      echo "Added Jellyfin tuner $tuner_name for $playlist"
+        --data-binary "@$payload" "$jellyfin_url/System/Configuration/LiveTv" >/dev/null
+      echo "Configured Jellyfin tuner $tuner_name for $playlist"
     '';
   };
 
@@ -150,6 +174,8 @@ in
       randomizedDelaySec = "15min";
       outputPath = "/var/lib/cl-ott/health.json";
       statusPath = "/var/lib/cl-ott/health-status.json";
+      applyOutputPath = "/persist/media/iptv/cl-ott-health.m3u";
+      applySummaryPath = "/var/lib/cl-ott/health-apply-summary.json";
       statusStaleAfterHours = 36;
       limit = 25;
       candidatesPerChannel = 2;
@@ -199,8 +225,48 @@ in
     description = "Watch cl-ott playlist for Jellyfin refreshes";
     wantedBy = [ "multi-user.target" ];
     pathConfig = {
-      PathChanged = cfg.outputPath;
+      PathChanged = jellyfinPlaylistPath;
       Unit = "cl-ott-jellyfin-refresh.service";
+    };
+  };
+
+  services.nginx.virtualHosts.${internalApiHost} = {
+    extraConfig = ''
+      allow 100.64.0.0/10;
+      allow fd7a:115c:a1e0::/48;
+      deny all;
+
+      server_tokens off;
+      add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "no-referrer" always;
+      add_header Cache-Control "no-store" always;
+    '';
+
+    locations."/" = {
+      return = "404";
+    };
+
+    locations."^~ /api/v1/" = {
+      proxyPass = "http://127.0.0.1:${toString cfg.clientApi.port}";
+      extraConfig = ''
+        client_max_body_size 1k;
+
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 20s;
+        proxy_send_timeout 20s;
+        proxy_buffering off;
+        proxy_max_temp_file_size 0;
+        proxy_set_header Authorization $http_authorization;
+
+        if ($request_method !~ "^(GET|POST)$") {
+          return 405;
+        }
+
+        if ($http_authorization !~ "^Bearer .+") {
+          return 401;
+        }
+      '';
     };
   };
 }
