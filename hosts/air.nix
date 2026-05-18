@@ -269,6 +269,7 @@ in
     uv
     wget
     yt-dlp
+    inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default
     inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
 
