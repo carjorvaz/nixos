@@ -9,6 +9,7 @@ let
   # IPv4 address so hadrianus can switch before MagicDNS is warm.
   piusTailscaleIPv4 = "100.121.87.116";
   clOttInternalHost = "cl-ott.pius.internal";
+  clOttUpdateRoot = "/var/www/ott.vaz.one";
   lispCorpusHtpasswdFile = config.age.secrets.lispCorpusShareHtpasswd.path;
 in
 {
@@ -57,6 +58,7 @@ in
     "ott.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
+      root = clOttUpdateRoot;
 
       extraConfig = ''
         server_tokens off;
@@ -68,6 +70,40 @@ in
 
       locations."/" = {
         return = "404";
+      };
+
+      locations."= /_cl_ott_auth" = {
+        proxyPass = "http://${piusTailscaleIPv4}:80/api/v1/status";
+        recommendedProxySettings = false;
+        extraConfig = ''
+          internal;
+          proxy_pass_request_body off;
+          proxy_set_header Content-Length "";
+          proxy_set_header Host ${clOttInternalHost};
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Authorization $http_authorization;
+        '';
+      };
+
+      locations."^~ /app/" = {
+        tryFiles = "$uri =404";
+        extraConfig = ''
+          auth_request /_cl_ott_auth;
+          limit_req zone=cl_ott_api burst=10 nodelay;
+          limit_req_status 429;
+          disable_symlinks on from=$document_root;
+          default_type application/octet-stream;
+          types {
+            application/json json;
+            application/vnd.android.package-archive apk;
+          }
+
+          limit_except GET {
+            deny all;
+          }
+        '';
       };
 
       locations."^~ /api/v1/" = {
@@ -134,4 +170,10 @@ in
       };
     };
   };
+
+  systemd.tmpfiles.rules = [
+    "d ${clOttUpdateRoot} 0755 root nginx - -"
+    "d ${clOttUpdateRoot}/app 0755 root nginx - -"
+    "Z ${clOttUpdateRoot} 0755 root nginx - -"
+  ];
 }
