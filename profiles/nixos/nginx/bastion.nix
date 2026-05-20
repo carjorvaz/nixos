@@ -34,6 +34,8 @@ in
   services.nginx.appendHttpConfig = ''
     limit_req_zone $binary_remote_addr zone=lisp_corpus_share:10m rate=3r/s;
     limit_req_zone $binary_remote_addr zone=cl_ott_api:10m rate=5r/s;
+    limit_req_zone $binary_remote_addr zone=cl_ott_updates:10m rate=6r/m;
+    limit_conn_zone $binary_remote_addr zone=cl_ott_addr:10m;
   '';
 
   services.nginx.virtualHosts = {
@@ -66,6 +68,7 @@ in
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header Cache-Control "no-store" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
       '';
 
       locations."/" = {
@@ -91,13 +94,18 @@ in
         tryFiles = "$uri =404";
         extraConfig = ''
           auth_request /_cl_ott_auth;
-          limit_req zone=cl_ott_api burst=10 nodelay;
+          limit_req zone=cl_ott_updates burst=3 nodelay;
           limit_req_status 429;
+          limit_conn cl_ott_addr 2;
           disable_symlinks on from=$document_root;
           default_type application/octet-stream;
           types {
             application/json json;
             application/vnd.android.package-archive apk;
+          }
+
+          if ($uri !~ "^/app/(latest\.json|tv-[0-9][0-9A-Za-z._-]*\.apk)$") {
+            return 404;
           }
 
           limit_except GET {
@@ -113,6 +121,7 @@ in
           client_max_body_size 1k;
           limit_req zone=cl_ott_api burst=30 nodelay;
           limit_req_status 429;
+          limit_conn cl_ott_addr 8;
 
           proxy_connect_timeout 5s;
           proxy_read_timeout 20s;
