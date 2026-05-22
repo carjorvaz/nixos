@@ -104,6 +104,24 @@
     ];
   };
 
+  specialisation.llm-vulkan-gtt24.configuration = {
+    boot.kernelParams = [
+      # More aggressive 24 GiB GTT lane for testing Q4 + MTP context fit.
+      # Keep as an explicit specialization because 32 GiB system RAM gets tight.
+      "ttm.pages_limit=6291456"
+      "ttm.page_pool_size=6291456"
+    ];
+  };
+
+  specialisation.llm-vulkan-gtt28.configuration = {
+    boot.kernelParams = [
+      # Stretch lane for Q5-class dense 27B Vulkan offload experiments.
+      # This leaves little RAM headroom; use it as an explicit lab boot only.
+      "ttm.pages_limit=7340032"
+      "ttm.page_pool_size=7340032"
+    ];
+  };
+
   networking = {
     hostName = "trajanus";
     hostId = "d7ba56e3";
@@ -196,6 +214,9 @@
 
   environment.systemPackages = [
     inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default
+    pkgs.ethtool
+    pkgs.iperf3
+    pkgs.usbutils
   ];
 
   # Carry the local GXxHRXx uniwill_laptop platform-profile patch until this
