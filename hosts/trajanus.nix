@@ -47,6 +47,11 @@
   # Use Zen4-optimized kernel for AMD Ryzen 7 8845HS
   boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest-lto-zen4;
 
+  # Let Raspberry Pi 1 image builds run target ARMv6 helpers when cross-building
+  # the SD image locally on trajanus.
+  boot.binfmt.emulatedSystems = [ "armv6l-linux" ];
+  nix.settings.system-features = lib.mkAfter [ "gccarch-armv6kz" ];
+
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "thunderbolt"

@@ -193,6 +193,22 @@
           ];
         };
 
+        pius-unlock-bridge = inputs.nixpkgs.lib.nixosSystem {
+          # Build the Pi 1 image from trajanus instead of trying to bootstrap
+          # the whole ARMv6 system under emulation.
+          system = "x86_64-linux";
+          specialArgs = { inherit inputs self; };
+          modules = [
+            {
+              nixpkgs = {
+                buildPlatform = "x86_64-linux";
+                hostPlatform = inputs.nixpkgs.lib.systems.examples.raspberryPi;
+              };
+            }
+            ./hosts/pius-unlock-bridge.nix
+          ];
+        };
+
         julius = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
