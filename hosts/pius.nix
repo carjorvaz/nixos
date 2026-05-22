@@ -66,6 +66,14 @@
     "${self}/profiles/nixos/transmission.nix"
   ];
 
+  # pius is a separate physical site, so keep its Home Assistant under the
+  # host-scoped private namespace rather than a top-level logical service name.
+  cjv.homeAssistant = {
+    domain = "home-assistant.pius.vaz.ovh";
+    homerName = "Home Assistant (pius)";
+    homerSubtitle = "Parents' home";
+  };
+
   boot.initrd.availableKernelModules = [
     "xhci_pci"
     "ahci"

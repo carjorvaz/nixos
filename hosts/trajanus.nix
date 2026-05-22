@@ -15,6 +15,7 @@
     (modulesPath + "/installer/scan/not-detected.nix")
 
     "${self}/profiles/nixos/base.nix"
+    "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/bluetooth.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
@@ -34,6 +35,8 @@
     # "${self}/profiles/nixos/claude-qwen.nix"
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
+    "${self}/profiles/nixos/home-assistant.nix"
+    "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/syncthing.nix"
     "${self}/profiles/nixos/graphical/niri.nix"
     "${self}/profiles/nixos/libvirt.nix"
@@ -104,6 +107,21 @@
   networking = {
     hostName = "trajanus";
     hostId = "d7ba56e3";
+  };
+
+  # trajanus is the apartment site, so keep its Home Assistant under the
+  # host-scoped private namespace for local Bluetooth/BLE devices and apartment
+  # LAN integrations such as Valetudo.
+  hardware.bluetooth.powerOnBoot = lib.mkForce true;
+  cjv.homeAssistant = {
+    domain = "home-assistant.trajanus.vaz.ovh";
+    homerSubtitle = "Apartment smart home";
+    extraComponents = [
+      "bluetooth"
+      "mqtt"
+      "xiaomi_ble"
+    ];
+    extraConfig.bluetooth = { };
   };
 
   # TODO: Once trajanus has wired Ethernet, enable cjv.zfsRemoteUnlock with a
