@@ -105,6 +105,28 @@ let
     </fontconfig>
   '';
 
+  hermesAgentPackage =
+    inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  hermesAgentPythonPath = pkgs.python312Packages.makePythonPath [
+    pkgs.python312Packages.ddgs
+  ];
+  hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+
+  hermesAgent = pkgs.symlinkJoin {
+    name = "hermes-agent-air";
+    paths = [ hermesAgentPackage ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      for bin in hermes hermes-agent hermes-acp; do
+        if [ -e "$out/bin/$bin" ]; then
+          wrapProgram "$out/bin/$bin" \
+            --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
+            --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
+        fi
+      done
+    '';
+  };
+
   braveBpcExtensionId = "lkbebcjgcmobigpeffafkodonchffocl";
   braveManagedPolicyPlist = pkgs.writeText "com.brave.Browser.plist" (
     lib.generators.toPlist { escape = true; } {
@@ -452,7 +474,7 @@ in
     uv
     wget
     yt-dlp
-    inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default
+    hermesAgent
     inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
 
