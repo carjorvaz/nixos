@@ -43,17 +43,14 @@ let
   };
 
   allKeyboardModifierPolicy = [
+    (basicRemap (key "caps_lock") (key "left_control"))
     (basicRemap (key "right_command") (key "right_option"))
   ];
 
-  externalKeyboardModifierPolicy =
-    [
-      (conditionedRemap nonBuiltInKeyboardCondition (key "caps_lock") (key "left_control"))
-    ]
-    ++ (swap
-      (conditionedRemap nonBuiltInKeyboardCondition)
-      (key "left_command")
-      (key "left_option"));
+  externalKeyboardModifierPolicy = swap
+    (conditionedRemap nonBuiltInKeyboardCondition)
+    (key "left_command")
+    (key "left_option");
 
   builtInKeyboardModifierPolicy =
     (swap
@@ -73,7 +70,7 @@ let
         # native while external keyboards still inherit the modifier policy.
         complex_modifications.rules = [
           {
-            description = "Map right command to right option on every keyboard";
+            description = "Apply global modifier remaps";
             manipulators = allKeyboardModifierPolicy;
           }
           {
