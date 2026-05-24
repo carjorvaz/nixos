@@ -474,6 +474,7 @@ in
     uv
     wget
     yt-dlp
+    org-daily-scratch
     hermesAgent
     inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
     inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default

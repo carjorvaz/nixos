@@ -214,6 +214,7 @@
 
   environment.systemPackages = [
     inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default
+    pkgs.org-daily-scratch
     pkgs.ethtool
     pkgs.iperf3
     pkgs.usbutils
