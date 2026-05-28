@@ -1,0 +1,14 @@
+diff --git a/src/services/extract-worker.ts b/src/services/extract-worker.ts
+--- a/src/services/extract-worker.ts
++++ b/src/services/extract-worker.ts
+@@ -168,2 +168,2 @@
+ const workerPort = config.EXTRACT_WORKER_PORT || config.PORT;
+-app.listen(workerPort, () => {
++app.listen(workerPort, config.HOST, () => {
+diff --git a/src/services/queue-worker.ts b/src/services/queue-worker.ts
+--- a/src/services/queue-worker.ts
++++ b/src/services/queue-worker.ts
+@@ -344,2 +344,2 @@
+ const workerPort = config.WORKER_PORT || config.PORT;
+-app.listen(workerPort, () => {
++app.listen(workerPort, config.HOST, () => {

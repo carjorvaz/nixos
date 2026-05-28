@@ -54,6 +54,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   sourceRoot = "${finalAttrs.src.name}/apps/api";
 
+  patches = [
+    # The API server honors HOST, but worker health/metrics endpoints otherwise
+    # listen on every interface. Keep private deployments loopback-only by
+    # applying the same HOST binding to those liveness servers.
+    ./bind-worker-health-to-host.patch
+  ];
+
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs)
       pname
@@ -165,6 +172,8 @@ stdenv.mkDerivation (finalAttrs: {
     cd $out/share/firecrawl/apps/api
     ${lib.getExe nodejs_22} -e 'const native = require("./native"); if (!native.processPdf) throw new Error("native module did not load")'
     ${lib.getExe nodejs_22} --check dist/src/index.js
+    ${lib.getExe nodejs_22} --check dist/src/services/queue-worker.js
+    ${lib.getExe nodejs_22} --check dist/src/services/extract-worker.js
 
     runHook postInstallCheck
   '';
