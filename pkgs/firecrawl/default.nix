@@ -183,7 +183,8 @@ stdenv.mkDerivation (finalAttrs: {
     homepage = "https://github.com/firecrawl/firecrawl";
     license = lib.licenses.agpl3Only;
     mainProgram = "firecrawl-api";
-    platforms = lib.platforms.linux;
+    # Native N-API build has only been validated on the deployment target class.
+    platforms = [ "x86_64-linux" ];
     sourceProvenance = with lib.sourceTypes; [ fromSource ];
   };
 })

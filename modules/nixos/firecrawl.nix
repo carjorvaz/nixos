@@ -12,6 +12,13 @@ let
   redisUnit =
     if cfg.redis.serverName == "" then "redis.service" else "redis-${cfg.redis.serverName}.service";
 
+  loopbackBindAddresses = [
+    "127.0.0.1"
+    "::1"
+    "localhost"
+  ];
+  isLoopbackBind = lib.elem cfg.bindAddress loopbackBindAddresses;
+
   redisUrl =
     if cfg.redis.url != null then
       cfg.redis.url
@@ -160,7 +167,7 @@ let
 in
 {
   options.services.firecrawl = {
-    enable = lib.mkEnableOption "Firecrawl private extraction service";
+    enable = lib.mkEnableOption "Firecrawl web extraction service";
 
     package = lib.mkPackageOption pkgs "firecrawl" { };
 
@@ -229,8 +236,8 @@ in
       default = false;
       description = ''
         Whether to enable Firecrawl's Supabase-backed database authentication.
-        Keep this disabled only for loopback/private deployments protected by a
-        trusted reverse proxy such as Tailscale auth.
+        Keep this disabled only for loopback-only deployments or for endpoints
+        exposed exclusively through a trusted, authenticated reverse proxy.
       '';
     };
 
@@ -358,64 +365,10 @@ in
         description = "External Redis URL. When set, Firecrawl uses this and the local Redis server may be disabled.";
       };
     };
-
-    nginx = {
-      enable = lib.mkEnableOption "nginx reverse proxy for Firecrawl";
-
-      domain = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Virtual host name for the nginx reverse proxy.";
-      };
-
-      useACMEHost = lib.mkOption {
-        type = lib.types.str;
-        default = "vaz.ovh";
-        description = "ACME certificate name for the nginx virtual host.";
-      };
-
-      tailscaleAuth = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Protect the nginx virtual host with Tailscale auth headers.";
-      };
-    };
-
-    homer = {
-      enable = lib.mkEnableOption "Homer dashboard entry for Firecrawl";
-
-      name = lib.mkOption {
-        type = lib.types.str;
-        default = "Firecrawl";
-        description = "Homer entry display name.";
-      };
-
-      subtitle = lib.mkOption {
-        type = lib.types.str;
-        default = "Web extraction";
-        description = "Homer entry subtitle.";
-      };
-
-      logo = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "Homer entry logo path. Empty string omits the logo.";
-      };
-
-      group = lib.mkOption {
-        type = lib.types.str;
-        default = "ai";
-        description = "Homer dashboard group.";
-      };
-    };
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [
-      {
-        assertion = !cfg.nginx.enable || cfg.nginx.domain != null;
-        message = "services.firecrawl.nginx.domain must be set when services.firecrawl.nginx.enable is true.";
-      }
       {
         assertion = cfg.redis.enable || cfg.redis.url != null;
         message = "services.firecrawl.redis.url must be set when the local Firecrawl Redis server is disabled.";
@@ -429,12 +382,8 @@ in
         message = "services.firecrawl.rabbitmq.url must be set when the local Firecrawl RabbitMQ server is disabled.";
       }
       {
-        assertion = !cfg.homer.enable || cfg.nginx.domain != null;
-        message = "services.firecrawl.nginx.domain must be set when services.firecrawl.homer.enable is true.";
-      }
-      {
-        assertion = !cfg.nginx.enable || cfg.nginx.tailscaleAuth || cfg.useDbAuthentication;
-        message = "services.firecrawl refuses to expose an unauthenticated nginx vhost unless services.firecrawl.nginx.tailscaleAuth is enabled.";
+        assertion = cfg.useDbAuthentication || isLoopbackBind;
+        message = "services.firecrawl.bindAddress must remain loopback when services.firecrawl.useDbAuthentication is false.";
       }
     ];
 
@@ -530,37 +479,5 @@ in
         extraEnvironment.NUQ_POD_NAME = "extract-worker";
       };
     };
-
-    services.nginx = lib.mkIf cfg.nginx.enable {
-      tailscaleAuth = lib.mkIf cfg.nginx.tailscaleAuth {
-        enable = true;
-        virtualHosts = [ cfg.nginx.domain ];
-      };
-
-      virtualHosts.${cfg.nginx.domain} = {
-        forceSSL = true;
-        useACMEHost = cfg.nginx.useACMEHost;
-        locations."/" = {
-          proxyPass = "http://${cfg.bindAddress}:${toString cfg.port}";
-          proxyWebsockets = true;
-          extraConfig = ''
-            proxy_connect_timeout 30s;
-            proxy_send_timeout 300s;
-            proxy_read_timeout 300s;
-            proxy_buffering off;
-          '';
-        };
-      };
-    };
-
-    services.homer.entries = lib.mkIf cfg.homer.enable [
-      {
-        name = cfg.homer.name;
-        subtitle = cfg.homer.subtitle;
-        url = "https://${cfg.nginx.domain}";
-        logo = cfg.homer.logo;
-        group = cfg.homer.group;
-      }
-    ];
   };
 }

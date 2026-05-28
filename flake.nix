@@ -263,6 +263,20 @@
         ];
       };
 
+      checks.x86_64-linux =
+        let
+          system = "x86_64-linux";
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            config = localPackagesNixpkgsConfig;
+            overlays = [ localPackagesOverlay ];
+          };
+        in
+        import ./checks/firecrawl.nix {
+          inherit pkgs;
+          lib = inputs.nixpkgs.lib;
+        };
+
       packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
         system:
         availableLocalPackages (

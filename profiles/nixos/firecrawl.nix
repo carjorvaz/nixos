@@ -1,7 +1,8 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 let
   domain = "firecrawl.vaz.ovh";
+  firecrawl = config.services.firecrawl;
 in
 {
   services.firecrawl = {
@@ -10,19 +11,42 @@ in
     publicUrl = domain;
 
     # This singleton is private behind nginx + Tailscale auth, so keep
-    # Firecrawl's Supabase-style API-key machinery disabled.
+    # Firecrawl's Supabase-style API-key machinery disabled and bind only
+    # to loopback in the generic service module.
     useDbAuthentication = false;
+  };
 
-    nginx = {
+  services.nginx = {
+    tailscaleAuth = {
       enable = true;
-      inherit domain;
+      virtualHosts = [ domain ];
     };
 
-    homer = {
-      enable = true;
-      subtitle = "Web extraction";
+    virtualHosts.${domain} = {
+      forceSSL = true;
+      useACMEHost = "vaz.ovh";
+      locations."/" = {
+        proxyPass = "http://${firecrawl.bindAddress}:${toString firecrawl.port}";
+        proxyWebsockets = true;
+        extraConfig = ''
+          proxy_connect_timeout 30s;
+          proxy_send_timeout 300s;
+          proxy_read_timeout 300s;
+          proxy_buffering off;
+        '';
+      };
     };
   };
+
+  services.homer.entries = [
+    {
+      name = "Firecrawl";
+      subtitle = "Web extraction";
+      url = "https://${domain}";
+      logo = "";
+      group = "ai";
+    }
+  ];
 
   environment.persistence."/persist".directories = [
     {
