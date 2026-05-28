@@ -76,6 +76,12 @@ in
   ]
   ++ users;
 
+  # Brave Search API key for Hermes/web tooling on trusted interactive hosts.
+  "braveSearchApiKey.age".publicKeys = [
+    trajanusSystem
+  ]
+  ++ users;
+
   # Private Lisp corpus share credential
   "lispCorpusShareHtpasswd.age".publicKeys = [
     piusSystem
