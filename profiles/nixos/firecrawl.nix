@@ -9,6 +9,10 @@ in
     package = pkgs.firecrawl;
     publicUrl = domain;
 
+    # This singleton is private behind nginx + Tailscale auth, so keep
+    # Firecrawl's Supabase-style API-key machinery disabled.
+    useDbAuthentication = false;
+
     nginx = {
       enable = true;
       inherit domain;

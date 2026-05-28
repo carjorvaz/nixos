@@ -7,12 +7,10 @@
 
 let
   cfg = config.services.firecrawl;
+  urlEncode = lib.strings.escapeURL;
 
   redisUnit =
-    if cfg.redis.serverName == "" then
-      "redis.service"
-    else
-      "redis-${cfg.redis.serverName}.service";
+    if cfg.redis.serverName == "" then "redis.service" else "redis-${cfg.redis.serverName}.service";
 
   redisUrl =
     if cfg.redis.url != null then
@@ -23,8 +21,10 @@ let
   postgresqlUrl =
     if cfg.postgresql.url != null then
       cfg.postgresql.url
+    else if cfg.postgresql.socketDirectory != null then
+      "postgresql://${urlEncode cfg.postgresql.user}@${urlEncode cfg.postgresql.socketDirectory}/${urlEncode cfg.postgresql.database}"
     else
-      "postgresql://${cfg.postgresql.user}@${cfg.postgresql.bind}:${toString cfg.postgresql.port}/${cfg.postgresql.database}";
+      "postgresql://${urlEncode cfg.postgresql.user}@${cfg.postgresql.bind}:${toString cfg.postgresql.port}/${urlEncode cfg.postgresql.database}";
 
   rabbitmqUrl =
     if cfg.rabbitmq.url != null then
@@ -59,11 +59,7 @@ let
     SQL
   '';
 
-  toEnvValue = value:
-    if lib.isBool value then
-      lib.boolToString value
-    else
-      toString value;
+  toEnvValue = value: if lib.isBool value then lib.boolToString value else toString value;
 
   baseEnvironment = {
     HOST = cfg.bindAddress;
@@ -71,14 +67,16 @@ let
     ENV = "local";
     IS_PRODUCTION = true;
 
-    # Keep the private instance simple: Tailscale/nginx protects access, so do
-    # not require Firecrawl's Supabase-backed API-key machinery.
-    USE_DB_AUTHENTICATION = false;
+    USE_DB_AUTHENTICATION = cfg.useDbAuthentication;
 
     REDIS_URL = redisUrl;
     REDIS_RATE_LIMIT_URL = redisUrl;
 
-    POSTGRES_HOST = cfg.postgresql.bind;
+    POSTGRES_HOST =
+      if cfg.postgresql.socketDirectory != null then
+        cfg.postgresql.socketDirectory
+      else
+        cfg.postgresql.bind;
     POSTGRES_PORT = cfg.postgresql.port;
     POSTGRES_DB = cfg.postgresql.database;
     POSTGRES_USER = cfg.postgresql.user;
@@ -110,21 +108,33 @@ let
     User = cfg.user;
     Group = cfg.group;
     StateDirectory = "firecrawl";
+    StateDirectoryMode = "0700";
     CacheDirectory = "firecrawl";
+    CacheDirectoryMode = "0700";
     RuntimeDirectory = "firecrawl";
+    RuntimeDirectoryMode = "0700";
     UMask = "0077";
     Restart = "on-failure";
     RestartSec = "5s";
 
-    NoNewPrivileges = true;
-    PrivateTmp = true;
-    ProtectHome = true;
-    ProtectSystem = "strict";
-    ProtectKernelTunables = true;
-    ProtectKernelModules = true;
-    ProtectControlGroups = true;
-    RestrictSUIDSGID = true;
+    CapabilityBoundingSet = "";
     LockPersonality = true;
+    NoNewPrivileges = true;
+    PrivateDevices = true;
+    PrivateTmp = true;
+    ProtectClock = true;
+    ProtectControlGroups = true;
+    ProtectHome = true;
+    ProtectHostname = true;
+    ProtectKernelLogs = true;
+    ProtectKernelModules = true;
+    ProtectKernelTunables = true;
+    ProtectProc = "invisible";
+    ProtectSystem = "strict";
+    RemoveIPC = true;
+    RestrictNamespaces = true;
+    RestrictSUIDSGID = true;
+    SystemCallArchitectures = "native";
   }
   // lib.optionalAttrs (cfg.environmentFile != null) {
     EnvironmentFile = cfg.environmentFile;
@@ -214,6 +224,16 @@ in
       description = "Optional Firecrawl Playwright microservice URL.";
     };
 
+    useDbAuthentication = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether to enable Firecrawl's Supabase-backed database authentication.
+        Keep this disabled only for loopback/private deployments protected by a
+        trusted reverse proxy such as Tailscale auth.
+      '';
+    };
+
     environment = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.oneOf [
@@ -256,13 +276,22 @@ in
       bind = lib.mkOption {
         type = lib.types.str;
         default = "127.0.0.1";
-        description = "PostgreSQL bind address used when postgresql.url is not set.";
+        description = "PostgreSQL TCP listen/connect address used when postgresql.socketDirectory is null and postgresql.url is not set.";
       };
 
       port = lib.mkOption {
         type = lib.types.port;
         default = 5432;
-        description = "PostgreSQL TCP port used when postgresql.url is not set.";
+        description = "PostgreSQL TCP port used when postgresql.socketDirectory is null and postgresql.url is not set.";
+      };
+
+      socketDirectory = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = "/run/postgresql";
+        description = ''
+          Local PostgreSQL Unix socket directory used when postgresql.url is not
+          set. Set this to null to use the TCP bind/port path instead.
+        '';
       };
 
       url = lib.mkOption {
@@ -403,6 +432,10 @@ in
         assertion = !cfg.homer.enable || cfg.nginx.domain != null;
         message = "services.firecrawl.nginx.domain must be set when services.firecrawl.homer.enable is true.";
       }
+      {
+        assertion = !cfg.nginx.enable || cfg.nginx.tailscaleAuth || cfg.useDbAuthentication;
+        message = "services.firecrawl refuses to expose an unauthenticated nginx vhost unless services.firecrawl.nginx.tailscaleAuth is enabled.";
+      }
     ];
 
     users = {
@@ -430,24 +463,28 @@ in
       port = cfg.rabbitmq.port;
     };
 
-    services.postgresql = lib.mkIf cfg.postgresql.enable {
-      enable = true;
-      enableTCPIP = true;
-      ensureDatabases = [ cfg.postgresql.database ];
-      ensureUsers = [
-        {
-          name = cfg.postgresql.user;
-          ensureDBOwnership = true;
-        }
-      ];
+    services.postgresql = lib.mkIf cfg.postgresql.enable (
+      {
+        enable = true;
+        ensureDatabases = [ cfg.postgresql.database ];
+        ensureUsers = [
+          {
+            name = cfg.postgresql.user;
+            ensureDBOwnership = true;
+          }
+        ];
+      }
+      // lib.optionalAttrs (cfg.postgresql.socketDirectory == null) {
+        enableTCPIP = true;
+        settings.listen_addresses = cfg.postgresql.bind;
 
-      # Firecrawl's node-postgres client connects over TCP. Prepend a narrow
-      # trust rule for this local DB/user pair so existing local services keep
-      # their generated authentication behavior.
-      authentication = lib.mkBefore ''
-        host ${cfg.postgresql.database} ${cfg.postgresql.user} ${cfg.postgresql.bind}/32 trust
-      '';
-    };
+        # Prefer the default Unix socket path. When explicitly opting into TCP,
+        # keep the old local passwordless setup narrowly scoped to this DB/user.
+        authentication = lib.mkBefore ''
+          host ${cfg.postgresql.database} ${cfg.postgresql.user} ${cfg.postgresql.bind}/32 trust
+        '';
+      }
+    );
 
     systemd.services = {
       firecrawl-nuq-init = lib.mkIf cfg.postgresql.enable {
