@@ -115,6 +115,10 @@ in
           ]:
               wait_for_firecrawl_unit(unit)
 
+          machine.succeed("systemctl show firecrawl-api.service -P Environment | grep -F 'NUQ_DATABASE_URL=postgresql://firecrawl@%2Frun%2Fpostgresql/firecrawl'")
+          machine.succeed("systemctl show firecrawl-worker.service -P Environment | grep -F 'NUQ_DATABASE_URL=postgresql://firecrawl@%2Frun%2Fpostgresql/firecrawl'")
+          machine.succeed("systemctl show firecrawl-extract-worker.service -P Environment | grep -F 'NUQ_DATABASE_URL=postgresql://firecrawl@%2Frun%2Fpostgresql/firecrawl'")
+
           wait_for_loopback_port(3002)
           wait_for_loopback_port(3004, timeout=60)
           wait_for_loopback_port(3005, timeout=60)

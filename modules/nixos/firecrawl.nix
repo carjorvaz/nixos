@@ -67,6 +67,7 @@ let
   '';
 
   toEnvValue = value: if lib.isBool value then lib.boolToString value else toString value;
+  toSystemdEnvironmentValue = value: lib.replaceStrings [ "%" ] [ "%%" ] (toEnvValue value);
 
   baseEnvironment = {
     HOST = cfg.bindAddress;
@@ -107,7 +108,7 @@ let
     FIRECRAWL_APP_PORT = "443";
   };
 
-  serviceEnvironment = lib.mapAttrs (_: toEnvValue) (
+  serviceEnvironment = lib.mapAttrs (_: toSystemdEnvironmentValue) (
     lib.filterAttrs (_: value: value != null) (baseEnvironment // cfg.environment)
   );
 
