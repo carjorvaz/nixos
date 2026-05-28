@@ -160,7 +160,7 @@ let
       after = [ "network.target" ] ++ dependencyUnits;
       wants = dependencyUnits;
       requires = lib.optional cfg.postgresql.enable nuqInitUnit;
-      environment = serviceEnvironment // lib.mapAttrs (_: toEnvValue) extraEnvironment;
+      environment = serviceEnvironment // lib.mapAttrs (_: toSystemdEnvironmentValue) extraEnvironment;
       serviceConfig = serviceConfig // {
         ExecStart = "${cfg.package}/bin/${executable}";
       };
