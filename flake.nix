@@ -263,18 +263,44 @@
         ];
       };
 
-      checks.x86_64-linux =
+      checks =
         let
-          system = "x86_64-linux";
-          pkgs = import inputs.nixpkgs {
-            inherit system;
-            config = localPackagesNixpkgsConfig;
-            overlays = [ localPackagesOverlay ];
-          };
+          mkRepoHarnessChecks =
+            system:
+            let
+              pkgs = import (localPackagesNixpkgs system) {
+                inherit system;
+                config = localPackagesNixpkgsConfig;
+                overlays = [ localPackagesOverlay ];
+              };
+            in
+            import ./checks/repository-harness.nix {
+              inherit pkgs;
+              lib = inputs.nixpkgs.lib;
+            };
         in
-        import ./checks/firecrawl.nix {
-          inherit pkgs;
-          lib = inputs.nixpkgs.lib;
+        inputs.nixpkgs.lib.genAttrs [
+          "aarch64-darwin"
+          "x86_64-darwin"
+        ] mkRepoHarnessChecks
+        // {
+          x86_64-linux =
+            let
+              system = "x86_64-linux";
+              pkgs = import inputs.nixpkgs {
+                inherit system;
+                config = localPackagesNixpkgsConfig;
+                overlays = [ localPackagesOverlay ];
+              };
+            in
+            (import ./checks/repository-harness.nix {
+              inherit pkgs;
+              lib = inputs.nixpkgs.lib;
+            })
+            // (import ./checks/firecrawl.nix {
+              inherit pkgs;
+              lib = inputs.nixpkgs.lib;
+            });
         };
 
       packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (

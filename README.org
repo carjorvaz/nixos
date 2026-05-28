@@ -1,5 +1,16 @@
 #+title: Carlos Vaz's dotfiles
 
+* Repository map
+
+See =docs/README.md= for the durable repository guidance map:
+architecture, validation, public-boundary policy, and plan conventions.
+
+Run the public-safe local validation entrypoint before reporting changes ready:
+
+#+begin_src sh
+scripts/validate
+#+end_src
+
 * Bootstrapping and deploying
 
 Requires only root ssh access to the destination system (running some Linux distribution with kexec support)

@@ -3,6 +3,14 @@
 - Repo-local guidance for this NixOS/infra repo. Cross-repo habits live in `~/AGENTS.md`, and longer shared notes live in `~/agents/`.
 - Keep this file concise and stable. Add only repo-specific guidance that should hold across sessions; avoid status notes, deadlines, or one-off task history.
 
+## Repo Map
+
+- Use `docs/README.md` as the map for durable repo guidance.
+- Read `docs/ARCHITECTURE.md` before changing host/profile/module/package boundaries.
+- Read `docs/VALIDATION.md` before reporting changes ready; prefer `scripts/validate` for public-safe local checks.
+- Read `docs/PUBLIC_BOUNDARY.md` before adding CI, logs, transcripts, service exposure, or anything involving secrets.
+- Use checked-in plans only as described in `docs/PLANS.md`; keep live operations and sensitive notes outside this public repo.
+
 ## Remote Access
 
 - This repo manages remote NixOS hosts and commonly uses SSH-based workflows.

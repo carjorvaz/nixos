@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/validate [--dry-run-checks] [--host HOST]...
+
+Public-safe, non-mutating repository validation. This command does not SSH to
+hosts, deploy, decrypt secrets, switch systems, or print full evaluated host
+configs.
+
+Options:
+  --dry-run-checks  Also run nix build --dry-run --no-link for every
+                    checks.x86_64-linux attribute.
+  --host HOST       Limit NixOS toplevel evaluation to the given host. May be
+                    repeated. Defaults to all NixOS hosts in this repo.
+  -h, --help        Show this help.
+USAGE
+}
+
+run_dry_checks=0
+hosts=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run-checks)
+      run_dry_checks=1
+      shift
+      ;;
+    --host)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --host requires a value" >&2
+        exit 2
+      fi
+      hosts+=("$2")
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+require() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "error: required command not found: $1" >&2
+    exit 127
+  fi
+}
+
+step() {
+  printf '\n==> %s\n' "$*"
+}
+
+run() {
+  step "$*"
+  "$@"
+}
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -z "$repo_root" ]]; then
+  echo "error: scripts/validate must be run from inside the git repository" >&2
+  exit 1
+fi
+cd "$repo_root"
+
+require git
+require nix
+
+if [[ ${#hosts[@]} -eq 0 ]]; then
+  step "discover NixOS hosts"
+  while IFS= read -r host || [[ -n "$host" ]]; do
+    [[ -n "$host" ]] || continue
+    hosts+=("$host")
+  done < <(
+    nix eval --raw '.#nixosConfigurations' \
+      --apply 'attrs: builtins.concatStringsSep "\n" (builtins.attrNames attrs)'
+  )
+  printf '%s\n' "${hosts[@]}"
+fi
+
+run git diff --check HEAD --
+run nix flake show --allow-import-from-derivation --no-write-lock-file
+
+for host in "${hosts[@]}"; do
+  run nix eval --raw ".#nixosConfigurations.${host}.config.system.build.toplevel.drvPath"
+done
+
+run nix eval --raw '.#darwinConfigurations.air.system'
+current_system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
+run nix eval --json ".#checks.${current_system}" --apply 'builtins.attrNames'
+run nix build --no-link ".#checks.${current_system}.repo-harness-docs"
+run nix eval --json '.#checks.x86_64-linux' --apply 'builtins.attrNames'
+
+if [[ "$run_dry_checks" -eq 1 ]]; then
+  require python3
+  check_names=$(
+    nix eval --json '.#checks.x86_64-linux' --apply 'builtins.attrNames' \
+      | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)))'
+  )
+
+  while IFS= read -r check; do
+    [[ -n "$check" ]] || continue
+    run nix build --dry-run --no-link ".#checks.x86_64-linux.${check}"
+  done <<< "$check_names"
+fi
+
+printf '\nValidation completed successfully.\n'
