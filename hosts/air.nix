@@ -107,8 +107,20 @@ let
 
   hermesAgentPackage =
     inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  # Hermes pins the Firecrawl SDK via lazy_deps; keep the Nix-managed wrapper
+  # satisfying that exact pin so web_extract works with lazy installs disabled.
+  hermesAgentFirecrawlPy = pkgs.python312Packages.firecrawl-py.overridePythonAttrs (old: rec {
+    version = "4.17.0";
+    src = pkgs.fetchPypi {
+      pname = "firecrawl_py";
+      inherit version;
+      hash = "sha256-m1fg+5G39xFoKoJd1k1RCQ/vnotU6v7njBQTPV3q7Vc=";
+    };
+    sourceRoot = null;
+  });
   hermesAgentPythonPath = pkgs.python312Packages.makePythonPath [
     pkgs.python312Packages.ddgs
+    hermesAgentFirecrawlPy
   ];
   hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
 
