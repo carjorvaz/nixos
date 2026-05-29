@@ -14,6 +14,34 @@ let
   archivePath = "${archiveCacheDir}/${archiveName}";
   htpasswdFile = config.age.secrets.lispCorpusShareHtpasswd.path;
 
+  archiveExcludePatterns = [
+    "*/.zfs/*"
+    "*/.zfs/"
+    "*/.git/*"
+    "*/.git/"
+    "*/.git"
+    "*/.hg/*"
+    "*/.hg/"
+    "*/.hg"
+    "*/.svn/*"
+    "*/.svn/"
+    "*/.svn"
+    "*/.claude/*"
+    "*/.claude/"
+    "*/.claude"
+    "*/.cursor/*"
+    "*/.cursor/"
+    "*/.cursor"
+    "*/.vscode/*"
+    "*/.vscode/"
+    "*/.vscode"
+    "*/.idea/*"
+    "*/.idea/"
+    "*/.idea"
+  ];
+
+  archiveExcludeArgs = lib.concatMapStringsSep " " lib.escapeShellArg archiveExcludePatterns;
+
   # Hadrianus is the only public ingress for this corpus. Keep pius's backend
   # listener reachable only from that Tailscale peer.
   hadrianusTailscaleIPv4 = "100.103.78.39";
@@ -186,7 +214,10 @@ let
 
         (
           cd "$corpus_parent" || exit
-          zip -6 -q -r -y "$tmp" "$corpus_basename" -x "$corpus_basename/.zfs/*"
+          # Store symlinks as links and omit local/VCS/editor metadata from the
+          # downloadable artifact. The live share remains a source corpus, but
+          # the ZIP should not distribute repository internals or agent state.
+          zip -6 -q -r -y "$tmp" "$corpus_basename" -x ${archiveExcludeArgs}
         )
 
         chmod 0644 "$tmp"
@@ -216,6 +247,10 @@ let
     autoindex_exact_size off;
     autoindex_localtime on;
     charset utf-8;
+  '';
+
+  privateMetadataLocationConfig = ''
+    return 404;
   '';
 in
 {
@@ -300,6 +335,10 @@ in
       extraConfig = privateReadOnlyConfig + ''
         default_type text/plain;
       '';
+    };
+
+    locations."~ (^|/)\\.(git|hg|svn|claude|cursor|vscode|idea)(/|$)" = {
+      extraConfig = privateMetadataLocationConfig;
     };
 
     locations."/browse/" = {
