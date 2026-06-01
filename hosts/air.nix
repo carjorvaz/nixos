@@ -903,24 +903,68 @@ in
     end
   '';
 
-  # Keep the remaining post-activation cleanup narrow. Avoid mutating app
-  # bundles here: patching /Applications/cmux.app breaks its code signature,
-  # which in turn makes macOS more likely to forget Files & Folders consent
-  # across updates. cmux can already consume Ghostty integration via the
-  # exported GHOSTTY_RESOURCES_DIR environment variable above. Remove the old
-  # symlink if it exists so the cask can return to its vendor layout.
+  # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
+  # patching /Applications/cmux.app breaks its code signature, which in turn
+  # makes macOS more likely to forget Files & Folders consent across updates.
+  # cmux can already consume Ghostty integration via the exported
+  # GHOSTTY_RESOURCES_DIR environment variable above.
   system.activationScripts.postActivation.text = ''
     legacy_cmux_ghostty_si="/Applications/cmux.app/Contents/Resources/ghostty/shell-integration"
     if [ -L "$legacy_cmux_ghostty_si" ]; then
       rm -f "$legacy_cmux_ghostty_si"
     fi
 
-    # Nix Apps are copied out of the store with 1970 mtimes. Discord.app
-    # deliberately reuses Vesktop's bundle lineage, so refresh only mtimes
-    # after activation to keep Dock/IconServices from reusing a stale icon.
-    discord_app="/Applications/Nix Apps/Discord.app"
-    if [ -f "$discord_app/Contents/Resources/icon.icns" ]; then
-      /usr/bin/touch "$discord_app" "$discord_app/Contents" "$discord_app/Contents/Resources" "$discord_app/Contents/Resources/icon.icns" 2>/dev/null || true
+    # Spotlight and LaunchServices can be unreliable with app bundles nested
+    # under /Applications/Nix Apps. Expose managed root-level symlinks while
+    # leaving real apps, casks, and unrelated symlinks alone.
+    nix_apps_dir="/Applications/Nix Apps"
+    lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    primary_user=${lib.escapeShellArg config.system.primaryUser}
+
+    for managed_link in /Applications/*.app; do
+      [ -L "$managed_link" ] || continue
+
+      link_target=$(readlink "$managed_link")
+      case "$link_target" in
+        "$nix_apps_dir"/*.app)
+          if [ ! -d "$nix_apps_dir" ] || [ ! -e "$link_target" ]; then
+            rm -f "$managed_link"
+          fi
+          ;;
+      esac
+    done
+
+    if [ -d "$nix_apps_dir" ]; then
+      for nix_app in "$nix_apps_dir"/*.app; do
+        [ -e "$nix_app" ] || continue
+
+        app_name=$(basename "$nix_app")
+        app_link="/Applications/$app_name"
+
+        if [ -L "$app_link" ]; then
+          link_target=$(readlink "$app_link")
+          case "$link_target" in
+            "$nix_app") ;;
+            "$nix_apps_dir"/*.app) rm -f "$app_link" ;;
+            *)
+              echo "Skipping $app_link because it already points to $link_target" >&2
+              continue
+              ;;
+          esac
+        elif [ -e "$app_link" ]; then
+          echo "Skipping $app_link because it already exists and is not a managed symlink" >&2
+          continue
+        fi
+
+        if [ ! -e "$app_link" ]; then
+          ln -s "$nix_app" "$app_link"
+        fi
+        "$lsregister" -f "$app_link" 2>/dev/null || true
+        /usr/bin/sudo -u "$primary_user" "$lsregister" -f "$app_link" 2>/dev/null || true
+        /usr/bin/mdimport "$app_link" 2>/dev/null || true
+      done
+
+      /usr/bin/mdimport "$nix_apps_dir" 2>/dev/null || true
     fi
 
     # Karabiner 15.9 now manages its own launchd jobs via ServiceManagement.

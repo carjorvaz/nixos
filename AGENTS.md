@@ -23,6 +23,11 @@
 - This repo is evaluated through flakes, so imported modules and other newly created files must be git-tracked before Nix will reliably see them from the flake snapshot.
 - Prefer `nix eval` and `nix build` to validate changes before running mutating rebuild or deploy commands.
 
+## Pi Workflow
+
+- Keep Pi coding-agent configuration host/global and mutable under `~/.pi/agent` when it is not truly repo-specific. Let Nix install `pi` and helper wrappers, but avoid using Nix to own live Pi settings, models, themes, prompts, or extensions.
+- Use project `.pi/` only for resources that are genuinely specific to this checkout.
+
 ## Nix Patterns
 
 - Before hand-rolling a systemd service, check whether nixpkgs already provides a NixOS module (`services.*`); prefer upstream modules when they exist.

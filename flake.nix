@@ -122,12 +122,81 @@
           ];
       };
 
+      mkIkLlamaPackages =
+        pkgs:
+        let
+          # ik_llama.cpp: upstream package.nix currently returns env = [] when
+          # ROCm is disabled. mkDerivation requires env to be an attrset.
+          patchedStdenv = pkgs.stdenv // {
+            mkDerivation =
+              fnOrAttrs:
+              pkgs.stdenv.mkDerivation (
+                if builtins.isFunction fnOrAttrs then
+                  finalAttrs:
+                  let
+                    result = fnOrAttrs finalAttrs;
+                  in
+                  result // { env = if builtins.isList (result.env or { }) then { } else result.env; }
+                else
+                  fnOrAttrs // { env = if builtins.isList (fnOrAttrs.env or { }) then { } else fnOrAttrs.env; }
+              );
+          };
+
+          mkIkLlama =
+            {
+              pname,
+              useRpc ? false,
+              extraCmakeFlags ? [ ],
+            }:
+            (pkgs.callPackage "${inputs.ik-llama}/.devops/nix/package.nix" {
+              effectiveStdenv = patchedStdenv;
+              inherit useRpc;
+            }).overrideAttrs
+              (old: {
+                inherit pname;
+                cmakeFlags =
+                  old.cmakeFlags
+                  ++ [
+                    (pkgs.lib.cmakeBool "GGML_LTO" true)
+                  ]
+                  ++ extraCmakeFlags;
+              });
+        in
+        {
+          ik-llama = mkIkLlama { pname = "ik-llama"; };
+          ik-llama-rpc = mkIkLlama {
+            pname = "ik-llama-rpc";
+            useRpc = true;
+          };
+          ik-llama-avx2 = mkIkLlama {
+            pname = "ik-llama-avx2";
+            extraCmakeFlags = [
+              (pkgs.lib.cmakeBool "GGML_NATIVE" false)
+              (pkgs.lib.cmakeBool "GGML_AVX" true)
+              (pkgs.lib.cmakeBool "GGML_AVX2" true)
+              (pkgs.lib.cmakeBool "GGML_FMA" true)
+              (pkgs.lib.cmakeBool "GGML_F16C" true)
+            ];
+          };
+          ik-llama-zen4 = mkIkLlama {
+            pname = "ik-llama-zen4";
+            extraCmakeFlags = [
+              (pkgs.lib.cmakeBool "GGML_NATIVE" false)
+              (pkgs.lib.cmakeBool "GGML_AVX512" true)
+              (pkgs.lib.cmakeBool "GGML_AVX512_VBMI" true)
+              (pkgs.lib.cmakeBool "GGML_AVX512_VNNI" true)
+              (pkgs.lib.cmakeBool "GGML_AVX512_BF16" true)
+            ];
+          };
+        };
+
       baseModules = [
         inputs.agenix.nixosModules.default
         inputs.disko.nixosModules.disko
         inputs.lanzaboote.nixosModules.lanzaboote
         inputs.impermanence.nixosModule
         inputs.nix-index-database.nixosModules.nix-index
+        ./modules/nixos/llmTuning.nix
         {
           nixpkgs.overlays = [
             localPackagesOverlay
@@ -245,6 +314,14 @@
               { _module.args.disks = [ "/dev/nvme0n1" ]; }
             ];
         };
+
+        llmClusterLive = inputs.nixpkgs-unstable.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = { inherit inputs self; };
+          modules = [
+            ./profiles/nixos/llm-cluster-live.nix
+          ];
+        };
       };
 
       darwinConfigurations.air = inputs.nix-darwin.lib.darwinSystem {
@@ -308,12 +385,17 @@
 
       packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
         system:
-        availableLocalPackages (
-          import (localPackagesNixpkgs system) {
+        let
+          pkgs = import (localPackagesNixpkgs system) {
             inherit system;
             config = localPackagesNixpkgsConfig;
-          }
-        )
+          };
+        in
+        availableLocalPackages pkgs
+        // inputs.nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          llm-cluster-live-iso = self.nixosConfigurations.llmClusterLive.config.system.build.isoImage;
+        }
+        // inputs.nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (mkIkLlamaPackages pkgs)
       );
     };
 }

@@ -174,19 +174,19 @@
         };
         provider.local-qwen = {
           npm = "@ai-sdk/openai-compatible";
-          name = "Qwen3 Coder (pius)";
+          name = "Hauhau Qwen3.6 35B A3B (pius)";
           options = {
             baseURL = "https://llm.vaz.ovh/v1";
             apiKey = "not-needed";
           };
-          models."qwen3-coder-30b-a3b" = {
-            name = "Qwen3 Coder 30B A3B";
+          models."qwen3.6-35b-a3b-hauhau-aggressive" = {
+            name = "Qwen3.6 35B A3B Hauhau Aggressive";
             limit.context = 131072;
-            limit.output = 16384;
+            limit.output = 32768;
           };
         };
-        model = "local-qwen/qwen3-coder-30b-a3b";
-        small_model = "local-qwen/qwen3-coder-30b-a3b";
+        model = "local-qwen/qwen3.6-35b-a3b-hauhau-aggressive";
+        small_model = "local-qwen/qwen3.6-35b-a3b-hauhau-aggressive";
       };
 
       "opencode/tui.json".text = builtins.toJSON {

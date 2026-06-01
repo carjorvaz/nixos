@@ -32,7 +32,6 @@
 
     "${self}/profiles/nixos/cjv.nix"
     # "${self}/profiles/nixos/claude-deepseek.nix"
-    # "${self}/profiles/nixos/claude-qwen.nix"
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/home-assistant.nix"
