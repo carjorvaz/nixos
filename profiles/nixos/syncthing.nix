@@ -45,30 +45,6 @@
         };
       };
 
-      folders.tese = {
-        id = "tese-sync";
-        label = "Tese";
-        path = "/home/cjv/Documents/tese";
-        devices = [ "air" ];
-        minDiskFree = {
-          unit = "MiB";
-          value = 256;
-        };
-        rescanIntervalS = 3600;
-        fsWatcherEnabled = true;
-        fsWatcherDelayS = 10;
-
-        # Thesis edits are high value, and this keeps a recoverable trail if a
-        # bad sync or accidental save slips through.
-        versioning = {
-          type = "staggered";
-          cleanupIntervalS = 3600;
-          fsPath = "";
-          fsType = "basic";
-          params.maxAge = "31536000";
-        };
-      };
-
       options = {
         localAnnounceEnabled = true;
         minHomeDiskFree = {
