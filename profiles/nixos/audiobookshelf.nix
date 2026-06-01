@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 let
   domain = "audiobookshelf.vaz.ovh";

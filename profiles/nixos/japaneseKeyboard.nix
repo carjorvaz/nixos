@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 {
   # Create AltGr keys

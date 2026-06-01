@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 # Icons source: https://github.com/walkxcode/dashboard-icons
 # Local copies in assets/homer-icons/, served at /assets/icons/.

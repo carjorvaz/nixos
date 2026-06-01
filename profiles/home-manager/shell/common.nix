@@ -1,6 +1,6 @@
 { pkgs, ... }:
 
-# Portable shell config - works on NixOS, Darwin, and nix-on-droid
+# Portable shell config - works on NixOS and Darwin
 {
   home.packages = with pkgs; [
     jujutsu

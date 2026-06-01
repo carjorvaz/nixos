@@ -1,5 +1,4 @@
-{ ... }:
-{
+_: {
   # Impermanence bind mounts must be available before stage 2.
   fileSystems."/persist".neededForBoot = true;
 

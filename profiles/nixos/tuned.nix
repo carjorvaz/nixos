@@ -1,9 +1,9 @@
-{ ... }:
+_:
 
 {
   # Only override power-saver on battery; balanced/performance stay as profiles section
   services.tuned = {
-    enable = true; 
+    enable = true;
 
     ppdSettings = {
       main.default = "balanced";

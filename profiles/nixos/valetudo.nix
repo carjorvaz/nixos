@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 let
   domain = "valetudo.trajanus.vaz.ovh";

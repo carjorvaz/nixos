@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 {
   # Preserve the historical import behavior explicitly. NixOS warns that the

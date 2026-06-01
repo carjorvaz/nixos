@@ -1,5 +1,4 @@
-{ ... }:
-{
+_: {
   # https://wiki.nixos.org/wiki/Full_Disk_Encryption#Perf_test
   boot.initrd.availableKernelModules = [
     "aesni_intel"

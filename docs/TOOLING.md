@@ -1,6 +1,6 @@
 # Tooling
 
-This repo prefers sharp tools when they make agent and human work more mechanically legible. Do not add clever tools for novelty; add tools when they improve validation, recoverability, reproducibility, or review.
+This repo prefers high-leverage tools when they make agent and human work more mechanically legible. Do not add clever tools for novelty; add tools when they improve validation, recoverability, reproducibility, or review.
 
 ## Default command surface
 
@@ -11,7 +11,7 @@ nix develop -c just --list
 nix develop -c just validate
 ```
 
-`just` is only an ergonomic menu. Keep canonical logic in `scripts/validate`, flake checks, or focused scripts so humans, Codex, Hermes, and CI-like checks call the same entrypoints.
+`just` is only an ergonomic menu. Keep canonical logic in `scripts/validate`, flake checks, or focused scripts so humans, Hermes, and other agents call the same entrypoints.
 
 ## Local history workflow
 
@@ -46,4 +46,4 @@ Prefer structural, high-signal review tools where available:
 - `nixfmt`/`treefmt` for formatting rather than manual whitespace cleanup;
 - `statix` and `deadnix` as advisory Nix cleanup tools, not automatic proof of correctness.
 
-Do not make sharp tools competing sources of truth. Nix owns the environment, `scripts/validate` owns default validation, `justfile` exposes the menu, JJ owns local change manipulation, and Git owns remote publication.
+Do not make tooling layers compete as sources of truth. Nix owns the environment, `scripts/validate` owns default validation, `justfile` exposes the menu, JJ owns local change manipulation, and Git owns remote publication.

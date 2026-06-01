@@ -1,6 +1,4 @@
-{
-  ...
-}:
+_:
 
 let
   domain = "ultimate-tic-tac-toe.carjorvaz.com";

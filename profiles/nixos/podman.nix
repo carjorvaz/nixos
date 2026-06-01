@@ -1,5 +1,5 @@
 # Conflicts: docker.nix (both set oci-containers.backend)
-{ ... }:
+_:
 
 {
   virtualisation = {
