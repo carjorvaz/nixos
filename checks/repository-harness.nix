@@ -15,6 +15,7 @@ in
       docs/VALIDATION.md \
       docs/PUBLIC_BOUNDARY.md \
       docs/PLANS.md \
+      justfile \
       scripts/validate
     do
       if [ ! -e "$path" ]; then
@@ -38,6 +39,7 @@ in
       docs/VALIDATION.md \
       docs/PUBLIC_BOUNDARY.md \
       docs/PLANS.md \
+      justfile \
       scripts/validate
     do
       if ! grep -Fq "$needle" AGENTS.md README.org docs/README.md docs/VALIDATION.md docs/PLANS.md; then

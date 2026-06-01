@@ -296,6 +296,11 @@
 
   system.stateVersion = "25.05";
   home-manager.users.cjv = {
+    # Home Manager's generated manpage currently triggers upstream options-doc
+    # context warnings during NixOS evaluation. Disable only that generated
+    # output; the rest of the Home Manager config remains active.
+    manual.manpages.enable = false;
+
     home.stateVersion = "25.05";
     xdg.configFile."waybar/style.css".force = true;
     home.activation.rustabWebExtCredentials = inputs.home-manager.lib.hm.dag.entryAfter [ "writeBoundary" ] ''

@@ -383,6 +383,42 @@
             });
         };
 
+      devShells =
+        inputs.nixpkgs.lib.genAttrs
+          [
+            "aarch64-darwin"
+            "x86_64-darwin"
+            "x86_64-linux"
+          ]
+          (
+            system:
+            let
+              pkgs = import (localPackagesNixpkgs system) {
+                inherit system;
+                config = localPackagesNixpkgsConfig;
+                overlays = [ localPackagesOverlay ];
+              };
+            in
+            {
+              default = pkgs.mkShellNoCC {
+                packages = with pkgs; [
+                  deadnix
+                  difftastic
+                  git
+                  just
+                  jujutsu
+                  nil
+                  nixfmt
+                  statix
+                ];
+
+                shellHook = ''
+                  echo "nixos repo shell: run 'just --list' or './scripts/validate'"
+                '';
+              };
+            }
+          );
+
       packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
         system:
         let

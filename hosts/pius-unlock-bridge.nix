@@ -1,4 +1,5 @@
 {
+  inputs,
   lib,
   modulesPath,
   pkgs,
@@ -19,6 +20,18 @@
   hardware.enableRedistributableFirmware = true;
 
   boot = {
+    # The nixpkgs Raspberry Pi SD-image module still defaults to
+    # pkgs.linuxKernel.packages.linux_rpi1, which emits a deprecation warning.
+    # Use nixos-hardware's maintained Raspberry Pi kernel expression directly;
+    # nixos-hardware does not expose a Raspberry Pi 1 NixOS module.
+    kernelPackages = lib.mkForce (
+      pkgs.linuxPackagesFor (
+        pkgs.callPackage "${inputs.nixos-hardware}/raspberry-pi/common/kernel.nix" {
+          rpiVersion = 1;
+        }
+      )
+    );
+
     supportedFilesystems = lib.mkForce [
       "vfat"
       "ext4"

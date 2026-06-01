@@ -6,6 +6,14 @@ Use `scripts/validate` as the default local validation entrypoint before committ
 scripts/validate
 ```
 
+For a discoverable task menu with repository tools on machines that do not have
+them installed globally, enter the dev shell and use the `justfile`:
+
+```sh
+nix develop -c just --list
+nix develop -c just validate
+```
+
 The default validation is intentionally public-safe and non-mutating. It does not SSH to hosts, deploy, decrypt secrets, switch systems, or print full evaluated configurations. Nix may still use normal fetchers for flake inputs.
 
 ## What the default command checks
