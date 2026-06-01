@@ -13,6 +13,7 @@ in
       docs/README.md \
       docs/ARCHITECTURE.md \
       docs/VALIDATION.md \
+      docs/TOOLING.md \
       docs/PUBLIC_BOUNDARY.md \
       docs/PLANS.md \
       justfile \
@@ -37,6 +38,7 @@ in
       docs/README.md \
       docs/ARCHITECTURE.md \
       docs/VALIDATION.md \
+      docs/TOOLING.md \
       docs/PUBLIC_BOUNDARY.md \
       docs/PLANS.md \
       justfile \
