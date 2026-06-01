@@ -485,6 +485,9 @@ in
     sbcl
     uv
     wget
+    ffmpeg
+    video-vibe-check
+    whisper-cpp
     yt-dlp
     org-daily-scratch
     hermesAgent
