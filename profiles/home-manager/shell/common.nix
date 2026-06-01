@@ -1,7 +1,11 @@
-{ ... }:
+{ pkgs, ... }:
 
 # Portable shell config - works on NixOS, Darwin, and nix-on-droid
 {
+  home.packages = with pkgs; [
+    jujutsu
+  ];
+
   programs = {
     bat.enable = true;
 
