@@ -37,11 +37,11 @@ in
       virtualHosts.${domain} = {
         forceSSL = true;
         useACMEHost = "vaz.ovh";
-        locations."/".proxyPass = "http://127.0.0.1:${toString config.services.jellyseerr.port}";
+        locations."/".proxyPass = "http://127.0.0.1:${toString config.services.seerr.port}";
       };
     };
 
-    jellyseerr.enable = true;
+    seerr.enable = true;
 
     homer.entries = [
       {
@@ -54,10 +54,10 @@ in
     ];
   };
 
-  systemd.services.jellyseerr = {
+  systemd.services.seerr = {
     path = [ pkgs.coreutils pkgs.jq ];
     preStart = lib.mkBefore ''
-      settings=/var/lib/jellyseerr/config/settings.json
+      settings=${config.services.seerr.configDir}/settings.json
       if [ -f "$settings" ]; then
         tmp="$(mktemp)"
         jq --arg applicationUrl "https://${publicDomain}" \

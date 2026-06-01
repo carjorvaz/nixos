@@ -54,7 +54,7 @@ in
     "jellyseerr.vaz.one" = {
       forceSSL = true;
       useACMEHost = "vaz.one";
-      locations."/".proxyPass = "http://${piusTailscaleIPv4}:${toString config.services.jellyseerr.port}";
+      locations."/".proxyPass = "http://${piusTailscaleIPv4}:${toString config.services.seerr.port}";
     };
 
     "ott.vaz.one" = {

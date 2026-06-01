@@ -40,10 +40,7 @@ in
   };
 
   services.xserver.displayManager.lightdm.enable = false;
-  services.displayManager.gdm = {
-    enable = lib.mkDefault true;
-    wayland = true;
-  };
+  services.displayManager.gdm.enable = lib.mkDefault true;
 
   home-manager.users.cjv = {
     # Solves small cursor on HiDPI.

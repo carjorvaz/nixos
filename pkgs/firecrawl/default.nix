@@ -10,6 +10,7 @@
   openssl,
   path,
   pkg-config,
+  pnpmConfigHook,
   pnpm_10,
   python3,
   rustPlatform,
@@ -90,7 +91,7 @@ stdenv.mkDerivation (finalAttrs: {
     nodejs_22
     pkg-config
     pnpm_10
-    pnpm_10.configHook
+    pnpmConfigHook
     python3
     rustPlatform.cargoSetupHook
     rustc

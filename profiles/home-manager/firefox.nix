@@ -13,6 +13,9 @@ in
     enable = true;
     package = lib.mkDefault pkgs.firefox;
     nativeMessagingHosts = [ shared.rustab ];
+    # Keep the pre-26.05 location explicitly; moving to XDG needs a manual
+    # profile migration from ~/.mozilla/firefox.
+    configPath = ".mozilla/firefox";
 
     profiles.default = {
       isDefault = true;

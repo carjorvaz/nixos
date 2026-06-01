@@ -5,11 +5,11 @@
     enable = true;
     enableDefaultConfig = false;
 
-    matchBlocks =
+    settings =
       let
         serverConf = {
-          user = "root";
-          setEnv = {
+          User = "root";
+          SetEnv = {
             TERM = "xterm-256color";
           };
         };

@@ -159,7 +159,7 @@ in
 
         # A list of all login accounts. To create the password hashes, use
         # nix run nixpkgs.apacheHttpd -c htpasswd -nbB "" "super secret password" | cut -d: -f2 > /hashed/password/file/location
-        loginAccounts = {
+        accounts = {
           "carlos@vaz.one" = {
             hashedPasswordFile = config.age.secrets.mailCarlosHashedPassword.path;
 
@@ -192,9 +192,9 @@ in
           };
         };
 
-        # Use Let's Encrypt certificates. Note that this needs to set up a stripped
-        # down nginx and opens port 80.
-        certificateScheme = "acme-nginx";
+        # Use the wildcard vaz.one certificate managed by the shared DNS-01
+        # ACME profile imported by hadrianus.
+        x509.useACMEHost = "vaz.one";
 
         # https://nixos-mailserver.readthedocs.io/en/latest/migrations.html
         stateVersion = 3;

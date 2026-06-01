@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -27,8 +27,11 @@
     firefox-addons.url = "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons";
     firefox-addons.inputs.nixpkgs.follows = "nixpkgs";
 
-    home-manager.url = "github:nix-community/home-manager";
-    home-manager.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    home-manager.url = "github:nix-community/home-manager/release-26.05";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
+
+    home-manager-darwin.url = "github:nix-community/home-manager";
+    home-manager-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
 
     impermanence.url = "github:nix-community/impermanence";
 
@@ -36,7 +39,7 @@
     niri.inputs.nixpkgs.follows = "nixpkgs-unstable";
     niri.inputs.nixpkgs-stable.follows = "nixpkgs";
 
-    simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-25.11";
+    simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
 
     cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
     cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
@@ -248,7 +251,7 @@
         system = "aarch64-darwin";
         specialArgs = { inherit inputs self; };
         modules = [
-          inputs.home-manager.darwinModules.home-manager
+          inputs.home-manager-darwin.darwinModules.home-manager
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;

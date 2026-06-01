@@ -1,4 +1,4 @@
-{ ... }:
+{ lib, ... }:
 
 let
   domain = "bazarr.vaz.ovh";
@@ -33,7 +33,7 @@ in
 
   users.users.bazarr.extraGroups = [ "media" ];
 
-  systemd.services.bazarr.serviceConfig.UMask = "0002";
+  systemd.services.bazarr.serviceConfig.UMask = lib.mkForce "0002";
 
   environment.persistence."/persist".directories = [
     { directory = "/var/lib/bazarr"; user = "bazarr"; group = "bazarr"; }

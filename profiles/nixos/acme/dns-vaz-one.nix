@@ -12,7 +12,7 @@
     extraDomainNames = [ "*.vaz.one" ];
     dnsProvider = "ovh";
     dnsPropagationCheck = true;
-    credentialsFile = config.age.secrets.ovh.path;
+    environmentFile = config.age.secrets.ovh.path;
   };
 
   users.users.nginx.extraGroups = [ "acme" ];

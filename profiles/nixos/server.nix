@@ -4,6 +4,9 @@
   # CachyOS server-lto kernel for all servers.
   boot.kernelPackages = lib.mkDefault pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
   boot.zfs.package = lib.mkDefault config.boot.kernelPackages.zfs_cachyos;
+  # Preserve the historical root-pool import behavior explicitly. NixOS warns
+  # that the default will flip to false in 26.11 to reduce data-loss risk.
+  boot.zfs.forceImportRoot = true;
 
   # Servers use static IPs, no NetworkManager or WiFi.
   networking.networkmanager.enable = false;
@@ -41,10 +44,10 @@
   networking.firewall.logRefusedConnections = lib.mkDefault false;
 
   # Prevent accidental suspend/hibernate.
-  systemd.sleep.extraConfig = ''
-    AllowSuspend=no
-    AllowHibernation=no
-  '';
+  systemd.sleep.settings.Sleep = {
+    AllowSuspend = "no";
+    AllowHibernation = "no";
+  };
 
   # Force reboot if kexec hangs (some firmware doesn't support it).
   systemd.settings.Manager.KExecWatchdogSec = lib.mkDefault "1m";
