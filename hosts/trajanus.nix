@@ -37,6 +37,7 @@
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/home-assistant.nix"
     "${self}/profiles/nixos/nginx/common.nix"
+    "${self}/profiles/nixos/valetudo.nix"
     "${self}/profiles/nixos/syncthing.nix"
     "${self}/profiles/nixos/graphical/niri.nix"
     "${self}/profiles/nixos/libvirt.nix"
