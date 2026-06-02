@@ -36,6 +36,17 @@ git tag -a vX.Y.Z <commit> -m "release"
 gh run list
 ```
 
+For normal agent work, start from `jj status` and `jj diff`, then use `jj` to shape local history. If a change is ready for `master`, commit through JJ and explicitly move the bookmark before using Git to publish:
+
+```sh
+nix develop -c jj commit -m "Concise change summary"
+nix develop -c jj bookmark move master --to @-
+git push origin master
+nix develop -c jj status
+```
+
+If a workflow still uses `git commit` directly, run `nix develop -c jj status` afterwards so JJ imports the Git commit and verifies the working-copy parent is aligned. Do not treat Git's detached-looking view inside a colocated JJ repo as the source of truth; verify bookmarks and remote refs before reporting a pushed branch clean.
+
 In this flake repo, remember that new files imported by Nix must be Git-tracked before flake evaluation sees them. When adding a new Nix-imported file, add it to Git before trusting `nix eval`, `nix build`, or `scripts/validate`.
 
 ## Review surface

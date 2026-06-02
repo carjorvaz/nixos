@@ -9,6 +9,7 @@
 - Read `docs/ARCHITECTURE.md` before changing host/profile/module/package boundaries.
 - Read `docs/VALIDATION.md` before reporting changes ready; prefer `scripts/validate` for public-safe local checks.
 - Read `docs/TOOLING.md` before changing the dev shell, command menu, local history workflow, or repo tool affordances.
+- Prefer Jujutsu (`jj`) for local change inspection/editing in this checkout; keep Git/GitHub for publication, tags, and CI visibility.
 - Read `docs/PUBLIC_BOUNDARY.md` before adding CI, logs, transcripts, service exposure, or anything involving secrets.
 - Use checked-in plans only as described in `docs/PLANS.md`; keep live operations and sensitive notes outside this public repo.
 

@@ -20,6 +20,18 @@ validate-dry:
 show:
     nix flake show --allow-import-from-derivation --no-write-lock-file
 
+# Show Jujutsu working-copy and bookmark state
+jj-status:
+    jj status
+
+# Show the current Jujutsu diff
+jj-diff:
+    jj diff
+
+# Show Jujutsu operation history for undo/recovery
+jj-ops:
+    jj op log
+
 # List check attributes for the current system
 checks:
     nix eval --json ".#checks.$(nix eval --raw --impure --expr 'builtins.currentSystem')" --apply 'builtins.attrNames'
