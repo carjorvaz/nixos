@@ -5,6 +5,28 @@ let
   upstream = "http://127.0.0.1:${toString config.services.umami.settings.PORT}";
 in
 {
+  # Umami 3.1.0's Next 16/Turbopack build currently completes without
+  # emitting .next/standalone, while the nixpkgs package installPhase expects
+  # that output. Use webpack for this package until the upstream package moves
+  # past the Turbopack/standalone mismatch.
+  nixpkgs.overlays = [
+    (_final: prev: {
+      umami = prev.umami.overrideAttrs (old: {
+        env = (old.env or { }) // {
+          # Webpack needs more than Node's default ~1 GiB V8 heap for Umami's
+          # production build. This is build-time only; the service wrapper
+          # does not inherit derivation env vars at runtime.
+          NODE_OPTIONS = "--max-old-space-size=1536";
+        };
+
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace package.json \
+            --replace-fail '"build-app": "next build --turbo"' '"build-app": "next build --webpack"'
+        '';
+      });
+    })
+  ];
+
   age.secrets.umamiAppSecret.file = "${self}/secrets/umamiAppSecret.age";
 
   services = {
