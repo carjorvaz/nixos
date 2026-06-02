@@ -35,8 +35,7 @@
 
     zpool.zroot = {
       type = "zpool";
-      postCreateHook =
-        "zfs list -t snapshot -H -o name | grep -E '^zroot/local/root@blank$' || zfs snapshot zroot/local/root@blank";
+      postCreateHook = "zfs list -t snapshot -H -o name | grep -E '^zroot/local/root@blank$' || zfs snapshot zroot/local/root@blank";
 
       options = {
         ashift = "12";
@@ -45,13 +44,17 @@
 
       rootFsOptions = {
         acltype = "posixacl";
-        atime = "off";
+        # systemd-tmpfiles age cleanup requires STATX_ATIME. With ZFS atime=off,
+        # systemd 260 reports statx(...): Protocol driver not attached for /tmp.
+        # Keep atime available while relatime limits normal access-time churn.
+        atime = "on";
         canmount = "off";
         compression = "zstd";
         dnodesize = "auto";
         normalization = "formD";
         xattr = "sa";
         mountpoint = "none";
+        relatime = "on";
         # "com.sun:auto-snapshot" = "false"; # TODO? sanoid?
       };
 

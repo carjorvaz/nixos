@@ -66,13 +66,17 @@
 
           rootFsOptions = {
             acltype = "posixacl";
-            atime = "off";
+            # systemd-tmpfiles age cleanup requires STATX_ATIME. With ZFS atime=off,
+            # systemd 260 reports statx(...): Protocol driver not attached for /tmp.
+            # Keep atime available while relatime limits normal access-time churn.
+            atime = "on";
             canmount = "off";
             compression = "zstd";
             dnodesize = "auto";
             normalization = "formD";
             xattr = "sa";
             mountpoint = "none";
+            relatime = "on";
           };
         };
       in
