@@ -167,7 +167,10 @@ in
       "d ${tmPath} 0755 ${user} users"
       "d /var/lib/samba 0755 root root -"
       "d /var/lib/samba/lock 0755 root root -"
-      "d /var/lib/samba/private 0700 root root -"
+      # Upstream Samba already has a create rule for this path. Use an adjust
+      # rule to keep the intended private mode without triggering tmpfiles'
+      # duplicate-path warning.
+      "z /var/lib/samba/private 0700 root root -"
       "d /var/lib/samba/private/msg.sock 0700 root root -"
     ];
 
