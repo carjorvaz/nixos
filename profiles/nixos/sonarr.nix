@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   domain = "sonarr.vaz.ovh";
@@ -64,15 +69,49 @@ in
       api_key="$(<${config.age.secrets.sonarrApiKey.path})"
       base_url="http://127.0.0.1:8989"
 
-      for _ in $(seq 1 30); do
-        if curl -fsS -H "X-Api-Key: $api_key" "$base_url/api/v3/system/status" >/dev/null; then
-          break
-        fi
-        sleep 2
-      done
+      sonarr_get() {
+        endpoint="$1"
+        label="$2"
+        response=""
+        for attempt in $(seq 1 60); do
+          if response="$(curl -fsS -H "X-Api-Key: $api_key" "$base_url$endpoint")"; then
+            printf '%s' "$response"
+            return 0
+          fi
+          if [ "$attempt" -eq 60 ]; then
+            echo "$label did not become ready" >&2
+            return 1
+          fi
+          sleep 2
+        done
+      }
+
+      sonarr_put() {
+        endpoint="$1"
+        label="$2"
+        payload="$3"
+        for attempt in $(seq 1 60); do
+          if printf '%s' "$payload" \
+            | curl -fsS -X PUT \
+              -H "X-Api-Key: $api_key" \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "$base_url$endpoint" \
+            >/dev/null; then
+            return 0
+          fi
+          if [ "$attempt" -eq 60 ]; then
+            echo "$label did not accept update" >&2
+            return 1
+          fi
+          sleep 2
+        done
+      }
+
+      sonarr_get "/api/v3/system/status" "Sonarr system status" >/dev/null
 
       client_id="$(
-        curl -fsS -H "X-Api-Key: $api_key" "$base_url/api/v3/downloadclient" \
+        sonarr_get "/api/v3/downloadclient" "Sonarr download clients" \
           | jq -r '.[] | select(.implementation == "Transmission") | .id' \
           | head -n1
       )"
@@ -82,7 +121,7 @@ in
       fi
 
       current="$(
-        curl -fsS -H "X-Api-Key: $api_key" "$base_url/api/v3/downloadclient/$client_id"
+        sonarr_get "/api/v3/downloadclient/$client_id" "Sonarr download client $client_id"
       )"
       updated="$(
         printf '%s' "$current" \
@@ -91,18 +130,16 @@ in
       )"
 
       if [ "$current" != "$updated" ]; then
-        printf '%s' "$updated" \
-          | curl -fsS -X PUT \
-              -H "X-Api-Key: $api_key" \
-              -H "Content-Type: application/json" \
-              --data-binary @- \
-              "$base_url/api/v3/downloadclient/$client_id" \
-          >/dev/null
+        sonarr_put "/api/v3/downloadclient/$client_id" "Sonarr download client $client_id" "$updated"
       fi
     '';
   };
 
   environment.persistence."/persist".directories = [
-    { directory = "/var/lib/sonarr"; user = "sonarr"; group = "sonarr"; }
+    {
+      directory = "/var/lib/sonarr";
+      user = "sonarr";
+      group = "sonarr";
+    }
   ];
 }
