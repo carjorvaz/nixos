@@ -109,7 +109,7 @@ let
     inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
   # Hermes pins the Firecrawl SDK via lazy_deps; keep the Nix-managed wrapper
   # satisfying that exact pin so web_extract works with lazy installs disabled.
-  hermesAgentFirecrawlPy = pkgs.python312Packages.firecrawl-py.overridePythonAttrs (old: rec {
+  hermesAgentFirecrawlPy = pkgs.python312Packages.firecrawl-py.overridePythonAttrs (_old: rec {
     version = "4.17.0";
     src = pkgs.fetchPypi {
       pname = "firecrawl_py";
@@ -502,7 +502,7 @@ in
 
   nixpkgs = {
     overlays = [
-      (final: prev: {
+      (final: _prev: {
         kimi-cli =
           pkgs.runCommand "kimi-cli"
             {

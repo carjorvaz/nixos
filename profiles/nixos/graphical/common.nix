@@ -16,7 +16,7 @@
   programs.nix-ld.enable = true;
 
   nixpkgs.overlays = [
-    (self: super: {
+    (_self: super: {
       vscodium = super.vscodium.override {
         commandLineArgs = "--password-store=gnome-libsecret";
       };

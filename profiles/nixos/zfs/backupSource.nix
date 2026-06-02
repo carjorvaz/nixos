@@ -197,7 +197,7 @@ in
     }) cfg.datasets;
 
     # Declarative known_hosts for backup targets
-    programs.ssh.knownHosts = lib.mapAttrs (host: publicKey: {
+    programs.ssh.knownHosts = lib.mapAttrs (_host: publicKey: {
       inherit publicKey;
     }) cfg.targetHosts;
 
@@ -215,7 +215,7 @@ in
         ++ builtins.concatMap (pattern: [ "--include-snaps=${pattern}" ]) cfg.includeSnapshots
         ++ builtins.concatMap (pattern: [ "--exclude-snaps=${pattern}" ]) cfg.excludeSnapshots;
 
-      commands = lib.mapAttrs (dataset: opts: {
+      commands = lib.mapAttrs (_dataset: opts: {
         target = opts.target;
         recursive = opts.recursive;
         sendOptions = opts.sendOptions;

@@ -141,7 +141,7 @@ in
 
     overlays = [
       inputs.nix-cachyos-kernel.overlays.pinned
-      (final: prev: {
+      (_final: prev: {
         unstable = import inputs.nixpkgs-unstable {
           system = prev.stdenv.hostPlatform.system;
           config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) allowedUnfree;
