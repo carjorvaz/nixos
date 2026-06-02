@@ -8,7 +8,9 @@
   makeWrapper,
   nodejs_22,
   openssl,
+  patchelf,
   path,
+  pax-utils,
   pkg-config,
   pnpmConfigHook,
   pnpm_10,
@@ -19,6 +21,15 @@
 }:
 
 let
+  koffiTriplet =
+    {
+      x86_64-linux = "linux_x64";
+      aarch64-linux = "linux_arm64";
+      i686-linux = "linux_i386";
+    }
+    .${stdenv.hostPlatform.system} or null;
+  koffiRpath = lib.makeLibraryPath [ stdenv.cc.cc.lib ];
+
   # crates.io rejects the generic fetcher User-Agent currently used by this
   # nixpkgs revision for Cargo registry downloads. Keep the workaround local to
   # this package so the rest of the Cargo vendoring path remains the standard
@@ -90,6 +101,8 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper
     nodejs_22
     pkg-config
+    patchelf
+    pax-utils
     pnpm_10
     pnpmConfigHook
     python3
@@ -166,12 +179,36 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
+  postInstall = ''
+    for koffiDir in "$out"/share/firecrawl/apps/api/node_modules/.pnpm/koffi@*/node_modules/koffi; do
+      [ -d "$koffiDir" ] || continue
+
+      # Koffi's root index.js searches one directory above the package root for
+      # build/koffi/<platform>/koffi.node. The pnpm layout keeps those prebuilt
+      # modules inside the package root, so expose the expected parent-level
+      # build/ path.
+      ln -sfn "$koffiDir/build" "$(dirname "$koffiDir")/build"
+
+      ${lib.optionalString (koffiTriplet != null) ''
+        native="$koffiDir/build/koffi/${koffiTriplet}/koffi.node"
+        if [ ! -e "$native" ]; then
+          echo "Expected Koffi native module missing: $native" >&2
+          exit 1
+        fi
+
+        scanelf -X -e "$native"
+        patchelf --set-rpath "${koffiRpath}" "$native"
+      ''}
+    done
+  '';
+
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
 
     cd $out/share/firecrawl/apps/api
     ${lib.getExe nodejs_22} -e 'const native = require("./native"); if (!native.processPdf) throw new Error("native module did not load")'
+    ${lib.getExe nodejs_22} -e 'const koffi = require("koffi"); if (typeof koffi.load !== "function") throw new Error("koffi native module did not load")'
     ${lib.getExe nodejs_22} --check dist/src/index.js
     ${lib.getExe nodejs_22} --check dist/src/services/queue-worker.js
     ${lib.getExe nodejs_22} --check dist/src/services/extract-worker.js
