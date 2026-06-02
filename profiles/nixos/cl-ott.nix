@@ -57,7 +57,17 @@ let
         sleep 2
       done
 
-      live_tv_config="$(curl -fsS -H "$auth_header" "$jellyfin_url/System/Configuration/LiveTv")"
+      live_tv_config=""
+      for attempt in $(seq 1 60); do
+        if live_tv_config="$(curl -fsS -H "$auth_header" "$jellyfin_url/System/Configuration/LiveTv")"; then
+          break
+        fi
+        if [ "$attempt" -eq 60 ]; then
+          echo "Jellyfin Live TV configuration endpoint did not become ready" >&2
+          exit 1
+        fi
+        sleep 2
+      done
       exists="$(printf '%s' "$live_tv_config" \
         | jq -r --arg name "$tuner_name" --arg url "$playlist" \
           'any(.TunerHosts[]?; .Type == "m3u" and .FriendlyName == $name and .Url == $url)')"
@@ -115,7 +125,19 @@ let
       jellyfin_url=${lib.escapeShellArg jellyfinUrl}
       auth_header="X-Emby-Token: $api_key"
 
-      task_id="$(curl -fsS -H "$auth_header" "$jellyfin_url/ScheduledTasks" \
+      scheduled_tasks=""
+      for attempt in $(seq 1 60); do
+        if scheduled_tasks="$(curl -fsS -H "$auth_header" "$jellyfin_url/ScheduledTasks")"; then
+          break
+        fi
+        if [ "$attempt" -eq 60 ]; then
+          echo "Jellyfin scheduled tasks endpoint did not become ready" >&2
+          exit 1
+        fi
+        sleep 2
+      done
+
+      task_id="$(printf '%s' "$scheduled_tasks" \
         | jq -r '.[] | select(.Key == "RefreshGuide") | .Id' \
         | head -n 1)"
       if [ -z "$task_id" ] || [ "$task_id" = "null" ]; then
