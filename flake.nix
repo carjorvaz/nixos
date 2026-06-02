@@ -111,6 +111,49 @@
 
       localPackagesOverlay = final: _: mkLocalPackages final;
 
+      firecrawlKoffiOverlay =
+        final: prev:
+        let
+          koffiTriplet =
+            {
+              x86_64-linux = "linux_x64";
+              aarch64-linux = "linux_arm64";
+              i686-linux = "linux_i386";
+            }
+            .${final.stdenv.hostPlatform.system} or null;
+          koffiRpath = inputs.nixpkgs.lib.makeLibraryPath [ final.stdenv.cc.cc.lib ];
+        in
+        {
+          firecrawl = prev.firecrawl.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+              final.patchelf
+              final.pax-utils
+            ];
+            postInstall = (old.postInstall or "") + ''
+              for koffiDir in "$out"/share/firecrawl/apps/api/node_modules/.pnpm/koffi@*/node_modules/koffi; do
+                [ -d "$koffiDir" ] || continue
+
+                # Koffi's root index.js searches one directory above the package
+                # root for build/koffi/<platform>/koffi.node. The pnpm layout keeps
+                # those prebuilt modules inside the package root, so expose the
+                # expected parent-level build/ path.
+                ln -sfn "$koffiDir/build" "$(dirname "$koffiDir")/build"
+
+                ${inputs.nixpkgs.lib.optionalString (koffiTriplet != null) ''
+                  native="$koffiDir/build/koffi/${koffiTriplet}/koffi.node"
+                  if [ ! -e "$native" ]; then
+                    echo "Expected Koffi native module missing: $native" >&2
+                    exit 1
+                  fi
+
+                  scanelf -X -e "$native"
+                  patchelf --set-rpath "${koffiRpath}" "$native"
+                ''}
+              done
+            '';
+          });
+        };
+
       # Some local wrappers target redistributable frontends around upstream
       # unfree apps; allow those specific inputs when exposing flake package
       # outputs without broadening host-level package policy.
@@ -201,6 +244,7 @@
           nixpkgs.overlays = [
             localPackagesOverlay
             inputs.llm-agents.overlays.default
+            firecrawlKoffiOverlay
           ];
           programs = {
             command-not-found.enable = false;

@@ -34,13 +34,17 @@ in
         base_url = "http://localhost:7878";
         api_key._secret = config.age.secrets.radarrApiKey.path;
 
+        quality_definition.type = "sqp-streaming";
+
         # Override the template profile: accept anything above CAM/TS,
         # prefer 4K, fall back through 1080p → 720p → DVD → 480p → SDTV.
         # min_format_score=0 so low-quality releases aren't blocked by
         # custom format scoring (public indexers score low).
         quality_profiles = [
           {
+            trash_id = "5128baeb2b081b72126bc8482b2a86a0";
             name = "SQP-1 (2160p)";
+            reset_unmatched_scores.enabled = true;
             min_format_score = 0;
             qualities = [
               { name = "Bluray-2160p"; }
@@ -67,12 +71,6 @@ in
             ];
           }
         ];
-
-        include = [
-          { template = "radarr-quality-definition-sqp-streaming"; }
-          { template = "radarr-quality-profile-sqp-1-2160p-default"; }
-          { template = "radarr-custom-formats-sqp-1-2160p"; }
-        ];
       };
 
       # WEB-2160p: 4K WEB preferred, full fallback to SDTV
@@ -80,9 +78,13 @@ in
         base_url = "http://localhost:8989";
         api_key._secret = config.age.secrets.sonarrApiKey.path;
 
+        quality_definition.type = "series";
+
         quality_profiles = [
           {
+            trash_id = "dfa5eaae7894077ad6449169b6eb03e0";
             name = "WEB-2160p";
+            reset_unmatched_scores.enabled = true;
             qualities = [
               {
                 name = "WEB 2160p";
@@ -110,12 +112,6 @@ in
             ];
           }
         ];
-
-        include = [
-          { template = "sonarr-quality-definition-series"; }
-          { template = "sonarr-v4-quality-profile-web-2160p-alternative"; }
-          { template = "sonarr-v4-custom-formats-web-2160p"; }
-        ];
       };
     };
   };
@@ -131,7 +127,7 @@ in
 
     serviceConfig = {
       ExecStart = lib.mkForce
-        "${lib.getExe config.services.recyclarr.package} ${config.services.recyclarr.command} --app-data ${recyclarrStateDir} --config ${recyclarrRuntimeConfigPath}";
+        "${lib.getExe config.services.recyclarr.package} ${config.services.recyclarr.command} --config ${recyclarrRuntimeConfigPath}";
       LoadCredential = lib.mkForce recyclarrSecretsReplacement.credentials;
       RuntimeDirectory = "recyclarr";
       RuntimeDirectoryMode = "0700";
