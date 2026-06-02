@@ -124,6 +124,16 @@ let
   ];
   hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
 
+  pipxFixed = pkgs.pipx.overridePythonAttrs (old: {
+    # pipx 1.8.0's URL-specifier tests still expect packaging's older
+    # no-space spelling around "@". packaging 26 keeps the canonical space,
+    # which is harmless at runtime but breaks these string-exact tests.
+    disabledTests = (old.disabledTests or [ ]) ++ [
+      "test_fix_package_name"
+      "test_parse_specifier_for_metadata"
+    ];
+  });
+
   hermesAgent = pkgs.symlinkJoin {
     name = "hermes-agent-air";
     paths = [ hermesAgentPackage ];
@@ -399,7 +409,6 @@ in
     "${self}/profiles/darwin/darwin-file-backup.nix"
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
-    "${self}/profiles/darwin/kimi-cli-update-reminder.nix"
   ];
 
   nix = {
@@ -478,9 +487,8 @@ in
     hugo
     go
     guile
-    pkgs.kimi-cli
     neovim
-    pipx
+    pipxFixed
     rlwrap
     sbcl
     uv
@@ -501,50 +509,6 @@ in
   ];
 
   nixpkgs = {
-    overlays = [
-      (final: _prev: {
-        kimi-cli =
-          pkgs.runCommand "kimi-cli"
-            {
-              nativeBuildInputs = [
-                pkgs.makeWrapper
-                pkgs.patch
-                pkgs.ripgrep
-              ];
-              passthru.version = inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli.version;
-            }
-            ''
-              original=${inputs.kimi-cli.packages.${final.stdenv.hostPlatform.system}.kimi-cli}
-
-              # Extract virtual env path from the original wrapper script.
-              venvPath=$(sed -n 's|.*exec "\(/nix/store/[^"]*\)".*|\1|p' "$original/bin/kimi")
-              venvPath=$(dirname "$(dirname "$venvPath")")
-
-              # Copy the virtual env so we can patch it.
-              cp -rL "$venvPath" $out
-              chmod -R u+w $out
-
-              sitePackages=
-              for candidate in "$out"/lib/python*/site-packages; do
-                if [ -d "$candidate" ]; then
-                  sitePackages="$candidate"
-                  break
-                fi
-              done
-              [ -n "$sitePackages" ]
-
-              patch --fuzz=0 -d "$sitePackages" -p0 < ${self}/patches/kimi-cli/infinite-approval-timeout.patch
-              find "$sitePackages/kimi_cli" -type d -name __pycache__ -prune -exec rm -rf {} +
-
-              # Recreate the wrapper around the patched virtual env.
-              mv $out/bin/kimi $out/bin/.kimi-unwrapped
-              makeWrapper $out/bin/.kimi-unwrapped $out/bin/kimi \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ripgrep ]} \
-                --set KIMI_CLI_NO_AUTO_UPDATE "1"
-            '';
-      })
-    ];
-
     config.allowUnfreePredicate =
       pkg:
       builtins.elem (lib.getName pkg) [

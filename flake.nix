@@ -56,8 +56,6 @@
     rustab.url = "github:carjorvaz/rustab";
     rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    kimi-cli.url = "github:MoonshotAI/kimi-cli";
-
     hermes-agent.url = "github:NousResearch/hermes-agent";
 
     llm-agents.url = "github:numtide/llm-agents.nix";

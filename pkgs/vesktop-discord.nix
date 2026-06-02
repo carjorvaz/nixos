@@ -1,17 +1,20 @@
 {
+  brotli,
   discord,
   jq,
   lib,
   perl,
   runCommand,
-  undmg,
   vesktop,
 }:
 
 let
-  discordIcns = runCommand "discord-icns" { nativeBuildInputs = [ undmg ]; } ''
-    undmg ${discord.src}
-    cp Discord.app/Contents/Resources/electron.icns $out
+  discordIcns = runCommand "discord-icns" { nativeBuildInputs = [ brotli ]; } ''
+    # Discord's Darwin source is a brotli-compressed distro tarball in current
+    # nixpkgs, not a DMG. Only extract the app icon needed by Vesktop.
+    brotli -d < ${discord.src} > discord.tar
+    tar xf discord.tar files/Discord.app/Contents/Resources/electron.icns
+    cp files/Discord.app/Contents/Resources/electron.icns $out
   '';
 in
 vesktop.overrideAttrs (old: {
