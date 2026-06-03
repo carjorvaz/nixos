@@ -134,19 +134,100 @@ let
     ];
   });
 
+  hermesCliTools = pkgs.runCommandLocal "hermes-agent-cli-tools" {
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+  } ''
+    mkdir -p "$out/bin"
+
+    makeHermesWrapper() {
+      local source="$1"
+      local target="$2"
+      makeWrapper "$source" "$target" \
+        --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
+        --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
+    }
+
+    makeHermesWrapper ${lib.escapeShellArg "${hermesAgentPackage}/bin/hermes"} "$out/bin/hermes-cli"
+
+    for bin in hermes-agent hermes-acp; do
+      source=${lib.escapeShellArg "${hermesAgentPackage}/bin"}/"$bin"
+      if [ -e "$source" ]; then
+        makeHermesWrapper "$source" "$out/bin/$bin"
+      fi
+    done
+  '';
+
+  hermesDesktopPackage = pkgs.callPackage ../pkgs/hermes-desktop.nix {
+    inherit inputs;
+    hermesAgent = hermesAgentPackage;
+    hermesCliPath = "${hermesCliTools}/bin/hermes-cli";
+  };
+
+  hermesCommand = pkgs.writeShellApplication {
+    name = "hermes";
+    text = ''
+      if [ "$#" -gt 0 ] && { [ "$1" = "desktop" ] || [ "$1" = "gui" ]; }; then
+        shift
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --cwd)
+              shift
+              if [ "$#" -eq 0 ]; then
+                echo "hermes desktop: --cwd requires a path" >&2
+                exit 2
+              fi
+              export HERMES_DESKTOP_CWD="$1"
+              ;;
+            --cwd=*)
+              export HERMES_DESKTOP_CWD="''${1#--cwd=}"
+              ;;
+            --fake-boot)
+              export HERMES_DESKTOP_BOOT_FAKE=1
+              ;;
+            --ignore-existing)
+              export HERMES_DESKTOP_IGNORE_EXISTING=1
+              ;;
+            --skip-build|--force-build|--source)
+              echo "hermes desktop: $1 is unnecessary for the Nix-built desktop; ignoring it." >&2
+              ;;
+            --build-only)
+              echo "hermes desktop: already built by Nix at ${lib.getExe hermesDesktopPackage}"
+              exit 0
+              ;;
+            -h|--help)
+              cat <<'HELP'
+usage: hermes desktop [--cwd PATH] [--fake-boot] [--ignore-existing]
+
+Launch the Nix-built Hermes Desktop app.
+
+The upstream source-build flags (--skip-build, --force-build, --source,
+--build-only) are not needed here because nix-darwin builds the Electron app.
+You can also run: hermes-desktop
+HELP
+              exit 0
+              ;;
+            *)
+              echo "hermes desktop: unsupported Nix wrapper argument: $1" >&2
+              exit 2
+              ;;
+          esac
+          shift
+        done
+
+        exec ${lib.getExe hermesDesktopPackage}
+      fi
+
+      exec ${lib.escapeShellArg "${hermesCliTools}/bin/hermes-cli"} "$@"
+    '';
+  };
+
   hermesAgent = pkgs.symlinkJoin {
     name = "hermes-agent-air";
-    paths = [ hermesAgentPackage ];
-    nativeBuildInputs = [ pkgs.makeWrapper ];
-    postBuild = ''
-      for bin in hermes hermes-agent hermes-acp; do
-        if [ -e "$out/bin/$bin" ]; then
-          wrapProgram "$out/bin/$bin" \
-            --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
-            --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
-        fi
-      done
-    '';
+    paths = [
+      hermesCliTools
+      hermesCommand
+      hermesDesktopPackage
+    ];
   };
 
   braveBpcExtensionId = "lkbebcjgcmobigpeffafkodonchffocl";
@@ -532,6 +613,8 @@ in
     onActivation = {
       autoUpdate = true;
       cleanup = "uninstall";
+      # Homebrew 4.7+ requires an explicit force flag for non-interactive cleanup.
+      extraFlags = [ "--force-cleanup" ];
       upgrade = true;
     };
 
@@ -641,6 +724,7 @@ in
       "${self}/profiles/home-manager/brave.nix"
       "${self}/profiles/home-manager/firefox-darwin.nix"
       "${self}/profiles/home-manager/helix.nix"
+      "${self}/profiles/home-manager/himalaya.nix"
       "${self}/profiles/home-manager/mpv.nix"
       "${self}/profiles/home-manager/neovim.nix"
       "${self}/profiles/home-manager/ssh.nix"

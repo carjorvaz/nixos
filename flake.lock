@@ -169,6 +169,26 @@
         "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
       }
     },
+    "cl-ott-web": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1780489257,
+        "narHash": "sha256-wHsW1aRjeU/PTQ7wGu63c3GZnYLdI4CAnkEw4oJzYis=",
+        "ref": "refs/heads/main",
+        "rev": "1c2613c3664732f8bf8d5da49171e38970451500",
+        "revCount": 22,
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/cl-ott-web.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/cl-ott-web.git"
+      }
+    },
     "cl-ultimate-tic-tac-toe": {
       "inputs": {
         "nixpkgs": [
@@ -542,11 +562,11 @@
         "uv2nix": "uv2nix_2"
       },
       "locked": {
-        "lastModified": 1780422454,
-        "narHash": "sha256-fIp3asEqgBM7etKDmTWthyI6uSxwW1Qz/kt9VhhFjYE=",
+        "lastModified": 1780783997,
+        "narHash": "sha256-Ob4oLGMhyvPBEc0gyFEjySltUtyJ07/r7Pfoyc0vpqU=",
         "owner": "NousResearch",
         "repo": "hermes-agent",
-        "rev": "b34ee80741db2fdf188dcdc5c5caa78ee72642ff",
+        "rev": "d165933c560caeb0d6dbf12cd71b1f987e198e1b",
         "type": "github"
       },
       "original": {
@@ -1263,6 +1283,7 @@
         "agenix": "agenix",
         "cl-olx-scraper": "cl-olx-scraper",
         "cl-ott": "cl-ott",
+        "cl-ott-web": "cl-ott-web",
         "cl-ultimate-tic-tac-toe": "cl-ultimate-tic-tac-toe",
         "disko": "disko",
         "firefox-addons": "firefox-addons",
