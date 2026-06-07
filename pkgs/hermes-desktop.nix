@@ -19,6 +19,8 @@ let
   };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/apps/desktop/package.json"));
+  macBuild = packageJson.build.mac or { };
+  macExtendInfo = macBuild.extendInfo or { };
   desktopMetadataVersion = packageJson.version;
   # Treat the Python Agent package as the canonical Hermes release version.
   # Upstream Desktop metadata has lagged the Agent release, and immutable Nix
@@ -33,6 +35,35 @@ let
     else
       stdenv.hostPlatform.parsed.kernel.name;
   nodePtyArch = if stdenv.hostPlatform.isAarch64 then "arm64" else "x64";
+  appName = packageJson.build.productName or "Hermes";
+  appExecutableName = macExtendInfo.CFBundleExecutable or appName;
+  appBundleName = "${appName}.app";
+  appBundleId = packageJson.build.appId or "com.nousresearch.hermes";
+  appCategory = macBuild.category or "public.app-category.developer-tools";
+  appInfoPlist = pkgs.writeText "hermes-desktop-Info.plist" (
+    lib.generators.toPlist { escape = true; } (
+      {
+        CFBundleDevelopmentRegion = "en";
+        CFBundleDisplayName = macExtendInfo.CFBundleDisplayName or appName;
+        CFBundleExecutable = appExecutableName;
+        CFBundleIconFile = appName;
+        CFBundleIdentifier = appBundleId;
+        CFBundleInfoDictionaryVersion = "6.0";
+        CFBundleName = macExtendInfo.CFBundleName or appName;
+        CFBundlePackageType = "APPL";
+        CFBundleShortVersionString = version;
+        CFBundleVersion = version;
+        LSApplicationCategoryType = appCategory;
+        NSHighResolutionCapable = true;
+      }
+      // lib.optionalAttrs (macExtendInfo ? NSAudioCaptureUsageDescription) {
+        inherit (macExtendInfo) NSAudioCaptureUsageDescription;
+      }
+      // lib.optionalAttrs (macExtendInfo ? NSMicrophoneUsageDescription) {
+        inherit (macExtendInfo) NSMicrophoneUsageDescription;
+      }
+    )
+  );
 
   renderer = buildNpmPackage (
     npm
@@ -118,10 +149,40 @@ stdenv.mkDerivation {
     mkdir -p $out/share/hermes-desktop $out/bin
     cp -r ${renderer}/* $out/share/hermes-desktop/
 
-    makeWrapper ${lib.getExe electron} $out/bin/hermes-desktop \
-      --add-flags "$out/share/hermes-desktop" \
-      --set HERMES_DESKTOP_HERMES ${lib.escapeShellArg hermesCliPath} \
-      --set ELECTRON_IS_DEV 0
+    makeHermesDesktopWrapper() {
+      makeWrapper ${lib.getExe electron} "$1" \
+        --add-flags "$out/share/hermes-desktop" \
+        --set HERMES_DESKTOP_HERMES ${lib.escapeShellArg hermesCliPath} \
+        --set HERMES_DESKTOP_NATIVE_SUDO 1 \
+        --set ELECTRON_IS_DEV 0
+    }
+
+    makeHermesDesktopWrapper "$out/bin/hermes-desktop"
+
+    ${lib.optionalString stdenv.hostPlatform.isDarwin ''
+      app="$out/Applications/${appBundleName}"
+      mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+
+      cp ${appInfoPlist} "$app/Contents/Info.plist"
+      printf 'APPL????' > "$app/Contents/PkgInfo"
+      makeHermesDesktopWrapper "$app/Contents/MacOS/${appExecutableName}"
+
+      app_icon="$out/share/hermes-desktop/dist/apple-touch-icon.png"
+      cp "$app_icon" "$app/Contents/Resources/${appName}.png"
+
+      iconset="$TMPDIR/hermes-desktop.iconset"
+      mkdir -p "$iconset"
+      for size in 16 32 128 256 512; do
+        /usr/bin/sips -z "$size" "$size" \
+          "$app_icon" \
+          --out "$iconset/icon_''${size}x''${size}.png" >/dev/null
+        double_size=$((size * 2))
+        /usr/bin/sips -z "$double_size" "$double_size" \
+          "$app_icon" \
+          --out "$iconset/icon_''${size}x''${size}@2x.png" >/dev/null
+      done
+      /usr/bin/iconutil -c icns "$iconset" -o "$app/Contents/Resources/${appName}.icns"
+    ''}
 
     runHook postInstall
   '';

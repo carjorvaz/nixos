@@ -105,8 +105,44 @@ let
     </fontconfig>
   '';
 
-  hermesAgentPackage =
-    inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  hermesTerminalSudoCommentLine =
+    "    # Local hosts with sudoers NOPASSWD should not be forced through the";
+  hermesTerminalNativeSudoReplacement = lib.concatStringsSep "\n" [
+    "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") == \"1\" and not has_configured_password:"
+    "        return command, None"
+    ""
+    hermesTerminalSudoCommentLine
+  ];
+  hermesGatewaySudoCallbackLine =
+    "    set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))";
+  hermesGatewayNativeSudoReplacement = lib.concatStringsSep "\n" [
+    "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") != \"1\":"
+    "        set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))"
+  ];
+
+  # The Desktop sudo overlay cannot hand off to macOS Touch ID. Keep Desktop on
+  # native sudo unless Hermes has been configured with an explicit SUDO_PASSWORD.
+  hermesAgentSource = pkgs.applyPatches {
+    name = "hermes-agent-native-sudo-source";
+    src = inputs.hermes-agent;
+    postPatch = ''
+      substituteInPlace tools/terminal_tool.py \
+        --replace-fail \
+          ${lib.escapeShellArg hermesTerminalSudoCommentLine} \
+          ${lib.escapeShellArg hermesTerminalNativeSudoReplacement}
+
+      substituteInPlace tui_gateway/server.py \
+        --replace-fail \
+          ${lib.escapeShellArg hermesGatewaySudoCallbackLine} \
+          ${lib.escapeShellArg hermesGatewayNativeSudoReplacement}
+    '';
+  };
+  hermesAgentPackage = pkgs.callPackage "${hermesAgentSource}/nix/hermes-agent.nix" {
+    inherit (inputs.hermes-agent.inputs) uv2nix pyproject-nix pyproject-build-systems;
+    npm-lockfile-fix =
+      inputs.hermes-agent.inputs.npm-lockfile-fix.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    rev = inputs.hermes-agent.rev or null;
+  };
   # Hermes pins the Firecrawl SDK via lazy_deps; keep the Nix-managed wrapper
   # satisfying that exact pin so web_extract works with lazy installs disabled.
   hermesAgentFirecrawlPy = pkgs.python312Packages.firecrawl-py.overridePythonAttrs (_old: rec {
@@ -1010,9 +1046,11 @@ in
         if [ ! -e "$app_link" ]; then
           ln -s "$nix_app" "$app_link"
         fi
-        "$lsregister" -f "$app_link" 2>/dev/null || true
-        /usr/bin/sudo -u "$primary_user" "$lsregister" -f "$app_link" 2>/dev/null || true
-        /usr/bin/mdimport "$app_link" 2>/dev/null || true
+        for searchable_app in "$nix_app" "$app_link"; do
+          "$lsregister" -f "$searchable_app" 2>/dev/null || true
+          /usr/bin/sudo -u "$primary_user" "$lsregister" -f "$searchable_app" 2>/dev/null || true
+          /usr/bin/mdimport "$searchable_app" 2>/dev/null || true
+        done
       done
 
       /usr/bin/mdimport "$nix_apps_dir" 2>/dev/null || true
