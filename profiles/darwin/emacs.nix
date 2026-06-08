@@ -14,33 +14,35 @@ in
 {
   environment.systemPackages = with pkgs; [
     # Emacs - https://github.com/leaferiksen/emacs-liquid-glass-icon
-    (let
-      myEmacs = (emacsPackagesFor emacs).emacsWithPackages (epkgs: [
-        epkgs.vterm
-        epkgs.pdf-tools
-        epkgs.org-roam
-        epkgs.treesit-grammars.with-all-grammars
-      ]);
-    in
+    (
+      let
+        myEmacs = (emacsPackagesFor emacs).emacsWithPackages (epkgs: [
+          epkgs.vterm
+          epkgs.pdf-tools
+          epkgs.org-roam
+          epkgs.treesit-grammars.with-all-grammars
+        ]);
+      in
       pkgs.symlinkJoin {
         name = "emacs-liquid-glass";
         paths = [ myEmacs ];
         postBuild = ''
-          plist="$out/Applications/Emacs.app/Contents/Info.plist"
+                    plist="$out/Applications/Emacs.app/Contents/Info.plist"
 
-          # Keep a legacy .icns fallback, but declare the liquid-glass asset
-          # catalog explicitly so the modern icon path is coherent.
-          rm $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
-          cp ${emacsLiquidGlassIcon} $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
-          cp ${emacsLiquidGlassAssets} $out/Applications/Emacs.app/Contents/Resources/Assets.car
+                    # Keep a legacy .icns fallback, but declare the liquid-glass asset
+                    # catalog explicitly so the modern icon path is coherent.
+                    rm $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
+                    cp ${emacsLiquidGlassIcon} $out/Applications/Emacs.app/Contents/Resources/Emacs.icns
+                    cp ${emacsLiquidGlassAssets} $out/Applications/Emacs.app/Contents/Resources/Assets.car
 
-          if ! grep -q '<key>CFBundleIconName</key>' "$plist"; then
-            sed -i '/<string>Emacs\.icns<\/string>/a\
-\t<key>CFBundleIconName</key>\
-\t<string>Emacs</string>' "$plist"
-          fi
+                    if ! grep -q '<key>CFBundleIconName</key>' "$plist"; then
+                      sed -i '/<string>Emacs\.icns<\/string>/a\
+          \t<key>CFBundleIconName</key>\
+          \t<string>Emacs</string>' "$plist"
+                    fi
         '';
-      })
+      }
+    )
 
     # Runtime tools (LSPs, formatters, etc.)
     nixfmt

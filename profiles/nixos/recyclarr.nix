@@ -50,22 +50,36 @@ in
               { name = "Bluray-2160p"; }
               {
                 name = "WEB 2160p";
-                qualities = [ "WEBDL-2160p" "WEBRip-2160p" ];
+                qualities = [
+                  "WEBDL-2160p"
+                  "WEBRip-2160p"
+                ];
               }
               {
                 name = "Bluray|WEB-1080p";
-                qualities = [ "Bluray-1080p" "WEBDL-1080p" "WEBRip-1080p" ];
+                qualities = [
+                  "Bluray-1080p"
+                  "WEBDL-1080p"
+                  "WEBRip-1080p"
+                ];
               }
               {
                 name = "WEB|Bluray-720p";
-                qualities = [ "WEBDL-720p" "WEBRip-720p" "Bluray-720p" ];
+                qualities = [
+                  "WEBDL-720p"
+                  "WEBRip-720p"
+                  "Bluray-720p"
+                ];
               }
               { name = "HDTV-1080p"; }
               { name = "HDTV-720p"; }
               { name = "DVD"; }
               {
                 name = "WEB 480p";
-                qualities = [ "WEBDL-480p" "WEBRip-480p" ];
+                qualities = [
+                  "WEBDL-480p"
+                  "WEBRip-480p"
+                ];
               }
               { name = "SDTV"; }
             ];
@@ -88,25 +102,37 @@ in
             qualities = [
               {
                 name = "WEB 2160p";
-                qualities = [ "WEBDL-2160p" "WEBRip-2160p" ];
+                qualities = [
+                  "WEBDL-2160p"
+                  "WEBRip-2160p"
+                ];
               }
               {
                 name = "WEB 1080p";
-                qualities = [ "WEBDL-1080p" "WEBRip-1080p" ];
+                qualities = [
+                  "WEBDL-1080p"
+                  "WEBRip-1080p"
+                ];
               }
               { name = "Bluray-2160p"; }
               { name = "Bluray-1080p"; }
               { name = "HDTV-1080p"; }
               {
                 name = "WEB 720p";
-                qualities = [ "WEBDL-720p" "WEBRip-720p" ];
+                qualities = [
+                  "WEBDL-720p"
+                  "WEBRip-720p"
+                ];
               }
               { name = "Bluray-720p"; }
               { name = "HDTV-720p"; }
               { name = "DVD"; }
               {
                 name = "WEB 480p";
-                qualities = [ "WEBDL-480p" "WEBRip-480p" ];
+                qualities = [
+                  "WEBDL-480p"
+                  "WEBRip-480p"
+                ];
               }
               { name = "SDTV"; }
             ];
@@ -126,8 +152,7 @@ in
     '';
 
     serviceConfig = {
-      ExecStart = lib.mkForce
-        "${lib.getExe config.services.recyclarr.package} ${config.services.recyclarr.command} --config ${recyclarrRuntimeConfigPath}";
+      ExecStart = lib.mkForce "${lib.getExe config.services.recyclarr.package} ${config.services.recyclarr.command} --config ${recyclarrRuntimeConfigPath}";
       LoadCredential = lib.mkForce recyclarrSecretsReplacement.credentials;
       RuntimeDirectory = "recyclarr";
       RuntimeDirectoryMode = "0700";
@@ -136,6 +161,10 @@ in
   };
 
   environment.persistence."/persist".directories = [
-    { directory = recyclarrStateDir; user = "recyclarr"; group = "recyclarr"; }
+    {
+      directory = recyclarrStateDir;
+      user = "recyclarr";
+      group = "recyclarr";
+    }
   ];
 }

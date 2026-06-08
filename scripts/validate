@@ -86,6 +86,36 @@ if [[ ${#hosts[@]} -eq 0 ]]; then
 fi
 
 run git diff --check HEAD --
+
+# Harness Engineering: prevent dead code, formatting drift, and Nix anti-patterns
+# at the gate. These tools are available in the dev shell; skip gracefully outside it.
+if command -v deadnix >/dev/null 2>&1; then
+  if ! deadnix . >/dev/null 2>&1; then
+    echo "error: deadnix found unused declarations. Run: just lint-nix" >&2
+    exit 1
+  fi
+else
+  echo "(deadnix not found — skipping dead-code check; run from dev shell for full coverage)"
+fi
+
+if command -v nixfmt >/dev/null 2>&1; then
+  if ! nixfmt --check $(git ls-files '*.nix') >/dev/null 2>&1; then
+    echo "error: nixfmt found unformatted files. Run: nixfmt \$(git ls-files '*.nix')" >&2
+    exit 1
+  fi
+else
+  echo "(nixfmt not found — skipping format check; run from dev shell for full coverage)"
+fi
+
+if command -v statix >/dev/null 2>&1; then
+  if ! statix check . >/dev/null 2>&1; then
+    echo "error: statix found Nix anti-patterns. Run: statix check ." >&2
+    exit 1
+  fi
+else
+  echo "(statix not found — skipping lint check; run from dev shell for full coverage)"
+fi
+
 run nix flake show --allow-import-from-derivation --no-write-lock-file
 
 for host in "${hosts[@]}"; do

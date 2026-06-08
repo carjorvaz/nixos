@@ -19,9 +19,12 @@ let
     to = [ to ];
   };
 
-  conditionedRemap = condition: from: to: (basicRemap from to) // {
-    conditions = [ condition ];
-  };
+  conditionedRemap =
+    condition: from: to:
+    (basicRemap from to)
+    // {
+      conditions = [ condition ];
+    };
 
   swap = remap: a: b: [
     (remap a b)
@@ -47,16 +50,13 @@ let
     (basicRemap (key "right_command") (key "right_option"))
   ];
 
-  externalKeyboardModifierPolicy = swap
-    (conditionedRemap nonBuiltInKeyboardCondition)
-    (key "left_command")
-    (key "left_option");
+  externalKeyboardModifierPolicy =
+    swap (conditionedRemap nonBuiltInKeyboardCondition) (key "left_command")
+      (key "left_option");
 
   builtInKeyboardModifierPolicy =
-    (swap
-      (conditionedRemap builtInKeyboardCondition)
-      (topCaseKey "keyboard_fn")
-      (key "left_control"));
+    swap (conditionedRemap builtInKeyboardCondition) (topCaseKey "keyboard_fn")
+      (key "left_control");
 
   karabinerConfig = {
     global.show_in_menu_bar = false;
@@ -105,16 +105,14 @@ let
     </fontconfig>
   '';
 
-  hermesTerminalSudoCommentLine =
-    "    # Local hosts with sudoers NOPASSWD should not be forced through the";
+  hermesTerminalSudoCommentLine = "    # Local hosts with sudoers NOPASSWD should not be forced through the";
   hermesTerminalNativeSudoReplacement = lib.concatStringsSep "\n" [
     "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") == \"1\" and not has_configured_password:"
     "        return command, None"
     ""
     hermesTerminalSudoCommentLine
   ];
-  hermesGatewaySudoCallbackLine =
-    "    set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))";
+  hermesGatewaySudoCallbackLine = "    set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))";
   hermesGatewayNativeSudoReplacement = lib.concatStringsSep "\n" [
     "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") != \"1\":"
     "        set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))"
@@ -170,28 +168,31 @@ let
     ];
   });
 
-  hermesCliTools = pkgs.runCommandLocal "hermes-agent-cli-tools" {
-    nativeBuildInputs = [ pkgs.makeWrapper ];
-  } ''
-    mkdir -p "$out/bin"
+  hermesCliTools =
+    pkgs.runCommandLocal "hermes-agent-cli-tools"
+      {
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+      }
+      ''
+        mkdir -p "$out/bin"
 
-    makeHermesWrapper() {
-      local source="$1"
-      local target="$2"
-      makeWrapper "$source" "$target" \
-        --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
-        --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
-    }
+        makeHermesWrapper() {
+          local source="$1"
+          local target="$2"
+          makeWrapper "$source" "$target" \
+            --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
+            --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
+        }
 
-    makeHermesWrapper ${lib.escapeShellArg "${hermesAgentPackage}/bin/hermes"} "$out/bin/hermes-cli"
+        makeHermesWrapper ${lib.escapeShellArg "${hermesAgentPackage}/bin/hermes"} "$out/bin/hermes-cli"
 
-    for bin in hermes-agent hermes-acp; do
-      source=${lib.escapeShellArg "${hermesAgentPackage}/bin"}/"$bin"
-      if [ -e "$source" ]; then
-        makeHermesWrapper "$source" "$out/bin/$bin"
-      fi
-    done
-  '';
+        for bin in hermes-agent hermes-acp; do
+          source=${lib.escapeShellArg "${hermesAgentPackage}/bin"}/"$bin"
+          if [ -e "$source" ]; then
+            makeHermesWrapper "$source" "$out/bin/$bin"
+          fi
+        done
+      '';
 
   hermesDesktopPackage = pkgs.callPackage ../pkgs/hermes-desktop.nix {
     inherit inputs;
@@ -202,58 +203,58 @@ let
   hermesCommand = pkgs.writeShellApplication {
     name = "hermes";
     text = ''
-      if [ "$#" -gt 0 ] && { [ "$1" = "desktop" ] || [ "$1" = "gui" ]; }; then
-        shift
-        while [ "$#" -gt 0 ]; do
-          case "$1" in
-            --cwd)
+            if [ "$#" -gt 0 ] && { [ "$1" = "desktop" ] || [ "$1" = "gui" ]; }; then
               shift
-              if [ "$#" -eq 0 ]; then
-                echo "hermes desktop: --cwd requires a path" >&2
-                exit 2
-              fi
-              export HERMES_DESKTOP_CWD="$1"
-              ;;
-            --cwd=*)
-              export HERMES_DESKTOP_CWD="''${1#--cwd=}"
-              ;;
-            --fake-boot)
-              export HERMES_DESKTOP_BOOT_FAKE=1
-              ;;
-            --ignore-existing)
-              export HERMES_DESKTOP_IGNORE_EXISTING=1
-              ;;
-            --skip-build|--force-build|--source)
-              echo "hermes desktop: $1 is unnecessary for the Nix-built desktop; ignoring it." >&2
-              ;;
-            --build-only)
-              echo "hermes desktop: already built by Nix at ${lib.getExe hermesDesktopPackage}"
-              exit 0
-              ;;
-            -h|--help)
-              cat <<'HELP'
-usage: hermes desktop [--cwd PATH] [--fake-boot] [--ignore-existing]
+              while [ "$#" -gt 0 ]; do
+                case "$1" in
+                  --cwd)
+                    shift
+                    if [ "$#" -eq 0 ]; then
+                      echo "hermes desktop: --cwd requires a path" >&2
+                      exit 2
+                    fi
+                    export HERMES_DESKTOP_CWD="$1"
+                    ;;
+                  --cwd=*)
+                    export HERMES_DESKTOP_CWD="''${1#--cwd=}"
+                    ;;
+                  --fake-boot)
+                    export HERMES_DESKTOP_BOOT_FAKE=1
+                    ;;
+                  --ignore-existing)
+                    export HERMES_DESKTOP_IGNORE_EXISTING=1
+                    ;;
+                  --skip-build|--force-build|--source)
+                    echo "hermes desktop: $1 is unnecessary for the Nix-built desktop; ignoring it." >&2
+                    ;;
+                  --build-only)
+                    echo "hermes desktop: already built by Nix at ${lib.getExe hermesDesktopPackage}"
+                    exit 0
+                    ;;
+                  -h|--help)
+                    cat <<'HELP'
+      usage: hermes desktop [--cwd PATH] [--fake-boot] [--ignore-existing]
 
-Launch the Nix-built Hermes Desktop app.
+      Launch the Nix-built Hermes Desktop app.
 
-The upstream source-build flags (--skip-build, --force-build, --source,
---build-only) are not needed here because nix-darwin builds the Electron app.
-You can also run: hermes-desktop
-HELP
-              exit 0
-              ;;
-            *)
-              echo "hermes desktop: unsupported Nix wrapper argument: $1" >&2
-              exit 2
-              ;;
-          esac
-          shift
-        done
+      The upstream source-build flags (--skip-build, --force-build, --source,
+      --build-only) are not needed here because nix-darwin builds the Electron app.
+      You can also run: hermes-desktop
+      HELP
+                    exit 0
+                    ;;
+                  *)
+                    echo "hermes desktop: unsupported Nix wrapper argument: $1" >&2
+                    exit 2
+                    ;;
+                esac
+                shift
+              done
 
-        exec ${lib.getExe hermesDesktopPackage}
-      fi
+              exec ${lib.getExe hermesDesktopPackage}
+            fi
 
-      exec ${lib.escapeShellArg "${hermesCliTools}/bin/hermes-cli"} "$@"
+            exec ${lib.escapeShellArg "${hermesCliTools}/bin/hermes-cli"} "$@"
     '';
   };
 
@@ -560,70 +561,83 @@ in
     pkgs.symbola
   ];
 
-  environment.etc = {
-    "fonts/fonts.conf".source = "${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
-    "fonts/conf.d/50-macos-fonts.conf".source = fontconfigMacosConf;
+  environment = {
+    etc = {
+      "fonts/fonts.conf".source = "${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
+      "fonts/conf.d/50-macos-fonts.conf".source = fontconfigMacosConf;
+    };
+
+    systemPackages = with pkgs; [
+      colima # Streamlines Docker, just run `colima start`.
+      docker
+      ghostty-bin
+      htop
+      firefox-bin
+      freerdp
+      llama-cpp
+      nixos-rebuild
+      signal-desktop
+      tailscaleMacAppCli
+      telegram-desktop
+      vesktop-discord
+
+      delta
+      dua
+      fd
+      gh
+      hyperfine
+      ripgrep-all
+      uutils-coreutils-noprefix
+
+      piLlamaE4b
+      piLlamaTrajanusQwen36
+      piLlamaTrajanusQwen36Stop
+      piLlamaTrajanusQwen36Moe
+      piLlamaTrajanusQwen36MoeStop
+      piIncognito
+      piTrajanusQwen36
+      piTrajanusQwen36Incognito
+      piTrajanusQwen36Moe
+      piTrajanusQwen36MoeIncognito
+      brainworkshop
+
+      android-tools
+      fzf
+      hugo
+      go
+      guile
+      neovim
+      pipxFixed
+      rlwrap
+      sbcl
+      uv
+      wget
+      ffmpeg
+      video-vibe-check
+      whisper-cpp
+      yt-dlp
+      org-daily-scratch
+      hermesAgent
+      inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
+      inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
+
+      # HM's mpv module doesn't support package = null, so reference its
+      # finalPackage to land mpv.app in /Applications/Nix Apps without
+      # duplicating the override from profiles/home-manager/mpv.nix.
+      config.home-manager.users.cjv.programs.mpv.finalPackage
+    ];
+
+    variables = {
+      EDITOR = "nvim";
+      GHOSTTY_RESOURCES_DIR = "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty";
+      HOMEBREW_CELLAR = "/opt/homebrew/Cellar";
+      HOMEBREW_NO_ANALYTICS = "1";
+      HOMEBREW_PREFIX = "/opt/homebrew";
+      HOMEBREW_REPOSITORY = "/opt/homebrew";
+      PI_SKIP_VERSION_CHECK = "1";
+      PI_TELEMETRY = "0";
+    };
   };
-
-  environment.systemPackages = with pkgs; [
-    colima # Streamlines Docker, just run `colima start`.
-    docker
-    ghostty-bin
-    htop
-    firefox-bin
-    freerdp
-    llama-cpp
-    nixos-rebuild
-    signal-desktop
-    tailscaleMacAppCli
-    telegram-desktop
-    vesktop-discord
-
-    delta
-    dua
-    fd
-    gh
-    hyperfine
-    ripgrep-all
-    uutils-coreutils-noprefix
-
-    piLlamaE4b
-    piLlamaTrajanusQwen36
-    piLlamaTrajanusQwen36Stop
-    piLlamaTrajanusQwen36Moe
-    piLlamaTrajanusQwen36MoeStop
-    piIncognito
-    piTrajanusQwen36
-    piTrajanusQwen36Incognito
-    piTrajanusQwen36Moe
-    piTrajanusQwen36MoeIncognito
-    brainworkshop
-
-    android-tools
-    fzf
-    hugo
-    go
-    guile
-    neovim
-    pipxFixed
-    rlwrap
-    sbcl
-    uv
-    wget
-    ffmpeg
-    video-vibe-check
-    whisper-cpp
-    yt-dlp
-    org-daily-scratch
-    hermesAgent
-    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
-    inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
-
-    # HM's mpv module doesn't support package = null, so reference its
-    # finalPackage to land mpv.app in /Applications/Nix Apps without
-    # duplicating the override from profiles/home-manager/mpv.nix.
-    config.home-manager.users.cjv.programs.mpv.finalPackage
-  ];
 
   nixpkgs = {
     config.allowUnfreePredicate =
@@ -709,36 +723,141 @@ in
 
   programs.man.enable = true;
 
-  environment.variables = {
-    EDITOR = "nvim";
-    GHOSTTY_RESOURCES_DIR = "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty";
-    HOMEBREW_CELLAR = "/opt/homebrew/Cellar";
-    HOMEBREW_NO_ANALYTICS = "1";
-    HOMEBREW_PREFIX = "/opt/homebrew";
-    HOMEBREW_REPOSITORY = "/opt/homebrew";
-    PI_SKIP_VERSION_CHECK = "1";
-    PI_TELEMETRY = "0";
+  # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
+  # patching /Applications/cmux.app breaks its code signature, which in turn
+  # makes macOS more likely to forget Files & Folders consent across updates.
+  # cmux can already consume Ghostty integration via the exported
+  # GHOSTTY_RESOURCES_DIR environment variable above.
+  system = {
+    # Disable press and hold for diacritics.
+    # I want to be able to press and hold j and k
+    # in VSCode with vim keys to move around.
+    defaults = {
+      NSGlobalDomain.ApplePressAndHoldEnabled = false;
+
+      # https://tonsky.me/blog/monitors/#turn-off-font-smoothing
+      # https://www.reddit.com/r/MacOS/comments/16tow2w/psa_turn_off_font_smoothing/
+      NSGlobalDomain.AppleFontSmoothing = 1;
+
+      trackpad = {
+        ActuateDetents = true;
+        ActuationStrength = 0;
+        FirstClickThreshold = 0;
+        ForceSuppressed = true;
+      };
+    };
+
+    # Keyboard
+    keyboard.enableKeyMapping = true;
+    keyboard.remapCapsLockToControl = true;
+
+    # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
+    # patching /Applications/cmux.app breaks its code signature, which in turn
+    # makes macOS more likely to forget Files & Folders consent across updates.
+    # cmux can already consume Ghostty integration via the exported
+    # GHOSTTY_RESOURCES_DIR environment variable above.
+    activationScripts.postActivation.text = ''
+      legacy_cmux_ghostty_si="/Applications/cmux.app/Contents/Resources/ghostty/shell-integration"
+      if [ -L "$legacy_cmux_ghostty_si" ]; then
+        rm -f "$legacy_cmux_ghostty_si"
+      fi
+
+      # Spotlight and LaunchServices can be unreliable with app bundles nested
+      # under /Applications/Nix Apps. Expose managed root-level symlinks while
+      # leaving real apps, casks, and unrelated symlinks alone.
+      nix_apps_dir="/Applications/Nix Apps"
+      lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+      primary_user=${lib.escapeShellArg config.system.primaryUser}
+
+      for managed_link in /Applications/*.app; do
+        [ -L "$managed_link" ] || continue
+
+        link_target=$(readlink "$managed_link")
+        case "$link_target" in
+          "$nix_apps_dir"/*.app)
+            if [ ! -d "$nix_apps_dir" ] || [ ! -e "$link_target" ]; then
+              rm -f "$managed_link"
+            fi
+            ;;
+        esac
+      done
+
+      if [ -d "$nix_apps_dir" ]; then
+        for nix_app in "$nix_apps_dir"/*.app; do
+          [ -e "$nix_app" ] || continue
+
+          app_name=$(basename "$nix_app")
+          app_link="/Applications/$app_name"
+
+          if [ -L "$app_link" ]; then
+            link_target=$(readlink "$app_link")
+            case "$link_target" in
+              "$nix_app") ;;
+              "$nix_apps_dir"/*.app) rm -f "$app_link" ;;
+              *)
+                echo "Skipping $app_link because it already points to $link_target" >&2
+                continue
+                ;;
+            esac
+          elif [ -e "$app_link" ]; then
+            echo "Skipping $app_link because it already exists and is not a managed symlink" >&2
+            continue
+          fi
+
+          if [ ! -e "$app_link" ]; then
+            ln -s "$nix_app" "$app_link"
+          fi
+          for searchable_app in "$nix_app" "$app_link"; do
+            "$lsregister" -f "$searchable_app" 2>/dev/null || true
+            /usr/bin/sudo -u "$primary_user" "$lsregister" -f "$searchable_app" 2>/dev/null || true
+            /usr/bin/mdimport "$searchable_app" 2>/dev/null || true
+          done
+        done
+
+        /usr/bin/mdimport "$nix_apps_dir" 2>/dev/null || true
+      fi
+
+      # Karabiner 15.9 now manages its own launchd jobs via ServiceManagement.
+      # Older nix-darwin jobs can linger in /Library and keep pointing at stale
+      # store paths after the repo stopped declaring them.
+      for legacy in \
+        "/Library/LaunchDaemons/org.nixos.start_karabiner_daemons.plist" \
+        "/Library/LaunchDaemons/org.nixos.setsuid_karabiner_session_monitor.plist" \
+        "/Library/LaunchDaemons/org.pqrs.Karabiner-DriverKit-VirtualHIDDeviceClient.plist" \
+        "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_grabber.plist" \
+        "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_observer.plist"
+      do
+        if [ -e "$legacy" ]; then
+          /bin/launchctl bootout system "$legacy" 2>/dev/null || true
+          rm -f "$legacy"
+        fi
+      done
+
+      # Allow Bypass Paywalls Clean's signed CRX install/update path. Brave reads
+      # Chromium policies from macOS managed preferences; keep the policy narrow
+      # so Rustab and Chrome Web Store extensions remain handled elsewhere.
+      brave_managed_preferences="/Library/Managed Preferences"
+      mkdir -p "$brave_managed_preferences"
+      chown root:wheel "$brave_managed_preferences"
+      chmod 755 "$brave_managed_preferences"
+      install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/com.brave.Browser.plist"
+
+      # macOS configuration profiles materialize user-scoped managed preferences
+      # here. Overwrite that path too, rather than removing it, so only the narrow
+      # allowlist survives from earlier experiments.
+      mkdir -p "$brave_managed_preferences/cjv"
+      chown root:wheel "$brave_managed_preferences/cjv"
+      chmod 755 "$brave_managed_preferences/cjv"
+      install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/cjv/com.brave.Browser.plist"
+      /usr/bin/killall cfprefsd 2>/dev/null || true
+    '';
+
+    primaryUser = "cjv";
+
+    # Used for backwards compatibility, please read the changelog before changing.
+    # $ darwin-rebuild changelog
+    stateVersion = 4;
   };
-
-  # Disable press and hold for diacritics.
-  # I want to be able to press and hold j and k
-  # in VSCode with vim keys to move around.
-  system.defaults.NSGlobalDomain.ApplePressAndHoldEnabled = false;
-
-  # https://tonsky.me/blog/monitors/#turn-off-font-smoothing
-  # https://www.reddit.com/r/MacOS/comments/16tow2w/psa_turn_off_font_smoothing/
-  system.defaults.NSGlobalDomain.AppleFontSmoothing = 1;
-
-  system.defaults.trackpad = {
-    ActuateDetents = true;
-    ActuationStrength = 0;
-    FirstClickThreshold = 0;
-    ForceSuppressed = true;
-  };
-
-  # Keyboard
-  system.keyboard.enableKeyMapping = true;
-  system.keyboard.remapCapsLockToControl = true;
 
   security.pam.services.sudo_local.touchIdAuth = true;
 
@@ -766,13 +885,214 @@ in
       "${self}/profiles/home-manager/ssh.nix"
     ];
 
-    home.sessionPath = [
-      # STATE: install juliaup manually with curl method
-      "/Users/cjv/.juliaup/bin/"
-      "/Users/cjv/.local/bin"
-      "/opt/homebrew/bin"
-      "/opt/homebrew/sbin"
-    ];
+    home = {
+      sessionPath = [
+        # STATE: install juliaup manually with curl method
+        "/Users/cjv/.juliaup/bin/"
+        "/Users/cjv/.local/bin"
+        "/opt/homebrew/bin"
+        "/opt/homebrew/sbin"
+      ];
+
+      file = {
+        # cmux only looks in ~/.config/ghostty/themes and /Applications/Ghostty.app
+        # for Ghostty themes. Expose the Nix-provided themes at the user path so
+        # cmux can pick up Gruvbox and friends while Ghostty itself stays managed
+        # via Nix Apps.
+        ".config/ghostty/themes".source =
+          "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/themes";
+
+        # Keep the whole directory store-backed. Karabiner watches the parent
+        # directory and warns against symlinking only karabiner.json.
+        ".config/karabiner".source = karabinerConfigDir;
+
+        # Keep cmux's embedded browser available for deliberate use, but route
+        # automatic link opening to the system browser instead of unexpectedly
+        # hijacking terminal links, `open https://...`, PR links, or detected
+        # localhost ports.
+        ".config/cmux/settings.json" = {
+          force = true;
+          text = builtins.toJSON {
+            app = {
+              sendAnonymousTelemetry = false;
+            };
+            browser = {
+              defaultSearchEngine = "kagi";
+              openTerminalLinksInCmuxBrowser = false;
+              interceptTerminalOpenCommandInCmuxBrowser = false;
+            };
+            sidebar = {
+              openPullRequestLinksInCmuxBrowser = false;
+              openPortLinksInCmuxBrowser = false;
+            };
+          };
+        };
+
+        ".pi/agent/models.json".text = builtins.toJSON {
+          providers = {
+            llama-cpp = {
+              baseUrl = "http://localhost:${toString piLocalModelPort}/v1";
+              api = "openai-completions";
+              apiKey = "none";
+              compat = {
+                supportsDeveloperRole = false;
+                supportsReasoningEffort = false;
+              };
+              models = [
+                {
+                  id = piLocalModelId;
+                  name = "Gemma 4 E4B Heretic (local llama.cpp)";
+                  reasoning = false;
+                  input = [ "text" ];
+                  contextWindow = 32768;
+                  maxTokens = 8192;
+                  cost = {
+                    input = 0;
+                    output = 0;
+                    cacheRead = 0;
+                    cacheWrite = 0;
+                  };
+                }
+              ];
+            };
+
+            trajanus-qwen36 = {
+              baseUrl = "http://127.0.0.1:${toString piTrajanusModelPort}/v1";
+              api = "openai-completions";
+              apiKey = "none";
+              compat = {
+                supportsDeveloperRole = false;
+                supportsReasoningEffort = false;
+                thinkingFormat = "qwen-chat-template";
+              };
+              models = [
+                {
+                  id = piTrajanusModelId;
+                  name = "Qwen3.6 27B Heretic Q4_K_M MTP4 100k (trajanus)";
+                  reasoning = true;
+                  input = [ "text" ];
+                  contextWindow = 100000;
+                  maxTokens = 32768;
+                  cost = {
+                    input = 0;
+                    output = 0;
+                    cacheRead = 0;
+                    cacheWrite = 0;
+                  };
+                }
+              ];
+            };
+
+            trajanus-qwen36-moe = {
+              baseUrl = "http://127.0.0.1:${toString piTrajanusMoeModelPort}/v1";
+              api = "openai-completions";
+              apiKey = "none";
+              compat = {
+                supportsDeveloperRole = false;
+                supportsReasoningEffort = false;
+                thinkingFormat = "qwen-chat-template";
+              };
+              models = [
+                {
+                  id = piTrajanusMoeModelId;
+                  name = "Qwen3.6 35B-A3B ByteShape IQ4_XS MTP2 (trajanus)";
+                  reasoning = true;
+                  input = [ "text" ];
+                  contextWindow = 100000;
+                  maxTokens = 32768;
+                  cost = {
+                    input = 0;
+                    output = 0;
+                    cacheRead = 0;
+                    cacheWrite = 0;
+                  };
+                }
+              ];
+            };
+          };
+        };
+
+        ".pi/agent/settings.json".text = builtins.toJSON {
+          defaultProvider = "llama-cpp";
+          defaultModel = piLocalModelId;
+          defaultThinkingLevel = "off";
+          enableInstallTelemetry = false;
+          enabledModels = [
+            piLocalModelId
+            piTrajanusModelId
+            piTrajanusMoeModelId
+          ];
+          compaction = {
+            enabled = true;
+            reserveTokens = 4096;
+            keepRecentTokens = 12000;
+          };
+          retry.provider = {
+            timeoutMs = 600000;
+            maxRetries = 0;
+          };
+        };
+      };
+
+      activation = {
+        # Codex's gruvbox-* syntax themes emit fixed RGB colors and do not respond
+        # to config reloads in already-open TUIs. Keep only the TUI theme key in
+        # Codex's otherwise stateful config aligned with Ghostty's live Gruvbox
+        # palette, while leaving auth, trusted projects, and user prefs mutable.
+        codexTerminalPaletteTheme = {
+          before = [ ];
+          after = [ "writeBoundary" ];
+          data = ''
+            $DRY_RUN_CMD ${codexTerminalPaletteThemeConfig}/bin/codex-terminal-palette-theme
+          '';
+        };
+
+        karabinerConfigMigration = {
+          before = [ "checkLinkTargets" ];
+          after = [ ];
+          data = ''
+            target="$HOME/.config/karabiner"
+            backup="$HOME/.config/karabiner.pre-declarative"
+
+            if [ -e "$target" ] && [ ! -L "$target" ]; then
+              if [ -e "$backup" ]; then
+                echo "Refusing to replace $target because $backup already exists." >&2
+                exit 1
+              fi
+
+              $DRY_RUN_CMD mv "$target" "$backup"
+            fi
+          '';
+        };
+
+        karabinerReload = {
+          before = [ ];
+          after = [ "writeBoundary" ];
+          data = ''
+            if /bin/launchctl print "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server" >/dev/null 2>&1; then
+              $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server"
+            elif /bin/launchctl print "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server" >/dev/null 2>&1; then
+              $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server"
+            fi
+          '';
+        };
+
+        karabinerLegacyLaunchAgentCleanup = {
+          before = [ "karabinerReload" ];
+          after = [ "writeBoundary" ];
+          data = ''
+            legacy="$HOME/Library/LaunchAgents/org.nixos.activate_karabiner_system_ext.plist"
+
+            if [ -e "$legacy" ]; then
+              $DRY_RUN_CMD /bin/launchctl bootout "gui/$UID" "$legacy" 2>/dev/null || true
+              $DRY_RUN_CMD rm -f "$legacy"
+            fi
+          '';
+        };
+      };
+
+      stateVersion = "23.05";
+    };
 
     # Ghostty is installed via environment.systemPackages so it lands in
     # /Applications/Nix Apps. package = null avoids HM double-installing it
@@ -784,201 +1104,6 @@ in
         theme = "light:Gruvbox Light,dark:Gruvbox Dark Hard";
       };
     };
-
-    # cmux only looks in ~/.config/ghostty/themes and /Applications/Ghostty.app
-    # for Ghostty themes. Expose the Nix-provided themes at the user path so
-    # cmux can pick up Gruvbox and friends while Ghostty itself stays managed
-    # via Nix Apps.
-    home.file.".config/ghostty/themes".source =
-      "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/themes";
-
-    # Codex's gruvbox-* syntax themes emit fixed RGB colors and do not respond
-    # to config reloads in already-open TUIs. Keep only the TUI theme key in
-    # Codex's otherwise stateful config aligned with Ghostty's live Gruvbox
-    # palette, while leaving auth, trusted projects, and user prefs mutable.
-    home.activation.codexTerminalPaletteTheme = {
-      before = [ ];
-      after = [ "writeBoundary" ];
-      data = ''
-        $DRY_RUN_CMD ${codexTerminalPaletteThemeConfig}/bin/codex-terminal-palette-theme
-      '';
-    };
-
-    # Keep the whole directory store-backed. Karabiner watches the parent
-    # directory and warns against symlinking only karabiner.json.
-    home.file.".config/karabiner".source = karabinerConfigDir;
-
-    # Keep cmux's embedded browser available for deliberate use, but route
-    # automatic link opening to the system browser instead of unexpectedly
-    # hijacking terminal links, `open https://...`, PR links, or detected
-    # localhost ports.
-    home.file.".config/cmux/settings.json" = {
-      force = true;
-      text = builtins.toJSON {
-        app = {
-          sendAnonymousTelemetry = false;
-        };
-        browser = {
-          defaultSearchEngine = "kagi";
-          openTerminalLinksInCmuxBrowser = false;
-          interceptTerminalOpenCommandInCmuxBrowser = false;
-        };
-        sidebar = {
-          openPullRequestLinksInCmuxBrowser = false;
-          openPortLinksInCmuxBrowser = false;
-        };
-      };
-    };
-
-    home.file.".pi/agent/models.json".text = builtins.toJSON {
-      providers = {
-        llama-cpp = {
-          baseUrl = "http://localhost:${toString piLocalModelPort}/v1";
-          api = "openai-completions";
-          apiKey = "none";
-          compat = {
-            supportsDeveloperRole = false;
-            supportsReasoningEffort = false;
-          };
-          models = [
-            {
-              id = piLocalModelId;
-              name = "Gemma 4 E4B Heretic (local llama.cpp)";
-              reasoning = false;
-              input = [ "text" ];
-              contextWindow = 32768;
-              maxTokens = 8192;
-              cost = {
-                input = 0;
-                output = 0;
-                cacheRead = 0;
-                cacheWrite = 0;
-              };
-            }
-          ];
-        };
-
-        trajanus-qwen36 = {
-          baseUrl = "http://127.0.0.1:${toString piTrajanusModelPort}/v1";
-          api = "openai-completions";
-          apiKey = "none";
-          compat = {
-            supportsDeveloperRole = false;
-            supportsReasoningEffort = false;
-            thinkingFormat = "qwen-chat-template";
-          };
-          models = [
-            {
-              id = piTrajanusModelId;
-              name = "Qwen3.6 27B Heretic Q4_K_M MTP4 100k (trajanus)";
-              reasoning = true;
-              input = [ "text" ];
-              contextWindow = 100000;
-              maxTokens = 32768;
-              cost = {
-                input = 0;
-                output = 0;
-                cacheRead = 0;
-                cacheWrite = 0;
-              };
-            }
-          ];
-        };
-
-        trajanus-qwen36-moe = {
-          baseUrl = "http://127.0.0.1:${toString piTrajanusMoeModelPort}/v1";
-          api = "openai-completions";
-          apiKey = "none";
-          compat = {
-            supportsDeveloperRole = false;
-            supportsReasoningEffort = false;
-            thinkingFormat = "qwen-chat-template";
-          };
-          models = [
-            {
-              id = piTrajanusMoeModelId;
-              name = "Qwen3.6 35B-A3B ByteShape IQ4_XS MTP2 (trajanus)";
-              reasoning = true;
-              input = [ "text" ];
-              contextWindow = 100000;
-              maxTokens = 32768;
-              cost = {
-                input = 0;
-                output = 0;
-                cacheRead = 0;
-                cacheWrite = 0;
-              };
-            }
-          ];
-        };
-      };
-    };
-
-    home.file.".pi/agent/settings.json".text = builtins.toJSON {
-      defaultProvider = "llama-cpp";
-      defaultModel = piLocalModelId;
-      defaultThinkingLevel = "off";
-      enableInstallTelemetry = false;
-      enabledModels = [
-        piLocalModelId
-        piTrajanusModelId
-        piTrajanusMoeModelId
-      ];
-      compaction = {
-        enabled = true;
-        reserveTokens = 4096;
-        keepRecentTokens = 12000;
-      };
-      retry.provider = {
-        timeoutMs = 600000;
-        maxRetries = 0;
-      };
-    };
-
-    home.activation.karabinerConfigMigration = {
-      before = [ "checkLinkTargets" ];
-      after = [ ];
-      data = ''
-        target="$HOME/.config/karabiner"
-        backup="$HOME/.config/karabiner.pre-declarative"
-
-        if [ -e "$target" ] && [ ! -L "$target" ]; then
-          if [ -e "$backup" ]; then
-            echo "Refusing to replace $target because $backup already exists." >&2
-            exit 1
-          fi
-
-          $DRY_RUN_CMD mv "$target" "$backup"
-        fi
-      '';
-    };
-
-    home.activation.karabinerReload = {
-      before = [ ];
-      after = [ "writeBoundary" ];
-      data = ''
-        if /bin/launchctl print "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server" >/dev/null 2>&1; then
-          $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.service.agent.karabiner_console_user_server"
-        elif /bin/launchctl print "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server" >/dev/null 2>&1; then
-          $DRY_RUN_CMD /bin/launchctl kickstart -k "gui/$UID/org.pqrs.karabiner.karabiner_console_user_server"
-        fi
-      '';
-    };
-
-    home.activation.karabinerLegacyLaunchAgentCleanup = {
-      before = [ "karabinerReload" ];
-      after = [ "writeBoundary" ];
-      data = ''
-        legacy="$HOME/Library/LaunchAgents/org.nixos.activate_karabiner_system_ext.plist"
-
-        if [ -e "$legacy" ]; then
-          $DRY_RUN_CMD /bin/launchctl bootout "gui/$UID" "$legacy" 2>/dev/null || true
-          $DRY_RUN_CMD rm -f "$legacy"
-        fi
-      '';
-    };
-
-    home.stateVersion = "23.05";
   };
 
   programs.fish.interactiveShellInit = lib.mkAfter ''
@@ -990,111 +1115,5 @@ in
     end
   '';
 
-  # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
-  # patching /Applications/cmux.app breaks its code signature, which in turn
-  # makes macOS more likely to forget Files & Folders consent across updates.
-  # cmux can already consume Ghostty integration via the exported
-  # GHOSTTY_RESOURCES_DIR environment variable above.
-  system.activationScripts.postActivation.text = ''
-    legacy_cmux_ghostty_si="/Applications/cmux.app/Contents/Resources/ghostty/shell-integration"
-    if [ -L "$legacy_cmux_ghostty_si" ]; then
-      rm -f "$legacy_cmux_ghostty_si"
-    fi
-
-    # Spotlight and LaunchServices can be unreliable with app bundles nested
-    # under /Applications/Nix Apps. Expose managed root-level symlinks while
-    # leaving real apps, casks, and unrelated symlinks alone.
-    nix_apps_dir="/Applications/Nix Apps"
-    lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-    primary_user=${lib.escapeShellArg config.system.primaryUser}
-
-    for managed_link in /Applications/*.app; do
-      [ -L "$managed_link" ] || continue
-
-      link_target=$(readlink "$managed_link")
-      case "$link_target" in
-        "$nix_apps_dir"/*.app)
-          if [ ! -d "$nix_apps_dir" ] || [ ! -e "$link_target" ]; then
-            rm -f "$managed_link"
-          fi
-          ;;
-      esac
-    done
-
-    if [ -d "$nix_apps_dir" ]; then
-      for nix_app in "$nix_apps_dir"/*.app; do
-        [ -e "$nix_app" ] || continue
-
-        app_name=$(basename "$nix_app")
-        app_link="/Applications/$app_name"
-
-        if [ -L "$app_link" ]; then
-          link_target=$(readlink "$app_link")
-          case "$link_target" in
-            "$nix_app") ;;
-            "$nix_apps_dir"/*.app) rm -f "$app_link" ;;
-            *)
-              echo "Skipping $app_link because it already points to $link_target" >&2
-              continue
-              ;;
-          esac
-        elif [ -e "$app_link" ]; then
-          echo "Skipping $app_link because it already exists and is not a managed symlink" >&2
-          continue
-        fi
-
-        if [ ! -e "$app_link" ]; then
-          ln -s "$nix_app" "$app_link"
-        fi
-        for searchable_app in "$nix_app" "$app_link"; do
-          "$lsregister" -f "$searchable_app" 2>/dev/null || true
-          /usr/bin/sudo -u "$primary_user" "$lsregister" -f "$searchable_app" 2>/dev/null || true
-          /usr/bin/mdimport "$searchable_app" 2>/dev/null || true
-        done
-      done
-
-      /usr/bin/mdimport "$nix_apps_dir" 2>/dev/null || true
-    fi
-
-    # Karabiner 15.9 now manages its own launchd jobs via ServiceManagement.
-    # Older nix-darwin jobs can linger in /Library and keep pointing at stale
-    # store paths after the repo stopped declaring them.
-    for legacy in \
-      "/Library/LaunchDaemons/org.nixos.start_karabiner_daemons.plist" \
-      "/Library/LaunchDaemons/org.nixos.setsuid_karabiner_session_monitor.plist" \
-      "/Library/LaunchDaemons/org.pqrs.Karabiner-DriverKit-VirtualHIDDeviceClient.plist" \
-      "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_grabber.plist" \
-      "/Library/LaunchDaemons/org.pqrs.karabiner.karabiner_observer.plist"
-    do
-      if [ -e "$legacy" ]; then
-        /bin/launchctl bootout system "$legacy" 2>/dev/null || true
-        rm -f "$legacy"
-      fi
-    done
-
-    # Allow Bypass Paywalls Clean's signed CRX install/update path. Brave reads
-    # Chromium policies from macOS managed preferences; keep the policy narrow
-    # so Rustab and Chrome Web Store extensions remain handled elsewhere.
-    brave_managed_preferences="/Library/Managed Preferences"
-    mkdir -p "$brave_managed_preferences"
-    chown root:wheel "$brave_managed_preferences"
-    chmod 755 "$brave_managed_preferences"
-    install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/com.brave.Browser.plist"
-
-    # macOS configuration profiles materialize user-scoped managed preferences
-    # here. Overwrite that path too, rather than removing it, so only the narrow
-    # allowlist survives from earlier experiments.
-    mkdir -p "$brave_managed_preferences/cjv"
-    chown root:wheel "$brave_managed_preferences/cjv"
-    chmod 755 "$brave_managed_preferences/cjv"
-    install -m 0644 ${braveManagedPolicyPlist} "$brave_managed_preferences/cjv/com.brave.Browser.plist"
-    /usr/bin/killall cfprefsd 2>/dev/null || true
-  '';
-
   ids.gids.nixbld = 350;
-  system.primaryUser = "cjv";
-
-  # Used for backwards compatibility, please read the changelog before changing.
-  # $ darwin-rebuild changelog
-  system.stateVersion = 4;
 }

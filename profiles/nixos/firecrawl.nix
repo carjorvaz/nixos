@@ -5,48 +5,50 @@ let
   firecrawl = config.services.firecrawl;
 in
 {
-  services.firecrawl = {
-    enable = true;
-    package = pkgs.firecrawl;
-    publicUrl = domain;
-
-    # This singleton is private behind nginx + Tailscale auth, so keep
-    # Firecrawl's Supabase-style API-key machinery disabled and bind only
-    # to loopback in the generic service module.
-    useDbAuthentication = false;
-  };
-
-  services.nginx = {
-    tailscaleAuth = {
+  services = {
+    firecrawl = {
       enable = true;
-      virtualHosts = [ domain ];
+      package = pkgs.firecrawl;
+      publicUrl = domain;
+
+      # This singleton is private behind nginx + Tailscale auth, so keep
+      # Firecrawl's Supabase-style API-key machinery disabled and bind only
+      # to loopback in the generic service module.
+      useDbAuthentication = false;
     };
 
-    virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."/" = {
-        proxyPass = "http://${firecrawl.bindAddress}:${toString firecrawl.port}";
-        proxyWebsockets = true;
-        extraConfig = ''
-          proxy_connect_timeout 30s;
-          proxy_send_timeout 300s;
-          proxy_read_timeout 300s;
-          proxy_buffering off;
-        '';
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."/" = {
+          proxyPass = "http://${firecrawl.bindAddress}:${toString firecrawl.port}";
+          proxyWebsockets = true;
+          extraConfig = ''
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+            proxy_buffering off;
+          '';
+        };
       };
     };
-  };
 
-  services.homer.entries = [
-    {
-      name = "Firecrawl";
-      subtitle = "Web extraction";
-      url = "https://${domain}";
-      logo = "";
-      group = "ai";
-    }
-  ];
+    homer.entries = [
+      {
+        name = "Firecrawl";
+        subtitle = "Web extraction";
+        url = "https://${domain}";
+        logo = "";
+        group = "ai";
+      }
+    ];
+  };
 
   environment.persistence."/persist".directories = [
     {

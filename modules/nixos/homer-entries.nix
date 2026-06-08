@@ -37,16 +37,13 @@ let
 
   grouped = lib.groupBy (e: e.group) cfg.entries;
   knownGroups = builtins.filter (g: builtins.hasAttr g grouped) groupOrder;
-  unknownGroups = builtins.filter
-    (g: !(builtins.elem g groupOrder))
-    (builtins.attrNames grouped);
+  unknownGroups = builtins.filter (g: !(builtins.elem g groupOrder)) (builtins.attrNames grouped);
   orderedGroups = knownGroups ++ unknownGroups;
 
   # Strip the internal "group" key and any empty-string fields before serialization.
   cleanEntry = e: lib.filterAttrs (n: v: n != "group" && v != "") e;
 
-  sortedItems = items:
-    lib.sort (a: b: a.name < b.name) (map cleanEntry items);
+  sortedItems = items: lib.sort (a: b: a.name < b.name) (map cleanEntry items);
 
   toHomerServices = map (key: {
     name = groupLabels.${key} or key;

@@ -1,4 +1,9 @@
-{ lib, pkgs, config, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 
 let
   fontSize = 13;
@@ -88,14 +93,18 @@ in
         };
       };
 
-      rofi = let term = config.graphical.defaultTerminal; in {
-        enable = true;
-        cycle = true;
-        terminal = "${pkgs.${term}}/bin/${term}";
-        plugins = [
-          pkgs.rofi-calc
-        ];
-      };
+      rofi =
+        let
+          term = config.graphical.defaultTerminal;
+        in
+        {
+          enable = true;
+          cycle = true;
+          terminal = "${pkgs.${term}}/bin/${term}";
+          plugins = [
+            pkgs.rofi-calc
+          ];
+        };
     };
 
     services = {

@@ -55,7 +55,10 @@ in
   };
 
   systemd.services.seerr = {
-    path = [ pkgs.coreutils pkgs.jq ];
+    path = [
+      pkgs.coreutils
+      pkgs.jq
+    ];
     preStart = lib.mkBefore ''
       settings=${config.services.seerr.configDir}/settings.json
       if [ -f "$settings" ]; then

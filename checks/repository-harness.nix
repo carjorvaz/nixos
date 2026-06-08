@@ -81,7 +81,7 @@ in
     for needle in \
       "jj status" \
       "jj diff" \
-      "jj bookmark move master --to @-" \
+      "jj bookmark move" \
       "Git/GitHub"
     do
       if ! grep -Fq "$needle" docs/TOOLING.md; then

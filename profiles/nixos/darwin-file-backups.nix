@@ -10,9 +10,7 @@ let
   cfg = config.cjv.storage.pius.darwinFileBackups;
   # Keep the existing dataset and mountpoint names to avoid moving live backup
   # data around on pius just for nomenclature.
-  dataset = cfg.dataset;
-  mountpoint = cfg.mountpoint;
-  hosts = cfg.hosts;
+  inherit (cfg) dataset mountpoint hosts;
 in
 {
   options.cjv.storage.pius.darwinFileBackups = {

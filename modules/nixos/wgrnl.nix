@@ -135,29 +135,28 @@
             "193.136.164.1"
           ];
 
-          domains =
-            [
-              # Main domain
-              "~rnl.tecnico.ulisboa.pt"
+          domains = [
+            # Main domain
+            "~rnl.tecnico.ulisboa.pt"
 
-              # alt domains
-              "~rnl.ist.utl.pt" # spellchecker:disable-line
-              "~rnl.pt"
+            # alt domains
+            "~rnl.ist.utl.pt" # spellchecker:disable-line
+            "~rnl.pt"
 
-              # public ranges (DSI-assigned)
-              "~164.136.193.in-addr.arpa"
-              "~154.136.193.in-addr.arpa"
-              "~8.0.0.0.0.1.2.0.9.6.0.1.0.0.2.ip6.arpa"
+            # public ranges (DSI-assigned)
+            "~164.136.193.in-addr.arpa"
+            "~154.136.193.in-addr.arpa"
+            "~8.0.0.0.0.1.2.0.9.6.0.1.0.0.2.ip6.arpa"
 
-              # private ranges
-              "~154.168.192.in-addr.arpa"
-              "~20.168.192.in-addr.arpa"
-              "~0.9.4.c.3.4.e.9.5.1.3.3.2.9.d.f.ip6.arpa"
-            ]
-            ++ (
-              # private ranges (DSI-assigned)
-              builtins.map (octet: "~" + (builtins.toString octet) + ".16.10.in-addr.arpa") (lib.range 64 127)
-            );
+            # private ranges
+            "~154.168.192.in-addr.arpa"
+            "~20.168.192.in-addr.arpa"
+            "~0.9.4.c.3.4.e.9.5.1.3.3.2.9.d.f.ip6.arpa"
+          ]
+          ++ (
+            # private ranges (DSI-assigned)
+            builtins.map (octet: "~" + (builtins.toString octet) + ".16.10.in-addr.arpa") (lib.range 64 127)
+          );
         };
       };
     };

@@ -1,4 +1,4 @@
-{ self, config, ... }:
+_:
 
 let
   domain = "ntfy.vaz.one";

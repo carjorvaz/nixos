@@ -19,12 +19,17 @@ The default validation is intentionally public-safe and non-mutating. It does no
 ## What the default command checks
 
 - `git diff --check HEAD --` for whitespace errors across staged and unstaged changes.
+- `deadnix .` to prevent unused lambda parameters and dead declarations from accumulating.
+- `nixfmt --check` to enforce consistent formatting across all tracked `.nix` files.
+- `statix check .` for 13 Nix anti-pattern checks (bool comparisons, empty lets, deprecated syntax, unquoted URIs, etc.). Four noisy checks are disabled via `statix.toml` for repo-specific conventions.
 - `nix flake show --allow-import-from-derivation --no-write-lock-file` for flake shape.
 - `nix eval` of each NixOS host's `config.system.build.toplevel.drvPath`.
 - `nix eval` of the nix-darwin `air` system output.
 - `nix eval` of the current-system check names.
 - `nix build --no-link` of the lightweight current-system `repo-harness-docs` check.
 - `nix eval` of the `checks.x86_64-linux` check names.
+
+When deadnix or nixfmt are not on PATH (outside the dev shell), those checks are skipped with a note rather than failing — the Nix evaluations still catch structural errors.
 
 This is a good default for agent work on macOS because it catches most structural errors without attempting Linux builds locally.
 

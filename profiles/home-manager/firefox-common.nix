@@ -171,32 +171,26 @@ in
     };
   };
 
-  commonExtensions =
-    with firefoxAddons;
-    [
-      auto-tab-discard
-      bitwarden
-      kagi-search
-      ublock-origin
-      return-youtube-dislikes
-      sponsorblock
-      remove-youtube-s-suggestions
-      youtube-no-translation
-    ];
+  commonExtensions = with firefoxAddons; [
+    auto-tab-discard
+    bitwarden
+    kagi-search
+    ublock-origin
+    return-youtube-dislikes
+    sponsorblock
+    remove-youtube-s-suggestions
+    youtube-no-translation
+  ];
 
-  linuxExtensions =
-    with firefoxAddons;
-    [
-      vimium-c
-    ];
+  linuxExtensions = with firefoxAddons; [
+    vimium-c
+  ];
 
-  macManagedExtensions =
-    with firefoxAddons;
-    [
-      sidebery
-      multi-account-containers
-      bypass-paywalls-clean
-    ];
+  macManagedExtensions = with firefoxAddons; [
+    sidebery
+    multi-account-containers
+    bypass-paywalls-clean
+  ];
 
   linuxUserChrome = ''
     /* Compact native vertical tabs */

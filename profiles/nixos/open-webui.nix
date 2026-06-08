@@ -92,7 +92,7 @@ in
   environment.persistence."/persist".directories = [
     {
       directory = "/var/lib/open-webui";
-      user = user;
+      inherit user;
       group = user;
     }
     # {

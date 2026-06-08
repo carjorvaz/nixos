@@ -78,12 +78,11 @@ stdenv.mkDerivation (finalAttrs: {
 
   dontBuild = true;
 
-  nativeBuildInputs =
-    [
-      makeWrapper
-      copyDesktopItems
-    ]
-    ++ lib.optionals stdenv.hostPlatform.isDarwin [ desktopToDarwinBundle ];
+  nativeBuildInputs = [
+    makeWrapper
+    copyDesktopItems
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isDarwin [ desktopToDarwinBundle ];
 
   desktopItems = [
     (makeDesktopItem {

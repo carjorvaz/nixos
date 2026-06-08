@@ -26,12 +26,12 @@ let
 
   minimalConfig = mkFirecrawlConfig { };
 
-  unsafeBindEval = builtins.tryEval (
-    (mkFirecrawlConfig {
-      bindAddress = "0.0.0.0";
-      useDbAuthentication = false;
-    }).config.system.build.toplevel.drvPath
-  );
+  unsafeBindEval =
+    builtins.tryEval
+      (mkFirecrawlConfig {
+        bindAddress = "0.0.0.0";
+        useDbAuthentication = false;
+      }).config.system.build.toplevel.drvPath;
 in
 {
   firecrawl-module-generic-quality = pkgs.runCommand "firecrawl-module-generic-quality" { } ''

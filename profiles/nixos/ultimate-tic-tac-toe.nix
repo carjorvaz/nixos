@@ -8,25 +8,27 @@ let
   stateDir = "/var/lib/${stateDirectory}";
 in
 {
-  services.ultimate-tic-tac-toe = {
-    enable = true;
-    inherit port stateDirectory;
-  };
-
-  services.nginx.virtualHosts.${domain} = {
-    forceSSL = true;
-    enableACME = true;
-
-    locations."/" = {
-      proxyPass = "http://127.0.0.1:${toString port}";
-      proxyWebsockets = true;
+  services = {
+    ultimate-tic-tac-toe = {
+      enable = true;
+      inherit port stateDirectory;
     };
-  };
 
-  services.nginx.virtualHosts.${oldDomain} = {
-    forceSSL = true;
-    useACMEHost = "vaz.one";
-    globalRedirect = domain;
+    nginx.virtualHosts.${domain} = {
+      forceSSL = true;
+      enableACME = true;
+
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString port}";
+        proxyWebsockets = true;
+      };
+    };
+
+    nginx.virtualHosts.${oldDomain} = {
+      forceSSL = true;
+      useACMEHost = "vaz.one";
+      globalRedirect = domain;
+    };
   };
 
   environment.persistence."/persist".directories = [

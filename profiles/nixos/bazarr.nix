@@ -36,6 +36,10 @@ in
   systemd.services.bazarr.serviceConfig.UMask = lib.mkForce "0002";
 
   environment.persistence."/persist".directories = [
-    { directory = "/var/lib/bazarr"; user = "bazarr"; group = "bazarr"; }
+    {
+      directory = "/var/lib/bazarr";
+      user = "bazarr";
+      group = "bazarr";
+    }
   ];
 }

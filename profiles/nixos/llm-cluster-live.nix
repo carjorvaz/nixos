@@ -18,68 +18,68 @@ let
       pkgs.networkmanager
     ];
     text = ''
-      set -euo pipefail
+            set -euo pipefail
 
-      usage() {
-        cat <<'EOF'
-Usage:
-  llm-cluster-ip OCTET [CIDR] [IFACE]
+            usage() {
+              cat <<'EOF'
+      Usage:
+        llm-cluster-ip OCTET [CIDR] [IFACE]
 
-Set a temporary static address and readable hostname for the LLM cluster lab fabric.
+      Set a temporary static address and readable hostname for the LLM cluster lab fabric.
 
-Examples:
-  llm-cluster-ip 11
-  llm-cluster-ip 11 10.42.0.11/24
-  llm-cluster-ip 11 10.42.0.11/24 enx001122334455
-EOF
-      }
+      Examples:
+        llm-cluster-ip 11
+        llm-cluster-ip 11 10.42.0.11/24
+        llm-cluster-ip 11 10.42.0.11/24 enx001122334455
+      EOF
+            }
 
-      if [[ "''${1:-}" == "-h" || "''${1:-}" == "--help" ]]; then
-        usage
-        exit 0
-      fi
+            if [[ "''${1:-}" == "-h" || "''${1:-}" == "--help" ]]; then
+              usage
+              exit 0
+            fi
 
-      octet="''${1:?missing OCTET; run llm-cluster-ip --help}"
-      if [[ ! "$octet" =~ ^[0-9]+$ || "$octet" -lt 1 || "$octet" -gt 254 ]]; then
-        echo "OCTET must be an integer from 1 to 254" >&2
-        exit 1
-      fi
+            octet="''${1:?missing OCTET; run llm-cluster-ip --help}"
+            if [[ ! "$octet" =~ ^[0-9]+$ || "$octet" -lt 1 || "$octet" -gt 254 ]]; then
+              echo "OCTET must be an integer from 1 to 254" >&2
+              exit 1
+            fi
 
-      cidr="''${2:-10.42.0.$octet/24}"
-      iface="''${3:-}"
-      addr="''${cidr%/*}"
-      node_name="llm-node-$octet"
+            cidr="''${2:-10.42.0.$octet/24}"
+            iface="''${3:-}"
+            addr="''${cidr%/*}"
+            node_name="llm-node-$octet"
 
-      if [[ -z "$iface" ]]; then
-        for path in /sys/class/net/*; do
-          candidate="''${path##*/}"
-          case "$candidate" in
-            lo|wl*|ww*|docker*|br-*|virbr*|tailscale*|zt*) continue ;;
-          esac
-          if [[ -e "$path/carrier" ]] && grep -qx 1 "$path/carrier"; then
-            iface="$candidate"
-            break
-          fi
-        done
-      fi
+            if [[ -z "$iface" ]]; then
+              for path in /sys/class/net/*; do
+                candidate="''${path##*/}"
+                case "$candidate" in
+                  lo|wl*|ww*|docker*|br-*|virbr*|tailscale*|zt*) continue ;;
+                esac
+                if [[ -e "$path/carrier" ]] && grep -qx 1 "$path/carrier"; then
+                  iface="$candidate"
+                  break
+                fi
+              done
+            fi
 
-      if [[ -z "$iface" ]]; then
-        echo "could not find a wired interface with carrier; pass IFACE explicitly" >&2
-        echo "available interfaces:" >&2
-        ip -brief link show >&2
-        exit 1
-      fi
+            if [[ -z "$iface" ]]; then
+              echo "could not find a wired interface with carrier; pass IFACE explicitly" >&2
+              echo "available interfaces:" >&2
+              ip -brief link show >&2
+              exit 1
+            fi
 
-      hostnamectl set-hostname "$node_name" 2>/dev/null || \
-        printf '%s\n' "$node_name" > /proc/sys/kernel/hostname || true
-      nmcli device set "$iface" managed no >/dev/null 2>&1 || true
-      nmcli device disconnect "$iface" >/dev/null 2>&1 || true
-      ip link set dev "$iface" up
-      ip addr flush dev "$iface"
-      ip addr add "$cidr" dev "$iface"
-      ip -brief addr show dev "$iface"
-      printf 'node: %s\n' "$node_name"
-      printf 'ssh: ssh root@%s\n' "$addr"
+            hostnamectl set-hostname "$node_name" 2>/dev/null || \
+              printf '%s\n' "$node_name" > /proc/sys/kernel/hostname || true
+            nmcli device set "$iface" managed no >/dev/null 2>&1 || true
+            nmcli device disconnect "$iface" >/dev/null 2>&1 || true
+            ip link set dev "$iface" up
+            ip addr flush dev "$iface"
+            ip addr add "$cidr" dev "$iface"
+            ip -brief addr show dev "$iface"
+            printf 'node: %s\n' "$node_name"
+            printf 'ssh: ssh root@%s\n' "$addr"
     '';
   };
   llmClusterAutonet = pkgs.writeShellApplication {

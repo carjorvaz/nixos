@@ -1,9 +1,18 @@
-{ writeShellApplication, android-tools, libnotify, python3 }:
+{
+  writeShellApplication,
+  android-tools,
+  libnotify,
+  python3,
+}:
 
 writeShellApplication {
   name = "smarttube";
 
-  runtimeInputs = [ android-tools libnotify python3 ];
+  runtimeInputs = [
+    android-tools
+    libnotify
+    python3
+  ];
 
   text = ''
     url="$1"

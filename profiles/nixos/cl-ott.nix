@@ -152,25 +152,27 @@ let
   };
 in
 {
-  age.secrets.clOttTelegramEnv = {
-    file = "${self}/secrets/clOttTelegramEnv.age";
-    owner = "cl-ott";
-    group = "cl-ott";
-    mode = "0400";
-  };
+  age.secrets = {
+    clOttTelegramEnv = {
+      file = "${self}/secrets/clOttTelegramEnv.age";
+      owner = "cl-ott";
+      group = "cl-ott";
+      mode = "0400";
+    };
 
-  age.secrets.clOttClientApiToken = {
-    file = "${self}/secrets/clOttClientApiToken.age";
-    owner = "cl-ott";
-    group = "cl-ott";
-    mode = "0400";
-  };
+    clOttClientApiToken = {
+      file = "${self}/secrets/clOttClientApiToken.age";
+      owner = "cl-ott";
+      group = "cl-ott";
+      mode = "0400";
+    };
 
-  age.secrets.jellyfinClOttApiKey = {
-    file = "${self}/secrets/jellyfinClOttApiKey.age";
-    owner = "root";
-    group = "root";
-    mode = "0400";
+    jellyfinClOttApiKey = {
+      file = "${self}/secrets/jellyfinClOttApiKey.age";
+      owner = "root";
+      group = "root";
+      mode = "0400";
+    };
   };
 
   services.cl-ott = {
@@ -218,39 +220,43 @@ in
     }
   ];
 
-  systemd.services.cl-ott-jellyfin-tuner = {
-    description = "Ensure Jellyfin has the cl-ott M3U tuner";
-    after = [ "jellyfin.service" ];
-    wants = [ "jellyfin.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = lib.getExe ensureJellyfinTuner;
-    };
-  };
+  systemd = {
+    services = {
+      cl-ott-jellyfin-tuner = {
+        description = "Ensure Jellyfin has the cl-ott M3U tuner";
+        after = [ "jellyfin.service" ];
+        wants = [ "jellyfin.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = lib.getExe ensureJellyfinTuner;
+        };
+      };
 
-  systemd.services.cl-ott-jellyfin-refresh = {
-    description = "Refresh Jellyfin guide after cl-ott playlist changes";
-    after = [
-      "jellyfin.service"
-      "cl-ott-jellyfin-tuner.service"
-    ];
-    wants = [
-      "jellyfin.service"
-      "cl-ott-jellyfin-tuner.service"
-    ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = lib.getExe refreshJellyfinGuide;
+      cl-ott-jellyfin-refresh = {
+        description = "Refresh Jellyfin guide after cl-ott playlist changes";
+        after = [
+          "jellyfin.service"
+          "cl-ott-jellyfin-tuner.service"
+        ];
+        wants = [
+          "jellyfin.service"
+          "cl-ott-jellyfin-tuner.service"
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = lib.getExe refreshJellyfinGuide;
+        };
+      };
     };
-  };
 
-  systemd.paths.cl-ott-jellyfin-refresh = {
-    description = "Watch cl-ott playlist for Jellyfin refreshes";
-    wantedBy = [ "multi-user.target" ];
-    pathConfig = {
-      PathChanged = jellyfinPlaylistPath;
-      Unit = "cl-ott-jellyfin-refresh.service";
+    paths.cl-ott-jellyfin-refresh = {
+      description = "Watch cl-ott playlist for Jellyfin refreshes";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig = {
+        PathChanged = jellyfinPlaylistPath;
+        Unit = "cl-ott-jellyfin-refresh.service";
+      };
     };
   };
 

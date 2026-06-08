@@ -8,7 +8,7 @@
 let
   cfg = config.cjv.storage.pius.samba;
   user = "samba";
-  privatePath = cfg.privatePath;
+  inherit (cfg) privatePath;
   tmPath = cfg.timeMachinePath;
   tmDataset = cfg.timeMachineDataset;
 in

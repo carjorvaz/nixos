@@ -1,9 +1,24 @@
-{ writeShellApplication, yt-dlp, miniserve, android-tools, tailscale, libnotify, python3 }:
+{
+  writeShellApplication,
+  yt-dlp,
+  miniserve,
+  android-tools,
+  tailscale,
+  libnotify,
+  python3,
+}:
 
 writeShellApplication {
   name = "tv";
 
-  runtimeInputs = [ yt-dlp miniserve android-tools tailscale libnotify python3 ];
+  runtimeInputs = [
+    yt-dlp
+    miniserve
+    android-tools
+    tailscale
+    libnotify
+    python3
+  ];
 
   text = ''
     cleanup() {

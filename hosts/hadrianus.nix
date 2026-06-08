@@ -2,7 +2,6 @@
   self,
   config,
   lib,
-  pkgs,
   modulesPath,
   ...
 }:
@@ -80,11 +79,21 @@ in
     };
   };
 
-  # https://nixos.wiki/wiki/Agenix#Using_secrets_in_initrd
-  age.secrets.hadrianusInitrdHostKey = {
-    file = "${self}/secrets/hadrianusInitrdHostKey.age";
-    path = "/etc/initrd-hostkey";
-    symlink = false;
+  age.secrets = {
+    # https://nixos.wiki/wiki/Agenix#Using_secrets_in_initrd
+    hadrianusInitrdHostKey = {
+      file = "${self}/secrets/hadrianusInitrdHostKey.age";
+      path = "/etc/initrd-hostkey";
+      symlink = false;
+    };
+
+    # ZFS backup source configuration
+    syncoidSshKey = {
+      file = "${self}/secrets/syncoidHadrianusKey.age";
+      owner = "syncoid";
+      group = "syncoid";
+      mode = "0400";
+    };
   };
 
   # STATE: Comment this block when deploying, as agenix won't be able to get the
@@ -104,7 +113,7 @@ in
     static = {
       enable = true;
       # Gets the first IP address from the system network configuration.
-      address = (builtins.head config.networking.interfaces.${networkInterface}.ipv4.addresses).address;
+      inherit ((builtins.head config.networking.interfaces.${networkInterface}.ipv4.addresses)) address;
       gateway = config.networking.defaultGateway.address;
       # TODO automatically set this according to prefixLength above
       netmask = "255.255.252.0";
@@ -112,28 +121,22 @@ in
     };
   };
 
-  services.tailscale.useRoutingFeatures = "both";
+  services = {
+    tailscale.useRoutingFeatures = "both";
+    qemuGuest.enable = true;
 
-  services.qemuGuest.enable = true;
-
-  # ZFS backup source configuration
-  age.secrets.syncoidSshKey = {
-    file = "${self}/secrets/syncoidHadrianusKey.age";
-    owner = "syncoid";
-    group = "syncoid";
-    mode = "0400";
-  };
-
-  services.zfsBackup.source = {
-    enable = true;
-    sshKey = config.age.secrets.syncoidSshKey.path;
-    targetHosts.pius = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55";
-    datasets."zroot/safe" = {
-      target = "syncoid@pius:zsafe/backups/hadrianus";
-      recursive = true;
-      # Decrypt on source, encrypt in transit via SSH.
-      # Stored unencrypted unless target dataset has encryption enabled.
-      sendOptions = "";
+    # ZFS backup source configuration
+    zfsBackup.source = {
+      enable = true;
+      sshKey = config.age.secrets.syncoidSshKey.path;
+      targetHosts.pius = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55";
+      datasets."zroot/safe" = {
+        target = "syncoid@pius:zsafe/backups/hadrianus";
+        recursive = true;
+        # Decrypt on source, encrypt in transit via SSH.
+        # Stored unencrypted unless target dataset has encryption enabled.
+        sendOptions = "";
+      };
     };
   };
 

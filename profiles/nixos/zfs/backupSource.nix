@@ -21,6 +21,8 @@ let
   '';
 in
 {
+  # sanoid is a shared dependency between backupTarget and backupSource;
+  # the module system handles duplicate imports idempotently.
   imports = [
     "${self}/profiles/nixos/zfs/sanoid.nix"
   ];
@@ -44,34 +46,36 @@ in
     };
 
     datasets = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule {
-        options = {
-          target = lib.mkOption {
-            type = lib.types.str;
-            description = "Target in the format user@host:pool/dataset/hostname";
-            example = "syncoid@pius:zsafe/backups/trajanus";
-          };
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            target = lib.mkOption {
+              type = lib.types.str;
+              description = "Target in the format user@host:pool/dataset/hostname";
+              example = "syncoid@pius:zsafe/backups/trajanus";
+            };
 
-          recursive = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Whether to recursively snapshot and replicate child datasets";
-          };
+            recursive = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether to recursively snapshot and replicate child datasets";
+            };
 
-          sendOptions = lib.mkOption {
-            type = lib.types.str;
-            default = "w";
-            description = "ZFS send options (default 'w' for raw send to preserve encryption)";
-          };
+            sendOptions = lib.mkOption {
+              type = lib.types.str;
+              default = "w";
+              description = "ZFS send options (default 'w' for raw send to preserve encryption)";
+            };
 
-          recvOptions = lib.mkOption {
-            type = lib.types.str;
-            default = "-o canmount=noauto";
-            description = "ZFS receive options (default sets canmount=noauto to avoid mount permission issues)";
+            recvOptions = lib.mkOption {
+              type = lib.types.str;
+              default = "-o canmount=noauto";
+              description = "ZFS receive options (default sets canmount=noauto to avoid mount permission issues)";
+            };
           };
-        };
-      });
-      default = {};
+        }
+      );
+      default = { };
       description = "Datasets to snapshot and replicate";
       example = {
         "zroot/safe" = {
@@ -83,7 +87,7 @@ in
 
     targetHosts = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
-      default = {};
+      default = { };
       description = "Map of hostname to SSH public key for declarative known_hosts";
       example = {
         "pius" = "ssh-ed25519 AAAA...";
@@ -98,7 +102,7 @@ in
 
     includeSnapshots = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Regular expressions passed to `syncoid --include-snaps`.
         When empty, syncoid may use any source snapshot name.
@@ -108,7 +112,7 @@ in
 
     excludeSnapshots = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Regular expressions passed to `syncoid --exclude-snaps`.
         Useful for omitting short-lived source snapshots such as `frequently`.
@@ -204,8 +208,7 @@ in
     # Enable syncoid replication
     services.syncoid = {
       enable = true;
-      interval = cfg.interval;
-      sshKey = cfg.sshKey;
+      inherit (cfg) interval sshKey;
       commonArgs =
         lib.optionals (cfg.snapshotMode == "existing") [ "--no-sync-snap" ]
         ++ lib.optionals cfg.createBookmark [ "--create-bookmark" ]
@@ -216,21 +219,24 @@ in
         ++ builtins.concatMap (pattern: [ "--exclude-snaps=${pattern}" ]) cfg.excludeSnapshots;
 
       commands = lib.mapAttrs (_dataset: opts: {
-        target = opts.target;
-        recursive = opts.recursive;
-        sendOptions = opts.sendOptions;
-        recvOptions = opts.recvOptions;
+        inherit (opts)
+          target
+          recursive
+          sendOptions
+          recvOptions
+          ;
       }) cfg.datasets;
     };
 
     # Add metered network check to syncoid services
     systemd.services = lib.mkIf cfg.skipOnMetered (
-      lib.mapAttrs' (dataset: _opts:
+      lib.mapAttrs' (
+        dataset: _opts:
         let
           serviceName = "syncoid-${builtins.replaceStrings [ "/" ] [ "-" ] dataset}";
         in
         lib.nameValuePair serviceName {
-          serviceConfig.ExecCondition = "+" + isMeteredScript;  # + runs as root, avoids CHDIR issues
+          serviceConfig.ExecCondition = "+" + isMeteredScript; # + runs as root, avoids CHDIR issues
         }
       ) cfg.datasets
     );

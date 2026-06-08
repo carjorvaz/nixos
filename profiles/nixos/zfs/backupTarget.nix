@@ -9,6 +9,8 @@ let
   cfg = config.services.zfsBackup.target;
 in
 {
+  # sanoid is a shared dependency between backupTarget and backupSource;
+  # the module system handles duplicate imports idempotently.
   imports = [
     "${self}/profiles/nixos/zfs/sanoid.nix"
   ];
@@ -18,7 +20,7 @@ in
 
     sshPublicKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "SSH public host keys of source machines that can send backups";
       example = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFoo... root@trajanus"
@@ -66,12 +68,12 @@ in
       templates.backup = {
         # Retention (~2x source). If replication stops, these become the minimums
         # that sanoid will preserve indefinitely (won't prune below these counts).
-        frequently = 0;   # Don't keep frequent snaps on backup (source: 4)
-        hourly = 48;      # 2 days worth preserved minimum (source: 24)
-        daily = 14;       # 2 weeks worth preserved minimum (source: 7)
-        weekly = 8;       # 2 months worth preserved minimum (source: 4)
-        monthly = 24;     # 2 years worth preserved minimum (source: 12)
-        yearly = 5;       # 5 years worth preserved minimum (source: 2)
+        frequently = 0; # Don't keep frequent snaps on backup (source: 4)
+        hourly = 48; # 2 days worth preserved minimum (source: 24)
+        daily = 14; # 2 weeks worth preserved minimum (source: 7)
+        weekly = 8; # 2 months worth preserved minimum (source: 4)
+        monthly = 24; # 2 years worth preserved minimum (source: 12)
+        yearly = 5; # 5 years worth preserved minimum (source: 2)
         autosnap = false; # Don't create snapshots, only receive replicated ones
         autoprune = true; # Safe: won't prune below retention minimums
       };
@@ -92,7 +94,7 @@ in
       shell = pkgs.bash;
     };
 
-    users.groups.syncoid = {};
+    users.groups.syncoid = { };
 
     # Grant ZFS permissions to syncoid user for the backup dataset
     systemd.services.syncoid-permissions = {

@@ -396,45 +396,47 @@ in
       groups.${cfg.group} = { };
     };
 
-    services.redis.servers = lib.mkIf cfg.redis.enable {
-      ${cfg.redis.serverName} = {
-        enable = true;
-        bind = cfg.redis.bind;
-        port = cfg.redis.port;
-        openFirewall = false;
-        save = [ ];
-        appendOnly = false;
+    services = {
+      redis.servers = lib.mkIf cfg.redis.enable {
+        ${cfg.redis.serverName} = {
+          enable = true;
+          bind = cfg.redis.bind;
+          port = cfg.redis.port;
+          openFirewall = false;
+          save = [ ];
+          appendOnly = false;
+        };
       };
-    };
 
-    services.rabbitmq = lib.mkIf cfg.rabbitmq.enable {
-      enable = true;
-      listenAddress = cfg.rabbitmq.bind;
-      port = cfg.rabbitmq.port;
-    };
-
-    services.postgresql = lib.mkIf cfg.postgresql.enable (
-      {
+      rabbitmq = lib.mkIf cfg.rabbitmq.enable {
         enable = true;
-        ensureDatabases = [ cfg.postgresql.database ];
-        ensureUsers = [
-          {
-            name = cfg.postgresql.user;
-            ensureDBOwnership = true;
-          }
-        ];
-      }
-      // lib.optionalAttrs (cfg.postgresql.socketDirectory == null) {
-        enableTCPIP = true;
-        settings.listen_addresses = cfg.postgresql.bind;
+        listenAddress = cfg.rabbitmq.bind;
+        port = cfg.rabbitmq.port;
+      };
 
-        # Prefer the default Unix socket path. When explicitly opting into TCP,
-        # keep the old local passwordless setup narrowly scoped to this DB/user.
-        authentication = lib.mkBefore ''
-          host ${cfg.postgresql.database} ${cfg.postgresql.user} ${cfg.postgresql.bind}/32 trust
-        '';
-      }
-    );
+      postgresql = lib.mkIf cfg.postgresql.enable (
+        {
+          enable = true;
+          ensureDatabases = [ cfg.postgresql.database ];
+          ensureUsers = [
+            {
+              name = cfg.postgresql.user;
+              ensureDBOwnership = true;
+            }
+          ];
+        }
+        // lib.optionalAttrs (cfg.postgresql.socketDirectory == null) {
+          enableTCPIP = true;
+          settings.listen_addresses = cfg.postgresql.bind;
+
+          # Prefer the default Unix socket path. When explicitly opting into TCP,
+          # keep the old local passwordless setup narrowly scoped to this DB/user.
+          authentication = lib.mkBefore ''
+            host ${cfg.postgresql.database} ${cfg.postgresql.user} ${cfg.postgresql.bind}/32 trust
+          '';
+        }
+      );
+    };
 
     systemd.services = {
       firecrawl-nuq-init = lib.mkIf cfg.postgresql.enable {

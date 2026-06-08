@@ -27,17 +27,18 @@ in
       # Check available extensions:
       # $ nix flake show "gitlab:rycee/nur-expressions?dir=pkgs/firefox-addons"
       extensions.packages =
-        shared.commonExtensions
-        ++ shared.linuxExtensions
-        ++ [ shared.rustab.firefoxExtension ];
+        shared.commonExtensions ++ shared.linuxExtensions ++ [ shared.rustab.firefoxExtension ];
 
       bookmarks = shared.commonBookmarks;
       search = shared.commonSearch;
 
-      settings = shared.commonSettings // shared.linuxOnlySettings // {
-        # Use native vertical tabs on Linux.
-        "sidebar.verticalTabs" = true;
-      };
+      settings =
+        shared.commonSettings
+        // shared.linuxOnlySettings
+        // {
+          # Use native vertical tabs on Linux.
+          "sidebar.verticalTabs" = true;
+        };
 
       userChrome = shared.linuxUserChrome;
     };

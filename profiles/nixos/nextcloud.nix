@@ -1,7 +1,6 @@
 {
   self,
   config,
-  lib,
   pkgs,
   ...
 }:
@@ -47,18 +46,15 @@ in
         # still has it enabled in production. Keep shipping the last
         # known-good Nextcloud 33 release until nixpkgs reintroduces it.
         newsApp =
-          if packagedApps ? news then
-            packagedApps.news
-          else
-            pkgs.fetchNextcloudApp {
-              appName = "news";
-              appVersion = "28.0.1";
-              url = "https://github.com/nextcloud/news/releases/download/28.0.1/news.tar.gz";
-              hash = "sha256-53zwBxm/vUqQvc3h9od73RYxqJhh0M6lVS4//bJHMuA=";
-              license = "agpl3Plus";
-              description = "An RSS/Atom feed reader";
-              homepage = "https://github.com/nextcloud/news";
-            };
+          packagedApps.news or (pkgs.fetchNextcloudApp {
+            appName = "news";
+            appVersion = "28.0.1";
+            url = "https://github.com/nextcloud/news/releases/download/28.0.1/news.tar.gz";
+            hash = "sha256-53zwBxm/vUqQvc3h9od73RYxqJhh0M6lVS4//bJHMuA=";
+            license = "agpl3Plus";
+            description = "An RSS/Atom feed reader";
+            homepage = "https://github.com/nextcloud/news";
+          });
 
         # The app store listing is still stale for Nextcloud 33, but the
         # upstream 0.9.0 release explicitly adds NC33 compatibility.

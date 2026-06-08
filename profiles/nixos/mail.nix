@@ -131,9 +131,11 @@ let
   '';
 in
 {
-  age.secrets.mailCarlosHashedPassword.file = "${self}/secrets/mailCarlosHashedPassword.age";
-  age.secrets.mailMafaldaHashedPassword.file = "${self}/secrets/mailMafaldaHashedPassword.age";
-  age.secrets.mailPiusHashedPassword.file = "${self}/secrets/mailPiusHashedPassword.age";
+  age.secrets = {
+    mailCarlosHashedPassword.file = "${self}/secrets/mailCarlosHashedPassword.age";
+    mailMafaldaHashedPassword.file = "${self}/secrets/mailMafaldaHashedPassword.age";
+    mailPiusHashedPassword.file = "${self}/secrets/mailPiusHashedPassword.age";
+  };
 
   imports = [
     inputs.simple-nixos-mailserver.nixosModule
@@ -202,28 +204,32 @@ in
     }
   ];
 
-  services.rspamd.localLuaRules = rspamdLocalRules;
-  services.rspamd.locals."options.inc".text = ''
-    dns {
-      nameserver = ["127.0.0.1"];
-    }
-  '';
-  services.rspamd.locals."classifier-bayes.conf".text = lib.mkAfter ''
-    autolearn {
-      spam_threshold = 12.0;
-      junk_threshold = 10.0;
-      ham_threshold = -2.0;
-      check_balance = true;
-      min_balance = 0.6;
-    }
-  '';
-  services.rspamd.locals."rbl.conf".text = ''
-    rbls {
-      senderscore_reputation {
-        disable_monitoring = true;
-      }
-    }
-  '';
+  services.rspamd = {
+    localLuaRules = rspamdLocalRules;
+    locals = {
+      "options.inc".text = ''
+        dns {
+          nameserver = ["127.0.0.1"];
+        }
+      '';
+      "classifier-bayes.conf".text = lib.mkAfter ''
+        autolearn {
+          spam_threshold = 12.0;
+          junk_threshold = 10.0;
+          ham_threshold = -2.0;
+          check_balance = true;
+          min_balance = 0.6;
+        }
+      '';
+      "rbl.conf".text = ''
+        rbls {
+          senderscore_reputation {
+            disable_monitoring = true;
+          }
+        }
+      '';
+    };
+  };
 
   systemd.services.rspamd = {
     after = [ "kresd@1.service" ];

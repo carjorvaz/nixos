@@ -76,17 +76,33 @@
     homerSubtitle = "Parents' home";
   };
 
-  boot.initrd.availableKernelModules = [
-    "xhci_pci"
-    "ahci"
-    "nvme"
-    "usb_storage"
-    "sd_mod"
-  ];
+  boot = {
+    initrd.availableKernelModules = [
+      "xhci_pci"
+      "ahci"
+      "nvme"
+      "usb_storage"
+      "sd_mod"
+    ];
 
-  # TODO: Enable after encryption migration (see ~/agents/nixos/pius-encryption-migration.md)
-  # boot.zfs.requestEncryptionCredentials = true;
-  boot.zfs.requestEncryptionCredentials = false;
+    # TODO: Enable after encryption migration (see ~/agents/nixos/pius-encryption-migration.md)
+    # zfs.requestEncryptionCredentials = true;
+    zfs.requestEncryptionCredentials = false;
+
+    # powersave governor (from cpu/intel.nix) already allows full turbo under
+    # intel_pstate active mode. hwp_dynamic_boost lets firmware boost more
+    # aggressively during sustained load (inference).
+    kernelParams = [
+      "intel_pstate.hwp_dynamic_boost=1"
+      "transparent_hugepage=always" # THP for model weights loaded via --run-time-repack
+    ];
+
+    # As a Tailscale exit node, pius enables IPv6 forwarding. Linux only accepts
+    # IPv6 router advertisements on forwarding interfaces when accept_ra=2.
+    # Without this, pius sees the LAN router but never installs its global IPv6
+    # address or default route.
+    kernel.sysctl."net.ipv6.conf.enp1s0.accept_ra" = 2;
+  };
 
   networking = {
     hostName = "pius";
@@ -132,6 +148,18 @@
     # Allows this device to be used as a VPN from other devices (geo-blocking, snooping).
     # Clients should run: sudo tailscale up --exit-node=<exit_node_tailscale_ip>
     tailscale.useRoutingFeatures = "both";
+
+    # ZFS backup target configuration
+    # STATE: After first deploy, create the backup dataset:
+    #   zfs create -o mountpoint=/mnt/backups zsafe/backups
+    zfsBackup.target = {
+      enable = true;
+      # Add SSH public keys from source machines' syncoid users here
+      sshPublicKeys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrrIpOBpX03+punCUL8ODQiqNuQ//RBdUNxIaLt+x0w syncoid@hadrianus"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIKG4viU84jy3jZj2yvk9Esyem8pgkHGQnAHmDgTxdtK syncoid@trajanus"
+      ];
+    };
   };
 
   age.secrets.mailPiusPassword = {
@@ -174,32 +202,6 @@
   #   enableNginx = true;    # expose via llm.vaz.ovh for opencode on trajanus
   #   reasoningBudget = 0;   # disable thinking — agentic coding gains little from it on CPU
   # };
-
-  # powersave governor (from cpu/intel.nix) already allows full turbo under
-  # intel_pstate active mode. hwp_dynamic_boost lets firmware boost more
-  # aggressively during sustained load (inference).
-  boot.kernelParams = [
-    "intel_pstate.hwp_dynamic_boost=1"
-    "transparent_hugepage=always" # THP for model weights loaded via --run-time-repack
-  ];
-
-  # As a Tailscale exit node, pius enables IPv6 forwarding. Linux only accepts
-  # IPv6 router advertisements on forwarding interfaces when accept_ra=2.
-  # Without this, pius sees the LAN router but never installs its global IPv6
-  # address or default route.
-  boot.kernel.sysctl."net.ipv6.conf.enp1s0.accept_ra" = 2;
-
-  # ZFS backup target configuration
-  # STATE: After first deploy, create the backup dataset:
-  #   zfs create -o mountpoint=/mnt/backups zsafe/backups
-  services.zfsBackup.target = {
-    enable = true;
-    # Add SSH public keys from source machines' syncoid users here
-    sshPublicKeys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrrIpOBpX03+punCUL8ODQiqNuQ//RBdUNxIaLt+x0w syncoid@hadrianus"
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIKG4viU84jy3jZj2yvk9Esyem8pgkHGQnAHmDgTxdtK syncoid@trajanus"
-    ];
-  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 

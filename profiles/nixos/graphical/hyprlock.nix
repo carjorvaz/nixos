@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, ... }:
 
 {
   # Reference:
@@ -41,7 +41,7 @@
           placeholder_text = "Enter Password";
 
           fail_color = "rgb(${config.graphical.theme.palette.critical})";
-          fail_text = ''<i>$FAIL ($ATTEMPTS)</i>'';
+          fail_text = "<i>$FAIL ($ATTEMPTS)</i>";
 
           position = "0, 0";
           halign = "center";

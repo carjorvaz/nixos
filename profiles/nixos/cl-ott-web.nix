@@ -1,6 +1,5 @@
 {
   config,
-  lib,
   ...
 }:
 
@@ -19,12 +18,46 @@ let
   '';
 in
 {
-  services.cl-ott-web = {
-    enable = true;
-    inherit port;
-    host = "127.0.0.1";
-    clientApiBaseUrl = "http://127.0.0.1:${toString config.services.cl-ott.clientApi.port}";
-    clientApiTokenFile = config.age.secrets.clOttClientApiToken.path;
+  services = {
+    cl-ott-web = {
+      enable = true;
+      inherit port;
+      host = "127.0.0.1";
+      clientApiBaseUrl = "http://127.0.0.1:${toString config.services.cl-ott.clientApi.port}";
+      clientApiTokenFile = config.age.secrets.clOttClientApiToken.path;
+    };
+
+    nginx = {
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+
+        extraConfig = securityHeaders;
+
+        locations = {
+          "/" = {
+            proxyPass = "http://127.0.0.1:${toString port}";
+            proxyWebsockets = true;
+            extraConfig = ''
+              proxy_connect_timeout 5s;
+              proxy_read_timeout 60s;
+              proxy_send_timeout 60s;
+            '';
+          };
+
+          "/service-worker.js".extraConfig = noStoreHeaders;
+
+          "/play".extraConfig = noStoreHeaders;
+
+          "^~ /playback/".extraConfig = noStoreHeaders;
+        };
+      };
+    };
   };
 
   systemd.services.cl-ott-web = {
@@ -40,34 +73,4 @@ in
       mode = "0700";
     }
   ];
-
-  services.nginx = {
-    tailscaleAuth = {
-      enable = true;
-      virtualHosts = [ domain ];
-    };
-
-    virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-
-      extraConfig = securityHeaders;
-
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString port}";
-        proxyWebsockets = true;
-        extraConfig = ''
-          proxy_connect_timeout 5s;
-          proxy_read_timeout 60s;
-          proxy_send_timeout 60s;
-        '';
-      };
-
-      locations."/service-worker.js".extraConfig = noStoreHeaders;
-
-      locations."/play".extraConfig = noStoreHeaders;
-
-      locations."^~ /playback/".extraConfig = noStoreHeaders;
-    };
-  };
 }

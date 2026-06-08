@@ -1,6 +1,5 @@
 {
   config,
-  lib,
   pkgs,
   ...
 }:
@@ -21,18 +20,20 @@ in
     pkgs.emacs-all-the-icons-fonts
   ];
 
-  services.emacs = {
-    enable = true;
-    install = true;
-    package = (
-      (pkgs.emacsPackagesFor myEmacs).emacsWithPackages (epkgs: [
+  services.emacs =
+    let
+      emacsPkg = pkgs.emacsPackagesFor myEmacs;
+    in
+    {
+      enable = true;
+      install = true;
+      package = emacsPkg.emacsWithPackages (epkgs: [
         epkgs.vterm
         epkgs.pdf-tools
         epkgs.org-roam
         epkgs.treesit-grammars.with-all-grammars
-      ])
-    );
-  };
+      ]);
+    };
 
   environment.systemPackages = with pkgs; [
     binutils

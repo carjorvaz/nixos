@@ -4,7 +4,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 _default:
     @just --list
 
-# Run the public-safe non-mutating validation harness
+# Run the public-safe non-mutating validation harness (includes deadnix + nixfmt + statix)
 validate:
     ./scripts/validate
 
@@ -40,7 +40,6 @@ checks:
 fmt-check:
     nixfmt --check $(git ls-files '*.nix')
 
-# Run lightweight Nix static analysis; keep advisory, not part of default validation
+# Run lightweight Nix static analysis; deadnix + nixfmt are already in validate
 lint-nix:
     statix check .
-    deadnix .

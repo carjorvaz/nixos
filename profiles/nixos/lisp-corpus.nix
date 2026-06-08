@@ -301,94 +301,98 @@ in
       add_header Cross-Origin-Resource-Policy "same-origin" always;
     '';
 
-    locations."= /" = {
-      root = shareIndex;
-      tryFiles = "/index.html =404";
-      extraConfig = privateReadOnlyConfig + ''
-        default_type text/html;
-      '';
-    };
+    locations = {
+      "= /" = {
+        root = shareIndex;
+        tryFiles = "/index.html =404";
+        extraConfig = privateReadOnlyConfig + ''
+          default_type text/html;
+        '';
+      };
 
-    locations."= /index.html" = {
-      alias = "${shareIndex}/index.html";
-      extraConfig = privateReadOnlyConfig + ''
-        default_type text/html;
-      '';
-    };
+      "= /index.html" = {
+        alias = "${shareIndex}/index.html";
+        extraConfig = privateReadOnlyConfig + ''
+          default_type text/html;
+        '';
+      };
 
-    locations."= /share.css" = {
-      alias = "${shareCss}/share.css";
-      extraConfig = privateReadOnlyConfig + ''
-        default_type text/css;
-      '';
-    };
+      "= /share.css" = {
+        alias = "${shareCss}/share.css";
+        extraConfig = privateReadOnlyConfig + ''
+          default_type text/css;
+        '';
+      };
 
-    locations."= /${archiveName}" = {
-      alias = archivePath;
-      extraConfig = privateReadOnlyConfig + ''
-        default_type application/zip;
-      '';
-    };
+      "= /${archiveName}" = {
+        alias = archivePath;
+        extraConfig = privateReadOnlyConfig + ''
+          default_type application/zip;
+        '';
+      };
 
-    locations."= /${archiveName}.sha256" = {
-      alias = "${archivePath}.sha256";
-      extraConfig = privateReadOnlyConfig + ''
-        default_type text/plain;
-      '';
-    };
+      "= /${archiveName}.sha256" = {
+        alias = "${archivePath}.sha256";
+        extraConfig = privateReadOnlyConfig + ''
+          default_type text/plain;
+        '';
+      };
 
-    locations."~ (^|/)\\.(git|hg|svn|claude|cursor|vscode|idea)(/|$)" = {
-      extraConfig = privateMetadataLocationConfig;
-    };
+      "~ (^|/)\\\\.(git|hg|svn|claude|cursor|vscode|idea)(/|$)" = {
+        extraConfig = privateMetadataLocationConfig;
+      };
 
-    locations."/browse/" = {
-      alias = "${corpusRoot}/";
-      extraConfig =
-        privateReadOnlyConfig
-        + ''
-          disable_symlinks on from=${corpusRoot};
-        ''
-        + corpusAutoindexConfig;
-    };
+      "/browse/" = {
+        alias = "${corpusRoot}/";
+        extraConfig =
+          privateReadOnlyConfig
+          + ''
+            disable_symlinks on from=${corpusRoot};
+          ''
+          + corpusAutoindexConfig;
+      };
 
-    locations."/" = {
-      root = corpusRoot;
-      tryFiles = "$uri $uri/ =404";
-      extraConfig =
-        privateReadOnlyConfig
-        + ''
-          disable_symlinks on from=$document_root;
-        ''
-        + corpusAutoindexConfig;
-    };
-  };
-
-  systemd.tmpfiles.rules = [
-    "d /persist/var/cache 0755 root root -"
-    "d ${archiveCacheDir} 0755 root root -"
-  ];
-
-  systemd.services.lisp-corpus-share-archive = {
-    description = "Build downloadable Lisp corpus archive";
-    after = [ "local-fs.target" ];
-    unitConfig.ConditionPathIsDirectory = corpusRoot;
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = lib.getExe refreshArchive;
-      Nice = 10;
-      IOSchedulingClass = "best-effort";
-      IOSchedulingPriority = 7;
-      UMask = "0022";
+      "/" = {
+        root = corpusRoot;
+        tryFiles = "$uri $uri/ =404";
+        extraConfig =
+          privateReadOnlyConfig
+          + ''
+            disable_symlinks on from=$document_root;
+          ''
+          + corpusAutoindexConfig;
+      };
     };
   };
 
-  systemd.timers.lisp-corpus-share-archive = {
-    description = "Refresh downloadable Lisp corpus archive";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "Sun *-*-* 04:00:00";
-      Persistent = true;
-      RandomizedDelaySec = "2h";
+  systemd = {
+    tmpfiles.rules = [
+      "d /persist/var/cache 0755 root root -"
+      "d ${archiveCacheDir} 0755 root root -"
+    ];
+
+    services.lisp-corpus-share-archive = {
+      description = "Build downloadable Lisp corpus archive";
+      after = [ "local-fs.target" ];
+      unitConfig.ConditionPathIsDirectory = corpusRoot;
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = lib.getExe refreshArchive;
+        Nice = 10;
+        IOSchedulingClass = "best-effort";
+        IOSchedulingPriority = 7;
+        UMask = "0022";
+      };
+    };
+
+    timers.lisp-corpus-share-archive = {
+      description = "Refresh downloadable Lisp corpus archive";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "Sun *-*-* 04:00:00";
+        Persistent = true;
+        RandomizedDelaySec = "2h";
+      };
     };
   };
 }

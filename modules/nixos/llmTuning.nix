@@ -352,37 +352,39 @@ in
           pkgs.sysstat
         ];
 
-        systemd.slices.llm-workload = {
-          description = "Latency-sensitive local LLM workloads";
-          sliceConfig = {
-            AllowedCPUs = cfg.workloadCpus;
-            CPUAccounting = true;
-            IOAccounting = true;
-            MemoryAccounting = true;
-          };
-        };
-
-        systemd.services =
-          (lib.genAttrs cfg.workloadServices (_: {
-            serviceConfig = {
-              Slice = "llm-workload.slice";
+        systemd = {
+          slices.llm-workload = {
+            description = "Latency-sensitive local LLM workloads";
+            sliceConfig = {
               AllowedCPUs = cfg.workloadCpus;
               CPUAccounting = true;
               IOAccounting = true;
               MemoryAccounting = true;
             };
-          }))
-          // {
-            # Let irqbalance continue managing housekeeping CPUs, but keep it
-            # from deliberately moving managed IRQs onto the workload CPUs.
-            irqbalance.environment.IRQBALANCE_BANNED_CPULIST = cfg.workloadCpus;
           };
 
-        # Keep unbound kworkers off the workload CPUs after boot. Per-CPU
-        # kthreads still need reboot-time isolation parameters.
-        systemd.tmpfiles.rules = [
-          "w /sys/devices/virtual/workqueue/cpumask - - - - ${cfg.workqueueCpuMask}"
-        ];
+          services =
+            (lib.genAttrs cfg.workloadServices (_: {
+              serviceConfig = {
+                Slice = "llm-workload.slice";
+                AllowedCPUs = cfg.workloadCpus;
+                CPUAccounting = true;
+                IOAccounting = true;
+                MemoryAccounting = true;
+              };
+            }))
+            // {
+              # Let irqbalance continue managing housekeeping CPUs, but keep it
+              # from deliberately moving managed IRQs onto the workload CPUs.
+              irqbalance.environment.IRQBALANCE_BANNED_CPULIST = cfg.workloadCpus;
+            };
+
+          # Keep unbound kworkers off the workload CPUs after boot. Per-CPU
+          # kthreads still need reboot-time isolation parameters.
+          tmpfiles.rules = [
+            "w /sys/devices/virtual/workqueue/cpumask - - - - ${cfg.workqueueCpuMask}"
+          ];
+        };
       }
 
       (lib.mkIf (cfg.blockScheduler.scheduler != null) {

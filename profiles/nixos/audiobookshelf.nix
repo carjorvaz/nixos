@@ -22,9 +22,11 @@ in
         forceSSL = true;
         useACMEHost = "vaz.ovh";
         locations."= /".return = "302 /audiobookshelf/";
-        locations."/".proxyPass = "http://127.0.0.1:${toString port}";
-        locations."/".proxyWebsockets = true;
-        locations."/".recommendedProxySettings = true;
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString port}";
+          proxyWebsockets = true;
+          recommendedProxySettings = true;
+        };
       };
     };
 

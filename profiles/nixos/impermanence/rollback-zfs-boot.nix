@@ -9,9 +9,12 @@ let
   pool =
     if cfg.rootDataset == null then null else builtins.elemAt (lib.splitString "/" cfg.rootDataset) 0;
   snapshot =
-    if cfg.rootDataset == null then null
-    else if cfg.blankSnapshot != null then cfg.blankSnapshot
-    else "${cfg.rootDataset}@blank";
+    if cfg.rootDataset == null then
+      null
+    else if cfg.blankSnapshot != null then
+      cfg.blankSnapshot
+    else
+      "${cfg.rootDataset}@blank";
   importService = if pool == null then null else "zfs-import-${pool}.service";
 in
 {

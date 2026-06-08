@@ -147,7 +147,8 @@ in
             "dismiss"
             "--all"
           ];
-          "Mod+Ctrl+N".action.spawn-sh = "${pkgs.mako}/bin/makoctl mode -t do-not-disturb; ${pkgs.procps}/bin/pkill --signal RTMIN+9 waybar || true";
+          "Mod+Ctrl+N".action.spawn-sh =
+            "${pkgs.mako}/bin/makoctl mode -t do-not-disturb; ${pkgs.procps}/bin/pkill --signal RTMIN+9 waybar || true";
 
           "Mod+H".action.focus-column-left = [ ];
           "Mod+J".action.focus-window-or-workspace-down = [ ];
@@ -239,7 +240,7 @@ in
 
         window-rules = [
           {
-            matches = [{ title = "doom-capture"; }];
+            matches = [ { title = "doom-capture"; } ];
             open-floating = true;
           }
         ];

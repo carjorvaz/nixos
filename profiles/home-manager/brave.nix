@@ -15,23 +15,24 @@ let
     "Library/Application Support/Orion/NativeMessagingHosts"
   ];
   rustabDarwinNativeMessagingHostDirsArgs = lib.escapeShellArgs rustabDarwinNativeMessagingHostDirs;
-  rustabNativeMessagingHostManifest = pkgs.writeText "rustab_mediator.json" (builtins.toJSON {
-    name = "rustab_mediator";
-    description = "rustab native messaging host";
-    path = "${rustab}/bin/rustab-mediator";
-    type = "stdio";
-    allowed_origins = [
-      "chrome-extension://${inputs.rustab.lib.chromeExtensionId}/"
-    ];
-  });
+  rustabNativeMessagingHostManifest = pkgs.writeText "rustab_mediator.json" (
+    builtins.toJSON {
+      name = "rustab_mediator";
+      description = "rustab native messaging host";
+      path = "${rustab}/bin/rustab-mediator";
+      type = "stdio";
+      allowed_origins = [
+        "chrome-extension://${inputs.rustab.lib.chromeExtensionId}/"
+      ];
+    }
+  );
   rustabExtensionHomePath =
     if pkgs.stdenv.isDarwin then
       "Library/Application Support/rustab/chrome-extension"
     else
       ".local/share/rustab/chrome-extension";
   rustabExtensionUpdateUrl = "https://carjorvaz.github.io/rustab/chromium/updates.xml";
-  bpcExtensionUpdateUrl =
-    "https://gitflic.ru/project/magnolia1234/bpc_updates/blob/raw?file=updates.xml";
+  bpcExtensionUpdateUrl = "https://gitflic.ru/project/magnolia1234/bpc_updates/blob/raw?file=updates.xml";
 in
 
 # STATE:
@@ -84,72 +85,76 @@ in
 #   - Rustab's Chrome native host manifest is installed into Chromium-family
 #     fallback directories plus Orion's application-support path
 {
-  home.packages = [ rustab ];
+  home = {
+    packages = [ rustab ];
 
-  # Expose the unpacked Rustab extension at a stable home path so the macOS
-  # manual load step doesn't depend on a transient /nix/store path. Use a
-  # real directory tree here rather than a symlinked top-level directory,
-  # since Brave appears not to register the unpacked extension reliably from
-  # a symlink target.
-  home.file = lib.mkIf pkgs.stdenv.isDarwin {
-    "${rustabExtensionHomePath}" = {
-      source = rustabExtension;
-      recursive = true;
+    # Expose the unpacked Rustab extension at a stable home path so the macOS
+    # manual load step doesn't depend on a transient /nix/store path. Use a
+    # real directory tree here rather than a symlinked top-level directory,
+    # since Brave appears not to register the unpacked extension reliably from
+    # a symlink target.
+    file = lib.mkIf pkgs.stdenv.isDarwin {
+      "${rustabExtensionHomePath}" = {
+        source = rustabExtension;
+        recursive = true;
+      };
+    };
+
+    activation = {
+      rustabChromeExtensionPathMigration = lib.hm.dag.entryBefore [ "checkLinkTargets" ] (
+        lib.optionalString pkgs.stdenv.isDarwin ''
+          rustabExtensionPath="$HOME/${rustabExtensionHomePath}"
+
+          # Earlier generations exposed the whole extension directory as a
+          # single symlink. Migrate that layout away before link generation so
+          # Home Manager can materialize a real directory tree in its place.
+          if [ -L "$rustabExtensionPath" ]; then
+            $DRY_RUN_CMD rm "$rustabExtensionPath"
+          fi
+        ''
+      );
+
+      rustabChromiumNativeMessagingHosts = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+        lib.optionalString pkgs.stdenv.isDarwin ''
+          for rustabHostDirRel in ${rustabDarwinNativeMessagingHostDirsArgs}; do
+            rustabHostDir="$HOME/$rustabHostDirRel"
+            rustabHostFile="$rustabHostDir/rustab_mediator.json"
+
+            $DRY_RUN_CMD mkdir -p "$rustabHostDir"
+            $DRY_RUN_CMD rm -f "$rustabHostFile"
+            $DRY_RUN_CMD install -m 0644 ${rustabNativeMessagingHostManifest} "$rustabHostFile"
+          done
+        ''
+      );
+
+      # Brave on macOS appears not to load Chrome Web Store external extension
+      # descriptors when Home Manager exposes them as symlinks into the Nix
+      # store. Materialize those JSON files as real copies after link generation
+      # so Brave can discover and install the extensions.
+      braveDarwinExternalExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] (
+        lib.optionalString pkgs.stdenv.isDarwin ''
+          braveExternalExtensionsDir="$HOME/Library/Application Support/BraveSoftware/Brave-Browser/External Extensions"
+
+          if [ -d "$braveExternalExtensionsDir" ]; then
+            for braveExternalExtensionFile in "$braveExternalExtensionsDir"/*.json; do
+              if [ ! -L "$braveExternalExtensionFile" ]; then
+                continue
+              fi
+
+              braveExternalExtensionSource="$(${pkgs.coreutils}/bin/readlink "$braveExternalExtensionFile")"
+
+              if [ -z "$braveExternalExtensionSource" ]; then
+                continue
+              fi
+
+              $DRY_RUN_CMD rm -f "$braveExternalExtensionFile"
+              $DRY_RUN_CMD install -m 0644 "$braveExternalExtensionSource" "$braveExternalExtensionFile"
+            done
+          fi
+        ''
+      );
     };
   };
-
-  home.activation.rustabChromeExtensionPathMigration =
-    lib.hm.dag.entryBefore [ "checkLinkTargets" ]
-      (lib.optionalString pkgs.stdenv.isDarwin ''
-        rustabExtensionPath="$HOME/${rustabExtensionHomePath}"
-
-        # Earlier generations exposed the whole extension directory as a
-        # single symlink. Migrate that layout away before link generation so
-        # Home Manager can materialize a real directory tree in its place.
-        if [ -L "$rustabExtensionPath" ]; then
-          $DRY_RUN_CMD rm "$rustabExtensionPath"
-        fi
-      '');
-
-  home.activation.rustabChromiumNativeMessagingHosts =
-    lib.hm.dag.entryAfter [ "writeBoundary" ]
-      (lib.optionalString pkgs.stdenv.isDarwin ''
-        for rustabHostDirRel in ${rustabDarwinNativeMessagingHostDirsArgs}; do
-          rustabHostDir="$HOME/$rustabHostDirRel"
-          rustabHostFile="$rustabHostDir/rustab_mediator.json"
-
-          $DRY_RUN_CMD mkdir -p "$rustabHostDir"
-          $DRY_RUN_CMD rm -f "$rustabHostFile"
-          $DRY_RUN_CMD install -m 0644 ${rustabNativeMessagingHostManifest} "$rustabHostFile"
-        done
-      '');
-
-  # Brave on macOS appears not to load Chrome Web Store external extension
-  # descriptors when Home Manager exposes them as symlinks into the Nix
-  # store. Materialize those JSON files as real copies after link generation
-  # so Brave can discover and install the extensions.
-  home.activation.braveDarwinExternalExtensions =
-    lib.hm.dag.entryAfter [ "linkGeneration" ]
-      (lib.optionalString pkgs.stdenv.isDarwin ''
-        braveExternalExtensionsDir="$HOME/Library/Application Support/BraveSoftware/Brave-Browser/External Extensions"
-
-        if [ -d "$braveExternalExtensionsDir" ]; then
-          for braveExternalExtensionFile in "$braveExternalExtensionsDir"/*.json; do
-            if [ ! -L "$braveExternalExtensionFile" ]; then
-              continue
-            fi
-
-            braveExternalExtensionSource="$(${pkgs.coreutils}/bin/readlink "$braveExternalExtensionFile")"
-
-            if [ -z "$braveExternalExtensionSource" ]; then
-              continue
-            fi
-
-            $DRY_RUN_CMD rm -f "$braveExternalExtensionFile"
-            $DRY_RUN_CMD install -m 0644 "$braveExternalExtensionSource" "$braveExternalExtensionFile"
-          done
-        fi
-      '');
 
   programs.brave = {
     enable = true;
@@ -176,34 +181,33 @@ in
     # directly. On macOS, BPC also stays declarative because air.nix installs a
     # matching ExtensionInstallAllowlist managed policy; Rustab's unpacked
     # extension still uses the manual path on unmanaged browsers.
-    extensions =
-      [
-        {
-          id = "lkbebcjgcmobigpeffafkodonchffocl"; # Bypass Paywalls Clean
-          updateUrl = bpcExtensionUpdateUrl;
-        }
-      ]
-      ++ lib.optionals (!pkgs.stdenv.isDarwin) [
-        {
-          id = inputs.rustab.lib.chromeExtensionId;
-          updateUrl = rustabExtensionUpdateUrl;
-        }
-      ]
-      ++ [
-        # STATE: Check discard exceptions in settings
-        "jhnleheckmknfcgijgkadoemagpecfol" # Auto Tab Discard
+    extensions = [
+      {
+        id = "lkbebcjgcmobigpeffafkodonchffocl"; # Bypass Paywalls Clean
+        updateUrl = bpcExtensionUpdateUrl;
+      }
+    ]
+    ++ lib.optionals (!pkgs.stdenv.isDarwin) [
+      {
+        id = inputs.rustab.lib.chromeExtensionId;
+        updateUrl = rustabExtensionUpdateUrl;
+      }
+    ]
+    ++ [
+      # STATE: Check discard exceptions in settings
+      "jhnleheckmknfcgijgkadoemagpecfol" # Auto Tab Discard
 
-        # STATE: Auto-fill > Default URI match detection > Host
-        # STATE: Allow extensions in private windows
-        "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+      # STATE: Auto-fill > Default URI match detection > Host
+      # STATE: Allow extensions in private windows
+      "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
 
-        # STATE: Follow system theme
-        "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
-        "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
-        "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
-        "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
-        "cdhdichomdnlaadbndgmagohccgpejae" # Remove YouTube Suggestions
-        "lmkeolibdeeglfglnncmfleojmakecjb" # YouTube No Translation
-      ];
+      # STATE: Follow system theme
+      "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
+      "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
+      "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
+      "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
+      "cdhdichomdnlaadbndgmagohccgpejae" # Remove YouTube Suggestions
+      "lmkeolibdeeglfglnncmfleojmakecjb" # YouTube No Translation
+    ];
   };
 }

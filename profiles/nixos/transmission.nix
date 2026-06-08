@@ -56,6 +56,10 @@ in
   ];
 
   environment.persistence."/persist".directories = [
-    { directory = "/var/lib/transmission"; user = "transmission"; group = "transmission"; }
+    {
+      directory = "/var/lib/transmission";
+      user = "transmission";
+      group = "transmission";
+    }
   ];
 }

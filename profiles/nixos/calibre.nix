@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   domain = "calibre.vaz.ovh";
@@ -131,6 +136,10 @@ in
   };
 
   environment.persistence."/persist".directories = [
-    { directory = "/var/lib/calibre-web"; user = "calibre-web"; group = "calibre-web"; }
+    {
+      directory = "/var/lib/calibre-web";
+      user = "calibre-web";
+      group = "calibre-web";
+    }
   ];
 }

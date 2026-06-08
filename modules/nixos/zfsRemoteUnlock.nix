@@ -10,9 +10,8 @@
 # Direct unlock:
 #   ssh -4 -p 2222 root@host
 
-with lib;
-
 let
+  inherit (lib) types;
   cfg = config.cjv.zfsRemoteUnlock;
   useSystemdInitrd = config.boot.initrd.systemd.enable;
   systemdAskPasswordAgent = "${config.boot.initrd.systemd.package}/bin/systemd-tty-ask-password-agent";
@@ -31,9 +30,9 @@ in
 {
   options = {
     cjv.zfsRemoteUnlock = {
-      enable = mkEnableOption (lib.mdDoc "Encrypted ZFS pool remote unlock");
+      enable = lib.mkEnableOption (lib.mdDoc "Encrypted ZFS pool remote unlock");
 
-      port = mkOption {
+      port = lib.mkOption {
         type = types.port;
         default = 2222;
         description = lib.mdDoc ''
@@ -42,7 +41,7 @@ in
         '';
       };
 
-      authorizedKeys = mkOption {
+      authorizedKeys = lib.mkOption {
         type = types.listOf types.str;
         default = [ ];
         description = lib.mdDoc ''
@@ -50,8 +49,8 @@ in
         '';
       };
 
-      hostKeyFile = mkOption {
-        type = types.path;
+      hostKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
         default = null;
         description = lib.mdDoc ''
           Path to the SSH host keys to be used in the initrd.
@@ -59,8 +58,8 @@ in
         '';
       };
 
-      driver = mkOption {
-        type = types.str;
+      driver = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
         default = null;
         description = lib.mdDoc ''
           The network driver kernel module so that the initrd has networking.
@@ -68,7 +67,7 @@ in
         '';
       };
 
-      testHoldSeconds = mkOption {
+      testHoldSeconds = lib.mkOption {
         type = types.ints.unsigned;
         default = 0;
         description = lib.mdDoc ''
@@ -79,27 +78,27 @@ in
       };
 
       static = {
-        enable = mkEnableOption (lib.mdDoc "Static IP configuration");
+        enable = lib.mkEnableOption (lib.mdDoc "Static IP configuration");
 
-        address = mkOption {
+        address = lib.mkOption {
           type = types.str;
           default = "";
           description = lib.mdDoc "The static IPv4 address to be used.";
         };
 
-        gateway = mkOption {
+        gateway = lib.mkOption {
           type = types.str;
           default = "";
           description = lib.mdDoc "The gateway IPv4 address to be used.";
         };
 
-        netmask = mkOption {
+        netmask = lib.mkOption {
           type = types.str;
           default = "";
           description = lib.mdDoc "The network mask to be used.";
         };
 
-        interface = mkOption {
+        interface = lib.mkOption {
           type = types.str;
           default = "";
           description = lib.mdDoc "The network interface device to be used.";
@@ -108,7 +107,7 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = lib.mkIf cfg.enable {
     assertions = [
       {
         assertion =
@@ -132,55 +131,58 @@ in
       kernelParams = lib.mkIf cfg.static.enable [
         "ip=${cfg.static.address}::${cfg.static.gateway}:${cfg.static.netmask}::${cfg.static.interface}:none"
       ];
-      initrd.supportedFilesystems = [ "zfs" ];
-      initrd.kernelModules = [ cfg.driver ];
+      initrd = {
+        supportedFilesystems = [ "zfs" ];
+        kernelModules = lib.optionals (cfg.driver != null) [ cfg.driver ];
 
-      initrd.network = {
-        enable = cfg.enable;
+        network = {
+          inherit (cfg) enable;
 
-        ssh = {
-          enable = true;
-          port = cfg.port;
-          hostKeys = [ "${cfg.hostKeyFile}" ];
-          authorizedKeys = cfg.authorizedKeys;
+          ssh = {
+            enable = true;
+            inherit (cfg) port authorizedKeys;
+            hostKeys = [ "${cfg.hostKeyFile}" ];
+          };
+
+          postCommands = lib.mkIf (!useSystemdInitrd) ''
+            # Import all pools
+            zpool import -a
+
+            # Add the load-key command to the .profile
+            echo "zfs load-key -a; killall zfs" >> /root/.profile
+          '';
         };
 
-        postCommands = mkIf (!useSystemdInitrd) ''
-          # Import all pools
-          zpool import -a
-
-          # Add the load-key command to the .profile
-          echo "zfs load-key -a; killall zfs" >> /root/.profile
-        '';
+        systemd = lib.mkIf useSystemdInitrd (
+          lib.mkMerge [
+            {
+              extraBin.initrd-zfs-remote-unlock = systemdInitrdShell;
+              users.root.shell = "/bin/initrd-zfs-remote-unlock";
+            }
+            (lib.mkIf (cfg.testHoldSeconds > 0) {
+              services.remote-unlock-test-hold = {
+                description = "Hold initrd for remote unlock reachability testing";
+                requiredBy = [ "sysroot.mount" ];
+                after = [
+                  "network.target"
+                  "sshd.service"
+                ];
+                before = [
+                  "sysroot.mount"
+                  "shutdown.target"
+                ];
+                conflicts = [ "shutdown.target" ];
+                unitConfig.DefaultDependencies = false;
+                script = ''
+                  echo "Holding initrd for ${toString cfg.testHoldSeconds} seconds to test remote unlock reachability..."
+                  sleep ${toString cfg.testHoldSeconds}
+                '';
+                serviceConfig.Type = "oneshot";
+              };
+            })
+          ]
+        );
       };
-
-      initrd.systemd = mkIf useSystemdInitrd (mkMerge [
-        {
-          extraBin.initrd-zfs-remote-unlock = systemdInitrdShell;
-          users.root.shell = "/bin/initrd-zfs-remote-unlock";
-        }
-        (mkIf (cfg.testHoldSeconds > 0) {
-          services.remote-unlock-test-hold = {
-            description = "Hold initrd for remote unlock reachability testing";
-            requiredBy = [ "sysroot.mount" ];
-            after = [
-              "network.target"
-              "sshd.service"
-            ];
-            before = [
-              "sysroot.mount"
-              "shutdown.target"
-            ];
-            conflicts = [ "shutdown.target" ];
-            unitConfig.DefaultDependencies = false;
-            script = ''
-              echo "Holding initrd for ${toString cfg.testHoldSeconds} seconds to test remote unlock reachability..."
-              sleep ${toString cfg.testHoldSeconds}
-            '';
-            serviceConfig.Type = "oneshot";
-          };
-        })
-      ]);
     };
   };
 }

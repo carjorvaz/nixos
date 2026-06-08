@@ -25,9 +25,7 @@ in
         "dialout"
       ];
       hashedPasswordFile = lib.mkIf (bootstrapPassword == null) (lib.mkDefault passwordFile);
-      initialHashedPassword = lib.mkIf (bootstrapPassword != null) (
-        lib.mkDefault bootstrapPassword
-      );
+      initialHashedPassword = lib.mkIf (bootstrapPassword != null) (lib.mkDefault bootstrapPassword);
       openssh.authorizedKeys.keys = import ./ssh-keys.nix;
     };
   };
