@@ -3,6 +3,7 @@
 # Portable shell config - works on NixOS and Darwin
 {
   home.packages = with pkgs; [
+    just
     jujutsu
   ];
 
