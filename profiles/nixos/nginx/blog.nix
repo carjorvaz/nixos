@@ -104,23 +104,6 @@
         globalRedirect = "carlosvaz.pt";
       };
 
-      "www.mafaldaribeiro.com" = {
-        forceSSL = true;
-        enableACME = true;
-        globalRedirect = "mafaldaribeiro.com";
-      };
-
-      "www.mafaldaribeiro.pt" = {
-        forceSSL = true;
-        enableACME = true;
-        globalRedirect = "mafaldaribeiro.com";
-      };
-
-      "mafaldaribeiro.pt" = {
-        forceSSL = true;
-        enableACME = true;
-        globalRedirect = "mafaldaribeiro.com";
-      };
     };
 
   users = {
