@@ -389,6 +389,10 @@
             // (import ./checks/firecrawl.nix {
               inherit pkgs;
               lib = inputs.nixpkgs.lib;
+            })
+            // (import ./checks/hindsight.nix {
+              inherit pkgs;
+              lib = inputs.nixpkgs.lib;
             });
         };
 

@@ -63,6 +63,9 @@ in
   ]
   ++ users;
 
+  # Hindsight API raw bearer token on pius
+  "hindsightApiToken.age".publicKeys = [ piusSystem ] ++ users;
+
   # Jellyfin API key used by cl-ott integration services
   "jellyfinClOttApiKey.age".publicKeys = [
     piusSystem
