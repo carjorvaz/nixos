@@ -17,6 +17,7 @@ let
   effectiveTiktokenCacheDir =
     if packageTiktokenCacheDir != null then packageTiktokenCacheDir else cfg.cacheDir;
   hasOpenAIEmbeddingsSecret = cfg.embeddingsOpenAIApiKeyFile != null;
+  hasLLMApiKeySecret = cfg.llmApiKeyFile != null;
   isLoopbackBind = lib.elem cfg.bindAddress loopbackBindAddresses;
 
   runtimeDirectory = "hindsight";
@@ -130,6 +131,12 @@ in
       type = lib.types.port;
       default = 8888;
       description = "TCP port the Hindsight API service listens on.";
+    };
+
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to open ports in the firewall for the Hindsight API service.";
     };
 
     logLevel = lib.mkOption {
@@ -254,12 +261,17 @@ in
         assertion = isLoopbackBind || (cfg.tenantApiKeyFile != null && cfg.tenantExtension != null);
         message = "services.hindsight.tenantApiKeyFile and services.hindsight.tenantExtension must both be set when bindAddress is not loopback.";
       }
+      {
+        assertion = cfg.llmProvider != "openai" || hasLLMApiKeySecret;
+        message = "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai.";
+      }
     ];
 
     users.users = lib.mkIf (cfg.user == "hindsight") {
       hindsight = {
         inherit (cfg) group;
         isSystemUser = true;
+        home = cfg.stateDir;
       };
     };
 
@@ -277,6 +289,10 @@ in
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
+      unitConfig.RequiresMountsFor = [
+        cfg.stateDir
+        cfg.cacheDir
+      ];
 
       environment = serviceEnvironment;
       path = [
@@ -290,7 +306,6 @@ in
           else
             startScript;
         LoadCredential = secretCredentials;
-        PermissionsStartOnly = true;
         User = cfg.user;
         Group = cfg.group;
         RuntimeDirectory = runtimeDirectory;
@@ -331,7 +346,19 @@ in
         ];
         AmbientCapabilities = [ ];
         CapabilityBoundingSet = [ "" ];
+        ProtectProc = "invisible";
+        ProcSubset = "pid";
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectKernelLogs = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHostname = true;
+        RemoveIPC = true;
+        UMask = "0077";
       };
     };
+
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
   };
 }

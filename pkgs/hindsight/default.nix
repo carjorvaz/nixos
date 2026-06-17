@@ -2,6 +2,7 @@
   lib,
   fetchPypi,
   fetchurl,
+  nix-update-script,
   runCommand,
   python3Packages,
   withLocalOnnx ? false,
@@ -218,7 +219,10 @@ ps.buildPythonApplication rec {
 
   "build-system" = [ ps.hatchling ];
 
-  nativeBuildInputs = [ ps.pythonRelaxDepsHook ];
+  nativeBuildInputs = [
+    ps.pythonRelaxDepsHook
+    ps.pythonCatchConflictsHook
+  ];
 
   makeWrapperArgs = [
     "--set-default"
@@ -256,6 +260,8 @@ ps.buildPythonApplication rec {
   # Install checks below cover imports, entrypoints, and packaged Alembic assets
   # without requiring a running PostgreSQL/LLM service.
   doCheck = false;
+
+  strictDeps = true;
 
   pythonImportsCheck = [
     "hindsight_api"
@@ -329,15 +335,15 @@ ps.buildPythonApplication rec {
 
   passthru = {
     inherit tiktokenCacheDir;
-    # Exposed for the NixOS module to derive service defaults from the
-    # packaged configuration. Must stay in sync with postPatch and
-    # installCheckPhase. The installCheckPhase validates the match.
+    # Exposed for checks to validate that the packaged defaults stay in sync
+    # with the postPatch modifications. Must match what postPatch writes.
     runtimeDefaults = {
       requiresDatabaseUrl = true;
       embeddingsProvider = "openai";
       embeddingsOpenAIModel = "text-embedding-3-small";
       rerankerProvider = "rrf";
     };
+    updateScript = nix-update-script { };
   };
 
   meta = {

@@ -184,6 +184,43 @@ let
     embeddingsProvider = "local";
     embeddingsOpenAIApiKeyFile = null;
   });
+  hindsightDatabaseUrlXorAssertion = hindsightAssertion "Exactly one of services.hindsight.databaseUrl or services.hindsight.databaseUrlFile must be set." "Hindsight databaseUrl XOR assertion was not registered.";
+  databaseUrlBothNullEval = builtins.tryEval (hindsightDatabaseUrlXorAssertion {
+    databaseUrl = null;
+    databaseUrlFile = null;
+  });
+  databaseUrlBothSetEval = builtins.tryEval (hindsightDatabaseUrlXorAssertion {
+    databaseUrl = expectedLocalDatabaseUrl;
+    databaseUrlFile = "/run/keys/hindsight-database-url";
+  });
+  databaseUrlOnlyUrlEval = builtins.tryEval (hindsightDatabaseUrlXorAssertion {
+    databaseUrl = expectedLocalDatabaseUrl;
+  });
+
+  databaseUrlOnlyFileEval = builtins.tryEval (hindsightDatabaseUrlXorAssertion {
+    databaseUrl = null;
+    databaseUrlFile = "/run/keys/hindsight-database-url";
+  });
+
+  hindsightDatabaseUrlPrefixAssertion = hindsightAssertion "services.hindsight.databaseUrl must be a PostgreSQL URL." "Hindsight databaseUrl prefix assertion was not registered.";
+  databaseUrlInvalidPrefixEval = builtins.tryEval (hindsightDatabaseUrlPrefixAssertion {
+    databaseUrl = "mysql://hindsight@localhost/hindsight";
+  });
+  databaseUrlPostgresPrefixEval = builtins.tryEval (hindsightDatabaseUrlPrefixAssertion {
+    databaseUrl = "postgres://hindsight@localhost/hindsight";
+  });
+  databaseUrlPostgresqlPrefixEval = builtins.tryEval (hindsightDatabaseUrlPrefixAssertion {
+    databaseUrl = expectedLocalDatabaseUrl;
+  });
+
+  hindsightLLMApiKeyAssertion = hindsightAssertion "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai." "Hindsight LLM API key assertion was not registered.";
+  openaiLLMWithoutSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion { });
+  openaiLLMWithSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion {
+    llmApiKeyFile = "/run/keys/hindsight-llm";
+  });
+  nonOpenaiLLMWithoutSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion {
+    llmProvider = "anthropic";
+  });
 
   loopbackTenantApiKeyWithoutExtensionEval = builtins.tryEval (hindsightTenantPairAssertion {
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
@@ -398,6 +435,120 @@ in
 
         touch $out
       '';
+
+  hindsight-database-url-xor-rejected = pkgs.runCommand "hindsight-database-url-xor-rejected" { } ''
+    if [ "${lib.boolToString databaseUrlBothNullEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight databaseUrl XOR assertion without databaseUrl." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlBothNullEval.value}" != false ]; then
+      echo "Hindsight must reject when both databaseUrl and databaseUrlFile are null." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlBothSetEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight databaseUrl XOR assertion with both databaseUrl and databaseUrlFile set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlBothSetEval.value}" != false ]; then
+      echo "Hindsight must reject when both databaseUrl and databaseUrlFile are set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlOnlyUrlEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight databaseUrl XOR assertion with only databaseUrl set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlOnlyUrlEval.value}" != true ]; then
+      echo "Hindsight must accept when only databaseUrl is set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlOnlyFileEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight databaseUrl XOR assertion with only databaseUrlFile set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString databaseUrlOnlyFileEval.value}" != true ]; then
+      echo "Hindsight must accept when only databaseUrlFile is set." >&2
+      exit 1
+    fi
+
+    touch $out
+  '';
+
+  hindsight-database-url-prefix-rejected =
+    pkgs.runCommand "hindsight-database-url-prefix-rejected" { }
+      ''
+        if [ "${lib.boolToString databaseUrlInvalidPrefixEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight databaseUrl prefix assertion with non-PostgreSQL URL." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString databaseUrlInvalidPrefixEval.value}" != false ]; then
+          echo "Hindsight must reject non-PostgreSQL databaseUrl prefixes." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString databaseUrlPostgresPrefixEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight databaseUrl prefix assertion with postgres:// URL." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString databaseUrlPostgresPrefixEval.value}" != true ]; then
+          echo "Hindsight must accept postgres:// databaseUrl prefixes." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString databaseUrlPostgresqlPrefixEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight databaseUrl prefix assertion with postgresql:// URL." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString databaseUrlPostgresqlPrefixEval.value}" != true ]; then
+          echo "Hindsight must accept postgresql:// databaseUrl prefixes." >&2
+          exit 1
+        fi
+
+        touch $out
+      '';
+
+  hindsight-llm-openai-secret-rejected = pkgs.runCommand "hindsight-llm-openai-secret-rejected" { } ''
+    if [ "${lib.boolToString openaiLLMWithoutSecretEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight LLM API key assertion without llmApiKeyFile." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString openaiLLMWithoutSecretEval.value}" != false ]; then
+      echo "Hindsight must reject OpenAI LLM provider without llmApiKeyFile." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString openaiLLMWithSecretEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight LLM API key assertion with llmApiKeyFile." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString openaiLLMWithSecretEval.value}" != true ]; then
+      echo "Hindsight must accept OpenAI LLM provider when llmApiKeyFile is set." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString nonOpenaiLLMWithoutSecretEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight LLM API key assertion with non-OpenAI provider." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString nonOpenaiLLMWithoutSecretEval.value}" != true ]; then
+      echo "Hindsight must allow non-OpenAI LLM providers without an API key." >&2
+      exit 1
+    fi
+
+    touch $out
+  '';
 
   hindsight-module-eval = pkgs.runCommand "hindsight-module-eval" { } ''
     check_value() {
