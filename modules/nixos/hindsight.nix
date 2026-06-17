@@ -312,7 +312,7 @@ in
         RuntimeDirectoryMode = "0750";
         StateDirectory = lib.mkIf (cfg.stateDir == "/var/lib/hindsight") "hindsight";
         CacheDirectory = lib.mkIf (cfg.cacheDir == "/var/cache/hindsight") "hindsight";
-        WorkingDirectory = "/";
+        WorkingDirectory = cfg.stateDir;
         Restart = "on-failure";
         RestartSec = "5s";
         NoNewPrivileges = true;
@@ -347,7 +347,6 @@ in
         AmbientCapabilities = [ ];
         CapabilityBoundingSet = [ "" ];
         ProtectProc = "invisible";
-        ProcSubset = "pid";
         ProtectKernelTunables = true;
         ProtectKernelModules = true;
         ProtectKernelLogs = true;

@@ -176,11 +176,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781689075,
-        "narHash": "sha256-bPzqb+Nicw6dyrzhq8kDH1e4+AjVIT/rHbSRQifsFVU=",
+        "lastModified": 1781690307,
+        "narHash": "sha256-0HR66tWXNnFpnr4u8ifPoAN+WsNbGayWYlsidqhcW/M=",
         "ref": "refs/heads/main",
-        "rev": "274d2f13b4de6b4ec3e404d356c4d270908a2d83",
-        "revCount": 27,
+        "rev": "663635b777a943051308dc7b7a298ee713e1cbc7",
+        "revCount": 28,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/cl-ott-web.git"
       },
