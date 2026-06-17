@@ -7,7 +7,7 @@
 }:
 
 let
-  domain = "hindsight.pius.vaz.ovh";
+  domain = "hindsight.vaz.ovh";
   port = 8889;
   postgresqlDatabase = "hindsight";
   postgresqlUser = "hindsight";
@@ -44,7 +44,7 @@ in
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
       llmProvider = "deepseek";
-      llmModel = "deepseek-v4-flash";
+      llmModel = "deepseek-v4-pro";
       llmApiKeyFile = config.age.secrets.deepseekApiKey.path;
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
