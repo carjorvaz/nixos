@@ -98,7 +98,7 @@ let
       unset value
     '') runtimeSecretEnvFiles
     + ''
-      exec ${lib.escapeShellArg "${cfg.package}/bin/hindsight-api"}
+      exec ${lib.getExe cfg.package}
     ''
   );
 in
@@ -286,7 +286,7 @@ in
       serviceConfig = {
         ExecStart =
           if runtimeSecretEnvFiles == [ ] then
-            lib.escapeShellArgs [ "${cfg.package}/bin/hindsight-api" ]
+            lib.escapeShellArgs [ (lib.getExe cfg.package) ]
           else
             startScript;
         LoadCredential = secretCredentials;
@@ -324,6 +324,13 @@ in
         RestrictSUIDSGID = true;
         PrivateMounts = true;
         SystemCallArchitectures = "native";
+        RestrictNamespaces = true;
+        SystemCallFilter = [
+          "@system-service"
+          "~@privileged"
+        ];
+        AmbientCapabilities = [ ];
+        CapabilityBoundingSet = [ "" ];
       };
     };
   };
