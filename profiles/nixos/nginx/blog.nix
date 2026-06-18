@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   ...
@@ -10,11 +11,33 @@
   services.nginx.virtualHosts =
     let
       staticSiteSecurityHeaders = ''
-        add_header Strict-Transport-Security "max-age=15552000" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'self'; form-action 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-src 'none'; worker-src 'none'; media-src 'self'; manifest-src 'self'; upgrade-insecure-requests" always;
       '';
+
+      staticSiteDefaultCacheHeader = ''
+        add_header Cache-Control "no-cache" always;
+      '';
+
+      staticSiteImmutableImageHeaders = staticSiteSecurityHeaders + ''
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+      '';
+
+      staticSiteBeaconProxyHeaders = staticSiteSecurityHeaders + ''
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "public, max-age=86400, must-revalidate" always;
+      '';
+
+      staticSiteCollectProxyHeaders = staticSiteSecurityHeaders + ''
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "no-store" always;
+      '';
+
+      umamiUpstream = "http://127.0.0.1:${toString config.services.umami.settings.PORT}";
 
       movedPostRedirects = ''
         location = /posts/exponential-logarithmic-adjustment-scales-for-audio-and-brightness-in-linux/ {
@@ -89,19 +112,31 @@
         forceSSL = true;
         enableACME = true;
         root = "/var/www/carlosvaz.com/";
-        extraConfig = movedPostRedirects;
+        extraConfig = movedPostRedirects + staticSiteDefaultCacheHeader;
+        locations = {
+          "= /beacon.js" = {
+            proxyPass = umamiUpstream;
+            extraConfig = staticSiteBeaconProxyHeaders;
+          };
+          "= /api/v2/collect" = {
+            proxyPass = umamiUpstream;
+            extraConfig = staticSiteCollectProxyHeaders;
+          };
+          "~ ^/images/(?:.*/)?[^/]*_hu_[^/]*\\.(?:png|jpg|jpeg|webp)$".extraConfig =
+            staticSiteImmutableImageHeaders;
+        };
       };
 
       "www.cjv.pt" = {
         forceSSL = true;
         enableACME = true;
-        globalRedirect = "carlosvaz.pt";
+        globalRedirect = "carlosvaz.com";
       };
 
       "cjv.pt" = {
         forceSSL = true;
         enableACME = true;
-        globalRedirect = "carlosvaz.pt";
+        globalRedirect = "carlosvaz.com";
       };
 
     };
