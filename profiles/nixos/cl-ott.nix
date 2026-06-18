@@ -35,6 +35,7 @@
     randomizedDelaySec = "30min";
     outputPath = "/persist/media/iptv/cl-ott.m3u";
     stateFile = "/var/lib/cl-ott/state.json";
+    force = true;
     outputGroup = "media";
     searchLimit = 50;
 
