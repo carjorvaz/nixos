@@ -207,6 +207,23 @@ ps.buildPythonApplication rec {
             text = text.replace(old, new, 1)
         path.write_text(text)
 
+    alembic_configparser_sites = {
+        Path("hindsight_api/migrations.py"):
+            'alembic_cfg.set_main_option("sqlalchemy.url", database_url)',
+        Path("hindsight_api/alembic/env.py"):
+            'config.set_main_option("sqlalchemy.url", database_url)',
+    }
+    for path, old in alembic_configparser_sites.items():
+        text = path.read_text()
+        # Alembic stores options in ConfigParser, where literal percent signs
+        # from URL-encoded socket paths or credentials must be escaped. The
+        # value read back by Alembic remains the original single-percent URL.
+        new = old.replace("database_url", 'database_url.replace("%", "%%")')
+        if old not in text:
+            raise RuntimeError(f"missing expected Alembic URL assignment in {path}: {old!r}")
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+
     pyproject = Path("pyproject.toml")
     text = pyproject.read_text()
     old = 'hindsight-local-mcp = "hindsight_api.mcp_local:main"\n'
@@ -248,6 +265,12 @@ ps.buildPythonApplication rec {
     "opentelemetry-instrumentation-fastapi"
     "opentelemetry-sdk"
     "opentelemetry-semantic-conventions"
+
+    # SECURITY RISK ACCEPTED (local package only): Hindsight 0.8.2 declares
+    # tornado>=6.5.5 and urllib3>=2.7.0 security floors, but pinned nixpkgs
+    # currently provides tornado 6.5.4 and urllib3 2.6.3. Keep this relaxation
+    # local to pkgs.hindsight and remove the corresponding entries once nixpkgs
+    # catches up.
     "tornado"
     "urllib3"
   ];
@@ -314,6 +337,17 @@ ps.buildPythonApplication rec {
     assert config.embeddings_provider == "openai"
     assert config.reranker_provider == "rrf"
 
+    from alembic.config import Config
+    from hindsight_api.db_url import to_libpq_url
+
+    socket_url = "postgresql://hindsight@/hindsight?host=/run/postgresql"
+    encoded_socket_url = "postgresql://hindsight@/hindsight?host=%2Frun%2Fpostgresql"
+    assert to_libpq_url(socket_url) == encoded_socket_url
+
+    alembic_config = Config()
+    alembic_config.set_main_option("sqlalchemy.url", encoded_socket_url.replace("%", "%%"))
+    assert alembic_config.get_main_option("sqlalchemy.url") == encoded_socket_url
+
     scripts = {
         "hindsight-api": "hindsight_api.main",
         "hindsight-worker": "hindsight_api.worker.main",
@@ -335,6 +369,8 @@ ps.buildPythonApplication rec {
 
   passthru = {
     inherit tiktokenCacheDir;
+    supportsLocalOnnx = withLocalOnnx;
+    supportsLocalMl = false;
     # Exposed for checks to validate that the packaged defaults stay in sync
     # with the postPatch modifications. Must match what postPatch writes.
     runtimeDefaults = {

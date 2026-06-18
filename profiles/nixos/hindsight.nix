@@ -11,9 +11,7 @@ let
   port = 8889;
   postgresqlDatabase = "hindsight";
   postgresqlUser = "hindsight";
-  postgresqlBindAddress = "127.0.0.1";
-  postgresqlPort = 5432;
-  databaseUrl = "postgresql://${postgresqlUser}@${postgresqlBindAddress}:${toString postgresqlPort}/${postgresqlDatabase}";
+  databaseUrl = "postgresql://${postgresqlUser}@/${postgresqlDatabase}?host=/run/postgresql";
   postgresqlUnit = "postgresql.service";
   postgresqlSetupUnit = "postgresql-setup.service";
   vectorInitScript = pkgs.writeShellScript "hindsight-vector-init" ''
@@ -66,10 +64,6 @@ in
 
     postgresql = {
       enable = true;
-      enableTCPIP = true;
-      authentication = lib.mkBefore ''
-        host ${postgresqlDatabase} ${postgresqlUser} ${postgresqlBindAddress}/32 trust
-      '';
       extensions = postgresqlPackages: [
         postgresqlPackages.pgvector
       ];
@@ -114,6 +108,7 @@ in
     hindsight = {
       after = [ "hindsight-vector-init.service" ];
       wants = [ "hindsight-vector-init.service" ];
+      requires = [ "hindsight-vector-init.service" ];
     };
 
     hindsight-vector-init = {
@@ -141,6 +136,12 @@ in
   environment.persistence."/persist".directories = [
     {
       directory = "/var/lib/hindsight";
+      user = "hindsight";
+      group = "hindsight";
+      mode = "0700";
+    }
+    {
+      directory = "/var/cache/hindsight";
       user = "hindsight";
       group = "hindsight";
       mode = "0700";

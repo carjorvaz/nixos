@@ -15,6 +15,18 @@ let
     rerankerProvider = "rrf";
   };
   packageRuntimeDefaults = pkgs.hindsight.passthru.runtimeDefaults or null;
+  localOnnxHindsightPackage = pkgs.hindsight.override { withLocalOnnx = true; };
+  localMlHindsightPackage = pkgs.hindsight.overrideAttrs (oldAttrs: {
+    passthru = (oldAttrs.passthru or { }) // {
+      supportsLocalMl = true;
+    };
+  });
+  defaultPackageSupportsLocalOnnx = pkgs.hindsight.passthru.supportsLocalOnnx or null;
+  localOnnxPackageSupportsLocalOnnx = localOnnxHindsightPackage.passthru.supportsLocalOnnx or null;
+  defaultPackageSupportsLocalMl = pkgs.hindsight.passthru.supportsLocalMl or null;
+  localOnnxPackageSupportsLocalMl = localOnnxHindsightPackage.passthru.supportsLocalMl or null;
+  tornadoRelaxationCanBeRemoved = lib.versionAtLeast pkgs.python3Packages.tornado.version "6.5.5";
+  urllib3RelaxationCanBeRemoved = lib.versionAtLeast pkgs.python3Packages.urllib3.version "2.7.0";
 
   mkHindsightConfig =
     hindsightConfig:
@@ -78,6 +90,10 @@ let
               systemd.services = lib.mkOption {
                 type = lib.types.attrsOf lib.types.anything;
                 default = { };
+              };
+              networking.firewall.allowedTCPPorts = lib.mkOption {
+                type = lib.types.listOf lib.types.port;
+                default = [ ];
               };
             };
             config.services.hindsight = {
@@ -164,6 +180,8 @@ let
 
   hindsightNonLoopbackTenantAssertion = hindsightAssertion "services.hindsight.tenantApiKeyFile and services.hindsight.tenantExtension must both be set when bindAddress is not loopback." "Hindsight non-loopback tenant assertion was not registered.";
   hindsightOpenAIEmbeddingsSecretAssertion = hindsightAssertion "services.hindsight requires services.hindsight.embeddingsOpenAIApiKeyFile when services.hindsight.embeddingsProvider is openai." "Hindsight OpenAI embeddings secret assertion was not registered.";
+  hindsightOnnxPackageCapabilityAssertion = hindsightAssertion "services.hindsight.package must be built with local ONNX support when services.hindsight.embeddingsProvider is onnx." "Hindsight ONNX package capability assertion was not registered.";
+  hindsightLocalMlPackageCapabilityAssertion = hindsightAssertion "services.hindsight.package must be built with local ML support when services.hindsight.embeddingsProvider is local." "Hindsight local ML package capability assertion was not registered.";
 
   openAIEmbeddingsWithoutSecretEval = builtins.tryEval (hindsightOpenAIEmbeddingsSecretAssertion {
     embeddingsOpenAIApiKeyFile = null;
@@ -184,6 +202,42 @@ let
     embeddingsProvider = "local";
     embeddingsOpenAIApiKeyFile = null;
   });
+
+  onnxDefaultPackageEval = builtins.tryEval (hindsightOnnxPackageCapabilityAssertion {
+    package = pkgs.hindsight;
+    embeddingsProvider = "onnx";
+  });
+
+  onnxLocalPackageEval = builtins.tryEval (hindsightOnnxPackageCapabilityAssertion {
+    package = pkgs.hindsight.override { withLocalOnnx = true; };
+    embeddingsProvider = "onnx";
+  });
+
+  nonOnnxDefaultPackageEval = builtins.tryEval (hindsightOnnxPackageCapabilityAssertion {
+    package = pkgs.hindsight;
+    embeddingsProvider = "openai";
+  });
+
+  localMlDefaultPackageEval = builtins.tryEval (hindsightLocalMlPackageCapabilityAssertion {
+    package = pkgs.hindsight;
+    embeddingsProvider = "local";
+  });
+
+  localMlPackageEval = builtins.tryEval (hindsightLocalMlPackageCapabilityAssertion {
+    package = localMlHindsightPackage;
+    embeddingsProvider = "local";
+  });
+
+  localMlOnnxPackageEval = builtins.tryEval (hindsightLocalMlPackageCapabilityAssertion {
+    package = localOnnxHindsightPackage;
+    embeddingsProvider = "local";
+  });
+
+  nonLocalMlDefaultPackageEval = builtins.tryEval (hindsightLocalMlPackageCapabilityAssertion {
+    package = pkgs.hindsight;
+    embeddingsProvider = "openai";
+  });
+
   hindsightDatabaseUrlXorAssertion = hindsightAssertion "Exactly one of services.hindsight.databaseUrl or services.hindsight.databaseUrlFile must be set." "Hindsight databaseUrl XOR assertion was not registered.";
   databaseUrlBothNullEval = builtins.tryEval (hindsightDatabaseUrlXorAssertion {
     databaseUrl = null;
@@ -247,6 +301,12 @@ let
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
   });
 
+  unsafeBindWithoutTenantAuthEval = builtins.tryEval (hindsightNonLoopbackTenantAssertion {
+    bindAddress = "0.0.0.0";
+    tenantApiKeyFile = null;
+    tenantExtension = null;
+  });
+
   safeNonLoopbackBindEval = builtins.tryEval (hindsightNonLoopbackTenantAssertion {
     bindAddress = "0.0.0.0";
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
@@ -297,6 +357,20 @@ in
     touch $out
   '';
 
+  hindsight-python-relaxdeps-security-floors = pkgs.runCommand "hindsight-python-relaxdeps-security-floors" { } ''
+    if [ "${lib.boolToString tornadoRelaxationCanBeRemoved}" = true ]; then
+      echo "pkgs.python3Packages.tornado is ${pkgs.python3Packages.tornado.version}, satisfying Hindsight's tornado>=6.5.5 security floor; remove tornado from pkgs.hindsight.pythonRelaxDeps." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString urllib3RelaxationCanBeRemoved}" = true ]; then
+      echo "pkgs.python3Packages.urllib3 is ${pkgs.python3Packages.urllib3.version}, satisfying Hindsight's urllib3>=2.7.0 security floor; remove urllib3 from pkgs.hindsight.pythonRelaxDeps." >&2
+      exit 1
+    fi
+
+    touch $out
+  '';
+
   hindsight-unsafe-bind-rejected = pkgs.runCommand "hindsight-unsafe-bind-rejected" { } ''
     if [ "${lib.boolToString unsafeBindWithoutTenantApiKeyEval.success}" != true ]; then
       echo "Could not evaluate Hindsight non-loopback tenant assertion without tenantApiKeyFile." >&2
@@ -315,6 +389,16 @@ in
 
     if [ "${lib.boolToString unsafeBindWithoutTenantExtensionEval.value}" != false ]; then
       echo "Hindsight must reject non-loopback binds without tenantExtension." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString unsafeBindWithoutTenantAuthEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight non-loopback tenant assertion without tenant auth." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString unsafeBindWithoutTenantAuthEval.value}" != false ]; then
+      echo "Hindsight must reject non-loopback binds without tenantApiKeyFile and tenantExtension." >&2
       exit 1
     fi
 
@@ -430,6 +514,88 @@ in
 
         if [ "${lib.boolToString nonOpenAIEmbeddingsWithoutSecretEval.value}" != true ]; then
           echo "Hindsight must allow non-OpenAI embeddings providers without an OpenAI secret source." >&2
+          exit 1
+        fi
+
+        touch $out
+      '';
+
+  hindsight-onnx-package-capability-rejected =
+    pkgs.runCommand "hindsight-onnx-package-capability-rejected" { }
+      ''
+        if [ "${lib.boolToString onnxDefaultPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight ONNX package capability assertion with default package." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString onnxDefaultPackageEval.value}" != false ]; then
+          echo "Hindsight must reject ONNX embeddings when the package lacks local ONNX support." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString onnxLocalPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight ONNX package capability assertion with local ONNX package." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString onnxLocalPackageEval.value}" != true ]; then
+          echo "Hindsight must accept ONNX embeddings when the package has local ONNX support." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString nonOnnxDefaultPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight ONNX package capability assertion with non-ONNX embeddings." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString nonOnnxDefaultPackageEval.value}" != true ]; then
+          echo "Hindsight must not require local ONNX support for non-ONNX embeddings providers." >&2
+          exit 1
+        fi
+
+        touch $out
+      '';
+
+  hindsight-local-ml-package-capability-rejected =
+    pkgs.runCommand "hindsight-local-ml-package-capability-rejected" { }
+      ''
+        if [ "${lib.boolToString localMlDefaultPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight local ML package capability assertion with default package." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString localMlDefaultPackageEval.value}" != false ]; then
+          echo "Hindsight must reject local embeddings when the package lacks local ML support." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString localMlPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight local ML package capability assertion with local ML package." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString localMlPackageEval.value}" != true ]; then
+          echo "Hindsight must accept local embeddings when the package has local ML support." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString localMlOnnxPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight local ML package capability assertion with local ONNX package." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString localMlOnnxPackageEval.value}" != false ]; then
+          echo "Hindsight must not treat local ONNX support as local ML support." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString nonLocalMlDefaultPackageEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight local ML package capability assertion with non-local embeddings." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString nonLocalMlDefaultPackageEval.value}" != true ]; then
+          echo "Hindsight must not require local ML support for non-local embeddings providers." >&2
           exit 1
         fi
 
@@ -650,6 +816,26 @@ in
       exit 1
     fi
 
+    if [ "${lib.boolToString (defaultPackageSupportsLocalOnnx == false)}" != true ]; then
+      echo "pkgs.hindsight.passthru.supportsLocalOnnx must be false by default." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString (localOnnxPackageSupportsLocalOnnx == true)}" != true ]; then
+      echo "pkgs.hindsight.override { withLocalOnnx = true; }.passthru.supportsLocalOnnx must be true." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString (defaultPackageSupportsLocalMl == false)}" != true ]; then
+      echo "pkgs.hindsight.passthru.supportsLocalMl must be false by default." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString (localOnnxPackageSupportsLocalMl == false)}" != true ]; then
+      echo "pkgs.hindsight.override { withLocalOnnx = true; }.passthru.supportsLocalMl must remain false." >&2
+      exit 1
+    fi
+
     ${lib.optionalString (packageRuntimeDefaults != null) ''
       if [ "${lib.boolToString (packageRuntimeDefaults == expectedRuntimeDefaults)}" != true ]; then
         echo "pkgs.hindsight.passthru.runtimeDefaults must exactly match the slim package contract." >&2
@@ -782,6 +968,7 @@ in
           machine.succeed("systemctl show hindsight.service -P Environment | grep -F 'TIKTOKEN_CACHE_DIR=${expectedTiktokenCacheDir}'")
           machine.succeed("systemctl show hindsight.service -P Environment | grep -F 'HINDSIGHT_API_DATABASE_URL=${expectedLocalDatabaseUrl}'")
           machine.succeed("curl --noproxy '*' -fsS --max-time 30 -H 'Authorization: Bearer hindsight-test-api-key' http://127.0.0.1:8888/health")
+          machine.succeed("curl --noproxy '*' -fsS --max-time 30 -H 'Authorization: Bearer hindsight-test-api-key' http://127.0.0.1:8888/v1/default/banks")
           machine.succeed("test \"$(curl --noproxy '*' -sS -o /tmp/hindsight-unauth-banks.json -w '%{http_code}' --max-time 30 http://127.0.0.1:8888/v1/default/banks)\" = 401")
       except Exception:
           print(machine.succeed("systemctl --no-pager --full status postgresql.service hindsight-vector-init.service hindsight.service || true"))

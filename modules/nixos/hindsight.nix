@@ -14,6 +14,8 @@ let
     "localhost"
   ];
   packageTiktokenCacheDir = cfg.package.tiktokenCacheDir or null;
+  packageSupportsLocalOnnx = cfg.package.supportsLocalOnnx or false;
+  packageSupportsLocalMl = cfg.package.supportsLocalMl or false;
   effectiveTiktokenCacheDir =
     if packageTiktokenCacheDir != null then packageTiktokenCacheDir else cfg.cacheDir;
   hasOpenAIEmbeddingsSecret = cfg.embeddingsOpenAIApiKeyFile != null;
@@ -256,6 +258,14 @@ in
       {
         assertion = cfg.embeddingsProvider != "openai" || hasOpenAIEmbeddingsSecret;
         message = "services.hindsight requires services.hindsight.embeddingsOpenAIApiKeyFile when services.hindsight.embeddingsProvider is openai.";
+      }
+      {
+        assertion = cfg.embeddingsProvider != "onnx" || packageSupportsLocalOnnx;
+        message = "services.hindsight.package must be built with local ONNX support when services.hindsight.embeddingsProvider is onnx.";
+      }
+      {
+        assertion = cfg.embeddingsProvider != "local" || packageSupportsLocalMl;
+        message = "services.hindsight.package must be built with local ML support when services.hindsight.embeddingsProvider is local.";
       }
       {
         assertion = isLoopbackBind || (cfg.tenantApiKeyFile != null && cfg.tenantExtension != null);
