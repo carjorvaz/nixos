@@ -42,7 +42,6 @@
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/cl-olx-scraper.nix"
     "${self}/profiles/nixos/cl-ott.nix"
-    "${self}/profiles/nixos/cl-ott-web.nix"
     "${self}/profiles/nixos/firecrawl.nix"
     "${self}/profiles/nixos/hindsight.nix"
     "${self}/profiles/nixos/pdf-translator.nix"

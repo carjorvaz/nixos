@@ -156,37 +156,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1780394295,
-        "narHash": "sha256-N2f0Hyp1CJXy3loxuGavxg7LvH80r21MrxykAUliw0c=",
+        "lastModified": 1781772901,
+        "narHash": "sha256-lDJuzRF51Fn9/s/pDg1GYWnk4zG73n63uuAeLZRoR90=",
         "ref": "refs/heads/master",
-        "rev": "5b429a38f9efda2bbd44cd6b75c2af0c8decf4cd",
-        "revCount": 115,
+        "rev": "a9f61d22ed2167a3bc7e7e96632f02e7cd926861",
+        "revCount": 125,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
       },
       "original": {
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
-      }
-    },
-    "cl-ott-web": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs-unstable"
-        ]
-      },
-      "locked": {
-        "lastModified": 1781692594,
-        "narHash": "sha256-vxYm2E1RAlKilTdIBnft5vJ0Qse2BpF3o92XSm7Kt60=",
-        "ref": "refs/heads/main",
-        "rev": "f7471e6b163eba8a4c01ce62aef4de31de1084a4",
-        "revCount": 30,
-        "type": "git",
-        "url": "ssh://git@github.com/carjorvaz/cl-ott-web.git"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/carjorvaz/cl-ott-web.git"
       }
     },
     "cl-ultimate-tic-tac-toe": {
@@ -1283,7 +1263,6 @@
         "agenix": "agenix",
         "cl-olx-scraper": "cl-olx-scraper",
         "cl-ott": "cl-ott",
-        "cl-ott-web": "cl-ott-web",
         "cl-ultimate-tic-tac-toe": "cl-ultimate-tic-tac-toe",
         "disko": "disko",
         "firefox-addons": "firefox-addons",
