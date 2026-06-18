@@ -55,7 +55,10 @@
       hostName = "cl-ott-web.vaz.ovh";
       useACMEHost = "vaz.ovh";
       forceSSL = true;
-      tailscaleAuth.enable = true;
+      tailscaleAuth = {
+        enable = true;
+        trustedClientApi = true;
+      };
     };
 
     internalApi = {
