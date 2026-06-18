@@ -124,7 +124,7 @@ let
     llmModel = "unused";
     llmApiKeyFile = "/run/keys/hindsight-llm";
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
     environment = {
       HINDSIGHT_API_WORKER_ID = "nixos-check";
       HINDSIGHT_API_STORE_DOCUMENT_TEXT = false;
@@ -138,15 +138,15 @@ let
     llmApiKeyFile = "/run/keys/hindsight-llm";
     embeddingsOpenAIApiKeyFile = "/run/keys/hindsight-embeddings-openai";
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
   };
 
   hindsightAssertion =
     expectedMessage: missingMessage: hindsightConfig:
     let
-      matchingAssertions = lib.filter (assertion: assertion.message == expectedMessage) (
-        (mkHindsightAssertionConfig hindsightConfig).config.assertions
-      );
+      matchingAssertions = lib.filter (
+        assertion: assertion.message == expectedMessage
+      ) (mkHindsightAssertionConfig hindsightConfig).config.assertions;
     in
     if matchingAssertions == [ ] then throw missingMessage else (lib.head matchingAssertions).assertion;
   moduleOwnedEnvironmentOverrideEval = builtins.tryEval (
@@ -157,18 +157,16 @@ let
             assertion:
             lib.hasPrefix "services.hindsight.environment must not override module-owned environment keys:" assertion.message
           )
-          (
-            (mkHindsightAssertionConfig {
-              environment = {
-                HINDSIGHT_API_HOST = "0.0.0.0";
-                HINDSIGHT_API_DATABASE_URL = "postgresql://override.invalid/hindsight";
-                HINDSIGHT_API_TENANT_API_KEY = "unsafe-bypass";
-                HINDSIGHT_API_TENANT_EXTENSION = "unsafe.extension:Tenant";
-                HINDSIGHT_API_EMBEDDINGS_PROVIDER = "local";
-                HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY = "unsafe-bypass";
-              };
-            }).config.assertions
-          );
+          (mkHindsightAssertionConfig {
+            environment = {
+              HINDSIGHT_API_HOST = "0.0.0.0";
+              HINDSIGHT_API_DATABASE_URL = "postgresql://override.invalid/hindsight";
+              HINDSIGHT_API_TENANT_API_KEY = "unsafe-bypass";
+              HINDSIGHT_API_TENANT_EXTENSION = "unsafe.extension:Tenant";
+              HINDSIGHT_API_EMBEDDINGS_PROVIDER = "local";
+              HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY = "unsafe-bypass";
+            };
+          }).config.assertions;
     in
     if matchingAssertions == [ ] then
       throw "Hindsight module-owned environment override assertion was not registered."
@@ -281,19 +279,19 @@ let
   });
 
   loopbackTenantExtensionWithoutApiKeyEval = builtins.tryEval (hindsightTenantPairAssertion {
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
   });
 
   loopbackWithoutTenantAuthEval = builtins.tryEval (hindsightTenantPairAssertion { });
 
   loopbackWithTenantAuthEval = builtins.tryEval (hindsightTenantPairAssertion {
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
   });
 
   unsafeBindWithoutTenantApiKeyEval = builtins.tryEval (hindsightNonLoopbackTenantAssertion {
     bindAddress = "0.0.0.0";
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
   });
 
   unsafeBindWithoutTenantExtensionEval = builtins.tryEval (hindsightNonLoopbackTenantAssertion {
@@ -310,7 +308,7 @@ let
   safeNonLoopbackBindEval = builtins.tryEval (hindsightNonLoopbackTenantAssertion {
     bindAddress = "0.0.0.0";
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
-    tenantExtension = tenantExtension;
+    inherit tenantExtension;
   });
 
   minimalService = minimalConfig.config.systemd.services.hindsight;
@@ -357,19 +355,21 @@ in
     touch $out
   '';
 
-  hindsight-python-relaxdeps-security-floors = pkgs.runCommand "hindsight-python-relaxdeps-security-floors" { } ''
-    if [ "${lib.boolToString tornadoRelaxationCanBeRemoved}" = true ]; then
-      echo "pkgs.python3Packages.tornado is ${pkgs.python3Packages.tornado.version}, satisfying Hindsight's tornado>=6.5.5 security floor; remove tornado from pkgs.hindsight.pythonRelaxDeps." >&2
-      exit 1
-    fi
+  hindsight-python-relaxdeps-security-floors =
+    pkgs.runCommand "hindsight-python-relaxdeps-security-floors" { }
+      ''
+        if [ "${lib.boolToString tornadoRelaxationCanBeRemoved}" = true ]; then
+          echo "pkgs.python3Packages.tornado is ${pkgs.python3Packages.tornado.version}, satisfying Hindsight's tornado>=6.5.5 security floor; remove tornado from pkgs.hindsight.pythonRelaxDeps." >&2
+          exit 1
+        fi
 
-    if [ "${lib.boolToString urllib3RelaxationCanBeRemoved}" = true ]; then
-      echo "pkgs.python3Packages.urllib3 is ${pkgs.python3Packages.urllib3.version}, satisfying Hindsight's urllib3>=2.7.0 security floor; remove urllib3 from pkgs.hindsight.pythonRelaxDeps." >&2
-      exit 1
-    fi
+        if [ "${lib.boolToString urllib3RelaxationCanBeRemoved}" = true ]; then
+          echo "pkgs.python3Packages.urllib3 is ${pkgs.python3Packages.urllib3.version}, satisfying Hindsight's urllib3>=2.7.0 security floor; remove urllib3 from pkgs.hindsight.pythonRelaxDeps." >&2
+          exit 1
+        fi
 
-    touch $out
-  '';
+        touch $out
+      '';
 
   hindsight-unsafe-bind-rejected = pkgs.runCommand "hindsight-unsafe-bind-rejected" { } ''
     if [ "${lib.boolToString unsafeBindWithoutTenantApiKeyEval.success}" != true ]; then
@@ -893,7 +893,7 @@ in
           embeddingsProvider = "openai";
           embeddingsOpenAIApiKeyFile = pkgs.writeText "hindsight-test-openai-embeddings-api-key" "test-openai-key\n";
           tenantApiKeyFile = pkgs.writeText "hindsight-test-tenant-api-key" "hindsight-test-api-key\n";
-          tenantExtension = tenantExtension;
+          inherit tenantExtension;
           environment = {
             HINDSIGHT_API_MODEL_INIT_TIMEOUT = 5;
             HINDSIGHT_API_ENABLE_DRY_RUN_EXTRACT = false;
