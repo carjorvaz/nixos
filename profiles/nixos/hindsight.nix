@@ -42,7 +42,7 @@ in
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
       llmProvider = "deepseek";
-      llmModel = "deepseek-v4-pro";
+      llmModel = "deepseek-v4-flash";
       llmApiKeyFile = config.age.secrets.deepseekApiKey.path;
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
