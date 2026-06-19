@@ -28,30 +28,56 @@
       pkgs.linuxPackagesFor (
         pkgs.callPackage "${inputs.nixos-hardware}/raspberry-pi/common/kernel.nix" {
           rpiVersion = 1;
+          argsOverride.kernelPatches = with pkgs.kernelPatches; [
+            bridge_stp_helper
+            request_key_helper
+            {
+              name = "pius-unlock-bridge-rpi1-trim-unused-rp1-drivers";
+              patch = null;
+              structuredExtraConfig = with lib.kernel; {
+                # The Raspberry Pi 1 image uses nixos-hardware's rpi1 vendor
+                # kernel, whose current defconfig still pulls in a few RP1 /
+                # DesignWare drivers that are irrelevant here and fail ARMv6
+                # modpost with missing division helpers. Put the config patch
+                # directly in the kernel expression override; NixOS-level
+                # boot.kernelPatches do not affect this forced kernel package.
+                PWM_RP1 = no;
+                VIDEO_RP1_CFE = no;
+                I2C_DESIGNWARE_CORE = no;
+                I2C_DESIGNWARE_PLATFORM = no;
+                SCHED_CLASS_EXT = lib.mkForce no;
+              };
+            }
+          ];
         }
       )
     );
 
-    supportedFilesystems = lib.mkForce [
-      "vfat"
-      "ext4"
-    ];
+    supportedFilesystems = lib.mkForce {
+      btrfs = false;
+      cifs = false;
+      ext2 = false;
+      ext3 = false;
+      ext4 = true;
+      f2fs = false;
+      ntfs = false;
+      vfat = true;
+      xfs = false;
+      zfs = false;
+    };
 
-    kernelPatches = [
-      {
-        name = "pius-unlock-bridge-rpi1-trim-unused-rp1-drivers";
-        patch = null;
-        structuredExtraConfig = with lib.kernel; {
-          # The Raspberry Pi 1 image uses nixpkgs' rpi1 kernel, whose current
-          # defconfig still pulls in a few RP1 / DesignWare drivers that are
-          # irrelevant here and fail ARMv6 modpost with missing division helpers.
-          PWM_RP1 = no;
-          VIDEO_RP1_CFE = no;
-          I2C_DESIGNWARE_CORE = no;
-          I2C_DESIGNWARE_PLATFORM = no;
-        };
-      }
-    ];
+    initrd = {
+      availableKernelModules = lib.mkForce [
+        "mmc_block"
+        "ext4"
+        "vfat"
+      ];
+      kernelModules = lib.mkForce [ ];
+      supportedFilesystems = lib.mkForce [
+        "ext4"
+        "vfat"
+      ];
+    };
 
     kernelModules = [
       "smsc95xx" # Raspberry Pi 1/B+ onboard Ethernet
