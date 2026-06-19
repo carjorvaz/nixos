@@ -156,11 +156,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781871562,
-        "narHash": "sha256-E0Mf6Cv/+a6C4LNn5ov4H6TNGQoW61w/v90c2T6zSvE=",
+        "lastModified": 1781885091,
+        "narHash": "sha256-Bbstzq4iC/1di+h89ZG2P43+k8k/cUqAkybjjGAZaZI=",
         "ref": "refs/heads/master",
-        "rev": "e661281855afd48b4d9b83cd6697622513825898",
-        "revCount": 138,
+        "rev": "f3a31172b1aef2252920a25b201f235148faad13",
+        "revCount": 139,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/cl-ott.git"
       },
