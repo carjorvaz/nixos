@@ -40,10 +40,12 @@ in
         # Only available inside VPN
         WEBUI_AUTH = "False";
 
-        # Web Search
-        # ENABLE_RAG_WEB_SEARCH = "True";
-        # SEARXNG_QUERY_URL = "https://searx.vaz.ovh/search?q=<query>";
-        # RAG_WEB_SEARCH_ENGINE = "searxng";
+        # Use loopback because Open-WebUI and SearXNG run on pius, avoiding the Tailscale-authenticated public vhost.
+        ENABLE_WEB_SEARCH = "True";
+        WEB_SEARCH_ENGINE = "searxng";
+        SEARXNG_QUERY_URL = "http://127.0.0.1:${toString config.services.searx.settings.server.port}/search?q=<query>";
+        SEARXNG_LANGUAGE = "all";
+        WEB_SEARCH_RESULT_COUNT = "5";
 
         # STATE: environment file?
         # - disable ollama
