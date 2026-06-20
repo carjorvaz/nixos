@@ -26,6 +26,18 @@ let
 
   minimalConfig = mkFirecrawlConfig { };
 
+  defaultLocalWebhooksValues = [
+    (minimalConfig.config.systemd.services.firecrawl-api.environment.ALLOW_LOCAL_WEBHOOKS or null)
+    (minimalConfig.config.systemd.services.firecrawl-worker.environment.ALLOW_LOCAL_WEBHOOKS or null)
+    (minimalConfig.config.systemd.services.firecrawl-extract-worker.environment.ALLOW_LOCAL_WEBHOOKS
+      or null
+    )
+  ];
+
+  localWebhooksDisabledByDefault = lib.all (
+    value: value == null || value == "false"
+  ) defaultLocalWebhooksValues;
+
   unsafeBindEval =
     builtins.tryEval
       (mkFirecrawlConfig {
@@ -54,6 +66,17 @@ in
 
     touch $out
   '';
+
+  firecrawl-local-webhooks-disabled-by-default =
+    pkgs.runCommand "firecrawl-local-webhooks-disabled-by-default" { }
+      ''
+        if [ "${lib.boolToString localWebhooksDisabledByDefault}" != true ]; then
+          echo "Firecrawl module defaults must not enable ALLOW_LOCAL_WEBHOOKS." >&2
+          exit 1
+        fi
+
+        touch $out
+      '';
 
   firecrawl-module-eval = pkgs.runCommand "firecrawl-module-eval" { } ''
     cat > $out <<'EOF'

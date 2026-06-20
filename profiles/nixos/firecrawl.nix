@@ -15,6 +15,11 @@ in
       # Firecrawl's Supabase-style API-key machinery disabled and bind only
       # to loopback in the generic service module.
       useDbAuthentication = false;
+
+      environment = {
+        # Production must not allow private/loopback fetch bypasses.
+        ALLOW_LOCAL_WEBHOOKS = false;
+      };
     };
 
     nginx = {

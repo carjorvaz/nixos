@@ -90,6 +90,25 @@ in
       fi
     done
 
+    if grep -Fq 'WEBUI_AUTH = "False";' profiles/nixos/open-webui.nix \
+      && ! grep -Fq 'host = "127.0.0.1";' profiles/nixos/open-webui.nix; then
+      echo "open-webui WEBUI_AUTH=False requires loopback host guard" >&2
+      exit 1
+    fi
+
+    for needle in \
+      systemd.services.searx-health \
+      systemd.timers.searx-health \
+      /var/lib/searx-health/health.json \
+      unresponsive_engines
+    do
+      if ! grep -Fq "$needle" profiles/nixos/searx.nix; then
+        echo "searx health monitor missing: $needle" >&2
+        exit 1
+      fi
+    done
+
     touch $out
   '';
+
 }
