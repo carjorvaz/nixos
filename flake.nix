@@ -49,8 +49,8 @@
     cl-ultimate-tic-tac-toe.url = "github:carjorvaz/cl-ultimate-tic-tac-toe";
     cl-ultimate-tic-tac-toe.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    cl-ott.url = "git+ssh://git@github.com/carjorvaz/cl-ott.git";
-    cl-ott.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git";
+    ott-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
@@ -250,7 +250,7 @@
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
-            inputs.cl-ott.nixosModules.default
+            inputs.ott-rs.nixosModules.default
             inputs.cl-olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             ./hosts/pius.nix

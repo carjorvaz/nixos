@@ -51,13 +51,13 @@ in
   ]
   ++ users;
 
-  # cl-ott Telegram API credentials and target chat/topic IDs
+  # ott-rs Telegram API credentials and target chat/topic IDs
   "clOttTelegramEnv.age".publicKeys = [
     piusSystem
   ]
   ++ users;
 
-  # Bearer token for cl-ott's loopback client API on pius
+  # Bearer token for ott-rs's loopback client API on pius
   "clOttClientApiToken.age".publicKeys = [
     piusSystem
   ]
@@ -66,7 +66,7 @@ in
   # Hindsight API raw bearer token on pius
   "hindsightApiToken.age".publicKeys = [ piusSystem ] ++ users;
 
-  # Jellyfin API key used by cl-ott integration services
+  # Legacy Jellyfin key retained for the archived cl-ott integration
   "jellyfinClOttApiKey.age".publicKeys = [
     piusSystem
   ]
