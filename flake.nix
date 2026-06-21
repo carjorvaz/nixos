@@ -250,7 +250,7 @@
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
-            inputs.ott-rs.nixosModules.default
+            inputs.ott-rs.nixosModules.ott-rs
             inputs.cl-olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             ./hosts/pius.nix
