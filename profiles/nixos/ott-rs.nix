@@ -4,6 +4,10 @@
   ...
 }:
 
+let
+  webHost = "ott-web.vaz.ovh";
+  legacyWebHost = "cl-ott-web.vaz.ovh";
+in
 {
   age.secrets = {
     clOttTelegramEnv = {
@@ -63,7 +67,7 @@
       enable = true;
       bindAddress = "127.0.0.1";
       port = 8788;
-      hostName = "cl-ott-web.vaz.ovh";
+      hostName = webHost;
       useACMEHost = "vaz.ovh";
       forceSSL = true;
       tailscaleAuth = {
@@ -80,6 +84,12 @@
         "fd7a:115c:a1e0:ab12:4843:cd96:6267:4e27"
       ];
     };
+  };
+
+  services.nginx.virtualHosts.${legacyWebHost} = {
+    forceSSL = true;
+    useACMEHost = "vaz.ovh";
+    globalRedirect = webHost;
   };
 
   environment.persistence."/persist".directories = [
