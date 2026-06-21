@@ -446,70 +446,74 @@ in
 
   # Generate a fresh SearXNG secret at boot; CSRF tokens are session-scoped,
   # so there is no need to persist this across restarts.
-  systemd.services.searx-gen-secret = {
-    description = "Generate SearXNG secret key";
-    wantedBy = [ "searx-init.service" ];
-    before = [ "searx-init.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "searx-gen-secret" ''
-        printf 'SEARX_SECRET_KEY=%s\n' "$(${pkgs.openssl}/bin/openssl rand -hex 32)" > ${secretFile}
-        chmod 400 ${secretFile}
-      '';
+  systemd = {
+    services = {
+      searx-gen-secret = {
+        description = "Generate SearXNG secret key";
+        wantedBy = [ "searx-init.service" ];
+        before = [ "searx-init.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = pkgs.writeShellScript "searx-gen-secret" ''
+            printf 'SEARX_SECRET_KEY=%s\n' "$(${pkgs.openssl}/bin/openssl rand -hex 32)" > ${secretFile}
+            chmod 400 ${secretFile}
+          '';
+        };
+      };
+
+      searx-health = {
+        description = "Low-rate SearXNG health monitor";
+        after = [ "searx.service" ];
+        wants = [ "searx.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${pkgs.python3}/bin/python3 ${searxHealthScript}";
+          DynamicUser = true;
+          StateDirectory = "searx-health";
+          UMask = "0027";
+
+          CapabilityBoundingSet = "";
+          IPAddressAllow = [ "127.0.0.1/32" ];
+          IPAddressDeny = [ "any" ];
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProcSubset = "pid";
+          ProtectClock = true;
+          ProtectControlGroups = true;
+          ProtectHome = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectProc = "invisible";
+          ProtectSystem = "strict";
+          RemoveIPC = true;
+          RestrictAddressFamilies = [ "AF_INET" ];
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [
+            "@system-service"
+            "~@privileged"
+            "~@resources"
+          ];
+        };
+      };
     };
-  };
 
-  systemd.services.searx-health = {
-    description = "Low-rate SearXNG health monitor";
-    after = [ "searx.service" ];
-    wants = [ "searx.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${pkgs.python3}/bin/python3 ${searxHealthScript}";
-      DynamicUser = true;
-      StateDirectory = "searx-health";
-      UMask = "0027";
-
-      CapabilityBoundingSet = "";
-      IPAddressAllow = [ "127.0.0.1/32" ];
-      IPAddressDeny = [ "any" ];
-      LockPersonality = true;
-      MemoryDenyWriteExecute = true;
-      NoNewPrivileges = true;
-      PrivateDevices = true;
-      PrivateTmp = true;
-      ProcSubset = "pid";
-      ProtectClock = true;
-      ProtectControlGroups = true;
-      ProtectHome = true;
-      ProtectHostname = true;
-      ProtectKernelLogs = true;
-      ProtectKernelModules = true;
-      ProtectKernelTunables = true;
-      ProtectProc = "invisible";
-      ProtectSystem = "strict";
-      RemoveIPC = true;
-      RestrictAddressFamilies = [ "AF_INET" ];
-      RestrictNamespaces = true;
-      RestrictRealtime = true;
-      RestrictSUIDSGID = true;
-      SystemCallArchitectures = "native";
-      SystemCallFilter = [
-        "@system-service"
-        "~@privileged"
-        "~@resources"
-      ];
-    };
-  };
-
-  systemd.timers.searx-health = {
-    description = "Run low-rate SearXNG health monitor";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* 00/4:00:00";
-      RandomizedDelaySec = "45min";
-      Persistent = true;
-      Unit = "searx-health.service";
+    timers.searx-health = {
+      description = "Run low-rate SearXNG health monitor";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* 00/4:00:00";
+        RandomizedDelaySec = "45min";
+        Persistent = true;
+        Unit = "searx-health.service";
+      };
     };
   };
 }

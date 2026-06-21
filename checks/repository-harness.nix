@@ -97,8 +97,8 @@ in
     fi
 
     for needle in \
-      systemd.services.searx-health \
-      systemd.timers.searx-health \
+      "searx-health = {" \
+      "timers.searx-health = {" \
       /var/lib/searx-health/health.json \
       unresponsive_engines
     do
