@@ -54,6 +54,7 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID = "intfloat/multilingual-e5-small";
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
+        HINDSIGHT_API_LLM_SEND_BANK_AS_USER = "true";
       };
       user = "hindsight";
       group = "hindsight";
