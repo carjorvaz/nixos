@@ -33,7 +33,7 @@ in
     force = true;
     telegram.enable = true;
 
-    outputPath = null;
+    outputPath = "/var/lib/ott-rs/private/playlist.m3u";
     stateFile = "/var/lib/ott-rs/state/state.json";
     checkStateFile = "/var/lib/ott-rs/state/check-state.json";
     rawSourcesPath = "/var/lib/ott-rs/audit/raw-sources.json";
