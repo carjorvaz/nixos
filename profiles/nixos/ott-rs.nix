@@ -31,6 +31,7 @@ in
     interval = "*-*-* 08:30:00";
     randomizedDelaySec = "30min";
     force = true;
+    telegram.enable = true;
 
     outputPath = null;
     stateFile = "/var/lib/ott-rs/state/state.json";
