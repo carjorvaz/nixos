@@ -41,6 +41,8 @@ in
     rankAuditPath = "/var/lib/ott-rs/audit/rank-audit.json";
     groupCatalogPath = "/var/lib/ott-rs/audit/group-catalog.json";
 
+    guide.xmltvUrl = "https://github.com/LITUATUI/M3UPT/raw/main/EPG/epg-m3upt.xml.xz";
+
     health = {
       planPath = "/var/lib/ott-rs/health/health-plan.json";
       statusPath = "/var/lib/ott-rs/health/health-status.json";
