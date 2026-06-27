@@ -39,10 +39,7 @@ in
     sourceInventoryPath = "/var/lib/ott-rs/audit/source-inventory.json";
     channelSelectionPath = "/var/lib/ott-rs/audit/channel-selection.json";
     rankAuditPath = "/var/lib/ott-rs/audit/rank-audit.json";
-    rankAuditExamplesPerSection = 7;
-    rankAuditTopProviders = 11;
     groupCatalogPath = "/var/lib/ott-rs/audit/group-catalog.json";
-    groupCatalogExamplesPerGroup = 3;
 
     health = {
       planPath = "/var/lib/ott-rs/health/health-plan.json";
