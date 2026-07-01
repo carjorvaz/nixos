@@ -135,6 +135,16 @@ in
       "tmpfiles.d/zfs.conf".text = ''
         z /dev/zfs 0666 - - -
       '';
+
+      # Keep user services from stretching logout/shutdown to systemd's
+      # upstream 90-second default. NixOS' `systemd.user.settings` option is
+      # not available on every channel this repo evaluates, so write the
+      # systemd-user.conf drop-in directly.
+      "systemd/user.conf.d/50-timeouts.conf".text = ''
+        [Manager]
+        DefaultTimeoutStartSec=15s
+        DefaultTimeoutStopSec=10s
+      '';
     };
   };
 
@@ -284,6 +294,7 @@ in
     settings.Manager = {
       RuntimeWatchdogSec = "20s";
       RebootWatchdogSec = "30s";
+      DefaultTimeoutStartSec = "15s";
       DefaultTimeoutStopSec = "15s";
       DefaultLimitNOFILE = "524288:524288";
     };
