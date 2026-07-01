@@ -27,10 +27,6 @@ in
     trajanusSystem
   ]
   ++ users;
-  "trajanusInitrdWifiSupplicant.age".publicKeys = [
-    trajanusSystem
-  ]
-  ++ users;
   "mailCarlosHashedPassword.age".publicKeys = [
     hadrianusSystem
   ]
