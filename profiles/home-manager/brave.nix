@@ -33,6 +33,26 @@ let
       ".local/share/rustab/chrome-extension";
   rustabExtensionUpdateUrl = "https://carjorvaz.github.io/rustab/chromium/updates.xml";
   bpcExtensionUpdateUrl = "https://gitflic.ru/project/magnolia1234/bpc_updates/blob/raw?file=updates.xml";
+  braveDarwinExternalExtensionsHomeDir = "Library/Application Support/BraveSoftware/Brave-Browser/External Extensions";
+  braveDarwinExternalExtensionIds = [
+    "lkbebcjgcmobigpeffafkodonchffocl" # Bypass Paywalls Clean
+    "jhnleheckmknfcgijgkadoemagpecfol" # Auto Tab Discard
+    "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+    "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
+    "cdglnehniifkbagbbombnjghhcihifij" # Kagi Search
+    "gebbhagfogifgggkldgodflihgfeippi" # Return YouTube Dislike
+    "mnjggcdmjocbbbhaepdhchncahnbgone" # SponsorBlock
+    "cdhdichomdnlaadbndgmagohccgpejae" # Remove YouTube Suggestions
+    "lmkeolibdeeglfglnncmfleojmakecjb" # YouTube No Translation
+  ];
+  braveDarwinExternalExtensionFiles =
+    lib.genAttrs
+      (map (
+        extensionId: "${braveDarwinExternalExtensionsHomeDir}/${extensionId}.json"
+      ) braveDarwinExternalExtensionIds)
+      (_: {
+        force = true;
+      });
 in
 
 # STATE:
@@ -93,12 +113,15 @@ in
     # real directory tree here rather than a symlinked top-level directory,
     # since Brave appears not to register the unpacked extension reliably from
     # a symlink target.
-    file = lib.mkIf pkgs.stdenv.isDarwin {
-      "${rustabExtensionHomePath}" = {
-        source = rustabExtension;
-        recursive = true;
-      };
-    };
+    file = lib.mkIf pkgs.stdenv.isDarwin (
+      {
+        "${rustabExtensionHomePath}" = {
+          source = rustabExtension;
+          recursive = true;
+        };
+      }
+      // braveDarwinExternalExtensionFiles
+    );
 
     activation = {
       rustabChromeExtensionPathMigration = lib.hm.dag.entryBefore [ "checkLinkTargets" ] (
@@ -133,7 +156,7 @@ in
       # so Brave can discover and install the extensions.
       braveDarwinExternalExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] (
         lib.optionalString pkgs.stdenv.isDarwin ''
-          braveExternalExtensionsDir="$HOME/Library/Application Support/BraveSoftware/Brave-Browser/External Extensions"
+          braveExternalExtensionsDir="$HOME/${braveDarwinExternalExtensionsHomeDir}"
 
           if [ -d "$braveExternalExtensionsDir" ]; then
             for braveExternalExtensionFile in "$braveExternalExtensionsDir"/*.json; do

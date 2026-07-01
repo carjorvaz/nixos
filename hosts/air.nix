@@ -679,13 +679,14 @@ in
 
     onActivation = {
       autoUpdate = true;
-      cleanup = "uninstall";
-      # Homebrew 4.7+ requires an explicit force flag for non-interactive cleanup.
+      # Avoid nix-darwin's deprecated `brew bundle --cleanup` path; keep
+      # non-interactive cleanup on `brew bundle install` via the supported flag.
       extraFlags = [ "--force-cleanup" ];
       upgrade = true;
     };
 
     brews = [
+      "herdr"
       "trash"
     ];
 
@@ -697,7 +698,7 @@ in
       "brave-browser"
       "claude-code@latest"
       "cmux"
-      "comfyui"
+      "comfy"
       "codex"
       "feather"
       "firefox"
@@ -927,6 +928,7 @@ in
       ];
 
       file = {
+
         # Keep the whole directory store-backed. Karabiner watches the parent
         # directory and warns against symlinking only karabiner.json.
         ".config/karabiner".source = karabinerConfigDir;
