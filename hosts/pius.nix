@@ -162,6 +162,95 @@
     };
   };
 
+  systemd = {
+    services = {
+      reddit-mirror-batch = {
+        description = "Reddit mirror resumable preservation batch";
+        documentation = [ "file:/persist/reddit-mirror/_ops/README.md" ];
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        unitConfig = {
+          ConditionPathExists = "/persist/reddit-mirror/_ops/run-pius-batch.sh";
+          StartLimitIntervalSec = "1h";
+          StartLimitBurst = 3;
+        };
+        path = [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gawk
+          pkgs.gnugrep
+          pkgs.nix
+          pkgs.python3
+          pkgs.util-linux
+        ];
+        environment = {
+          BASE = "/persist/reddit-mirror";
+          GUARD_KIB = "524288000";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          WorkingDirectory = "/persist/reddit-mirror";
+          Restart = "on-failure";
+          RestartSec = "15m";
+          TimeoutStartSec = "infinity";
+          Nice = 10;
+          IOSchedulingClass = "best-effort";
+          IOSchedulingPriority = 7;
+        };
+        script = ''
+          set -o pipefail
+          /persist/reddit-mirror/_ops/run-pius-batch.sh 2>&1 | tee -a /persist/reddit-mirror/_logs/batch-pius-systemd.log
+        '';
+      };
+
+      reddit-mirror-weekly-priority = {
+        description = "Reddit mirror weekly freshness pass";
+        documentation = [ "file:/persist/reddit-mirror/_ops/WEEKLY-SCHEDULE.md" ];
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        unitConfig.ConditionPathExists = "/persist/reddit-mirror/_ops/run-weekly-priority.sh";
+        path = [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gawk
+          pkgs.gnugrep
+          pkgs.nix
+          pkgs.python3
+          pkgs.util-linux
+        ];
+        environment = {
+          BASE = "/persist/reddit-mirror";
+          GUARD_KIB = "524288000";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          WorkingDirectory = "/persist/reddit-mirror";
+          TimeoutStartSec = "infinity";
+          Nice = 10;
+          IOSchedulingClass = "best-effort";
+          IOSchedulingPriority = 7;
+        };
+        script = ''
+          set -o pipefail
+          /persist/reddit-mirror/_ops/run-weekly-priority.sh 2>&1 | tee -a /persist/reddit-mirror/_logs/weekly-priority-systemd.log
+        '';
+      };
+    };
+
+    timers.reddit-mirror-weekly-priority = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "Sat *-*-* 04:30:00";
+        Persistent = true;
+        RandomizedDelaySec = "30m";
+        Unit = "reddit-mirror-weekly-priority.service";
+      };
+    };
+  };
+
   age.secrets.mailPiusPassword = {
     file = "${self}/secrets/mailPiusPassword.age";
     mode = "400";
