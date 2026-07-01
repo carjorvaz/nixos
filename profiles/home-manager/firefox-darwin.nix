@@ -49,12 +49,6 @@ in
     };
   };
 
-  home.packages = [
-    (pkgs.writeShellScriptBin "firefox-managed" ''
-      exec /usr/bin/open -na "/Applications/Firefox.app" --args -P managed
-    '')
-  ];
-
   home.activation.rustabFirefoxNativeMessagingHost = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     rustabHostDir="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
     rustabHostFile="$rustabHostDir/rustab_mediator.json"
