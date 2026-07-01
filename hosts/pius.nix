@@ -28,7 +28,7 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
-    "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/dns/blocky-doq.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry; announce exit node
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/email.nix"

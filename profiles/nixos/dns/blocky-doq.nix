@@ -55,7 +55,10 @@ in
       DNSSEC = lib.mkForce "allow-downgrade";
       LLMNR = lib.mkForce false;
       Domains = lib.mkForce [ "~." ];
-      FallbackDNS = lib.mkForce [ ];
+      # systemd-resolved disables compiled-in fallback servers only when the
+      # generated file contains an explicit empty FallbackDNS= assignment. An
+      # empty list renders as no line, leaving the built-in fallbacks active.
+      FallbackDNS = lib.mkForce [ "" ];
     };
   }
   // lib.optionalAttrs (!hasResolvedSettings) {
@@ -64,7 +67,7 @@ in
       dnssec = lib.mkForce "allow-downgrade";
       llmnr = lib.mkForce "false";
       domains = lib.mkForce [ "~." ];
-      fallbackDns = lib.mkForce [ ];
+      fallbackDns = lib.mkForce [ "" ];
     };
   };
 }

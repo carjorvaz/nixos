@@ -13,7 +13,7 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
-    "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/dns/blocky-doq.nix"
     "${self}/profiles/nixos/laptopServer.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/tailscale.nix" # STATE: sudo tailscale up; disable key expiry

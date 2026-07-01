@@ -16,7 +16,7 @@ in
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
-    "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/dns/blocky-doq.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/email.nix"
     "${self}/profiles/nixos/zfs/backupSource.nix"
