@@ -23,6 +23,14 @@ in
     hadrianusSystem
   ]
   ++ users;
+  "trajanusInitrdHostKey.age".publicKeys = [
+    trajanusSystem
+  ]
+  ++ users;
+  "trajanusInitrdWifiSupplicant.age".publicKeys = [
+    trajanusSystem
+  ]
+  ++ users;
   "mailCarlosHashedPassword.age".publicKeys = [
     hadrianusSystem
   ]

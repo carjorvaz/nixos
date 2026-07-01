@@ -8,6 +8,37 @@
   ...
 }:
 
+let
+  commonKernelParams = [
+    "acpi.ec_no_wakeup=1" # Prevents random wake-ups and fan spin when laptop is shut down
+    "amdgpu.dcdebugmask=0x10" # Disables PSR, costing ~1-2W — enable if you see transition flashes
+    "amdgpu.abmlevel=0" # Fully disable ABM — abmlevel=2 caused visible shimmer
+    "amdgpu.deep_color=0" # Disable 10/12 bpc to prevent temporal dithering
+    "i8042.nomux" # Fixes keyboard issues after suspend/resume - https://github.com/sund3RRR/mechrevo14X-linux
+    "zfs.zfs_arc_max=4294967296" # Cap ARC at 4 GB — free RAM for browsers and llama.cpp
+  ];
+
+  gtt22KernelParams = [
+    "ttm.pages_limit=5767168" # Raise AMD APU shared GPU memory to 22 GiB
+    "ttm.page_pool_size=5767168"
+  ];
+
+  gtt24KernelParams = [
+    "ttm.pages_limit=6291456" # Raise AMD APU shared GPU memory to 24 GiB
+    "ttm.page_pool_size=6291456"
+  ];
+
+  gtt28KernelParams = [
+    "ttm.pages_limit=7340032" # Raise AMD APU shared GPU memory to 28 GiB
+    "ttm.page_pool_size=7340032"
+  ];
+
+  remoteUnlockWifiInterface = "wlan0";
+  remoteUnlockWifiAddress = "192.168.1.139";
+  remoteUnlockWifiGateway = "192.168.1.1";
+  remoteUnlockWifiPrefixLength = 24;
+  remoteUnlockWifiSupplicantConfig = "/etc/wpa_supplicant/${remoteUnlockWifiInterface}.conf";
+in
 {
   home-manager.backupFileExtension = "hm-backup";
 
@@ -20,7 +51,7 @@
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/cpu/amd.nix"
     "${self}/profiles/nixos/gpu/amd.nix"
-    "${self}/profiles/nixos/dns/resolved.nix"
+    "${self}/profiles/nixos/dns/blocky-doq.nix"
     "${self}/profiles/nixos/iwd.nix"
     "${self}/profiles/nixos/lanzaboote.nix" # STATE: Set up after redeploying
     "${self}/profiles/nixos/laptop.nix"
@@ -48,12 +79,28 @@
   ];
 
   boot = {
-    # Use Zen4-optimized kernel for AMD Ryzen 7 8845HS
-    kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest-lto-zen4;
+    # Use the Zen4-optimized CachyOS LTO kernel for AMD Ryzen 7 8845HS.
+    # Its module closure currently includes nixpkgs' yt6801 driver via
+    # autoModules. That driver does not pass the kernel's Clang/LTO module
+    # make flags by default, so remote builds fall back to a missing `gcc`.
+    # Keep the upstream module enabled, but build it with the same compiler
+    # flags as the kernel.
+    kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest-lto-zen4.extend (
+      final: prev: {
+        yt6801 = prev.yt6801.overrideAttrs (old: {
+          makeFlags = (old.makeFlags or [ ]) ++ prev.kernel.commonMakeFlags;
+        });
+      }
+    );
 
     # Let Raspberry Pi 1 image builds run target ARMv6 helpers when cross-building
     # the SD image locally on trajanus.
     binfmt.emulatedSystems = [ "armv6l-linux" ];
+
+    # Trial automatic boot assessment on trajanus before considering it for
+    # other hosts. A new entry gets three attempts; systemd marks it good by
+    # reaching boot-complete.target, otherwise systemd-boot can fall back.
+    lanzaboote.bootCounting.initialTries = 3;
 
     initrd.availableKernelModules = [
       "xhci_pci"
@@ -86,14 +133,10 @@
     #     power. Tried level 2 for battery savings but it caused visible shimmer.
     #   - PSR (Panel Self-Refresh) disabled — saves ~1-2W when enabled, but caused
     #     visual issues. Comment out dcdebugmask to re-enable if battery life matters.
-    kernelParams = [
-      "acpi.ec_no_wakeup=1" # Prevents random wake-ups and fan spin when laptop is shut down
-      "amdgpu.dcdebugmask=0x10" # Disables PSR, costing ~1-2W — enable if you see transition flashes
-      "amdgpu.abmlevel=0" # Fully disable ABM — abmlevel=2 caused visible shimmer
-      "amdgpu.deep_color=0" # Disable 10/12 bpc to prevent temporal dithering
-      "i8042.nomux" # Fixes keyboard issues after suspend/resume - https://github.com/sund3RRR/mechrevo14X-linux
-      "zfs.zfs_arc_max=4294967296" # Cap ARC at 4 GB — free RAM for browsers and llama.cpp
-    ];
+    # Default to the 28 GiB AMD GTT lane for local LLM Vulkan experiments.
+    # trajanus is primarily a lab box now; if normal desktop/server use needs
+    # more RAM headroom, boot one of the lower-GTT specialisations below.
+    kernelParams = gtt28KernelParams ++ commonKernelParams;
 
     zfs.extraPools = [ "zdata" ];
 
@@ -128,30 +171,11 @@
 
   specialisation = {
     llm-vulkan-gtt.configuration = {
-      boot.kernelParams = [
-        # Raise AMD APU shared GPU memory from the default ~15.3 GiB to 22 GiB.
-        # This is for dense Qwen3.6-27B Q4-class Vulkan offload experiments.
-        "ttm.pages_limit=5767168"
-        "ttm.page_pool_size=5767168"
-      ];
+      boot.kernelParams = lib.mkForce (gtt22KernelParams ++ commonKernelParams);
     };
 
     llm-vulkan-gtt24.configuration = {
-      boot.kernelParams = [
-        # More aggressive 24 GiB GTT lane for testing Q4 + MTP context fit.
-        # Keep as an explicit specialization because 32 GiB system RAM gets tight.
-        "ttm.pages_limit=6291456"
-        "ttm.page_pool_size=6291456"
-      ];
-    };
-
-    llm-vulkan-gtt28.configuration = {
-      boot.kernelParams = [
-        # Stretch lane for Q5-class dense 27B Vulkan offload experiments.
-        # This leaves little RAM headroom; use it as an explicit lab boot only.
-        "ttm.pages_limit=7340032"
-        "ttm.page_pool_size=7340032"
-      ];
+      boot.kernelParams = lib.mkForce (gtt24KernelParams ++ commonKernelParams);
     };
   };
 
@@ -175,11 +199,67 @@
     extraConfig.bluetooth = { };
   };
 
-  # TODO: Once trajanus has wired Ethernet, enable cjv.zfsRemoteUnlock with a
-  # LAN static IP and initrd SSH host key. Wi-Fi-only initrd unlock is deferred
-  # because it is brittle and would pull Wi-Fi credentials into early boot.
-  # At the same desk visit, check firmware options: power on after AC loss,
-  # disable vendor sleep quirks, and enable Wake-on-LAN once wired.
+  # Initrd SSH remote unlock for the encrypted zroot pool. trajanus is normally
+  # Wi-Fi-only at home, so early boot uses a dedicated agenix-backed
+  # wpa_supplicant config instead of the stage-2 iwd/NetworkManager state.
+  # The Wi-Fi PSK hash is still a LAN credential once appended to the initrd;
+  # keep using a dedicated/rotatable home SSID if this threat model tightens.
+  cjv.zfsRemoteUnlock = {
+    enable = true;
+    port = 2222;
+    authorizedKeys = config.users.users.root.openssh.authorizedKeys.keys;
+    hostKeyFile = "/etc/initrd-hostkey";
+    driver = "mt7921e";
+  };
+
+  boot.initrd = {
+    extraFirmwarePaths = [
+      "mediatek/WIFI_RAM_CODE_MT7922_1.bin"
+      "mediatek/WIFI_MT7922_patch_mcu_1_1_hdr.bin"
+    ];
+
+    secrets.${remoteUnlockWifiSupplicantConfig} = config.age.secrets.trajanusInitrdWifiSupplicant.path;
+
+    systemd = {
+      network.networks."10-${remoteUnlockWifiInterface}" = {
+        matchConfig.Name = remoteUnlockWifiInterface;
+        networkConfig = {
+          Address = "${remoteUnlockWifiAddress}/${toString remoteUnlockWifiPrefixLength}";
+          DHCP = "no";
+          Gateway = remoteUnlockWifiGateway;
+          LinkLocalAddressing = "no";
+        };
+      };
+
+      storePaths = [ "${pkgs.wpa_supplicant}/bin/wpa_supplicant" ];
+
+      services."wpa-supplicant-${remoteUnlockWifiInterface}" = {
+        description = "Associate ${remoteUnlockWifiInterface} for initrd remote unlock";
+        wantedBy = [ "initrd.target" ];
+        requires = [
+          "initrd-nixos-copy-secrets.service"
+          "sys-subsystem-net-devices-${remoteUnlockWifiInterface}.device"
+        ];
+        after = [
+          "initrd-nixos-copy-secrets.service"
+          "sys-subsystem-net-devices-${remoteUnlockWifiInterface}.device"
+        ];
+        before = [
+          "network.target"
+          "shutdown.target"
+        ];
+        conflicts = [ "shutdown.target" ];
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${pkgs.wpa_supplicant}/bin/wpa_supplicant -i ${remoteUnlockWifiInterface} -c ${remoteUnlockWifiSupplicantConfig} -D nl80211";
+          Restart = "on-failure";
+          RestartSec = 2;
+          RuntimeDirectory = "wpa_supplicant";
+        };
+      };
+    };
+  };
 
   # Local model store on the spare 1 TB Crucial NVMe.
   # `zdata` can later grow backup/syncoid datasets when trajanus becomes the
@@ -287,22 +367,37 @@
     pkgs.org-daily-scratch
     pkgs.ethtool
     pkgs.iperf3
+    pkgs.python3Packages.huggingface-hub
     pkgs.usbutils
   ];
 
-  # ZFS backup source configuration
-  age.secrets.syncoidSshKey = {
-    file = "${self}/secrets/syncoidTrajanusKey.age";
-    owner = "syncoid";
-    group = "syncoid";
-    mode = "0400";
-  };
+  age.secrets = {
+    trajanusInitrdHostKey = {
+      file = "${self}/secrets/trajanusInitrdHostKey.age";
+      path = "/etc/initrd-hostkey";
+      symlink = false;
+    };
 
-  age.secrets.rustabWebExtCredentials = {
-    file = "${self}/secrets/rustabWebExtCredentials.age";
-    owner = "cjv";
-    group = "users";
-    mode = "0400";
+    trajanusInitrdWifiSupplicant = {
+      file = "${self}/secrets/trajanusInitrdWifiSupplicant.age";
+      path = "/etc/initrd-wpa_supplicant-${remoteUnlockWifiInterface}.conf";
+      symlink = false;
+    };
+
+    # ZFS backup source configuration
+    syncoidSshKey = {
+      file = "${self}/secrets/syncoidTrajanusKey.age";
+      owner = "syncoid";
+      group = "syncoid";
+      mode = "0400";
+    };
+
+    rustabWebExtCredentials = {
+      file = "${self}/secrets/rustabWebExtCredentials.age";
+      owner = "cjv";
+      group = "users";
+      mode = "0400";
+    };
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
