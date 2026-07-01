@@ -2,7 +2,7 @@
 
 lib.mkIf (config.graphical.theme.name == "gruvbox") {
   graphical.theme = {
-    wallpaper = ./gruvbox.jpg;
+    wallpaper = ./Driving_Home_The_Flock.png;
     palette = {
       bg = "282828";
       fg = "ebdbb2";
