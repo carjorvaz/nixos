@@ -33,11 +33,10 @@ let
     "ttm.page_pool_size=7340032"
   ];
 
-  remoteUnlockWifiInterface = "wlan0";
-  remoteUnlockWifiAddress = "192.168.1.139";
-  remoteUnlockWifiGateway = "192.168.1.1";
-  remoteUnlockWifiPrefixLength = 24;
-  remoteUnlockWifiSupplicantConfig = "/etc/wpa_supplicant/${remoteUnlockWifiInterface}.conf";
+  remoteUnlockInterface = "enp103s0f4u1";
+  remoteUnlockAddress = "192.168.1.2";
+  remoteUnlockGateway = "192.168.1.1";
+  remoteUnlockPrefixLength = 24;
 in
 {
   home-manager.backupFileExtension = "hm-backup";
@@ -52,7 +51,6 @@ in
     "${self}/profiles/nixos/cpu/amd.nix"
     "${self}/profiles/nixos/gpu/amd.nix"
     "${self}/profiles/nixos/dns/blocky-doq.nix"
-    "${self}/profiles/nixos/iwd.nix"
     "${self}/profiles/nixos/lanzaboote.nix" # STATE: Set up after redeploying
     "${self}/profiles/nixos/laptop.nix"
     "${self}/profiles/nixos/laptopServer.nix"
@@ -86,7 +84,7 @@ in
     # Keep the upstream module enabled, but build it with the same compiler
     # flags as the kernel.
     kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest-lto-zen4.extend (
-      final: prev: {
+      _: prev: {
         yt6801 = prev.yt6801.overrideAttrs (old: {
           makeFlags = (old.makeFlags or [ ]) ++ prev.kernel.commonMakeFlags;
         });
@@ -141,12 +139,17 @@ in
     zfs.extraPools = [ "zdata" ];
 
     # Carry the local GXxHRXx uniwill_laptop platform-profile patch until this
-    # EC-backed quiet/balanced/performance mapping lands upstream.
+    # EC-backed quiet/balanced/performance mapping lands upstream. Carry the
+    # Realtek out-of-tree r8152 module so the RTL8159 USB 10G NIC binds as
+    # Ethernet instead of cdc_ncm, including in initrd for remote unlock.
     extraModulePackages =
       let
         kp = config.boot.kernelPackages;
       in
       [
+        (pkgs.callPackage ./trajanus/realtek-r8152.nix {
+          kernelPackages = kp;
+        })
         (pkgs.stdenv.mkDerivation {
           pname = "uniwill-laptop-patched";
           version = kp.kernel.version;
@@ -163,8 +166,15 @@ in
       ];
 
     # Let uniwill_laptop claim the shared WMI GUID. eeepc_wmi is the competing
-    # claimant we have actually observed on this hardware.
-    blacklistedKernelModules = [ "eeepc_wmi" ];
+    # claimant we have actually observed on this hardware. Keep cdc_ncm away
+    # from the RTL8159 so the vendor r8152 driver can claim it.
+    blacklistedKernelModules = [
+      "cdc_ncm"
+      "eeepc_wmi"
+      "mt7921e"
+      "mt7921_common"
+      "mt7921u"
+    ];
   };
 
   nix.settings.system-features = lib.mkAfter [ "gccarch-armv6kz" ];
@@ -199,65 +209,84 @@ in
     extraConfig.bluetooth = { };
   };
 
-  # Initrd SSH remote unlock for the encrypted zroot pool. trajanus is normally
-  # Wi-Fi-only at home, so early boot uses a dedicated agenix-backed
-  # wpa_supplicant config instead of the stage-2 iwd/NetworkManager state.
-  # The Wi-Fi PSK hash is still a LAN credential once appended to the initrd;
-  # keep using a dedicated/rotatable home SSID if this threat model tightens.
+  # Initrd SSH remote unlock for the encrypted zroot pool. trajanus now uses
+  # the plugged-in RTL8159 USB 10G NIC for early boot because wpa_supplicant
+  # can associate to the home Wi-Fi in initrd but fails PTK installation with
+  # mt7921e/nl80211 before SSH becomes reachable.
   cjv.zfsRemoteUnlock = {
     enable = true;
     port = 2222;
     authorizedKeys = config.users.users.root.openssh.authorizedKeys.keys;
     hostKeyFile = "/etc/initrd-hostkey";
-    driver = "mt7921e";
+    driver = "r8152";
   };
 
-  boot.initrd = {
-    extraFirmwarePaths = [
-      "mediatek/WIFI_RAM_CODE_MT7922_1.bin"
-      "mediatek/WIFI_MT7922_patch_mcu_1_1_hdr.bin"
-    ];
+  boot.initrd.systemd.network.networks."10-${remoteUnlockInterface}" = {
+    matchConfig.Name = remoteUnlockInterface;
+    networkConfig = {
+      Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
+      DHCP = "no";
+      Gateway = remoteUnlockGateway;
+      LinkLocalAddressing = "no";
+    };
+  };
 
-    secrets.${remoteUnlockWifiSupplicantConfig} = config.age.secrets.trajanusInitrdWifiSupplicant.path;
-
-    systemd = {
-      network.networks."10-${remoteUnlockWifiInterface}" = {
-        matchConfig.Name = remoteUnlockWifiInterface;
+  # Keep the wired unlock NIC on the same static private address after the real
+  # system boots. trajanus is now wired-only: NetworkManager and Wi-Fi are off,
+  # and systemd-networkd owns the RTL8159 interface so the LAN rescue address is
+  # stable in both initrd and the running system.
+  networking = {
+    useDHCP = false;
+    useNetworkd = true;
+    networkmanager.enable = false;
+    wireless.enable = false;
+  };
+  systemd = {
+    network = {
+      enable = true;
+      networks."10-${remoteUnlockInterface}" = {
+        matchConfig.Name = remoteUnlockInterface;
         networkConfig = {
-          Address = "${remoteUnlockWifiAddress}/${toString remoteUnlockWifiPrefixLength}";
+          Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
           DHCP = "no";
-          Gateway = remoteUnlockWifiGateway;
+          Gateway = remoteUnlockGateway;
           LinkLocalAddressing = "no";
         };
       };
+    };
 
-      storePaths = [ "${pkgs.wpa_supplicant}/bin/wpa_supplicant" ];
+    tmpfiles.rules = [
+      "d /models 0775 cjv users -"
+      "d /models/incoming 0775 cjv users -"
+      "d /models/gguf 0775 cjv users -"
+      "d /models/hf-cache 0775 cjv users -"
+      "d /models/run-artifacts 0775 cjv users -"
+    ];
 
-      services."wpa-supplicant-${remoteUnlockWifiInterface}" = {
-        description = "Associate ${remoteUnlockWifiInterface} for initrd remote unlock";
-        wantedBy = [ "initrd.target" ];
-        requires = [
-          "initrd-nixos-copy-secrets.service"
-          "sys-subsystem-net-devices-${remoteUnlockWifiInterface}.device"
-        ];
-        after = [
-          "initrd-nixos-copy-secrets.service"
-          "sys-subsystem-net-devices-${remoteUnlockWifiInterface}.device"
-        ];
-        before = [
-          "network.target"
-          "shutdown.target"
-        ];
-        conflicts = [ "shutdown.target" ];
-        unitConfig.DefaultDependencies = false;
-        serviceConfig = {
-          Type = "simple";
-          ExecStart = "${pkgs.wpa_supplicant}/bin/wpa_supplicant -i ${remoteUnlockWifiInterface} -c ${remoteUnlockWifiSupplicantConfig} -D nl80211";
-          Restart = "on-failure";
-          RestartSec = 2;
-          RuntimeDirectory = "wpa_supplicant";
-        };
+    services.zfs-models-tuning = {
+      description = "Tune ZFS properties for the local model dataset";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "zfs-import-zdata.service"
+        "zfs.target"
+      ];
+      wants = [ "zfs-import-zdata.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
       };
+      script = ''
+        if ${pkgs.zfs}/bin/zfs list -H -o name zdata/models >/dev/null 2>&1; then
+          ${pkgs.zfs}/bin/zfs set \
+            recordsize=1M \
+            compression=off \
+            primarycache=all \
+            logbias=throughput \
+            zdata/models
+        else
+          echo "zdata/models is not available; skipping model dataset tuning"
+        fi
+      '';
     };
   };
 
@@ -271,40 +300,6 @@ in
       "zfsutil"
       "nofail"
     ];
-  };
-
-  systemd.tmpfiles.rules = [
-    "d /models 0775 cjv users -"
-    "d /models/incoming 0775 cjv users -"
-    "d /models/gguf 0775 cjv users -"
-    "d /models/hf-cache 0775 cjv users -"
-    "d /models/run-artifacts 0775 cjv users -"
-  ];
-
-  systemd.services.zfs-models-tuning = {
-    description = "Tune ZFS properties for the local model dataset";
-    wantedBy = [ "multi-user.target" ];
-    after = [
-      "zfs-import-zdata.service"
-      "zfs.target"
-    ];
-    wants = [ "zfs-import-zdata.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      if ${pkgs.zfs}/bin/zfs list -H -o name zdata/models >/dev/null 2>&1; then
-        ${pkgs.zfs}/bin/zfs set \
-          recordsize=1M \
-          compression=off \
-          primarycache=all \
-          logbias=throughput \
-          zdata/models
-      else
-        echo "zdata/models is not available; skipping model dataset tuning"
-      fi
-    '';
   };
 
   services = {
@@ -375,12 +370,6 @@ in
     trajanusInitrdHostKey = {
       file = "${self}/secrets/trajanusInitrdHostKey.age";
       path = "/etc/initrd-hostkey";
-      symlink = false;
-    };
-
-    trajanusInitrdWifiSupplicant = {
-      file = "${self}/secrets/trajanusInitrdWifiSupplicant.age";
-      path = "/etc/initrd-wpa_supplicant-${remoteUnlockWifiInterface}.conf";
       symlink = false;
     };
 
