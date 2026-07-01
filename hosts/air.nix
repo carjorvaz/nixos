@@ -592,15 +592,12 @@ in
     systemPackages = with pkgs; [
       colima # Streamlines Docker, just run `colima start`.
       docker
-      ghostty-bin
       htop
-      firefox-bin
       freerdp
       llama-cpp
       nixos-rebuild
       signal-desktop
       tailscaleMacAppCli
-      telegram-desktop
       vesktop-discord
 
       delta
@@ -651,7 +648,7 @@ in
 
     variables = {
       EDITOR = "nvim";
-      GHOSTTY_RESOURCES_DIR = "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty";
+      GHOSTTY_RESOURCES_DIR = "/Applications/Ghostty.app/Contents/Resources/ghostty";
       HOMEBREW_CELLAR = "/opt/homebrew/Cellar";
       HOMEBREW_NO_ANALYTICS = "1";
       HOMEBREW_PREFIX = "/opt/homebrew";
@@ -665,8 +662,6 @@ in
     config.allowUnfreePredicate =
       pkg:
       builtins.elem (lib.getName pkg) [
-        "firefox-bin"
-        "firefox-bin-unwrapped"
         "symbola"
       ];
   };
@@ -705,7 +700,9 @@ in
       "comfyui"
       "codex"
       "feather"
+      "firefox"
       "flux-app"
+      "ghostty"
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "keepingyouawake" # Simple open-source menu bar wrapper around caffeinate. If I want a more custom toggle later, SwiftBar plus a small plugin is a good fallback.
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
@@ -716,6 +713,7 @@ in
       "stremio"
       "stillcolor"
       "syncthing-app"
+      "telegram"
       "transmission"
       "trader-workstation"
       # "tunnelblick" # OpenVPN client - re-enable if needed.
@@ -772,6 +770,18 @@ in
     # Keyboard
     keyboard.enableKeyMapping = true;
     keyboard.remapCapsLockToControl = true;
+
+    # Firefox and Ghostty moved from Nix Apps to Homebrew casks. Remove only
+    # old managed symlinks before `brew bundle` so casks can claim app paths.
+    activationScripts.homebrew.text = lib.mkBefore ''
+      for app in Firefox Ghostty; do
+        app_path="/Applications/$app.app"
+        nix_app_path="/Applications/Nix Apps/$app.app"
+        if [ -L "$app_path" ] && [ "$(readlink "$app_path")" = "$nix_app_path" ]; then
+          rm -f "$app_path"
+        fi
+      done
+    '';
 
     # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
     # patching /Applications/cmux.app breaks its code signature, which in turn
@@ -917,13 +927,6 @@ in
       ];
 
       file = {
-        # cmux only looks in ~/.config/ghostty/themes and /Applications/Ghostty.app
-        # for Ghostty themes. Expose the Nix-provided themes at the user path so
-        # cmux can pick up Gruvbox and friends while Ghostty itself stays managed
-        # via Nix Apps.
-        ".config/ghostty/themes".source =
-          "${pkgs.ghostty-bin}/Applications/Ghostty.app/Contents/Resources/ghostty/themes";
-
         # Keep the whole directory store-backed. Karabiner watches the parent
         # directory and warns against symlinking only karabiner.json.
         ".config/karabiner".source = karabinerConfigDir;
@@ -1069,6 +1072,21 @@ in
           '';
         };
 
+        ghosttyCaskThemes = {
+          before = [ ];
+          after = [ "writeBoundary" ];
+          data = ''
+            themes="$HOME/.config/ghostty/themes"
+            $DRY_RUN_CMD mkdir -p "$HOME/.config/ghostty"
+            if [ -L "$themes" ]; then
+              $DRY_RUN_CMD rm -f "$themes"
+            fi
+            if [ ! -e "$themes" ]; then
+              $DRY_RUN_CMD ln -s /Applications/Ghostty.app/Contents/Resources/ghostty/themes "$themes"
+            fi
+          '';
+        };
+
         karabinerConfigMigration = {
           before = [ "checkLinkTargets" ];
           after = [ ];
@@ -1116,9 +1134,8 @@ in
       stateVersion = "23.05";
     };
 
-    # Ghostty is installed via environment.systemPackages so it lands in
-    # /Applications/Nix Apps. package = null avoids HM double-installing it
-    # under ~/Applications/Home Manager Apps.
+    # Ghostty.app is installed via Homebrew cask on macOS. package = null
+    # avoids HM double-installing it under ~/Applications/Home Manager Apps.
     programs.ghostty = {
       enable = true;
       package = null;
