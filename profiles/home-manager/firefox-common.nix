@@ -36,9 +36,33 @@ in
     "privacy.globalprivacycontrol.enabled" = true;
     "privacy.globalprivacycontrol.functionality.enabled" = true;
 
+    # Daily profile: preserve browser state across restarts. Privacy comes from
+    # partitioning, blocking, and account separation here, not shutdown wiping.
+    "privacy.sanitize.sanitizeOnShutdown" = false;
+    "privacy.clearOnShutdown_v2.browsingHistoryAndDownloads" = false;
+    "privacy.clearOnShutdown_v2.cookiesAndStorage" = false;
+    "privacy.clearOnShutdown_v2.cache" = false;
+    "privacy.clearOnShutdown_v2.siteSettings" = false;
+    "privacy.clearOnShutdown_v2.formdata" = false;
+    "privacy.clearOnShutdown_v2.downloads" = false;
+    "privacy.clearOnShutdown.history" = false;
+    "privacy.clearOnShutdown.formdata" = false;
+    "privacy.clearOnShutdown.downloads" = false;
+    "privacy.clearOnShutdown.cookies" = false;
+    "privacy.clearOnShutdown.cache" = false;
+    "privacy.clearOnShutdown.sessions" = false;
+    "privacy.clearOnShutdown.offlineApps" = false;
+    "privacy.clearOnShutdown.siteSettings" = false;
+    "privacy.clearOnShutdown.openWindows" = false;
+
     # Disable search suggestions
     "browser.search.suggest.enabled" = false;
     "browser.urlbar.suggest.searches" = false;
+
+    "browser.urlbar.suggest.quicksuggest" = false;
+    "browser.urlbar.suggest.quicksuggest.sponsored" = false;
+    "browser.urlbar.suggest.quicksuggest.nonsponsored" = false;
+    "browser.urlbar.trending.featureGate" = false;
 
     # WebRTC: only expose default route IP (prevents VPN leak)
     "media.peerconnection.ice.default_address_only" = true;
@@ -54,6 +78,7 @@ in
 
     # Disable crash reporter and beacon tracking
     "browser.tabs.crashReporting.sendReport" = false;
+    "browser.crashReports.unsubmittedCheck.autoSubmit2" = false;
     "breakpad.reportURL" = "";
     "beacon.enabled" = false;
 
@@ -83,6 +108,7 @@ in
     "datareporting.healthreport.uploadEnabled" = false;
     "datareporting.policy.dataSubmissionEnabled" = false;
     "dom.private-attribution.submission.enabled" = false;
+    "datareporting.usage.uploadEnabled" = false;
     "toolkit.telemetry.unified" = false;
     "toolkit.telemetry.enabled" = false;
     "toolkit.telemetry.server" = "data:,";
@@ -188,6 +214,7 @@ in
 
   macManagedExtensions = with firefoxAddons; [
     sidebery
+    darkreader
     multi-account-containers
     bypass-paywalls-clean
   ];
