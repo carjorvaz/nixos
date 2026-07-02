@@ -47,6 +47,9 @@ let
   // plainDatabaseEnvironment
   // lib.optionalAttrs (cfg.tenantExtension != null) {
     HINDSIGHT_API_TENANT_EXTENSION = cfg.tenantExtension;
+  }
+  // lib.optionalAttrs (cfg.llmBaseUrl != null) {
+    OPENAI_BASE_URL = cfg.llmBaseUrl;
   };
 
   moduleOwnedEnvironmentKeys = lib.unique (
@@ -59,6 +62,7 @@ let
     ]
     ++ [
       "HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY"
+      "OPENAI_BASE_URL"
     ]
   );
   overriddenModuleEnvironmentKeys = lib.intersectLists moduleOwnedEnvironmentKeys (
@@ -194,6 +198,12 @@ in
       description = "File containing the Hindsight API LLM provider key.";
     };
 
+    llmBaseUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Base URL for the LLM API endpoint. When set, overrides the default provider URL. Use this to point Hindsight at a local llama-server instance or any OpenAI-compatible endpoint.";
+    };
+
     embeddingsProvider = lib.mkOption {
       type = lib.types.str;
       default = "openai";
@@ -272,8 +282,8 @@ in
         message = "services.hindsight.tenantApiKeyFile and services.hindsight.tenantExtension must both be set when bindAddress is not loopback.";
       }
       {
-        assertion = cfg.llmProvider != "openai" || hasLLMApiKeySecret;
-        message = "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai.";
+        assertion = cfg.llmProvider != "openai" || hasLLMApiKeySecret || cfg.llmBaseUrl != null;
+        message = "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai (unless services.hindsight.llmBaseUrl is set for a local/compatible endpoint).";
       }
     ];
 

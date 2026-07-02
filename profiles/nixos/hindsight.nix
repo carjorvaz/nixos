@@ -55,6 +55,7 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
         HINDSIGHT_API_LLM_EXTRA_BODY = ''{"user_id":"pius-hindsight"}'';
+        HINDSIGHT_API_REFLECT_LLM_MODEL = "deepseek-v4-pro";
       };
       user = "hindsight";
       group = "hindsight";
