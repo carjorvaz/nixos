@@ -285,6 +285,18 @@ in
         assertion = cfg.llmProvider != "openai" || hasLLMApiKeySecret || cfg.llmBaseUrl != null;
         message = "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai (unless services.hindsight.llmBaseUrl is set for a local/compatible endpoint).";
       }
+      {
+        assertion =
+          !(lib.elem cfg.llmProvider [
+            "deepseek"
+            "groq"
+            "anthropic"
+            "fireworks"
+            "cohere"
+          ])
+          || hasLLMApiKeySecret;
+        message = "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is ${cfg.llmProvider}.";
+      }
     ];
 
     users.users = lib.mkIf (cfg.user == "hindsight") {
