@@ -41,11 +41,11 @@ in
             keepAlivePeriod = "15s";
           };
           groups.default = [
-            "quic://dns.quad9.net:853"
-            "quic://dns.quad9.net:853"
-            "quic://cloudflare-dns.com:853"
-            "quic://cloudflare-dns.com:853"
-            "quic://dns.adguard-dns.com:853"
+            "quic://dns.quad9.net"
+            "quic://dns.quad9.net"
+            "quic://cloudflare-dns.com"
+            "quic://cloudflare-dns.com"
+            "quic://dns.adguard-dns.com"
           ];
         };
       };
