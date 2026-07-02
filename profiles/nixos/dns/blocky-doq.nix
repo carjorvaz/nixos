@@ -36,10 +36,6 @@ in
           init.strategy = "fast";
           strategy = "parallel_best";
           timeout = "2s";
-          quic = {
-            maxIdleTimeout = "30s";
-            keepAlivePeriod = "15s";
-          };
           groups.default = [
             "tcp-tls:9.9.9.9:853#dns.quad9.net"
             "tcp-tls:149.112.112.112:853#dns.quad9.net"
