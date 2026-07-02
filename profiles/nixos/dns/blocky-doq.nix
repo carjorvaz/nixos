@@ -45,6 +45,9 @@ in
           groups.default = [
             "quic:9.9.9.9:853#dns.quad9.net"
             "quic:149.112.112.112:853#dns.quad9.net"
+            "quic:1.1.1.1:853#cloudflare-dns.com"
+            "quic:1.0.0.1:853#cloudflare-dns.com"
+            "quic:dns.adguard-dns.com:853"
           ];
         };
       };
