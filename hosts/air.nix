@@ -546,6 +546,7 @@ in
   home-manager.backupFileExtension = "hm-backup";
 
   imports = [
+    "${self}/profiles/darwin/blocky-doq.nix"
     "${self}/profiles/darwin/darwin-file-backup.nix"
     "${self}/profiles/darwin/emacs.nix"
     "${self}/profiles/darwin/fish.nix"
@@ -600,6 +601,7 @@ in
       tailscaleMacAppCli
       vesktop-discord
 
+      blocky
       delta
       dua
       fd
