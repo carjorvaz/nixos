@@ -2,7 +2,7 @@ _:
 
 let
   domain = "valetudo.trajanus.vaz.ovh";
-  robotHost = "192.168.1.210";
+  robotHost = "192.168.1.129";
   mqttPort = 1883;
 in
 {
