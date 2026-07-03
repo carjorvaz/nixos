@@ -56,25 +56,19 @@ in
   ++ users;
 
   # ott-rs Telegram API credentials and target chat/topic IDs
-  "clOttTelegramEnv.age".publicKeys = [
+  "ottRsTelegramEnv.age".publicKeys = [
     piusSystem
   ]
   ++ users;
 
   # Bearer token for ott-rs's loopback client API on pius
-  "clOttClientApiToken.age".publicKeys = [
+  "ottTvClientApiToken.age".publicKeys = [
     piusSystem
   ]
   ++ users;
 
   # Hindsight API raw bearer token on pius
   "hindsightApiToken.age".publicKeys = [ piusSystem ] ++ users;
-
-  # Legacy Jellyfin key retained for the archived cl-ott integration
-  "jellyfinClOttApiKey.age".publicKeys = [
-    piusSystem
-  ]
-  ++ users;
 
   # pdf-translator DeepSeek API key
   "deepseek-api-key.age".publicKeys = [

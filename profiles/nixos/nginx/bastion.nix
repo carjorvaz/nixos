@@ -8,8 +8,8 @@ let
   # Nginx resolves proxyPass hostnames at startup. Use pius's stable Tailscale
   # IPv4 address so hadrianus can switch before MagicDNS is warm.
   piusTailscaleIPv4 = "100.121.87.116";
-  clOttInternalHost = "cl-ott.pius.internal";
-  clOttUpdateRoot = "/var/www/ott.vaz.one";
+  ottRsInternalHost = "ott-rs.pius.internal";
+  ottTvUpdateRoot = "/var/www/ott.vaz.one";
   lispCorpusHtpasswdFile = config.age.secrets.lispCorpusShareHtpasswd.path;
 in
 {
@@ -34,9 +34,9 @@ in
   services.nginx = {
     appendHttpConfig = ''
       limit_req_zone $binary_remote_addr zone=lisp_corpus_share:10m rate=3r/s;
-      limit_req_zone $binary_remote_addr zone=cl_ott_api:10m rate=5r/s;
-      limit_req_zone $binary_remote_addr zone=cl_ott_updates:10m rate=6r/m;
-      limit_conn_zone $binary_remote_addr zone=cl_ott_addr:10m;
+      limit_req_zone $binary_remote_addr zone=ott_api:10m rate=5r/s;
+      limit_req_zone $binary_remote_addr zone=ott_updates:10m rate=6r/m;
+      limit_conn_zone $binary_remote_addr zone=ott_addr:10m;
     '';
 
     virtualHosts = {
@@ -61,7 +61,7 @@ in
       "ott.vaz.one" = {
         forceSSL = true;
         useACMEHost = "vaz.one";
-        root = clOttUpdateRoot;
+        root = ottTvUpdateRoot;
 
         extraConfig = ''
           server_tokens off;
@@ -77,14 +77,14 @@ in
             return = "404";
           };
 
-          "= /_cl_ott_auth" = {
+          "= /_ott_auth" = {
             proxyPass = "http://${piusTailscaleIPv4}:80/api/v1/status";
             recommendedProxySettings = false;
             extraConfig = ''
               internal;
               proxy_pass_request_body off;
               proxy_set_header Content-Length "";
-              proxy_set_header Host ${clOttInternalHost};
+              proxy_set_header Host ${ottRsInternalHost};
               proxy_set_header X-Real-IP $remote_addr;
               proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
               proxy_set_header X-Forwarded-Proto $scheme;
@@ -95,10 +95,10 @@ in
           "^~ /app/" = {
             tryFiles = "$uri =404";
             extraConfig = ''
-              auth_request /_cl_ott_auth;
-              limit_req zone=cl_ott_updates burst=3 nodelay;
+              auth_request /_ott_auth;
+              limit_req zone=ott_updates burst=3 nodelay;
               limit_req_status 429;
-              limit_conn cl_ott_addr 2;
+              limit_conn ott_addr 2;
               disable_symlinks on from=$document_root;
               default_type application/octet-stream;
               types {
@@ -106,7 +106,7 @@ in
                 application/vnd.android.package-archive apk;
               }
 
-              if ($uri !~ "^/app/(latest\.json|tv-[0-9][0-9A-Za-z._-]*\.apk)$") {
+              if ($uri !~ "^/app/(latest\.json|ott-tv-[0-9][0-9A-Za-z._-]*\.apk)$") {
                 return 404;
               }
 
@@ -121,16 +121,16 @@ in
             recommendedProxySettings = false;
             extraConfig = ''
               client_max_body_size 1k;
-              limit_req zone=cl_ott_api burst=30 nodelay;
+              limit_req zone=ott_api burst=30 nodelay;
               limit_req_status 429;
-              limit_conn cl_ott_addr 8;
+              limit_conn ott_addr 8;
 
               proxy_connect_timeout 5s;
               proxy_read_timeout 20s;
               proxy_send_timeout 20s;
               proxy_buffering off;
               proxy_max_temp_file_size 0;
-              proxy_set_header Host ${clOttInternalHost};
+              proxy_set_header Host ${ottRsInternalHost};
               proxy_set_header X-Real-IP $remote_addr;
               proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
               proxy_set_header X-Forwarded-Proto $scheme;
@@ -185,8 +185,8 @@ in
   };
 
   systemd.tmpfiles.rules = [
-    "d ${clOttUpdateRoot} 0755 root nginx - -"
-    "d ${clOttUpdateRoot}/app 0755 root nginx - -"
-    "Z ${clOttUpdateRoot} 0755 root nginx - -"
+    "d ${ottTvUpdateRoot} 0755 root nginx - -"
+    "d ${ottTvUpdateRoot}/app 0755 root nginx - -"
+    "Z ${ottTvUpdateRoot} 0755 root nginx - -"
   ];
 }

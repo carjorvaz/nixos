@@ -6,19 +6,18 @@
 
 let
   webHost = "ott-web.vaz.ovh";
-  legacyWebHost = "cl-ott-web.vaz.ovh";
 in
 {
   age.secrets = {
-    clOttTelegramEnv = {
-      file = "${self}/secrets/clOttTelegramEnv.age";
+    ottRsTelegramEnv = {
+      file = "${self}/secrets/ottRsTelegramEnv.age";
       owner = "ott-rs";
       group = "ott-rs";
       mode = "0400";
     };
 
-    clOttClientApiToken = {
-      file = "${self}/secrets/clOttClientApiToken.age";
+    ottTvClientApiToken = {
+      file = "${self}/secrets/ottTvClientApiToken.age";
       owner = "ott-rs";
       group = "ott-rs";
       mode = "0400";
@@ -27,7 +26,7 @@ in
 
   services.ott-rs = {
     enable = true;
-    environmentFile = config.age.secrets.clOttTelegramEnv.path;
+    environmentFile = config.age.secrets.ottRsTelegramEnv.path;
     interval = "*-*-* 08:30:00";
     randomizedDelaySec = "30min";
     force = true;
@@ -60,7 +59,7 @@ in
       enable = true;
       bindAddress = "127.0.0.1";
       port = 8787;
-      tokenFile = config.age.secrets.clOttClientApiToken.path;
+      tokenFile = config.age.secrets.ottTvClientApiToken.path;
     };
 
     web = {
@@ -78,18 +77,12 @@ in
 
     internalApi = {
       enable = true;
-      hostName = "cl-ott.pius.internal";
+      hostName = "ott-rs.pius.internal";
       allowedAddresses = [
         "100.103.78.39"
         "fd7a:115c:a1e0:ab12:4843:cd96:6267:4e27"
       ];
     };
-  };
-
-  services.nginx.virtualHosts.${legacyWebHost} = {
-    forceSSL = true;
-    useACMEHost = "vaz.ovh";
-    globalRedirect = webHost;
   };
 
   environment.persistence."/persist".directories = [
