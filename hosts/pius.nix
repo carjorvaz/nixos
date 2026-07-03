@@ -166,7 +166,8 @@
       reddit-mirror-batch = {
         description = "Reddit mirror resumable preservation batch";
         documentation = [ "file:/persist/reddit-mirror/_ops/README.md" ];
-        wantedBy = [ "multi-user.target" ];
+        # Run from a timer: the full backlog can spend hours on very large
+        # subreddits and should not hold boot or nixos-rebuild activation.
         wants = [ "network-online.target" ];
         after = [ "network-online.target" ];
         unitConfig = {
@@ -191,9 +192,9 @@
         serviceConfig = {
           Type = "oneshot";
           WorkingDirectory = "/persist/reddit-mirror";
-          Restart = "on-failure";
-          RestartSec = "15m";
           TimeoutStartSec = "infinity";
+          MemoryMax = "48G";
+          MemorySwapMax = "16G";
           Nice = 10;
           IOSchedulingClass = "best-effort";
           IOSchedulingPriority = 7;
@@ -239,13 +240,25 @@
       };
     };
 
-    timers.reddit-mirror-weekly-priority = {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "Sat *-*-* 04:30:00";
-        Persistent = true;
-        RandomizedDelaySec = "30m";
-        Unit = "reddit-mirror-weekly-priority.service";
+    timers = {
+      reddit-mirror-batch = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnActiveSec = "30m";
+          OnUnitInactiveSec = "6h";
+          RandomizedDelaySec = "30m";
+          Unit = "reddit-mirror-batch.service";
+        };
+      };
+
+      reddit-mirror-weekly-priority = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "Sat *-*-* 04:30:00";
+          Persistent = true;
+          RandomizedDelaySec = "30m";
+          Unit = "reddit-mirror-weekly-priority.service";
+        };
       };
     };
   };
