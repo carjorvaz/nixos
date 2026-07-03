@@ -2,6 +2,7 @@
   self,
   config,
   lib,
+  pkgs,
   utils,
   ...
 }:
@@ -26,6 +27,10 @@ in
 
   services.recyclarr = {
     enable = true;
+    package = pkgs.recyclarr.overrideAttrs (_old: {
+      projectFile = "src/Recyclarr.Cli/Recyclarr.Cli.csproj";
+      dotnetProjectFiles = [ "src/Recyclarr.Cli/Recyclarr.Cli.csproj" ];
+    });
     # schedule = "daily"; # default
 
     configuration = {
