@@ -316,6 +316,8 @@ in
     # THP defrag: allow synchronous compaction for madvise requests so apps
     # that opt in reliably get huge pages.
     tmpfiles.rules = [
+      # DynamicUser services create StateDirectory entries under this path.
+      "z /var/lib/private 0700 root root -"
       "w! /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise"
     ];
 

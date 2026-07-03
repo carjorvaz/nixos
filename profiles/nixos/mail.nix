@@ -230,10 +230,11 @@ in
       '';
     };
   };
+  services.kresd.enable = lib.mkForce false;
 
   systemd.services.rspamd = {
-    after = [ "kresd@1.service" ];
-    wants = [ "kresd@1.service" ];
+    after = [ "blocky.service" ];
+    wants = [ "blocky.service" ];
   };
 
   environment.persistence."/persist".directories = [
