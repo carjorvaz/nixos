@@ -27,7 +27,6 @@ in
     "${self}/modules/nixos/hindsight.nix"
   ];
   age.secrets = {
-    deepseekApiKey.file = "${self}/secrets/deepseek-api-key.age";
     hindsightApiToken = {
       file = "${self}/secrets/hindsightApiToken.age";
       mode = "0400";
@@ -41,9 +40,8 @@ in
       inherit port;
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
-      llmProvider = "deepseek";
-      llmModel = "deepseek-v4-flash";
-      llmApiKeyFile = config.age.secrets.deepseekApiKey.path;
+      llmProvider = "openai-codex";
+      llmModel = "gpt-5.4-mini";
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
       tenantExtension = "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension";
@@ -54,8 +52,8 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID = "intfloat/multilingual-e5-small";
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
-        HINDSIGHT_API_LLM_EXTRA_BODY = ''{"user_id":"pius-hindsight"}'';
-        HINDSIGHT_API_REFLECT_LLM_MODEL = "deepseek-v4-pro";
+        HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai-codex";
+        HINDSIGHT_API_REFLECT_LLM_MODEL = "gpt-5.4-mini";
       };
       user = "hindsight";
       group = "hindsight";
