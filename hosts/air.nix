@@ -711,6 +711,7 @@ in
       # "monitorcontrol" # Brightness and volume controls for external monitors.
       "orcaslicer"
       "orion"
+      "reasonix" # CLI cask from the esengine/reasonix tap.
       "stremio"
       "stillcolor"
       "syncthing-app"
@@ -739,6 +740,10 @@ in
     };
 
     taps = [
+      {
+        name = "esengine/reasonix";
+        trusted = true;
+      }
     ];
   };
 
