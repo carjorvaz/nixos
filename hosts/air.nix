@@ -152,30 +152,8 @@ let
     };
     sourceRoot = null;
   });
-  hermesAgentHindsightClient = pkgs.python312Packages.buildPythonPackage rec {
-    pname = "hindsight-client";
-    version = "0.6.1";
-    pyproject = true;
-    src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/33/26/8b8efa4be21fc3ba12ade3b1353d87f9837ec0d3ec2607e8adbf85bc9c63/hindsight_client-${version}.tar.gz";
-      hash = "sha256-MU0LueE2IuFVhroVhqeZcm1AWye8INeIckdLXW2WzVE=";
-    };
-    nativeBuildInputs = with pkgs.python312Packages; [
-      hatchling
-    ];
-    propagatedBuildInputs = with pkgs.python312Packages; [
-      aiohttp
-      aiohttp-retry
-      pydantic
-      python-dateutil
-      typing-extensions
-      urllib3
-    ];
-    doCheck = false;
-  };
   hermesAgentPythonPath = pkgs.python312Packages.makePythonPath [
     pkgs.python312Packages.ddgs
-    hermesAgentHindsightClient
     hermesAgentFirecrawlPy
   ];
   hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";

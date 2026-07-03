@@ -43,7 +43,6 @@
     "${self}/profiles/nixos/cl-olx-scraper.nix"
     "${self}/profiles/nixos/ott-rs.nix"
     "${self}/profiles/nixos/firecrawl.nix"
-    "${self}/profiles/nixos/hindsight.nix"
     "${self}/profiles/nixos/pdf-translator.nix"
     "${self}/profiles/nixos/calibre.nix"
     "${self}/profiles/nixos/docker.nix"
