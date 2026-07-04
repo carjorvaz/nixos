@@ -58,7 +58,7 @@
     rustab.url = "github:carjorvaz/rustab";
     rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    telegram-mirror-rs.url = "path:../telegram-mirror-rs";
+    telegram-mirror-rs.url = "git+ssh://git@github.com/carjorvaz/telegram-mirror-rs.git";
     telegram-mirror-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     hermes-agent.url = "github:NousResearch/hermes-agent";
@@ -256,6 +256,7 @@
             inputs.ott-rs.nixosModules.ott-rs
             inputs.cl-olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
+            inputs.telegram-mirror-rs.nixosModules.default
             ./hosts/pius.nix
             ./disko/pius.nix
             impermanenceBaseModule

@@ -439,6 +439,24 @@
         "type": "github"
       }
     },
+    "flake-utils_3": {
+      "inputs": {
+        "systems": "systems_5"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "git-hooks": {
       "inputs": {
         "flake-compat": [
@@ -1278,6 +1296,7 @@
         "pdf-translator": "pdf-translator",
         "rustab": "rustab",
         "simple-nixos-mailserver": "simple-nixos-mailserver",
+        "telegram-mirror-rs": "telegram-mirror-rs",
         "tuxedo-nixos": "tuxedo-nixos"
       }
     },
@@ -1423,6 +1442,42 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "systems_5": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "telegram-mirror-rs": {
+      "inputs": {
+        "flake-utils": "flake-utils_3",
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783158992,
+        "narHash": "sha256-NRkddaJhHLvnDswVrH+YylWoh/Jr2aahqxRqrdhbGmA=",
+        "ref": "refs/heads/main",
+        "rev": "50211ae830e9c2c49d0e5084a49d0e81ed6930da",
+        "revCount": 1,
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/telegram-mirror-rs.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/telegram-mirror-rs.git"
       }
     },
     "treefmt-nix": {
