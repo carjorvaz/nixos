@@ -61,6 +61,12 @@ in
   ]
   ++ users;
 
+  # Telegram API credentials and target peer for the pius preservation mirror
+  "telegramMirrorEnv.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
+
   # Bearer token for ott-rs's loopback client API on pius
   "ottTvClientApiToken.age".publicKeys = [
     piusSystem

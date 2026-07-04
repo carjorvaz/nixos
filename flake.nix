@@ -58,6 +58,9 @@
     rustab.url = "github:carjorvaz/rustab";
     rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
+    telegram-mirror-rs.url = "path:../telegram-mirror-rs";
+    telegram-mirror-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
     hermes-agent.url = "github:NousResearch/hermes-agent";
 
     llm-agents.url = "github:numtide/llm-agents.nix";

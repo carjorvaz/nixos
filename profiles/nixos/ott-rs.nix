@@ -49,6 +49,14 @@ in
       staleAfterHours = 36;
     };
 
+    healthSample = {
+      enable = true;
+      limit = 20;
+      candidatesPerChannel = 2;
+      timeoutSeconds = 8;
+      readSeconds = 6;
+    };
+
     doctor = {
       enable = true;
       outputPath = "/var/lib/ott-rs/audit/doctor.json";
@@ -84,6 +92,10 @@ in
       ];
     };
   };
+
+  systemd.services.ott-rs-health-sample.path = [
+    config.services.ott-rs.ffmpegPackage
+  ];
 
   environment.persistence."/persist".directories = [
     {
