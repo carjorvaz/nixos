@@ -1122,11 +1122,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783158738,
-        "narHash": "sha256-IW0SbAqHieiyZDB0B527gz3FwrhuYUwsGxxrN00YLzA=",
+        "lastModified": 1783170751,
+        "narHash": "sha256-R6MMjE6Ujy2H2zl97LqeXVFL3n4om12N1jZEmRw/Yjg=",
         "ref": "refs/heads/master",
-        "rev": "554f196da32f548158ea2513e8d6db7d6423176b",
-        "revCount": 40,
+        "rev": "2419a0d97a7717bb5a64b3aa55a7c62f6f7dc0a9",
+        "revCount": 42,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
@@ -1467,11 +1467,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783158992,
-        "narHash": "sha256-NRkddaJhHLvnDswVrH+YylWoh/Jr2aahqxRqrdhbGmA=",
+        "lastModified": 1783170769,
+        "narHash": "sha256-hsyBu4RWZohzjoB0NjlktT/aQ8fNzs8nXQLmrKvFBUg=",
         "ref": "refs/heads/main",
-        "rev": "50211ae830e9c2c49d0e5084a49d0e81ed6930da",
-        "revCount": 1,
+        "rev": "b9ea2de1c72e6fe0bbcdcdb7bb3a26785ddf51f3",
+        "revCount": 5,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/telegram-mirror-rs.git"
       },

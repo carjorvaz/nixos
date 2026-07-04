@@ -1,19 +1,13 @@
 {
-  self,
   config,
   ...
 }:
 {
-  age.secrets.telegramMirrorEnv = {
-    file = "${self}/secrets/telegramMirrorEnv.age";
-    owner = "telegram-mirror";
-    group = "telegram-mirror";
-    mode = "0400";
-  };
+  users.users.telegram-mirror.extraGroups = [ "telegram-secrets" ];
 
   services.telegram-mirror = {
     enable = true;
-    environmentFile = config.age.secrets.telegramMirrorEnv.path;
+    environmentFile = config.age.secrets.piusTelegramEnv.path;
     archiveDir = "/persist/telegram-mirror/archive";
   };
 

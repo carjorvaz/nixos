@@ -55,14 +55,8 @@ in
   ]
   ++ users;
 
-  # ott-rs Telegram API credentials and target chat/topic IDs
-  "ottRsTelegramEnv.age".publicKeys = [
-    piusSystem
-  ]
-  ++ users;
-
-  # Telegram API credentials and target peer for the pius preservation mirror
-  "telegramMirrorEnv.age".publicKeys = [
+  # Telegram API credentials and peer IDs shared by pius services
+  "piusTelegramEnv.age".publicKeys = [
     piusSystem
   ]
   ++ users;

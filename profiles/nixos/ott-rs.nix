@@ -6,14 +6,20 @@
 
 let
   webHost = "ott-web.vaz.ovh";
+  telegramSecretGroup = "telegram-secrets";
 in
 {
+  users = {
+    groups.${telegramSecretGroup} = { };
+    users.ott-rs.extraGroups = [ telegramSecretGroup ];
+  };
+
   age.secrets = {
-    ottRsTelegramEnv = {
-      file = "${self}/secrets/ottRsTelegramEnv.age";
-      owner = "ott-rs";
-      group = "ott-rs";
-      mode = "0400";
+    piusTelegramEnv = {
+      file = "${self}/secrets/piusTelegramEnv.age";
+      owner = "root";
+      group = telegramSecretGroup;
+      mode = "0440";
     };
 
     ottTvClientApiToken = {
@@ -26,7 +32,7 @@ in
 
   services.ott-rs = {
     enable = true;
-    environmentFile = config.age.secrets.ottRsTelegramEnv.path;
+    environmentFile = config.age.secrets.piusTelegramEnv.path;
     interval = "*-*-* 08:30:00";
     randomizedDelaySec = "30min";
     force = true;
@@ -77,6 +83,8 @@ in
       hostName = webHost;
       useACMEHost = "vaz.ovh";
       forceSSL = true;
+      playbackDeviceProfile = "desktop";
+      playbackRecoveryStatePath = "/var/lib/ott-rs/state/web-playback-recovery.json";
       tailscaleAuth = {
         enable = true;
         trustedClientApi = true;
