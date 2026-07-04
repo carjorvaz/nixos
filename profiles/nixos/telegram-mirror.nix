@@ -9,6 +9,7 @@
     enable = true;
     environmentFile = config.age.secrets.piusTelegramEnv.path;
     archiveDir = "/persist/telegram-mirror/archive";
+    skipMedia = true;
   };
 
   systemd.tmpfiles.rules = [
