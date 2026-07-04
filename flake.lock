@@ -1467,11 +1467,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783170769,
-        "narHash": "sha256-hsyBu4RWZohzjoB0NjlktT/aQ8fNzs8nXQLmrKvFBUg=",
+        "lastModified": 1783172866,
+        "narHash": "sha256-R1xspA2U12/ilGPcT7r+xE6prDox+UUehOwJdkMO4ek=",
         "ref": "refs/heads/main",
-        "rev": "b9ea2de1c72e6fe0bbcdcdb7bb3a26785ddf51f3",
-        "revCount": 5,
+        "rev": "0e67bb7bea8ecb275b5efacd3e31e07a802e5645",
+        "revCount": 7,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/telegram-mirror-rs.git"
       },
