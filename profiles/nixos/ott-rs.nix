@@ -93,10 +93,6 @@ in
     };
   };
 
-  systemd.services.ott-rs-health-sample.path = [
-    config.services.ott-rs.ffmpegPackage
-  ];
-
   environment.persistence."/persist".directories = [
     {
       directory = "/var/lib/ott-rs";
