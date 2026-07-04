@@ -694,6 +694,7 @@ in
       "stillcolor"
       "syncthing-app"
       "telegram"
+      "telegram-desktop"
       "transmission"
       "trader-workstation"
       # "tunnelblick" # OpenVPN client - re-enable if needed.
