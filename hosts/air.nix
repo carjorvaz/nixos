@@ -664,7 +664,11 @@ in
     };
 
     brews = [
+      "agent-browser"
+      "chrome-devtools-mcp"
       "herdr"
+      "ketch"
+      "playwright-cli"
       "trash"
     ];
 
@@ -719,6 +723,10 @@ in
     };
 
     taps = [
+      {
+        name = "1broseidon/tap";
+        trusted = true;
+      }
       {
         name = "esengine/reasonix";
         trusted = true;
@@ -894,6 +902,7 @@ in
 
     imports = [
       "${self}/profiles/home-manager/brave.nix"
+      "${self}/profiles/home-manager/browser-control.nix"
       "${self}/profiles/home-manager/firefox-darwin.nix"
       "${self}/profiles/home-manager/helix.nix"
       "${self}/profiles/home-manager/himalaya.nix"
