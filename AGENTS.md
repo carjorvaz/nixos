@@ -24,6 +24,7 @@
 
 - This repo is evaluated through flakes, so imported modules and other newly created files must be git-tracked before Nix will reliably see them from the flake snapshot.
 - Prefer `nix eval` and `nix build` to validate changes before running mutating rebuild or deploy commands.
+- For explicit local nix-darwin switches, use plain `sudo`; reserve `sudo -n` for noninteractive probes.
 
 ## Pi Workflow
 
