@@ -7,48 +7,8 @@
 
 let
   cloakBrowser = pkgs.cloakbrowser;
-  cloakBrowserChromium = pkgs.cloakbrowser-chromium;
-  cloakBrowserChromiumExecutable = "${cloakBrowserChromium}/Applications/Chromium.app/Contents/MacOS/Chromium";
-  cloakBrowserEnv = ''
-    export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
-    export CLOAKBROWSER_BINARY_PATH="''${CLOAKBROWSER_BINARY_PATH:-${cloakBrowserChromiumExecutable}}"
-  '';
-  cloakBrowserCli = pkgs.writeShellApplication {
-    name = "cloakbrowser";
-    text = ''
-      ${cloakBrowserEnv}
-      exec ${cloakBrowser}/bin/cloakbrowser "$@"
-    '';
-  };
-  cloakBrowserPython = pkgs.python3.withPackages (ps: [
-    (ps.toPythonModule cloakBrowser)
-  ]);
-  cloakBrowserPythonCli = pkgs.writeShellApplication {
-    name = "cloakbrowser-python";
-    text = ''
-      ${cloakBrowserEnv}
-      exec ${cloakBrowserPython}/bin/python "$@"
-    '';
-  };
-  cloakBrowserSmoke = pkgs.writeShellApplication {
-    name = "cloakbrowser-smoke";
-    text = ''
-      ${cloakBrowserEnv}
-      exec ${cloakBrowserPython}/bin/python - <<'PY'
-      from cloakbrowser import launch
-
-      browser = launch(headless=True)
-      try:
-          page = browser.new_page()
-          page.goto("https://example.com", wait_until="domcontentloaded", timeout=30000)
-          print(page.title())
-          print(page.locator("h1").inner_text())
-      finally:
-          browser.close()
-      PY
-    '';
-  };
   surfCli = pkgs.surf-cli;
+
   surfExtensionHomePath =
     if pkgs.stdenv.isDarwin then
       "Library/Application Support/surf-cli/chrome-extension"
@@ -76,14 +36,18 @@ let
       ];
     }
   );
+
+  surfNativeMessagingHostFiles = lib.listToAttrs (
+    map (dir: {
+      name = "${dir}/surf.browser.host.json";
+      value.source = surfNativeMessagingHostManifest;
+    }) surfDarwinNativeMessagingHostDirs
+  );
 in
 {
   home = {
     packages = [
-      cloakBrowserChromium
-      cloakBrowserCli
-      cloakBrowserPythonCli
-      cloakBrowserSmoke
+      cloakBrowser
       surfCli
     ];
 
@@ -91,7 +55,7 @@ in
       # CloakBrowser's proprietary Chromium binary is fetched by Nix as an
       # unfree, non-redistributable package and used via explicit override.
       CLOAKBROWSER_AUTO_UPDATE = "false";
-      CLOAKBROWSER_BINARY_PATH = cloakBrowserChromiumExecutable;
+      CLOAKBROWSER_BINARY_PATH = cloakBrowser.chromiumExecutable;
       SURF_EXTENSION_PATH = "${config.home.homeDirectory}/${surfExtensionHomePath}";
     };
 
@@ -99,37 +63,35 @@ in
     # manual browser load does not depend on a GC-able /nix/store path. Keep the
     # top-level path as a real directory tree; Chromium-family browsers can be
     # unreliable when the unpacked extension root itself is a symlink.
-    file = lib.mkIf pkgs.stdenv.isDarwin {
-      ".agent-browser/config.json".text = builtins.toJSON {
-        executablePath = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
-      };
+    file = lib.mkIf pkgs.stdenv.isDarwin (
+      {
+        ".agent-browser/config.json".text = builtins.toJSON {
+          executablePath = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+        };
 
-      "${surfExtensionHomePath}" = {
-        source = surfCli.chromeExtension;
-        recursive = true;
-      };
-    };
+        "${surfExtensionHomePath}" = {
+          source = surfCli.chromeExtension;
+          recursive = true;
+        };
+      }
+      // surfNativeMessagingHostFiles
+    );
 
     activation = {
-      surfChromeExtensionPathMigration = lib.hm.dag.entryBefore [ "checkLinkTargets" ] (
+      surfManagedPathMigration = lib.hm.dag.entryBefore [ "checkLinkTargets" ] (
         lib.optionalString pkgs.stdenv.isDarwin ''
           surfExtensionPath="$HOME/${surfExtensionHomePath}"
 
           if [ -L "$surfExtensionPath" ]; then
             $DRY_RUN_CMD rm "$surfExtensionPath"
           fi
-        ''
-      );
 
-      surfChromiumNativeMessagingHosts = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-        lib.optionalString pkgs.stdenv.isDarwin ''
           for surfHostDirRel in ${surfDarwinNativeMessagingHostDirsArgs}; do
-            surfHostDir="$HOME/$surfHostDirRel"
-            surfHostFile="$surfHostDir/surf.browser.host.json"
+            surfHostFile="$HOME/$surfHostDirRel/surf.browser.host.json"
 
-            $DRY_RUN_CMD mkdir -p "$surfHostDir"
-            $DRY_RUN_CMD rm -f "$surfHostFile"
-            $DRY_RUN_CMD install -m 0644 ${surfNativeMessagingHostManifest} "$surfHostFile"
+            if [ -e "$surfHostFile" ] && [ ! -L "$surfHostFile" ]; then
+              $DRY_RUN_CMD rm -f "$surfHostFile"
+            fi
           done
         ''
       );

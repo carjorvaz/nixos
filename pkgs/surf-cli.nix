@@ -31,6 +31,7 @@ let
     npmDepsHash = "sha256-oXtBJv1FLFT54mrV7cFY0CIb+CSZhKfShUim4SFHAGA=";
 
     nativeBuildInputs = [ jq ];
+    nativeInstallCheckInputs = [ jq ];
 
     postInstall = ''
       manifest="$out/lib/node_modules/surf-cli/dist/manifest.json"
@@ -40,6 +41,20 @@ let
         '.key = $key | .version = $version' \
         "$manifest" > "$manifest.tmp"
       mv "$manifest.tmp" "$manifest"
+    '';
+
+    doInstallCheck = true;
+    installCheckPhase = ''
+      runHook preInstallCheck
+
+      "$out/bin/surf" --help >/dev/null
+      jq \
+        --arg key '${extensionKey}' \
+        --arg version '${version}' \
+        -e '.key == $key and .version == $version and (.permissions | index("nativeMessaging"))' \
+        "$out/lib/node_modules/surf-cli/dist/manifest.json" >/dev/null
+
+      runHook postInstallCheck
     '';
 
     passthru = {
@@ -61,6 +76,13 @@ let
         passthru = {
           inherit extensionId extensionKey;
         };
+
+        meta = {
+          description = "Unpacked Chromium extension for Surf CLI";
+          homepage = "https://github.com/nicobailon/surf-cli";
+          license = lib.licenses.mit;
+          platforms = lib.platforms.darwin ++ lib.platforms.linux;
+        };
       };
 
       nativeHost = writeShellApplication {
@@ -69,6 +91,13 @@ let
           cd ${surf-cli}/lib/node_modules/surf-cli/native
           exec ${nodejs}/bin/node ${surf-cli}/lib/node_modules/surf-cli/native/host.cjs "$@"
         '';
+        meta = {
+          description = "Native messaging host wrapper for Surf CLI";
+          homepage = "https://github.com/nicobailon/surf-cli";
+          license = lib.licenses.mit;
+          mainProgram = "surf-browser-native-host";
+          platforms = lib.platforms.darwin ++ lib.platforms.linux;
+        };
       };
     };
 

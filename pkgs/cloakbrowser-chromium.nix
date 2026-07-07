@@ -6,19 +6,19 @@
 }:
 
 let
-  platformInfo =
-    {
-      aarch64-darwin = {
-        platformTag = "darwin-arm64";
-        version = "145.0.7632.109.2";
-        hash = "sha256-UFWCqhvTlxxXf3Dgy74BZDFwK9tpNSmr/ZQ7W9kSDBw=";
-      };
-    }
-    .${stdenvNoCC.hostPlatform.system} or {
-      platformTag = "unsupported";
-      version = "0";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  sources = {
+    aarch64-darwin = {
+      platformTag = "darwin-arm64";
+      version = "145.0.7632.109.2";
+      hash = "sha256-UFWCqhvTlxxXf3Dgy74BZDFwK9tpNSmr/ZQ7W9kSDBw=";
     };
+  };
+
+  source = sources.${stdenvNoCC.hostPlatform.system} or null;
+  isSupported = source != null;
+  version = if isSupported then source.version else "0";
+  archiveName =
+    if isSupported then "cloakbrowser-${source.platformTag}.tar.gz" else "unsupported.tar.gz";
 
   cloakbrowserBinaryLicense = {
     shortName = "cloakbrowser-binary";
@@ -27,39 +27,61 @@ let
     free = false;
     redistributable = false;
   };
+
+  appExecutable = "Applications/Chromium.app/Contents/MacOS/Chromium";
 in
 stdenvNoCC.mkDerivation {
   pname = "cloakbrowser-chromium";
-  inherit (platformInfo) version;
+  inherit version;
 
-  src = fetchurl {
-    url = "https://cloakbrowser.dev/chromium-v${platformInfo.version}/cloakbrowser-${platformInfo.platformTag}.tar.gz";
-    inherit (platformInfo) hash;
-  };
+  src =
+    if isSupported then
+      fetchurl {
+        urls = [
+          "https://cloakbrowser.dev/chromium-v${version}/${archiveName}"
+          "https://github.com/CloakHQ/cloakbrowser/releases/download/chromium-v${version}/${archiveName}"
+        ];
+        inherit (source) hash;
+      }
+    else
+      null;
 
   dontUnpack = true;
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    if isSupported then
+      ''
+        runHook preInstall
 
-    mkdir -p "$out/Applications" "$out/bin"
-    tar -xzf "$src" -C "$out/Applications"
+        mkdir -p "$out/Applications" "$out/bin"
+        tar -xzf "$src" -C "$out/Applications"
 
-    printf '%s\n' \
-      '#!${runtimeShell}' \
-      "exec \"$out/Applications/Chromium.app/Contents/MacOS/Chromium\" \"\$@\"" \
-      > "$out/bin/cloakbrowser-chrome"
-    chmod +x "$out/bin/cloakbrowser-chrome"
+        printf '%s\n' \
+          '#!${runtimeShell}' \
+          "exec \"$out/${appExecutable}\" \"\$@\"" \
+          > "$out/bin/cloakbrowser-chrome"
+        chmod +x "$out/bin/cloakbrowser-chrome"
 
-    runHook postInstall
-  '';
+        runHook postInstall
+      ''
+    else
+      ''
+        echo '${stdenvNoCC.hostPlatform.system} is not supported by cloakbrowser-chromium' >&2
+        exit 1
+      '';
+
+  passthru = {
+    inherit appExecutable cloakbrowserBinaryLicense sources;
+    platformTag = if isSupported then source.platformTag else null;
+
+  };
 
   meta = {
     description = "Official CloakBrowser patched Chromium binary";
     homepage = "https://github.com/CloakHQ/CloakBrowser";
     license = cloakbrowserBinaryLicense;
     mainProgram = "cloakbrowser-chrome";
-    platforms = [ "aarch64-darwin" ];
+    platforms = builtins.attrNames sources;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
   };
 }
