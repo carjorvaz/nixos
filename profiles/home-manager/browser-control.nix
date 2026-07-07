@@ -6,6 +6,35 @@
 }:
 
 let
+  cloakBrowser = pkgs.cloakbrowser;
+  cloakBrowserPython = pkgs.python3.withPackages (ps: [
+    (ps.toPythonModule cloakBrowser)
+  ]);
+  cloakBrowserPythonCli = pkgs.writeShellApplication {
+    name = "cloakbrowser-python";
+    text = ''
+      export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
+      exec ${cloakBrowserPython}/bin/python "$@"
+    '';
+  };
+  cloakBrowserSmoke = pkgs.writeShellApplication {
+    name = "cloakbrowser-smoke";
+    text = ''
+      export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
+      exec ${cloakBrowserPython}/bin/python - <<'PY'
+      from cloakbrowser import launch
+
+      browser = launch(headless=True)
+      try:
+          page = browser.new_page()
+          page.goto("https://example.com", wait_until="domcontentloaded", timeout=30000)
+          print(page.title())
+          print(page.locator("h1").inner_text())
+      finally:
+          browser.close()
+      PY
+    '';
+  };
   surfCli = pkgs.surf-cli;
   surfExtensionHomePath =
     if pkgs.stdenv.isDarwin then
@@ -37,9 +66,20 @@ let
 in
 {
   home = {
-    packages = [ surfCli ];
+    packages = [
+      cloakBrowser
+      cloakBrowserPythonCli
+      cloakBrowserSmoke
+      surfCli
+    ];
 
-    sessionVariables.SURF_EXTENSION_PATH = "${config.home.homeDirectory}/${surfExtensionHomePath}";
+    sessionVariables = {
+      # CloakBrowser's proprietary Chromium binary is fetched into the user's
+      # cache on demand. Keep that explicit and reproducible rather than letting
+      # the wrapper background-update itself.
+      CLOAKBROWSER_AUTO_UPDATE = "false";
+      SURF_EXTENSION_PATH = "${config.home.homeDirectory}/${surfExtensionHomePath}";
+    };
 
     # Expose Surf's unpacked extension at a stable home path so the one-time
     # manual browser load does not depend on a GC-able /nix/store path. Keep the
