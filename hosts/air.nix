@@ -640,6 +640,7 @@ in
     config.allowUnfreePredicate =
       pkg:
       builtins.elem (lib.getName pkg) [
+        "cloakbrowser-chromium"
         "symbola"
       ];
   };

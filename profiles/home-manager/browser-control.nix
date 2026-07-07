@@ -7,20 +7,33 @@
 
 let
   cloakBrowser = pkgs.cloakbrowser;
+  cloakBrowserChromium = pkgs.cloakbrowser-chromium;
+  cloakBrowserChromiumExecutable = "${cloakBrowserChromium}/Applications/Chromium.app/Contents/MacOS/Chromium";
+  cloakBrowserEnv = ''
+    export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
+    export CLOAKBROWSER_BINARY_PATH="''${CLOAKBROWSER_BINARY_PATH:-${cloakBrowserChromiumExecutable}}"
+  '';
+  cloakBrowserCli = pkgs.writeShellApplication {
+    name = "cloakbrowser";
+    text = ''
+      ${cloakBrowserEnv}
+      exec ${cloakBrowser}/bin/cloakbrowser "$@"
+    '';
+  };
   cloakBrowserPython = pkgs.python3.withPackages (ps: [
     (ps.toPythonModule cloakBrowser)
   ]);
   cloakBrowserPythonCli = pkgs.writeShellApplication {
     name = "cloakbrowser-python";
     text = ''
-      export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
+      ${cloakBrowserEnv}
       exec ${cloakBrowserPython}/bin/python "$@"
     '';
   };
   cloakBrowserSmoke = pkgs.writeShellApplication {
     name = "cloakbrowser-smoke";
     text = ''
-      export CLOAKBROWSER_AUTO_UPDATE="''${CLOAKBROWSER_AUTO_UPDATE:-false}"
+      ${cloakBrowserEnv}
       exec ${cloakBrowserPython}/bin/python - <<'PY'
       from cloakbrowser import launch
 
@@ -67,17 +80,18 @@ in
 {
   home = {
     packages = [
-      cloakBrowser
+      cloakBrowserChromium
+      cloakBrowserCli
       cloakBrowserPythonCli
       cloakBrowserSmoke
       surfCli
     ];
 
     sessionVariables = {
-      # CloakBrowser's proprietary Chromium binary is fetched into the user's
-      # cache on demand. Keep that explicit and reproducible rather than letting
-      # the wrapper background-update itself.
+      # CloakBrowser's proprietary Chromium binary is fetched by Nix as an
+      # unfree, non-redistributable package and used via explicit override.
       CLOAKBROWSER_AUTO_UPDATE = "false";
+      CLOAKBROWSER_BINARY_PATH = cloakBrowserChromiumExecutable;
       SURF_EXTENSION_PATH = "${config.home.homeDirectory}/${surfExtensionHomePath}";
     };
 

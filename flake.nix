@@ -121,6 +121,7 @@
         allowUnfreePredicate =
           pkg:
           builtins.elem (inputs.nixpkgs.lib.getName pkg) [
+            "cloakbrowser-chromium"
             "discord"
           ];
       };
