@@ -83,7 +83,7 @@ in
       hostName = webHost;
       useACMEHost = "vaz.ovh";
       forceSSL = true;
-      playbackDeviceProfile = "desktop";
+      playbackDeviceProfile = "android-tv";
       playbackRecoveryStatePath = "/var/lib/ott-rs/state/web-playback-recovery.json";
       tailscaleAuth = {
         enable = true;
