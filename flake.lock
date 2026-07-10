@@ -1122,11 +1122,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783518447,
-        "narHash": "sha256-NLYqHZ3pYYjAvzTAwyonFHHg/oOkIzK3l4DZFrDmFK0=",
-        "ref": "refs/heads/master",
-        "rev": "62b82a0e00579dba7440a0be3657387d29aafdb0",
-        "revCount": 62,
+        "lastModified": 1783722724,
+        "narHash": "sha256-AXjwwVSNHKiK0Dmk01R4ssF3c8EBcRDAhp7Hcpe9PyU=",
+        "ref": "refs/heads/pius-tvg-compat",
+        "rev": "2fe8213a98106a60300d6156f038c028d865080e",
+        "revCount": 63,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
