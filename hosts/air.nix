@@ -427,6 +427,7 @@ in
       video-vibe-check
       whisper-cpp
       yt-dlp
+      cospend-cli
       org-daily-scratch
       hermesAgent
       inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
