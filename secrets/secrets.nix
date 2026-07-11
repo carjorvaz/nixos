@@ -19,6 +19,10 @@ let
 in
 {
   "cjvHashedPassword.age".publicKeys = systems ++ users;
+  "piusInitrdHostKey.age".publicKeys = [
+    piusSystem
+  ]
+  ++ users;
   "hadrianusInitrdHostKey.age".publicKeys = [
     hadrianusSystem
   ]

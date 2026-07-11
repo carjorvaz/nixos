@@ -269,6 +269,12 @@
     mode = "400";
   };
 
+  age.secrets.piusInitrdHostKey = {
+    file = "${self}/secrets/piusInitrdHostKey.age";
+    path = "/etc/initrd-hostkey";
+    symlink = false;
+  };
+
   programs.msmtp.accounts.default = {
     auth = true;
     aliases = "/etc/aliases";

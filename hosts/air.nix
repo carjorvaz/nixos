@@ -277,181 +277,6 @@ let
     }
   );
 
-  piLocalModelId = "gemma-4-e4b-heretic";
-  piLocalModelPort = 8080;
-  piLocalModelPath = "/Users/cjv/Models/pi/gemma-4-E4B-it-ultra-uncensored-heretic-Q8_0.gguf";
-  piTrajanusModelId = "qwen3.6-27b-heretic-q4km-mtp4-100k";
-  piTrajanusModelPort = 18081;
-  piTrajanusModelPath = "/models/gguf/qwen3.6-27b-mtp/llmfan46/Q4_K_M/Qwen3.6-27B-uncensored-heretic-v2-Native-MTP-Preserved-Q4_K_M.gguf";
-  piTrajanusMoeModelId = "qwen3.6-35b-a3b-byteshape-iq4xs-mtp2";
-  piTrajanusMoeModelPort = 18082;
-  piTrajanusMoeModelPath = "/models/gguf/qwen3.6-35b-a3b-mtp/byteshape/MTP-GPU-5/Qwen3.6-35B-A3B-IQ4_XS-4.19bpw.gguf";
-
-  piLlamaE4b = pkgs.writeShellScriptBin "pi-llama-e4b" ''
-    set -eu
-
-    model_path=${lib.escapeShellArg piLocalModelPath}
-    if [ ! -f "$model_path" ]; then
-      printf '%s\n' \
-        "Missing model: $model_path" \
-        "" \
-        "Copy it from pius with:" \
-        "  rsync -ah --progress root@pius:/persist/models/gemma-4-e4b-ultra-heretic/llmfan46/gemma-4-E4B-it-ultra-uncensored-heretic-Q8_0.gguf /Users/cjv/Models/pi/" >&2
-      exit 1
-    fi
-
-    # Gemma 4 model-card sampler defaults include temp=1.0, top_p=0.95,
-    # top_k=64, and min_p=0.0. Keep min-p explicit because llama.cpp's
-    # server default is nonzero. Tested 2026-04-28: --swa-full did not fix
-    # Gemma 4 prompt reuse on b8770 and cost ~660 MiB extra Metal memory.
-    exec ${pkgs.llama-cpp}/bin/llama-server \
-      --model "$model_path" \
-      --alias ${lib.escapeShellArg piLocalModelId} \
-      --host 127.0.0.1 \
-      --port ${toString piLocalModelPort} \
-      --no-webui \
-      --parallel 1 \
-      --ctx-size 32768 \
-      --gpu-layers auto \
-      --flash-attn auto \
-      --reasoning off \
-      --jinja \
-      --cache-type-k q8_0 \
-      --cache-type-v q8_0 \
-      --temp 1.0 \
-      --top-p 0.95 \
-      --top-k 64 \
-      --min-p 0.0
-  '';
-
-  piLlamaTrajanusQwen36 = pkgs.writeShellScriptBin "pi-llama-trajanus-qwen36-27b" ''
-    set -eu
-
-    remote=trajanus
-    session=pi-qwen36-27b
-    model_path=${lib.escapeShellArg piTrajanusModelPath}
-    model_id=${lib.escapeShellArg piTrajanusModelId}
-    port=${toString piTrajanusModelPort}
-    server=/models/sota-src/llama.cpp-mainline-20260519-latest/build-vulkan-rpc-ninja/bin/llama-server
-
-    ssh "$remote" "tmux has-session -t '$session' 2>/dev/null || tmux new-session -d -s '$session' \
-      '$server' \
-      --model '$model_path' \
-      --alias '$model_id' \
-      --host 127.0.0.1 \
-      --port '$port' \
-      --no-webui \
-      --parallel 1 \
-      --ctx-size 100000 \
-      --threads 4 \
-      --threads-batch 4 \
-      --batch-size 128 \
-      --ubatch-size 128 \
-      --gpu-layers 99 \
-      --flash-attn on \
-      --cache-type-k q4_0 \
-      --cache-type-v q4_0 \
-      --spec-type draft-mtp \
-      --spec-draft-n-max 4 \
-      --cache-type-k-draft q4_0 \
-      --cache-type-v-draft q4_0 \
-      --no-host \
-      --poll 0 \
-      --timeout 3600"
-
-    printf 'trajanus llama-server tmux session: %s\n' "$session" >&2
-    printf 'Pi model: trajanus-qwen36/%s\n' "$model_id" >&2
-    printf 'Opening SSH tunnel on http://127.0.0.1:%s/v1\n' "$port" >&2
-    exec ssh -N -L "127.0.0.1:$port:127.0.0.1:$port" "$remote"
-  '';
-
-  piLlamaTrajanusQwen36Stop = pkgs.writeShellScriptBin "pi-llama-trajanus-qwen36-27b-stop" ''
-    set -eu
-
-    port=${toString piTrajanusModelPort}
-    ssh trajanus "tmux kill-session -t pi-qwen36-27b 2>/dev/null || true"
-    pkill -f "ssh .*127.0.0.1:$port:127.0.0.1:$port.*trajanus" 2>/dev/null || true
-  '';
-
-  piLlamaTrajanusQwen36Moe = pkgs.writeShellScriptBin "pi-llama-trajanus-qwen36-35b-a3b-byteshape" ''
-    set -eu
-
-    remote=trajanus
-    session=pi-qwen36-35b-a3b-byteshape
-    model_path=${lib.escapeShellArg piTrajanusMoeModelPath}
-    model_id=${lib.escapeShellArg piTrajanusMoeModelId}
-    port=${toString piTrajanusMoeModelPort}
-    server=/models/sota-src/llama.cpp-mainline-20260519-latest/build-vulkan/bin/llama-server
-
-    ssh "$remote" "tmux has-session -t '$session' 2>/dev/null || tmux new-session -d -s '$session' \
-      '$server' \
-      --model '$model_path' \
-      --alias '$model_id' \
-      --host 127.0.0.1 \
-      --port '$port' \
-      --no-webui \
-      --parallel 1 \
-      --ctx-size 100000 \
-      --threads 4 \
-      --threads-batch 4 \
-      --batch-size 128 \
-      --ubatch-size 128 \
-      --gpu-layers 99 \
-      --flash-attn on \
-      --cache-type-k q8_0 \
-      --cache-type-v q8_0 \
-      --spec-type draft-mtp \
-      --spec-draft-n-max 2 \
-      --cache-type-k-draft q4_0 \
-      --cache-type-v-draft q4_0 \
-      --no-host \
-      --poll 0 \
-      --timeout 3600 \
-      --reasoning off \
-      --reasoning-budget 0"
-
-    printf 'trajanus llama-server tmux session: %s\n' "$session" >&2
-    printf 'Pi model: trajanus-qwen36-moe/%s\n' "$model_id" >&2
-    printf 'Opening SSH tunnel on http://127.0.0.1:%s/v1\n' "$port" >&2
-    exec ssh -N -L "127.0.0.1:$port:127.0.0.1:$port" "$remote"
-  '';
-
-  piLlamaTrajanusQwen36MoeStop = pkgs.writeShellScriptBin "pi-llama-trajanus-qwen36-35b-a3b-byteshape-stop" ''
-    set -eu
-
-    port=${toString piTrajanusMoeModelPort}
-    ssh trajanus "tmux kill-session -t pi-qwen36-35b-a3b-byteshape 2>/dev/null || true"
-    pkill -f "ssh .*127.0.0.1:$port:127.0.0.1:$port.*trajanus" 2>/dev/null || true
-  '';
-
-  piIncognito = pkgs.writeShellScriptBin "pi-incognito" ''
-    exec pi --no-session --no-context-files "$@"
-  '';
-
-  piTrajanusQwen36 = pkgs.writeShellScriptBin "pi-trajanus-qwen36-27b" ''
-    exec pi --model ${lib.escapeShellArg "trajanus-qwen36/${piTrajanusModelId}"} "$@"
-  '';
-
-  piTrajanusQwen36Incognito = pkgs.writeShellScriptBin "pi-trajanus-qwen36-27b-incognito" ''
-    exec pi \
-      --no-session \
-      --no-context-files \
-      --model ${lib.escapeShellArg "trajanus-qwen36/${piTrajanusModelId}"} \
-      "$@"
-  '';
-
-  piTrajanusQwen36Moe = pkgs.writeShellScriptBin "pi-trajanus-qwen36-35b-a3b-byteshape" ''
-    exec pi --model ${lib.escapeShellArg "trajanus-qwen36-moe/${piTrajanusMoeModelId}"} "$@"
-  '';
-
-  piTrajanusQwen36MoeIncognito = pkgs.writeShellScriptBin "pi-trajanus-qwen36-35b-a3b-byteshape-incognito" ''
-    exec pi \
-      --no-session \
-      --no-context-files \
-      --model ${lib.escapeShellArg "trajanus-qwen36-moe/${piTrajanusMoeModelId}"} \
-      "$@"
-  '';
-
   codexTerminalPaletteTheme = "base16";
   codexTerminalPaletteThemeConfig = pkgs.writeShellScriptBin "codex-terminal-palette-theme" ''
     set -eu
@@ -572,7 +397,6 @@ in
       docker
       htop
       freerdp
-      llama-cpp
       nixos-rebuild
       signal-desktop
       tailscaleMacAppCli
@@ -586,16 +410,6 @@ in
       ripgrep-all
       uutils-coreutils-noprefix
 
-      piLlamaE4b
-      piLlamaTrajanusQwen36
-      piLlamaTrajanusQwen36Stop
-      piLlamaTrajanusQwen36Moe
-      piLlamaTrajanusQwen36MoeStop
-      piIncognito
-      piTrajanusQwen36
-      piTrajanusQwen36Incognito
-      piTrajanusQwen36Moe
-      piTrajanusQwen36MoeIncognito
       brainworkshop
 
       android-tools
@@ -720,6 +534,8 @@ in
       # - Enable browser integration in desktop app settings)
       Bitwarden = 1352778147;
       #"Davinci Resolve" = 571213070;
+      # STATE: Enable in Safari > Settings > Extensions.
+      "Kagi for Safari" = 1622835804;
       Tailscale = 1475387142;
       "uBlock Origin Lite" = 6745342698;
     };
@@ -950,110 +766,6 @@ in
           };
         };
 
-        ".pi/agent/models.json".text = builtins.toJSON {
-          providers = {
-            llama-cpp = {
-              baseUrl = "http://localhost:${toString piLocalModelPort}/v1";
-              api = "openai-completions";
-              apiKey = "none";
-              compat = {
-                supportsDeveloperRole = false;
-                supportsReasoningEffort = false;
-              };
-              models = [
-                {
-                  id = piLocalModelId;
-                  name = "Gemma 4 E4B Heretic (local llama.cpp)";
-                  reasoning = false;
-                  input = [ "text" ];
-                  contextWindow = 32768;
-                  maxTokens = 8192;
-                  cost = {
-                    input = 0;
-                    output = 0;
-                    cacheRead = 0;
-                    cacheWrite = 0;
-                  };
-                }
-              ];
-            };
-
-            trajanus-qwen36 = {
-              baseUrl = "http://127.0.0.1:${toString piTrajanusModelPort}/v1";
-              api = "openai-completions";
-              apiKey = "none";
-              compat = {
-                supportsDeveloperRole = false;
-                supportsReasoningEffort = false;
-                thinkingFormat = "qwen-chat-template";
-              };
-              models = [
-                {
-                  id = piTrajanusModelId;
-                  name = "Qwen3.6 27B Heretic Q4_K_M MTP4 100k (trajanus)";
-                  reasoning = true;
-                  input = [ "text" ];
-                  contextWindow = 100000;
-                  maxTokens = 32768;
-                  cost = {
-                    input = 0;
-                    output = 0;
-                    cacheRead = 0;
-                    cacheWrite = 0;
-                  };
-                }
-              ];
-            };
-
-            trajanus-qwen36-moe = {
-              baseUrl = "http://127.0.0.1:${toString piTrajanusMoeModelPort}/v1";
-              api = "openai-completions";
-              apiKey = "none";
-              compat = {
-                supportsDeveloperRole = false;
-                supportsReasoningEffort = false;
-                thinkingFormat = "qwen-chat-template";
-              };
-              models = [
-                {
-                  id = piTrajanusMoeModelId;
-                  name = "Qwen3.6 35B-A3B ByteShape IQ4_XS MTP2 (trajanus)";
-                  reasoning = true;
-                  input = [ "text" ];
-                  contextWindow = 100000;
-                  maxTokens = 32768;
-                  cost = {
-                    input = 0;
-                    output = 0;
-                    cacheRead = 0;
-                    cacheWrite = 0;
-                  };
-                }
-              ];
-            };
-          };
-        };
-
-        ".pi/agent/settings.json".text = builtins.toJSON {
-          defaultProvider = "llama-cpp";
-          defaultModel = piLocalModelId;
-          defaultThinkingLevel = "off";
-          enableInstallTelemetry = false;
-          enabledModels = [
-            piLocalModelId
-            piTrajanusModelId
-            piTrajanusMoeModelId
-          ];
-          compaction = {
-            enabled = true;
-            reserveTokens = 4096;
-            keepRecentTokens = 12000;
-          };
-          retry.provider = {
-            timeoutMs = 600000;
-            maxRetries = 0;
-          };
-        };
       };
 
       activation = {

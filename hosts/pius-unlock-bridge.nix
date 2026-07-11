@@ -42,7 +42,7 @@
                 # directly in the kernel expression override; NixOS-level
                 # boot.kernelPatches do not affect this forced kernel package.
                 PWM_RP1 = no;
-                VIDEO_RP1_CFE = no;
+                VIDEO_RP1_CFE_DOWNSTREAM = no;
                 I2C_DESIGNWARE_CORE = no;
                 I2C_DESIGNWARE_PLATFORM = no;
                 SCHED_CLASS_EXT = lib.mkForce no;
@@ -172,7 +172,13 @@
 
   users = {
     mutableUsers = false;
-    users.root.openssh.authorizedKeys.keys = import "${self}/profiles/nixos/ssh-keys.nix";
+    users.root = {
+      # Keep the account usable for SSH public-key auth without creating a known
+      # password: this is a hash of a discarded random password, while sshd still
+      # has PasswordAuthentication disabled.
+      hashedPassword = "$6$wRo72wvMVToo9G4z$bBDagZoJ.ROijqnYw8T8zfBKCNBo5U6MWdYleokqdufEtMruR4PHu.5ujLcC8kioeJzjjMJGRHy98WHmfZSfy.";
+      openssh.authorizedKeys.keys = import "${self}/profiles/nixos/ssh-keys.nix";
+    };
   };
 
   environment = {

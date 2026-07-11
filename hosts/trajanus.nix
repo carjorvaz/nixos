@@ -71,7 +71,7 @@ in
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/ssh.nix"
 
-    # "${self}/profiles/nixos/local-model.nix" # STATE: Disabled — 780M too slow/noisy for always-on inference
+    "${self}/profiles/nixos/local-model.nix"
 
     # STATE: sudo tailscale up
     # STATE: sudo tailscale set --exit-node=pius

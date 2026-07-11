@@ -53,7 +53,6 @@
       end
 
       # API keys decrypted by agenix
-      set -gx DEEPSEEK_API_KEY (cat ${config.age.secrets.deepseekApiKey.path} 2>/dev/null || true)
       set -gx BRAVE_SEARCH_API_KEY (cat ${config.age.secrets.braveSearchApiKey.path} 2>/dev/null || true)
       set -gx BRAVE_API_KEY "$BRAVE_SEARCH_API_KEY"
     '';
@@ -62,12 +61,6 @@
   };
 
   age.secrets = {
-    deepseekApiKey = {
-      file = "${self}/secrets/deepseek-api-key.age";
-      owner = "cjv";
-      mode = "0400";
-    };
-
     braveSearchApiKey = {
       file = "${self}/secrets/brave-search-api-key.age";
       owner = "cjv";

@@ -8,6 +8,16 @@
 let
   cloakBrowser = pkgs.cloakbrowser;
   surfCli = pkgs.surf-cli;
+  # Keep vanilla Pi's Ketch instructions on the same upstream release as the
+  # Homebrew binary without exposing them through the cross-harness
+  # ~/.agents/skills discovery path.
+  ketchSkillVersion = "0.11.0";
+  ketchSource = pkgs.fetchFromGitHub {
+    owner = "1broseidon";
+    repo = "ketch";
+    rev = "v${ketchSkillVersion}";
+    hash = "sha256-QTi29NIeJbWF3JG2S1FKTK5V/Qwbj7+wcZjswoW/Bjc=";
+  };
 
   surfExtensionHomePath =
     if pkgs.stdenv.isDarwin then
@@ -69,6 +79,16 @@ in
           executablePath = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
         };
 
+        ".pi/agent/skills/ketch" = {
+          source = "${ketchSource}/skills/ketch";
+          recursive = true;
+        };
+
+        ".pi/agent/skills/surf" = {
+          source = surfCli.surfSkill;
+          recursive = true;
+        };
+
         "${surfExtensionHomePath}" = {
           source = surfCli.chromeExtension;
           recursive = true;
@@ -93,6 +113,21 @@ in
               $DRY_RUN_CMD rm -f "$surfHostFile"
             fi
           done
+        ''
+      );
+
+      ketchSkillVersionCheck = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+        lib.optionalString pkgs.stdenv.isDarwin ''
+          if [ -x /opt/homebrew/bin/ketch ]; then
+            installedVersion="$(
+              /opt/homebrew/bin/ketch --version 2>/dev/null \
+                | ${pkgs.coreutils}/bin/head -n 1
+            )"
+
+            if [ "$installedVersion" != "ketch v${ketchSkillVersion}" ]; then
+              echo "warning: Ketch skill is pinned to v${ketchSkillVersion}, but $installedVersion is installed" >&2
+            fi
+          fi
         ''
       );
     };

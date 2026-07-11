@@ -16,7 +16,10 @@ in
     # Emacs - https://github.com/leaferiksen/emacs-liquid-glass-icon
     (
       let
-        myEmacs = (emacsPackagesFor emacs).emacsWithPackages (epkgs: [
+        # Emacs Mac Port exposes the native macOS appearance-change hook that
+        # auto-dark can use without polling.
+        emacsPackage = emacs30-macport;
+        myEmacs = (emacsPackagesFor emacsPackage).emacsWithPackages (epkgs: [
           epkgs.vterm
           epkgs.pdf-tools
           epkgs.org-roam

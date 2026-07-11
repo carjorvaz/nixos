@@ -17,16 +17,16 @@ let
   extensionKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxgv0Zk6Q0X43KE9xpjKzi8UO1YZANdqhANQEKUz37cg1dGQxjYh4NUOjBPoJ8NQckKtwMFq6dcAM/eKNjfbLSrSTPJJKImPYyi9JMAxOxS1tkWk+6rYmr93J/K9cU6Cs6u1OZZlFPj/xVjfzqVBwrjLr1HRHOSQVDopqJmIpMHa3/8p4w84CyhczyC/Lkz1qtyA9Wf0M1YzF6C1c0mcj6MKEqUg0NrAtGwhqNKh1vQz3/B7M6W5QwB4L3j0JO/7kXT2HIBVprUkYpdvN6sitwIFNdl4Fc1zubwTuqcVNNeDRY+lxAllLYDV3Cd6OfJLngObgaQSwRYj46wb4E7kJ0wIDAQAB";
   extensionId = "lnblfmkpkkjfjblnkepghicifnlcolak";
 
+  src = fetchFromGitHub {
+    owner = "nicobailon";
+    repo = "surf-cli";
+    rev = "v${version}";
+    hash = "sha256-mGpNQoTcntI7yurVjS2vGKGoOhwBfV1lDOfTU1z7W8c=";
+  };
+
   surf-cli = buildNpmPackage {
     pname = "surf-cli";
-    inherit version;
-
-    src = fetchFromGitHub {
-      owner = "nicobailon";
-      repo = "surf-cli";
-      rev = "v${version}";
-      hash = "sha256-mGpNQoTcntI7yurVjS2vGKGoOhwBfV1lDOfTU1z7W8c=";
-    };
+    inherit src version;
 
     npmDepsHash = "sha256-oXtBJv1FLFT54mrV7cFY0CIb+CSZhKfShUim4SFHAGA=";
 
@@ -59,6 +59,7 @@ let
 
     passthru = {
       inherit extensionId extensionKey;
+      surfSkill = "${src}/skills/surf";
 
       chromeExtension = stdenvNoCC.mkDerivation {
         pname = "surf-cli-chrome-extension";
