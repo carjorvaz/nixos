@@ -62,6 +62,8 @@ in
     pandoc # markdown preview/export
     pyright
     python3Packages.pygments
+    cargo
+    rustc
     rust-analyzer
     texlab
     texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
