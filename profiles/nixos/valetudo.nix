@@ -5,7 +5,7 @@ _:
     # Apartment-local broker for Valetudo -> Home Assistant discovery/state.
     # MQTT must be reachable by the robot on the apartment LAN.
     # Keep this listener LAN-only via the firewall and tighten to
-    # credentialed agenix users later if MQTT is exposed beyond wlan0.
+    # credentialed agenix users later if MQTT is exposed beyond the apartment LAN.
     mosquitto = {
       enable = true;
       persistence = true;
@@ -25,5 +25,5 @@ _:
     };
   };
 
-  networking.firewall.interfaces.wlan0.allowedTCPPorts = [ 1883 ];
+  networking.firewall.interfaces.enp103s0f4u1.allowedTCPPorts = [ 1883 ];
 }
