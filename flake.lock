@@ -1131,6 +1131,7 @@
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
       "original": {
+        "ref": "refs/heads/pius-tvg-compat",
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       }
