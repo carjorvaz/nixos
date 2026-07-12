@@ -49,8 +49,8 @@
     cl-ultimate-tic-tac-toe.url = "github:carjorvaz/cl-ultimate-tic-tac-toe";
     cl-ultimate-tic-tac-toe.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    # Keep the deployed ott-rs package on this reviewed branch until the next vetted rollout.
-    ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git?ref=refs/heads/pius-tvg-compat";
+    # Deploy ott-rs from the reviewed master release line.
+    ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git?ref=refs/heads/master";
     ott-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
