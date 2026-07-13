@@ -25,12 +25,27 @@ let
   };
 
   surf-cli = buildNpmPackage {
+    # Keep the high-privilege extension narrow: secure runtime state, disable
+    # the Pi-auth bridge and payload logs, remove unused browser polyfills, and
+    # refresh vulnerable transitive dependencies within upstream semver ranges.
+    patches = [ ../patches/surf-cli-local-hardening.patch ];
     pname = "surf-cli";
     inherit src version;
 
-    npmDepsHash = "sha256-oXtBJv1FLFT54mrV7cFY0CIb+CSZhKfShUim4SFHAGA=";
+    postPatch = ''
+      cp ${./surf-cli-package-lock.json} package-lock.json
+    '';
+
+    npmDepsHash = "sha256-xBQy8eWwMjQXPQedZxH5gEHKfR65DjJ67JxNoyH6gLI=";
 
     nativeBuildInputs = [ jq ];
+
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      npm test -- --run
+      runHook postCheck
+    '';
     nativeInstallCheckInputs = [ jq ];
 
     postInstall = ''
@@ -53,13 +68,34 @@ let
         --arg version '${version}' \
         -e '.key == $key and .version == $version and (.permissions | index("nativeMessaging"))' \
         "$out/lib/node_modules/surf-cli/dist/manifest.json" >/dev/null
+      grep -Fq 'SURF_STATE_DIR' \
+        "$out/lib/node_modules/surf-cli/native/socket-path.cjs"
+      grep -Fq 'SURF_STATE_DIR' \
+        "$out/lib/node_modules/surf-cli/native/doctor.cjs"
+      grep -Fq 'SURF_DEBUG_LOG' \
+        "$out/lib/node_modules/surf-cli/native/host.cjs"
+      if grep -Fq '"/tmp/surf.sock"' \
+        "$out/lib/node_modules/surf-cli/native/doctor.cjs"; then
+        echo "Surf doctor must use the hardened state socket" >&2
+        exit 1
+      fi
+      if grep -Fq 'AUTH_FILE' \
+        "$out/lib/node_modules/surf-cli/native/host.cjs"; then
+        echo "Surf native host must not read Pi authentication state" >&2
+        exit 1
+      fi
+      if grep -Fq 'Received from extension: ''${JSON.stringify(msg)}' \
+        "$out/lib/node_modules/surf-cli/native/host.cjs"; then
+        echo "Surf native host must not log extension payloads" >&2
+        exit 1
+      fi
 
       runHook postInstallCheck
     '';
 
     passthru = {
       inherit extensionId extensionKey;
-      surfSkill = "${src}/skills/surf";
+      surfSkill = "${surf-cli}/lib/node_modules/surf-cli/skills/surf";
 
       chromeExtension = stdenvNoCC.mkDerivation {
         pname = "surf-cli-chrome-extension";

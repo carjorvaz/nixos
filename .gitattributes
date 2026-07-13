@@ -1,0 +1,2 @@
+# Patch artifacts preserve upstream context, including its whitespace.
+*.patch -whitespace
