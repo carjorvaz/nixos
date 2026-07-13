@@ -430,7 +430,6 @@ in
       cospend-cli
       org-daily-scratch
       hermesAgent
-      inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.pi
       inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
 
       # HM's mpv module doesn't support package = null, so reference its
@@ -446,7 +445,6 @@ in
       HOMEBREW_NO_ANALYTICS = "1";
       HOMEBREW_PREFIX = "/opt/homebrew";
       HOMEBREW_REPOSITORY = "/opt/homebrew";
-      PI_SKIP_VERSION_CHECK = "1";
       PI_TELEMETRY = "0";
     };
   };
@@ -484,7 +482,7 @@ in
       "agent-browser"
       "chrome-devtools-mcp"
       "herdr"
-      "ketch"
+      "pi-coding-agent"
       "playwright-cli"
       "trash"
     ];
