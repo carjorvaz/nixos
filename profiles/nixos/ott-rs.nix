@@ -74,6 +74,8 @@ in
       bindAddress = "127.0.0.1";
       port = 8787;
       tokenFile = config.age.secrets.ottTvClientApiToken.path;
+      playbackDeviceProfile = "android-tv";
+      playbackRecoveryStatePath = "/var/lib/ott-rs/state/client-api-playback-recovery.json";
     };
 
     web = {
