@@ -1122,11 +1122,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784412062,
-        "narHash": "sha256-DLlpNhluTyJzjjaaYwI/pESPKmTzQ2Bp2aD2eSxvV1o=",
+        "lastModified": 1784412840,
+        "narHash": "sha256-i7hbDd22wUiMwZg+FHpD5xKg+EmTpVwe0njG6FHkLyM=",
         "ref": "refs/heads/master",
-        "rev": "b8a8207d4c94143d0272e07eec5a24f778406694",
-        "revCount": 80,
+        "rev": "a283032d981e02f826f2c12acbaa03a1c678bedc",
+        "revCount": 81,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
