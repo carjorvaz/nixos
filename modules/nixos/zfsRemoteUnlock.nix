@@ -177,7 +177,12 @@ in
                   echo "Holding initrd for ${toString cfg.testHoldSeconds} seconds to test remote unlock reachability..."
                   sleep ${toString cfg.testHoldSeconds}
                 '';
-                serviceConfig.Type = "oneshot";
+                # Keep the completed requirement active until switch-root so
+                # sysroot.mount cannot start the timed hold a second time.
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                };
               };
             })
           ]

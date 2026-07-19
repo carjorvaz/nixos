@@ -127,4 +127,7 @@ in
     hadrianusSystem
   ]
   ++ users;
+
+  # Offline recovery copy of pius Secure Boot signing keys
+  "piusSecureBootKeys.age".publicKeys = users;
 }

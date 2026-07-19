@@ -25,7 +25,7 @@
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/server.nix"
-    "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/lanzaboote.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"
     "${self}/profiles/nixos/dns/blocky-doq.nix"
@@ -77,6 +77,9 @@
   };
 
   boot = {
+    # The 512 MiB ESP cannot retain eight generations with ~54 MiB initrds.
+    lanzaboote.configurationLimit = 3;
+
     initrd.availableKernelModules = [
       "xhci_pci"
       "ahci"
@@ -101,27 +104,58 @@
     # IPv6 router advertisements on forwarding interfaces when accept_ra=2.
     # Without this, pius sees the LAN router but never installs its global IPv6
     # address or default route.
-    kernel.sysctl."net.ipv6.conf.enp1s0.accept_ra" = 2;
+    kernel.sysctl = {
+      "net.ipv6.conf.wlan0.accept_ra" = 2;
+    };
+  };
+
+  # Keep the wireless name stable across udev reloads and reboots. The iwd
+  # default link policy otherwise preserves whichever kernel name appeared first.
+  systemd.network.links."40-pius-wifi" = {
+    matchConfig.PermanentMACAddress = "e0:e2:58:ab:77:f5";
+    linkConfig.Name = "wlan0";
   };
 
   networking = {
     hostName = "pius";
     hostId = "b10eb16e";
 
-    interfaces.enp1s0 = {
-      useDHCP = false;
-      wakeOnLan.enable = true; # Requires enabling WoL in BIOS
-
-      ipv4.addresses = [
-        {
-          address = "192.168.1.3";
-          prefixLength = 24;
-        }
-      ];
+    # Keep DHCP from blocking boot when Wi-Fi is unavailable. This router does
+    # not answer RFC 4361 DUID client IDs, so identify wlan0 by its MAC instead.
+    dhcpcd = {
+      wait = "background";
+      extraConfig = ''
+        clientid ""
+        metric 100
+      '';
     };
 
-    defaultGateway = "192.168.1.1";
+    interfaces = {
+      enp2s0 = {
+        useDHCP = false;
+        wakeOnLan.enable = true; # Requires enabling WoL in BIOS
+
+        ipv4.addresses = [
+          {
+            address = "10.77.0.2";
+            prefixLength = 30;
+          }
+        ];
+      };
+
+      wlan0.useDHCP = true;
+    };
+
+    wireless.iwd = {
+      enable = true;
+      settings.General = {
+        # A stable MAC avoids an iwd/dhcpcd startup race on this fixed server.
+        Country = "PT";
+      };
+    };
   };
+
+  environment.persistence."/persist".directories = [ "/var/lib/iwd" ];
 
   environment.shellAliases = {
     wakeNerva = "${pkgs.wol}/bin/wol 38:2c:4a:e7:e0:8c";
