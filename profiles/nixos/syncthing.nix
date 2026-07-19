@@ -25,6 +25,8 @@ _:
         id = "mybuc-ckyui";
         label = "Org";
         path = "/home/cjv/org";
+        # Preserve the local named ACL that gives Hermes access to this tree.
+        ignorePerms = true;
         devices = [ "air" ];
         minDiskFree = {
           unit = "MiB";

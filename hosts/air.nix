@@ -124,6 +124,11 @@ let
     name = "hermes-agent-native-sudo-source";
     src = inputs.hermes-agent;
     postPatch = ''
+      substituteInPlace nix/tui.nix \
+        --replace-fail \
+          'dirs = [ "ui-tui" ];' \
+          'dirs = [ "ui-tui" "apps/shared" ];'
+
       substituteInPlace tools/terminal_tool.py \
         --replace-fail \
           ${lib.escapeShellArg hermesTerminalSudoCommentLine} \
@@ -254,14 +259,18 @@ let
               exec ${lib.getExe hermesDesktopPackage}
             fi
 
-            exec ${lib.escapeShellArg "${hermesCliTools}/bin/hermes-cli"} "$@"
+            remote_command="exec hermes-service"
+            for arg in "$@"; do
+              escaped="''${arg//\'/\'\\\'\'}"
+              remote_command+=" '$escaped'"
+            done
+            exec ${lib.getExe pkgs.openssh} -t trajanus "$remote_command"
     '';
   };
 
   hermesAgent = pkgs.symlinkJoin {
     name = "hermes-agent-air";
     paths = [
-      hermesCliTools
       hermesCommand
       hermesDesktopPackage
     ];

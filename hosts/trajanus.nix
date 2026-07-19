@@ -64,6 +64,7 @@ in
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/home-assistant.nix"
+    "${self}/profiles/nixos/hermes.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/valetudo.nix"
     "${self}/profiles/nixos/syncthing.nix"
@@ -360,7 +361,6 @@ in
   graphical.theme.name = "gruvbox";
 
   environment.systemPackages = [
-    inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default
     pkgs.org-daily-scratch
     pkgs.ethtool
     pkgs.iperf3
