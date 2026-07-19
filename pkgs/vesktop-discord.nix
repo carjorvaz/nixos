@@ -6,6 +6,7 @@
   perl,
   runCommand,
   vesktop,
+  vencord,
 }:
 
 let
@@ -16,6 +17,7 @@ let
     tar xf discord.tar files/Discord.app/Contents/Resources/electron.icns
     cp files/Discord.app/Contents/Resources/electron.icns $out
   '';
+  vencordManualArchive = import ./vencord-manual-archive { inherit vencord; };
 in
 vesktop.overrideAttrs (old: {
   pname = "vesktop-discord";
@@ -40,6 +42,14 @@ vesktop.overrideAttrs (old: {
     # Keep using Vesktop's existing macOS profile directory even though the
     # bundle metadata now presents as Discord.app.
     ${perl}/bin/perl -0pi -e 's@process\.env\.VENCORD_USER_DATA_DIR \|\| \(PORTABLE \? join\(vesktopDir, "Data"\) : join\(app\.getPath\("userData"\)\)\)@process.env.VENCORD_USER_DATA_DIR || (PORTABLE ? join(vesktopDir, "Data") : join(app.getPath("appData"), "Vesktop"))@' src/main/constants.ts
+
+    # Use the reviewed custom Vencord build by default while preserving
+    # Vesktop's explicit vencordDir override for development.
+    substituteInPlace src/main/vencordFilesDir.ts \
+      --replace-fail 'import { join } from "path";' "" \
+      --replace-fail 'import { SESSION_DATA_DIR } from "./constants";' "" \
+      --replace-fail 'State.store.vencordDir || join(SESSION_DATA_DIR, "vencordFiles")' \
+                     'State.store.vencordDir || "${vencordManualArchive}"'
   '';
 
   installPhase = ''
