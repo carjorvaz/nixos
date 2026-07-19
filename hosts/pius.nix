@@ -96,6 +96,32 @@ in
     domain = "home-assistant.pius.vaz.ovh";
     homerName = "Home Assistant (pius)";
     homerSubtitle = "Parents' home";
+    extraComponents = [ "utility_meter" ];
+    extraConfig = {
+      utility_meter.pius_monthly_energy = {
+        source = "sensor.athom_smart_plug_v2_9d9101_total_energy";
+        cycle = "monthly";
+      };
+
+      template = [
+        {
+          sensor = [
+            {
+              name = "Pius monthly electricity cost";
+              unique_id = "pius_monthly_electricity_cost";
+              unit_of_measurement = "€";
+              device_class = "monetary";
+              availability = ''
+                {{ states('sensor.pius_monthly_energy') not in ['unknown', 'unavailable'] }}
+              '';
+              state = ''
+                {{ (states('sensor.pius_monthly_energy') | float(0) * 0.16) | round(2) }}
+              '';
+            }
+          ];
+        }
+      ];
+    };
   };
 
   boot = {
