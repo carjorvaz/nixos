@@ -20,6 +20,28 @@
   ...
 }:
 
+let
+  waitForTransmissionNetwork = pkgs.writeShellScript "transmission-wait-for-default-route" ''
+    hasDefaultRoute() {
+      while read -r _interface destination _rest; do
+        if [ "$destination" = "00000000" ]; then
+          return 0
+        fi
+      done < /proc/net/route
+      return 1
+    }
+
+    attempts=0
+    until hasDefaultRoute; do
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 120 ]; then
+        echo "No IPv4 default route after 120 seconds" >&2
+        exit 1
+      fi
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+  '';
+in
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
@@ -109,13 +131,6 @@
     };
   };
 
-  # Keep the wireless name stable across udev reloads and reboots. The iwd
-  # default link policy otherwise preserves whichever kernel name appeared first.
-  systemd.network.links."40-pius-wifi" = {
-    matchConfig.PermanentMACAddress = "e0:e2:58:ab:77:f5";
-    linkConfig.Name = "wlan0";
-  };
-
   networking = {
     hostName = "pius";
     hostId = "b10eb16e";
@@ -197,7 +212,29 @@
   };
 
   systemd = {
+    # Keep the wireless name stable across udev reloads and reboots. The iwd
+    # default link policy otherwise preserves whichever kernel name appeared first.
+    network.links."40-pius-wifi" = {
+      matchConfig.PermanentMACAddress = "e0:e2:58:ab:77:f5";
+      linkConfig.Name = "wlan0";
+    };
+
     services = {
+      # dhcpcd deliberately runs in the background so boot does not depend on
+      # Wi-Fi. Transmission still needs a default route for tracker startup; its
+      # sandbox excludes AF_NETLINK, so the readiness check reads procfs.
+      transmission = {
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+
+        serviceConfig = {
+          ExecStartPre = lib.mkBefore [ waitForTransmissionNetwork ];
+          Restart = "on-failure";
+          RestartSec = "15s";
+          TimeoutStartSec = "3min";
+        };
+      };
+
       reddit-mirror-batch = {
         description = "Reddit mirror resumable preservation batch";
         documentation = [ "file:/persist/reddit-mirror/_ops/README.md" ];
