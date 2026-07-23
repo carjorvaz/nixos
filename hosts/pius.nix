@@ -47,6 +47,7 @@ in
     (modulesPath + "/installer/scan/not-detected.nix")
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/server.nix"
+    "${self}/profiles/nixos/remote-builder.nix"
     "${self}/profiles/nixos/lanzaboote.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/gpu/intel.nix"

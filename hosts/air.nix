@@ -356,29 +356,40 @@ in
 
   nix = {
     # Bootstrap installs Nix separately on macOS, so keep nix-darwin from
-    # trying to manage the Nix installation itself here.
+    # trying to manage the Nix installation itself here. Nix's installer-owned
+    # nix.conf includes the declarative nix.custom.conf below.
     enable = false;
-
-    settings = {
-      experimental-features = [
-        "nix-command"
-        "flakes"
-      ];
-      substituters = [ "https://cache.numtide.com" ];
-      trusted-public-keys = [ "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=" ];
-    };
 
     registry = {
       nixpkgs.flake = inputs.nixpkgs-darwin;
       unstable.flake = inputs.nixpkgs-unstable;
     };
-
-    extraOptions = lib.optionalString (pkgs.stdenv.hostPlatform.system == "aarch64-darwin") ''
-      extra-platforms = x86_64-darwin aarch64-darwin
-    '';
   };
 
   networking.hostName = "air";
+
+  programs = {
+    fish.interactiveShellInit = lib.mkAfter ''
+      if test -d "/opt/homebrew/share/fish/completions"
+        set -p fish_complete_path "/opt/homebrew/share/fish/completions"
+      end
+      if test -d "/opt/homebrew/share/fish/vendor_completions.d"
+        set -p fish_complete_path "/opt/homebrew/share/fish/vendor_completions.d"
+      end
+    '';
+    man.enable = true;
+    ssh = {
+      extraConfig = ''
+        Host pius trajanus
+          BatchMode yes
+          ConnectTimeout 8
+      '';
+      knownHosts = {
+        pius.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAJul712iSthWHXLAgBh38x4lpjXgsTd2KzlP5Jnf55";
+        trajanus.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPGoGQXDEcTd0T72g+YRzoQO30E09BvbfD9eBtcl3NRf";
+      };
+    };
+  };
 
   fonts.packages = [
     pkgs.nerd-fonts.jetbrains-mono
@@ -390,6 +401,19 @@ in
     etc = {
       "fonts/fonts.conf".source = "${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
       "fonts/conf.d/50-macos-fonts.conf".source = fontconfigMacosConf;
+      # The Determinate installer reserves this include for local settings.
+      "nix/nix.custom.conf".text = ''
+        extra-experimental-features = nix-command flakes
+        extra-platforms = x86_64-darwin aarch64-darwin
+        extra-substituters = https://cache.numtide.com
+        extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+        builders = @/etc/nix/machines
+        builders-use-substitutes = true
+      '';
+      "nix/machines".text = ''
+        ssh-ng://nix-ssh@trajanus x86_64-linux /etc/nix/builder_ed25519 2 4 benchmark,big-parallel,gccarch-armv6kz,kvm,nixos-test -
+        ssh-ng://nix-ssh@pius x86_64-linux /etc/nix/builder_ed25519 2 1 benchmark,big-parallel,kvm,nixos-test -
+      '';
     };
 
     systemPackages = with pkgs; [
@@ -550,8 +574,6 @@ in
       }
     ];
   };
-
-  programs.man.enable = true;
 
   # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
   # patching /Applications/cmux.app breaks its code signature, which in turn
@@ -852,15 +874,6 @@ in
       };
     };
   };
-
-  programs.fish.interactiveShellInit = lib.mkAfter ''
-    if test -d "/opt/homebrew/share/fish/completions"
-      set -p fish_complete_path "/opt/homebrew/share/fish/completions"
-    end
-    if test -d "/opt/homebrew/share/fish/vendor_completions.d"
-      set -p fish_complete_path "/opt/homebrew/share/fish/vendor_completions.d"
-    end
-  '';
 
   ids.gids.nixbld = 350;
 }

@@ -54,6 +54,7 @@ in
     "${self}/profiles/nixos/lanzaboote.nix" # STATE: Set up after redeploying
     "${self}/profiles/nixos/laptop.nix"
     "${self}/profiles/nixos/laptopServer.nix"
+    "${self}/profiles/nixos/remote-builder.nix"
     # "${self}/profiles/nixos/mullvad.nix"
     "${self}/profiles/nixos/zfs/common.nix"
     "${self}/profiles/nixos/zfs/backupSource.nix"
