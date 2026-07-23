@@ -1,12 +1,17 @@
 {
   self,
   config,
+  inputs,
+  pkgs,
   ...
 }:
 
 let
   webHost = "ott-web.vaz.ovh";
   telegramSecretGroup = "telegram-secrets";
+  ottRsPackage = inputs.ott-rs.packages.${pkgs.system}.default.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../../patches/ott-rs-reject-empty-refresh.patch ];
+  });
 in
 {
   users = {
@@ -32,9 +37,10 @@ in
 
   services.ott-rs = {
     enable = true;
+    package = ottRsPackage;
     environmentFile = config.age.secrets.piusTelegramEnv.path;
-    interval = "*-*-* 08:30:00";
-    randomizedDelaySec = "30min";
+    interval = "*-*-* 00,04,08,12,16,20:00:00";
+    randomizedDelaySec = "10min";
     force = true;
     telegram.enable = true;
 
@@ -58,7 +64,7 @@ in
     healthSample = {
       enable = true;
       limit = 20;
-      candidatesPerChannel = 2;
+      candidatesPerChannel = 5;
       timeoutSeconds = 8;
       readSeconds = 6;
     };
@@ -101,6 +107,11 @@ in
         "fd7a:115c:a1e0:ab12:4843:cd96:6267:4e27"
       ];
     };
+  };
+
+  systemd.services.ott-rs.serviceConfig = {
+    Restart = "on-failure";
+    RestartSec = "5min";
   };
 
   environment.persistence."/persist".directories = [

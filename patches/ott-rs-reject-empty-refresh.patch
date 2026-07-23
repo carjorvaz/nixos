@@ -1,0 +1,42 @@
+diff --git a/src/run.rs b/src/run.rs
+index 5dde15c2bc..937c4bb792 100644
+--- a/src/run.rs
++++ b/src/run.rs
+@@ -203,13 +203,13 @@
+ 
+     let (sources_json, selected_code, selected_credential_index) =
+         decrypt_first_working_backup(candidates, decrypt_backup)?;
+-    write_source_artifacts(
+-        &sources_json,
+-        args.raw_sources_output.as_deref(),
+-        args.source_inventory_output.as_deref(),
+-    )?;
+ 
+     if args.dump_json {
++        write_source_artifacts(
++            &sources_json,
++            args.raw_sources_output.as_deref(),
++            args.source_inventory_output.as_deref(),
++        )?;
+         let text = serde_json::to_string_pretty(&sources_json)
+             .map_err(|err| Error::Protocol(format!("could not encode decrypted sources: {err}")))?;
+         write_output(&text, args.output.as_deref())?;
+@@ -231,6 +231,18 @@
+     let selections = rank::select_streams(&ranked);
+     let selection_artifact =
+         rank::build_selection_artifact(selections, streams_total, ranked.len(), args.now());
++    if selection_artifact.channels.is_empty() {
++        return Err(Error::Provider {
++            provider: "catalog refresh".to_string(),
++            message: "all active providers returned no playable channels".to_string(),
++        }
++        .into());
++    }
++    write_source_artifacts(
++        &sources_json,
++        args.raw_sources_output.as_deref(),
++        args.source_inventory_output.as_deref(),
++    )?;
+     if let Some(path) = args.channel_selection_output.as_deref() {
+         rank::write_selection_artifact(path, &selection_artifact)?;
+     }
