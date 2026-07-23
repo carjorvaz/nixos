@@ -504,6 +504,7 @@ in
 
     brews = [
       "agent-browser"
+      "can1357/tap/omp"
       "chrome-devtools-mcp"
       "herdr"
       "pi-coding-agent"
@@ -566,6 +567,10 @@ in
     taps = [
       {
         name = "1broseidon/tap";
+        trusted = true;
+      }
+      {
+        name = "can1357/tap";
         trusted = true;
       }
       {
