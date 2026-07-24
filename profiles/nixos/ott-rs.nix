@@ -2,6 +2,7 @@
   self,
   config,
   inputs,
+  lib,
   pkgs,
   ...
 }:
@@ -12,6 +13,10 @@ let
   ottRsPackage = inputs.ott-rs.packages.${pkgs.system}.default.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ../../patches/ott-rs-reject-empty-refresh.patch ];
   });
+  ottRs = "${ottRsPackage}/bin/ott-rs";
+  healthDir = "/var/lib/ott-rs/health";
+  auditDir = "/var/lib/ott-rs/audit";
+  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthDir}/health-state.json --state-output ${healthDir}/health-state.json --limit 1 --offset 0 --strategy focus --channel-match 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -109,9 +114,23 @@ in
     };
   };
 
-  systemd.services.ott-rs.serviceConfig = {
-    Restart = "on-failure";
-    RestartSec = "5min";
+  systemd.services = {
+    ott-rs = {
+      unitConfig.OnSuccess = [ "ott-rs-health-sample.service" ];
+      serviceConfig = {
+        Restart = "on-failure";
+        RestartSec = "5min";
+      };
+    };
+
+    ott-rs-health-sample.serviceConfig.ExecStartPost = lib.mkAfter [
+      # Confirm the fallback immediately after a catalog generation changes.
+      priorityHealthSampleCommand
+      priorityHealthSampleCommand
+      "-${ottRs} health-plan --selection-input ${auditDir}/channel-selection.json --output ${healthDir}/health-plan.json --health-input ${healthDir}/health-state.json"
+      "-${ottRs} health-status --stale-after-hours 36 --json --plan-input ${healthDir}/health-plan.json --state-input ${healthDir}/health-state.json --output ${healthDir}/health-status.json"
+      "-${ottRs} doctor --stale-after-hours 36 --output ${auditDir}/doctor.json --state-file /var/lib/ott-rs/state/state.json --check-state-file /var/lib/ott-rs/state/check-state.json --source-inventory ${auditDir}/source-inventory.json --channel-selection ${auditDir}/channel-selection.json --health-sample ${healthDir}/health-priority-sample.json --health-state ${healthDir}/health-state.json --health-plan ${healthDir}/health-plan.json --health-status ${healthDir}/health-status.json --playlist /var/lib/ott-rs/private/playlist.m3u"
+    ];
   };
 
   environment.persistence."/persist".directories = [
