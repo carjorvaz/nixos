@@ -1,0 +1,8 @@
+/.git
+/.jj
+/.claude
+/.direnv
+/result
+/result-*
+*.log
+(?d).DS_Store
