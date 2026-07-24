@@ -13,9 +13,10 @@
 let
   hermesNpmLib = hermesAgent.passthru.hermesNpmLib;
   npm = hermesNpmLib.mkNpmPassthru {
-    folder = "apps/desktop";
-    attr = "desktop";
-    pname = "hermes-desktop";
+    dirs = [
+      "apps/desktop"
+      "apps/shared"
+    ];
   };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/apps/desktop/package.json"));
@@ -27,14 +28,25 @@ let
   # builds cannot fall back to a mutable ~/.hermes source checkout for version
   # resolution like the upstream installer path can.
   version = lib.getVersion hermesAgent;
+  electronHeaders = pkgs.fetchurl {
+    url = "https://artifacts.electronjs.org/headers/dist/v${electron.version}/node-v${electron.version}-headers.tar.gz";
+    hash = "sha256-0nUJBQDEikyYntZwq+ycH32mzEQtQmz3ICz9eeTMpJk=";
+  };
+
   nodePtyPlatform =
     if stdenv.hostPlatform.isDarwin then
       "darwin"
     else if stdenv.hostPlatform.isLinux then
       "linux"
     else
-      stdenv.hostPlatform.parsed.kernel.name;
-  nodePtyArch = if stdenv.hostPlatform.isAarch64 then "arm64" else "x64";
+      throw "hermes-desktop: unsupported host platform for node-pty staging";
+  nodePtyArch =
+    if stdenv.hostPlatform.isAarch64 then
+      "arm64"
+    else if stdenv.hostPlatform.isx86_64 then
+      "x64"
+    else
+      throw "hermes-desktop: unsupported host architecture for node-pty staging";
   appName = packageJson.build.productName or "Hermes";
   appExecutableName = macExtendInfo.CFBundleExecutable or appName;
   appBundleName = "${appName}.app";
@@ -71,31 +83,43 @@ let
       pname = "hermes-desktop-renderer";
       inherit version;
 
-      doCheck = false;
-      makeCacheWritable = true;
+      doCheck = true;
 
       buildPhase = ''
         runHook preBuild
 
-        # write-build-stamp.cjs replacement. Packaged Electron reads this from
-        # resources/install-stamp.json; the Nix launcher keeps it in the app tree
-        # for the same runtime code path and for deterministic metadata.
         mkdir -p apps/desktop/build
-        echo '{"schemaVersion":1,"commit":"nix","branch":"nix","dirty":false,"source":"nix"}' > apps/desktop/build/install-stamp.json
+        patchShebangs .
 
-        # Upstream desktop packaging stages node-pty for electron-builder via
-        # apps/desktop/scripts/stage-native-deps.cjs. The Nix desktop package
-        # launches the app directory directly with nixpkgs' Electron instead of
-        # running electron-builder, so we must still perform that staging step.
-        cd apps/desktop
-        node scripts/stage-native-deps.cjs
+        pushd apps/desktop
+        npm exec tsc -b
+        npm exec vite build
+        node scripts/bundle-electron-main.mjs
 
-        # Build renderer assets. Keep upstream's Nix choice to skip tsc here:
-        # Vite transpiles TS and avoids non-shipped test type churn.
-        node ../../node_modules/vite/bin/vite.js build --outDir dist
-        cd ../..
+        mkdir -p "$TMPDIR/electron-headers"
+        tar -xzf ${electronHeaders} -C "$TMPDIR/electron-headers" --strip-components=1
+        npm rebuild node-pty \
+          --build-from-source \
+          --runtime=electron \
+          --target=${electron.version} \
+          --nodedir="$TMPDIR/electron-headers" \
+          --disturl="" \
+          --offline
+        node scripts/stage-native-deps.mjs ${nodePtyPlatform} ${nodePtyArch}
+        popd
 
         runHook postBuild
+      '';
+
+      checkPhase = ''
+        runHook preCheck
+
+        pushd apps/desktop
+        npm run postbuild
+        test -f dist/node_modules/node-pty/build/Release/pty.node
+        popd
+
+        runHook postCheck
       '';
 
       installPhase = ''
@@ -103,31 +127,10 @@ let
 
         mkdir -p $out
         cp -r apps/desktop/dist $out/
-        cp -r apps/desktop/electron $out/
-        cp -r apps/desktop/build $out/
+        echo '{"schemaVersion":1,"commit":"nix","branch":"nix","dirty":false,"source":"nix"}' > $out/install-stamp.json
         cp apps/desktop/package.json $out/
-        # Align Electron's app.getVersion() with the canonical Hermes Agent
-        # package version exposed by the Nix wrapper.
         substituteInPlace $out/package.json \
           --replace-fail '"version": "${desktopMetadataVersion}"' '"version": "${version}"'
-
-        # electron/main.cjs first does a bare require('node-pty'). In the
-        # electron-builder bundle, that bare require fails and the code falls back
-        # to process.resourcesPath/native-deps/node-pty. In this Nix package the
-        # app is an unpacked directory launched by nixpkgs' Electron, so
-        # process.resourcesPath belongs to Electron itself, not our app. Install
-        # the staged native dependency under the app-local node_modules tree so
-        # the normal Node resolver succeeds before the packaged-app fallback.
-        mkdir -p $out/node_modules
-        cp -R apps/desktop/build/native-deps/node-pty $out/node_modules/node-pty
-
-        # Build-time sanity checks for the integrated terminal runtime payload.
-        test -f $out/node_modules/node-pty/package.json
-        test -f $out/node_modules/node-pty/lib/index.js
-        test -n "$(find $out/node_modules/node-pty/prebuilds -name '*.node' -print -quit)"
-        ${lib.optionalString stdenv.hostPlatform.isDarwin ''
-          test -x $out/node_modules/node-pty/prebuilds/${nodePtyPlatform}-${nodePtyArch}/spawn-helper
-        ''}
 
         runHook postInstall
       '';
@@ -148,6 +151,9 @@ stdenv.mkDerivation {
 
     mkdir -p $out/share/hermes-desktop $out/bin
     cp -r ${renderer}/* $out/share/hermes-desktop/
+    substituteInPlace $out/share/hermes-desktop/dist/electron-main.mjs \
+      --replace-fail "process.resourcesPath" "'$out/share/hermes-desktop'"
+
 
     makeHermesDesktopWrapper() {
       makeWrapper ${lib.getExe electron} "$1" \

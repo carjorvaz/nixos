@@ -97,9 +97,36 @@ in
     domain = "home-assistant.pius.vaz.ovh";
     homerName = "Home Assistant (pius)";
     homerSubtitle = "Parents' home";
+    extraComponents = [ "utility_meter" ];
+    extraConfig = {
+      utility_meter.pius_monthly_energy = {
+        source = "sensor.athom_smart_plug_v2_9d9101_total_energy";
+        cycle = "monthly";
+      };
+
+      template = [
+        {
+          sensor = [
+            {
+              name = "Pius monthly electricity cost";
+              unique_id = "pius_monthly_electricity_cost";
+              unit_of_measurement = "€";
+              device_class = "monetary";
+              availability = ''
+                {{ states('sensor.pius_monthly_energy') not in ['unknown', 'unavailable'] }}
+              '';
+              state = ''
+                {{ (states('sensor.pius_monthly_energy') | float(0) * 0.16) | round(2) }}
+              '';
+            }
+          ];
+        }
+      ];
+    };
   };
 
   boot = {
+    # The 512 MiB ESP cannot retain eight generations with ~54 MiB initrds.
     lanzaboote.configurationLimit = 3;
 
     initrd.availableKernelModules = [
@@ -129,12 +156,6 @@ in
     kernel.sysctl."net.ipv6.conf.wlan0.accept_ra" = 2;
   };
 
-  # Keep the wireless name stable across udev reloads and reboots.
-  systemd.network.links."40-pius-wifi" = {
-    matchConfig.PermanentMACAddress = "e0:e2:58:ab:77:f5";
-    linkConfig.Name = "wlan0";
-  };
-
   networking = {
     hostName = "pius";
     hostId = "b10eb16e";
@@ -152,7 +173,8 @@ in
     interfaces = {
       enp2s0 = {
         useDHCP = false;
-        wakeOnLan.enable = true;
+        wakeOnLan.enable = true; # Requires enabling WoL in BIOS
+
         ipv4.addresses = [
           {
             address = "10.77.0.2";
@@ -166,7 +188,10 @@ in
 
     wireless.iwd = {
       enable = true;
-      settings.General.Country = "PT";
+      settings.General = {
+        # A stable MAC avoids an iwd/dhcpcd startup race on this fixed server.
+        Country = "PT";
+      };
     };
   };
 
@@ -212,10 +237,21 @@ in
   };
 
   systemd = {
+    # Keep the wireless name stable across udev reloads and reboots. The iwd
+    # default link policy otherwise preserves whichever kernel name appeared first.
+    network.links."40-pius-wifi" = {
+      matchConfig.PermanentMACAddress = "e0:e2:58:ab:77:f5";
+      linkConfig.Name = "wlan0";
+    };
+
     services = {
+      # dhcpcd deliberately runs in the background so boot does not depend on
+      # Wi-Fi. Transmission still needs a default route for tracker startup; its
+      # sandbox excludes AF_NETLINK, so the readiness check reads procfs.
       transmission = {
         wants = [ "network-online.target" ];
         after = [ "network-online.target" ];
+
         serviceConfig = {
           ExecStartPre = lib.mkBefore [ waitForTransmissionNetwork ];
           Restart = "on-failure";

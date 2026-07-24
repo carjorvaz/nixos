@@ -25,6 +25,8 @@ _:
         id = "mybuc-ckyui";
         label = "Org";
         path = "/home/cjv/org";
+        # Preserve the local named ACL that gives Hermes access to this tree.
+        ignorePerms = true;
         devices = [ "air" ];
         minDiskFree = {
           unit = "MiB";
@@ -36,6 +38,43 @@ _:
 
         # Hot Org files like gtd.org and daily notes benefit from a local
         # recovery net on both read-write peers.
+        versioning = {
+          type = "staggered";
+          cleanupIntervalS = 3600;
+          fsPath = "";
+          fsType = "basic";
+          params.maxAge = "31536000";
+        };
+      };
+
+      folders.nixos = {
+        id = "nixos";
+        label = "NixOS";
+        path = "/home/cjv/sync/nixos";
+        # Syncthing must not rewrite the named and inherited Hermes ACLs.
+        ignorePerms = true;
+        devices = [ "air" ];
+        minDiskFree = {
+          unit = "MiB";
+          value = 256;
+        };
+        rescanIntervalS = 3600;
+        fsWatcherEnabled = true;
+        fsWatcherDelayS = 10;
+        ignorePatterns = [
+          "/.git"
+          "/.jj"
+          "/.claude"
+          "/.direnv"
+          "/.agent-backups"
+          "/result"
+          "/result-*"
+          "*.log"
+          "(?d).DS_Store"
+        ];
+
+        # Hermes edits flow back to Air; retain displaced and deleted versions
+        # locally on both peers as a recovery layer below source control.
         versioning = {
           type = "staggered";
           cleanupIntervalS = 3600;

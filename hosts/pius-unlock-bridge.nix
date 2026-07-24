@@ -98,7 +98,6 @@
     # eth0 faces pius, wlan0 faces the normal home Wi-Fi.
     usePredictableInterfaceNames = false;
     useDHCP = false;
-    dhcpcd.wait = "background";
 
     interfaces = {
       eth0 = {
@@ -111,7 +110,7 @@
         ];
       };
 
-      wlan0.useDHCP = true;
+      wlan0.useDHCP = false;
     };
 
     wireless = {
@@ -120,7 +119,11 @@
       iwd = {
         enable = true;
         settings = {
-          General.Country = "PT";
+          General = {
+            Country = "PT";
+            EnableNetworkConfiguration = true;
+          };
+          Network.NameResolvingService = "resolvconf";
           Settings.AutoConnect = true;
         };
       };
@@ -170,6 +173,29 @@
     '';
   };
 
+  systemd = {
+    # iwd's first automatic association can lose a race with the old USB
+    # adapter. Retry the saved profile until the bridge has its uplink.
+    services.iwd-household-connect = {
+      description = "Connect the unlock bridge to household Wi-Fi";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "iwd.service" ];
+      requires = [ "iwd.service" ];
+      path = [ pkgs.iwd ];
+      script = "iwctl station wlan0 connect DIGI_FfckfP";
+      serviceConfig = {
+        Type = "oneshot";
+        Restart = "on-failure";
+        RestartSec = "10s";
+      };
+    };
+
+    # This Pi's rfkill state helper hangs until systemd's 90-second timeout.
+    # iwd manages the adapter directly, so do not delay every recovery boot.
+    services.systemd-rfkill.enable = false;
+    sockets.systemd-rfkill.enable = false;
+  };
+
   users = {
     mutableUsers = false;
     users.root = {
@@ -189,12 +215,23 @@
     systemPackages = lib.mkForce (
       with pkgs;
       [
+        bashInteractive
+        coreutils
         iwd
         iproute2
         iputils
         iw
         openssh
         tailscale
+        (writeShellScriptBin "systemctl" ''
+          exec /run/current-system/systemd/bin/systemctl "$@"
+        '')
+        (writeShellScriptBin "journalctl" ''
+          exec /run/current-system/systemd/bin/journalctl "$@"
+        '')
+        (writeShellScriptBin "systemd-analyze" ''
+          exec /run/current-system/systemd/bin/systemd-analyze "$@"
+        '')
         usbutils
       ]
     );

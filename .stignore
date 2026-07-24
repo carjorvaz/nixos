@@ -2,6 +2,7 @@
 /.jj
 /.claude
 /.direnv
+/.agent-backups
 /result
 /result-*
 *.log
