@@ -2,7 +2,6 @@
   self,
   config,
   inputs,
-  lib,
   pkgs,
   ...
 }:
@@ -16,7 +15,8 @@ let
   ottRs = "${ottRsPackage}/bin/ott-rs";
   healthDir = "/var/lib/ott-rs/health";
   auditDir = "/var/lib/ott-rs/audit";
-  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthDir}/health-state.json --state-output ${healthDir}/health-state.json --limit 1 --offset 0 --strategy focus --channel-match 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  priorityHealthStatePath = "${healthDir}/health-priority-state.json";
+  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${priorityHealthStatePath} --state-output ${priorityHealthStatePath} --limit 1 --offset 0 --strategy focus --channel-match 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -85,6 +85,7 @@ in
       bindAddress = "127.0.0.1";
       port = 8787;
       tokenFile = config.age.secrets.ottTvClientApiToken.path;
+      healthInputPath = priorityHealthStatePath;
       playbackDeviceProfile = "android-tv";
       playbackRecoveryStatePath = "/var/lib/ott-rs/state/client-api-playback-recovery.json";
     };
@@ -96,6 +97,7 @@ in
       hostName = webHost;
       useACMEHost = "vaz.ovh";
       forceSSL = true;
+      healthInputPath = priorityHealthStatePath;
       playbackDeviceProfile = "android-tv";
       playbackRecoveryStatePath = "/var/lib/ott-rs/state/web-playback-recovery.json";
       tailscaleAuth = {
@@ -116,21 +118,72 @@ in
 
   systemd.services = {
     ott-rs = {
-      unitConfig.OnSuccess = [ "ott-rs-health-sample.service" ];
+      unitConfig.OnSuccess = [
+        "ott-rs-health-sample.service"
+        "ott-rs-health-priority.service"
+      ];
       serviceConfig = {
         Restart = "on-failure";
         RestartSec = "5min";
       };
     };
 
-    ott-rs-health-sample.serviceConfig.ExecStartPost = lib.mkAfter [
-      # Confirm the fallback immediately after a catalog generation changes.
-      priorityHealthSampleCommand
-      priorityHealthSampleCommand
-      "-${ottRs} health-plan --selection-input ${auditDir}/channel-selection.json --output ${healthDir}/health-plan.json --health-input ${healthDir}/health-state.json"
-      "-${ottRs} health-status --stale-after-hours 36 --json --plan-input ${healthDir}/health-plan.json --state-input ${healthDir}/health-state.json --output ${healthDir}/health-status.json"
-      "-${ottRs} doctor --stale-after-hours 36 --output ${auditDir}/doctor.json --state-file /var/lib/ott-rs/state/state.json --check-state-file /var/lib/ott-rs/state/check-state.json --source-inventory ${auditDir}/source-inventory.json --channel-selection ${auditDir}/channel-selection.json --health-sample ${healthDir}/health-priority-sample.json --health-state ${healthDir}/health-state.json --health-plan ${healthDir}/health-plan.json --health-status ${healthDir}/health-status.json --playlist /var/lib/ott-rs/private/playlist.m3u"
-    ];
+    ott-rs-health-priority = {
+      description = "Confirm priority ott-rs playback health";
+      after = [
+        "network-online.target"
+        "ott-rs.service"
+      ];
+      wants = [ "network-online.target" ];
+      path = [ config.services.ott-rs.ffmpegPackage ];
+      unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
+      serviceConfig = {
+        Type = "oneshot";
+        User = "ott-rs";
+        Group = "ott-rs";
+        UMask = "0027";
+        StateDirectory = "ott-rs";
+        StateDirectoryMode = "0700";
+        ReadWritePaths = [ healthDir ];
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        NoNewPrivileges = true;
+        PrivateDevices = true;
+        PrivateTmp = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectSystem = "strict";
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+      };
+      script = ''
+        # Two observations satisfy the replacement threshold.
+        ${priorityHealthSampleCommand}
+        ${priorityHealthSampleCommand}
+      '';
+    };
+  };
+
+  systemd.timers.ott-rs-health-priority = {
+    description = "Refresh priority ott-rs playback health";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* *:00/4:00";
+      Persistent = true;
+      RandomizedDelaySec = "30s";
+      Unit = "ott-rs-health-priority.service";
+    };
   };
 
   environment.persistence."/persist".directories = [
