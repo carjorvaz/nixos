@@ -10,18 +10,14 @@
 let
   webHost = "ott-web.vaz.ovh";
   telegramSecretGroup = "telegram-secrets";
-  ottRsPackage = inputs.ott-rs.packages.${pkgs.system}.default.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ../../patches/ott-rs-reject-empty-refresh.patch ];
-  });
+  ottRsPackage = inputs.ott-rs.packages.${pkgs.system}.default;
   ottRs = "${ottRsPackage}/bin/ott-rs";
   healthDir = "/var/lib/ott-rs/health";
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
-  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --limit 20 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
-  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
-  lockedHealthSampleCommand =
-    command: "${pkgs.util-linux}/bin/flock --exclusive ${healthStateLockPath} ${command}";
+  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 20 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
+  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -134,9 +130,7 @@ in
       };
     };
 
-    ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce (
-      lockedHealthSampleCommand broadHealthSampleCommand
-    );
+    ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce broadHealthSampleCommand;
 
     ott-rs-health-priority = {
       description = "Confirm priority ott-rs playback health";
@@ -178,8 +172,8 @@ in
         SystemCallArchitectures = "native";
       };
       script = ''
-        ${lockedHealthSampleCommand priorityHealthSampleCommand}
-        ${lockedHealthSampleCommand priorityHealthSampleCommand}
+        ${priorityHealthSampleCommand}
+        ${priorityHealthSampleCommand}
       '';
     };
   };
