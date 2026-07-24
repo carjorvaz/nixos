@@ -57,9 +57,24 @@ let
           | if $b == null and $p == null then empty
             else
               ($b // $p) as $base
-              | (reduce ((($b.channels // []) + ($p.channels // []))[]) as $channel
-                  ({}; .[$channel.canonical_name] = $channel)
-                | [.[]]
+              | ((($b.channels // []) + ($p.channels // []))
+                | sort_by(.canonical_name)
+                | group_by(.canonical_name)
+                | map(
+                    . as $versions
+                    | ($versions | max_by(
+                        ([.candidates[].last_checked_at_universal_time // -1] | max)
+                          // -1
+                      )) as $freshest_channel
+                    | $freshest_channel
+                    | .candidates = (
+                        [$versions[].candidates[]]
+                        | sort_by(.candidate_index)
+                        | group_by(.candidate_index)
+                        | map(max_by(.last_checked_at_universal_time // -1))
+                        | sort_by(.candidate_index)
+                      )
+                  )
                 | sort_by(.canonical_name)) as $channels
               | $base
               | .format_version = 1
