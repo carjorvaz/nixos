@@ -124,11 +124,6 @@ let
     name = "hermes-agent-native-sudo-source";
     src = inputs.hermes-agent;
     postPatch = ''
-      substituteInPlace nix/tui.nix \
-        --replace-fail \
-          'dirs = [ "ui-tui" ];' \
-          'dirs = [ "ui-tui" "apps/shared" ];'
-
       substituteInPlace tools/terminal_tool.py \
         --replace-fail \
           ${lib.escapeShellArg hermesTerminalSudoCommentLine} \

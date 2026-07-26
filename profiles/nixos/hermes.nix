@@ -67,6 +67,11 @@ let
     src = inputs.hermes-agent;
   });
 
+  hermesBrowserPackages = [
+    pkgs.agent-browser
+    pkgs.brave
+  ];
+
   hermesPackage =
     let
       package = hermesUpstreamPackage.override {
@@ -113,6 +118,65 @@ let
       }
     );
 
+  hermesReleaseNotifier = pkgs.writeShellApplication {
+    name = "hermes-release-notify";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.jq
+    ];
+    text = ''
+      state_dir=${lib.escapeShellArg "${hermesHome}/release-notifier"}
+      last_file="$state_dir/last-notified"
+      current_version=${lib.escapeShellArg hermesPackage.version}
+
+      ${pkgs.coreutils}/bin/mkdir -p "$state_dir"
+
+      if ! release_json="$(${pkgs.curl}/bin/curl \
+        --fail \
+        --silent \
+        --show-error \
+        --location \
+        --connect-timeout 10 \
+        --max-time 30 \
+        --header 'Accept: application/vnd.github+json' \
+        --header 'X-GitHub-Api-Version: 2022-11-28' \
+        --user-agent 'hermes-release-notify' \
+        https://api.github.com/repos/NousResearch/hermes-agent/releases/latest)"
+      then
+        echo "Hermes release check failed; retrying on the next timer run." >&2
+        exit 0
+      fi
+
+      latest_tag="$(${pkgs.jq}/bin/jq -er '.tag_name' <<<"$release_json")" || exit 0
+      latest_url="$(${pkgs.jq}/bin/jq -er '.html_url' <<<"$release_json")" || exit 0
+      if ! latest_version="$(${pkgs.jq}/bin/jq -er \
+        '.name | capture("v(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)") | .version' \
+        <<<"$release_json")"
+      then
+        echo "Hermes release check could not parse the upstream version; retrying later." >&2
+        exit 0
+      fi
+
+      if [ "$latest_version" = "$current_version" ] ||
+        printf '%s\n%s\n' "$latest_version" "$current_version" | ${pkgs.coreutils}/bin/sort -V -C
+      then
+        exit 0
+      fi
+
+      if [ -f "$last_file" ] && [ "$(<"$last_file")" = "$latest_tag" ]; then
+        exit 0
+      fi
+
+      message="Hermes Agent $latest_version is available ($latest_tag); this host is pinned to $current_version. The upgrade is informational and remains Nix-managed: $latest_url"
+      if ${lib.getExe hermesPackage} send --quiet --to simplex "$message"; then
+        printf '%s\n' "$latest_tag" > "$last_file"
+      else
+        echo "Hermes release notification could not be delivered; retrying later." >&2
+      fi
+    '';
+  };
+
   hermesService = pkgs.writeShellApplication {
     name = "hermes-service";
     text = ''
@@ -157,8 +221,10 @@ let
       set +e
       /run/wrappers/bin/sudo -u hermes -- \
         ${pkgs.coreutils}/bin/env \
+          AGENT_BROWSER_EXECUTABLE_PATH=${lib.escapeShellArg (lib.getExe pkgs.brave)} \
           HOME=${lib.escapeShellArg hermesStateDir} \
           HERMES_HOME=${lib.escapeShellArg hermesHome} \
+          PATH=${lib.escapeShellArg (lib.makeBinPath hermesBrowserPackages)} \
           PYTHONPATH=${lib.escapeShellArg "${hermesMutableConfigHook}/${pkgs.python312.sitePackages}"} \
           HERMES_CONFIG_MUTABLE="$mutable_config" \
           ${lib.getExe hermesPackage} "$@"
@@ -237,10 +303,39 @@ in
     package = hermesPackage;
     stateDir = hermesStateDir;
     workingDirectory = hermesWorkspace;
+    extraPackages = hermesBrowserPackages;
+    settings = {
+      model = {
+        default = "gpt-5.6-sol";
+        provider = "openai-codex";
+      };
+      agent = {
+        max_turns = 150;
+        reasoning_effort = "xhigh";
+      };
+      approvals = {
+        # Let the auxiliary reviewer clear false positives while preserving a
+        # blocking owner prompt for uncertain commands and a one-shot override
+        # for smart denials. Headless cron jobs remain fail-closed.
+        mode = "smart";
+        timeout = 60;
+        cron_mode = "deny";
+      };
+      terminal = {
+        backend = "local";
+        env = {
+          HOME = hermesStateDir;
+          HERMES_HOME = hermesHome;
+          XDG_CONFIG_HOME = "${hermesStateDir}/home/.config";
+          XDG_DATA_HOME = "${hermesStateDir}/home/.local/share";
+        };
+      };
+    };
   };
 
   systemd.tmpfiles.rules = [
     "d ${hermesWorkspace} 2770 hermes hermes -"
+    "d ${hermesHome}/release-notifier 0700 hermes hermes -"
     "d ${simplexStateDir} 0700 hermes hermes -"
     "d ${simplexFilesDir} 0700 hermes hermes -"
     "d ${simplexTempDir} 0700 hermes hermes -"
@@ -284,6 +379,7 @@ in
       # Machine-local transport invariants stay declarative. Contact IDs and
       # other private onboarding values live only in the persistent .env.
       environment = {
+        AGENT_BROWSER_EXECUTABLE_PATH = lib.getExe pkgs.brave;
         SIMPLEX_AUTO_ACCEPT = "false";
         SIMPLEX_WS_URL = "ws://127.0.0.1:5225";
         SIMPLEX_FILES_FOLDER = simplexFilesDir;
@@ -344,6 +440,55 @@ in
           simplexStateDir
         ];
         RestrictSUIDSGID = true;
+      };
+    };
+
+    hermes-release-notify = {
+      description = "Notify the Hermes SimpleX home contact about stable releases";
+      startAt = "daily";
+      after = [
+        "hermes-simplex.service"
+        "network-online.target"
+      ];
+      wants = [
+        "hermes-simplex.service"
+        "network-online.target"
+      ];
+      environment = {
+        HERMES_HOME = hermesHome;
+        HOME = hermesStateDir;
+        SIMPLEX_WS_URL = "ws://127.0.0.1:5225";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        User = "hermes";
+        Group = "hermes";
+        ExecStart = lib.getExe hermesReleaseNotifier;
+        CapabilityBoundingSet = "";
+        LockPersonality = true;
+        NoNewPrivileges = true;
+        PrivateDevices = true;
+        PrivateTmp = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectProc = "invisible";
+        ProtectSystem = "strict";
+        ReadWritePaths = [ "${hermesHome}/release-notifier" ];
+        RemoveIPC = true;
+        RestrictAddressFamilies = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+        ];
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+        UMask = "0077";
       };
     };
   };

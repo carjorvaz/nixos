@@ -62,7 +62,7 @@
     telegram-mirror-rs.url = "git+ssh://git@github.com/carjorvaz/telegram-mirror-rs.git";
     telegram-mirror-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    hermes-agent.url = "github:NousResearch/hermes-agent";
+    hermes-agent.url = "github:NousResearch/hermes-agent/v2026.7.20";
 
     llm-agents.url = "github:numtide/llm-agents.nix";
 
