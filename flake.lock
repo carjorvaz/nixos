@@ -716,6 +716,23 @@
         "type": "github"
       }
     },
+    "mobile-nixos": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1771796702,
+        "narHash": "sha256-PR0nXZ9kOYA+puqC8owO2ozTjNBDshqZmqbFtOe6jCg=",
+        "owner": "mwlaboratories",
+        "repo": "mobile-nixos",
+        "rev": "65b914fe1e3d59d83ef1933396e20465a12393a3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mwlaboratories",
+        "ref": "sdm845-bleeding-edge",
+        "repo": "mobile-nixos",
+        "type": "github"
+      }
+    },
     "niri": {
       "inputs": {
         "niri-stable": "niri-stable",
@@ -937,6 +954,19 @@
         "type": "github"
       }
     },
+    "nixpkgs-mobile": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1770267953,
+        "narHash": "sha256-8JyM5HqkRXBXMnsIooEW0/hOoKrelRdj61VbGBV8tX4=",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.05pre940249.00c21e4c93d9/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.05pre940249.00c21e4c93d9/nixexprs.tar.xz"
+      }
+    },
     "nixpkgs-unstable": {
       "locked": {
         "lastModified": 1782723713,
@@ -1123,11 +1153,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785184230,
-        "narHash": "sha256-+8iyMXmVMe9E89xDPiGX+D3/OIco2zAczojci5YSGs0=",
+        "lastModified": 1785276961,
+        "narHash": "sha256-yRmXm/GVfoCoyRurFW1pYUYREMQDU0tD/aqFP2cFrjU=",
         "ref": "refs/heads/master",
-        "rev": "bebbd86f7e5cee085699a09212db7c43dfbc2be1",
-        "revCount": 104,
+        "rev": "025859eddbb7b8f34749b9ebd04d3d7d23583e56",
+        "revCount": 105,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
@@ -1247,6 +1277,7 @@
         "impermanence": "impermanence",
         "lanzaboote": "lanzaboote",
         "llm-agents": "llm-agents",
+        "mobile-nixos": "mobile-nixos",
         "niri": "niri",
         "nix-cachyos-kernel": "nix-cachyos-kernel",
         "nix-darwin": "nix-darwin",
@@ -1255,6 +1286,7 @@
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_8",
         "nixpkgs-darwin": "nixpkgs-darwin",
+        "nixpkgs-mobile": "nixpkgs-mobile",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "ott-rs": "ott-rs",
         "pdf-translator": "pdf-translator",
