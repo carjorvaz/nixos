@@ -318,9 +318,11 @@ in
           pkgs.python3
           pkgs.util-linux
         ];
+        # The bounded freshness set needs far less temporary space than the bulk
+        # backlog. Keep 300 GiB free while allowing priority updates to continue.
         environment = {
           BASE = "/persist/reddit-mirror";
-          GUARD_KIB = "524288000";
+          GUARD_KIB = "314572800";
         };
         serviceConfig = {
           Type = "oneshot";
