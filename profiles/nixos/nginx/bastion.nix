@@ -11,6 +11,29 @@ let
   ottRsInternalHost = "ott-rs.pius.internal";
   ottTvUpdateRoot = "/var/www/ott.vaz.one";
   lispCorpusHtpasswdFile = config.age.secrets.lispCorpusShareHtpasswd.path;
+  ottApiProxyPolicy = ''
+    client_max_body_size 1k;
+    limit_req zone=ott_api burst=30 nodelay;
+    limit_req_status 429;
+    limit_conn ott_addr 8;
+
+    proxy_set_header Host ${ottRsInternalHost};
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Server $hostname;
+    proxy_set_header Connection "";
+    proxy_set_header Authorization $http_authorization;
+
+    if ($request_method !~ "^(GET|POST)$") {
+      return 405;
+    }
+
+    if ($http_authorization !~ "^Bearer .+") {
+      return 401;
+    }
+  '';
 in
 {
   imports = [ ./common.nix ];
@@ -116,36 +139,30 @@ in
             '';
           };
 
+          "^~ /api/v1/playback/" = {
+            proxyPass = "http://${piusTailscaleIPv4}:80";
+            recommendedProxySettings = false;
+            extraConfig = ''
+              ${ottApiProxyPolicy}
+              proxy_connect_timeout 5s;
+              proxy_read_timeout 3h;
+              proxy_send_timeout 3h;
+              proxy_buffering off;
+              proxy_request_buffering off;
+              proxy_max_temp_file_size 0;
+            '';
+          };
+
           "^~ /api/v1/" = {
             proxyPass = "http://${piusTailscaleIPv4}:80";
             recommendedProxySettings = false;
             extraConfig = ''
-              client_max_body_size 1k;
-              limit_req zone=ott_api burst=30 nodelay;
-              limit_req_status 429;
-              limit_conn ott_addr 8;
-
+              ${ottApiProxyPolicy}
               proxy_connect_timeout 5s;
               proxy_read_timeout 20s;
               proxy_send_timeout 20s;
               proxy_buffering off;
               proxy_max_temp_file_size 0;
-              proxy_set_header Host ${ottRsInternalHost};
-              proxy_set_header X-Real-IP $remote_addr;
-              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto $scheme;
-              proxy_set_header X-Forwarded-Host $host;
-              proxy_set_header X-Forwarded-Server $hostname;
-              proxy_set_header Connection "";
-              proxy_set_header Authorization $http_authorization;
-
-              if ($request_method !~ "^(GET|POST)$") {
-                return 405;
-              }
-
-              if ($http_authorization !~ "^Bearer .+") {
-                return 401;
-              }
             '';
           };
         };
