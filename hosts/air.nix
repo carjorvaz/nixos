@@ -198,6 +198,8 @@ let
     inherit inputs;
     hermesAgent = hermesAgentPackage;
     hermesCliPath = "${hermesCliTools}/bin/hermes-cli";
+    remoteUrl = "https://hermes.trajanus.vaz.ovh";
+    remoteTokenFile = config.age.secrets.hermesDashboardSessionToken.path;
   };
 
   hermesCommand = pkgs.writeShellApplication {
@@ -350,6 +352,12 @@ in
 # - https://github.com/LnL7/nix-darwin
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
+  age.secrets.hermesDashboardSessionToken = {
+    file = "${self}/secrets/hermesDashboardSessionToken.age";
+    owner = "cjv";
+    mode = "0400";
+  };
+
   home-manager.backupFileExtension = "hm-backup";
 
   imports = [
@@ -508,9 +516,11 @@ in
 
     brews = [
       "agent-browser"
+      "bun"
       "can1357/tap/omp"
       "chrome-devtools-mcp"
       "herdr"
+      "llama.cpp"
       "pi-coding-agent"
       "playwright-cli"
       "trash"
