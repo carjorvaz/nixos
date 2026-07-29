@@ -16,8 +16,9 @@ let
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
-  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 20 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
+  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 60 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
   priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  priorityBenficaHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'benfica tv' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -72,7 +73,7 @@ in
       enable = true;
       stateInputPath = healthStatePath;
       stateOutputPath = healthStatePath;
-      limit = 20;
+      limit = 60;
       candidatesPerChannel = 5;
       timeoutSeconds = 8;
       readSeconds = 6;
@@ -174,6 +175,7 @@ in
       script = ''
         ${priorityHealthSampleCommand}
         ${priorityHealthSampleCommand}
+        ${priorityBenficaHealthSampleCommand}
       '';
     };
   };
