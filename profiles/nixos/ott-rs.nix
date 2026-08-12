@@ -16,9 +16,26 @@ let
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
-  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 60 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
+  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 80 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
   priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
   priorityBenficaHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'benfica tv' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  sportFamilyChannels = [
+    "sport tv 1"
+    "sport tv 2"
+    "sport tv 3"
+    "sport tv 4"
+    "sport tv 5"
+    "sport tv 6"
+    "sport tv 7"
+    "dazn 1"
+    "dazn 2"
+    "dazn 3"
+    "dazn 4"
+    "dazn 5"
+  ];
+  widePriorityHealthSampleCommand =
+    channel:
+    "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-wide-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact '${channel}' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -73,7 +90,7 @@ in
       enable = true;
       stateInputPath = healthStatePath;
       stateOutputPath = healthStatePath;
-      limit = 60;
+      limit = 80;
       candidatesPerChannel = 5;
       timeoutSeconds = 8;
       readSeconds = 6;
@@ -177,6 +194,60 @@ in
         ${priorityHealthSampleCommand}
         ${priorityBenficaHealthSampleCommand}
       '';
+    };
+    ott-rs-health-wide = {
+      description = "Wide sport-family ott-rs playback health";
+      after = [
+        "network-online.target"
+        "ott-rs.service"
+      ];
+      wants = [ "network-online.target" ];
+      path = [ config.services.ott-rs.ffmpegPackage ];
+      unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
+      serviceConfig = {
+        Type = "oneshot";
+        User = "ott-rs";
+        Group = "ott-rs";
+        UMask = "0027";
+        StateDirectory = "ott-rs";
+        StateDirectoryMode = "0700";
+        ReadWritePaths = [ healthDir ];
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        NoNewPrivileges = true;
+        PrivateDevices = true;
+        PrivateTmp = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectSystem = "strict";
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+      };
+      script = lib.concatMapStringsSep "\n" (
+        channel: widePriorityHealthSampleCommand channel
+      ) sportFamilyChannels;
+    };
+  };
+
+  systemd.timers.ott-rs-health-wide = {
+    description = "Refresh wide sport-family ott-rs playback health";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* *:05/20:00";
+      Persistent = true;
+      RandomizedDelaySec = "1m";
+      Unit = "ott-rs-health-wide.service";
     };
   };
 
