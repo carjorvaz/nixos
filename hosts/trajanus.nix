@@ -37,6 +37,61 @@ let
   remoteUnlockAddress = "192.168.1.2";
   remoteUnlockGateway = "192.168.1.1";
   remoteUnlockPrefixLength = 24;
+
+  # The laptop runs with its lid closed as a home server, but this model
+  # keeps the eDP panel backlight at full brightness regardless of lid
+  # state. Sync display power with the lid: backlight off when closed, and
+  # when nobody is logged in on the seat and no external display is
+  # connected also stop GDM so the GPU stops rendering the invisible
+  # greeter and drops to its deepest idle state. Opening the lid (e.g. for
+  # emulation) reverses both. Idempotent: runs from acpid on lid events and
+  # from a systemd timer as a safety net.
+  lidManager = pkgs.writeShellApplication {
+    name = "trajanus-lid";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.systemd
+    ];
+    text = ''
+      lid=$(gawk '/state:/ { print $2; exit }' /proc/acpi/button/lid/*/state)
+      set -- /sys/class/backlight/*/brightness
+      backlight=$1
+      # Graphical user sessions on the laptop seat only; SSH sessions and
+      # the GDM greeter (class "greeter") must not count.
+      sessions=$(loginctl list-sessions --no-legend | gawk '$4 == "seat0" && $6 == "user"')
+      # Docked setups: an external display keeps GDM alive when closed.
+      external=0
+      for f in /sys/class/drm/card*-*/status; do
+        case "$f" in
+          *eDP* | *Writeback*) continue ;;
+        esac
+        if [ "$(cat "$f")" = connected ]; then external=1; fi
+      done
+      if [ "$lid" = closed ]; then
+        current=$(cat "$backlight")
+        # Save the user brightness only when the backlight is actually on;
+        # repeated close events / timer ticks must not overwrite it with 0.
+        if [ "$current" -gt 0 ]; then
+          echo "$current" > /run/trajanus-lid-backlight
+        fi
+        echo 0 > "$backlight"
+        # Only the greeter is running and nothing is docked: stop GDM
+        # (the NixOS unit is display-manager.service; upstream gdm.service
+        # is masked). SSH remains the console; logind frees the VT.
+        if [ -z "$sessions" ] && [ "$external" = 0 ]; then
+          systemctl stop display-manager.service
+        fi
+      else
+        if [ -z "$sessions" ]; then
+          systemctl start display-manager.service >/dev/null 2>&1 || true
+        fi
+        if [ -r /run/trajanus-lid-backlight ]; then
+          cat /run/trajanus-lid-backlight > "$backlight"
+        fi
+      fi
+    '';
+  };
 in
 {
   home-manager.backupFileExtension = "hm-backup";
@@ -340,6 +395,34 @@ in
         fi
       '';
     };
+
+    # Idempotent; triggered by acpid on lid events (below) and by the timer
+    # as a safety net for missed events.
+    services.trajanus-lid = {
+      description = "Sync display power with lid state";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${lidManager}/bin/trajanus-lid";
+      };
+    };
+
+    timers.trajanus-lid = {
+      description = "Lid-state safety-net sync";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "1min";
+        OnUnitActiveSec = "1min";
+        AccuracySec = "10s";
+      };
+    };
+  };
+
+  # acpid delivers button/lid events over ACPI netlink (the input subsystem
+  # emits no uevent for SW_LID changes, so udev cannot see them; logind
+  # handles suspend only, which stays disabled here).
+  services.acpid = {
+    enable = true;
+    lidEventCommands = "${lidManager}/bin/trajanus-lid";
   };
 
   # Local model store on the spare 1 TB Crucial NVMe.
@@ -360,6 +443,24 @@ in
     displayManager.autoLogin.enable = false;
 
     tlp.settings = {
+      # Home-server duty: trajanus runs on AC around the clock, so the AC
+      # settings are what matter for idle draw. scx_lavd --autopower follows
+      # the EPP value, so balance_power also shifts the scheduler toward
+      # power saving; boost stays on for the occasional Wii/Switch emulation
+      # session. The EC platform profile is deliberately left at
+      # "performance" — it is idle-neutral and keeps full power limits
+      # available without a mode switch.
+      CPU_ENERGY_PERF_POLICY_ON_AC = lib.mkForce "balance_power";
+      CPU_BOOST_ON_AC = lib.mkForce 1;
+      PCIE_ASPM_ON_AC = lib.mkForce "powersupersave";
+      RUNTIME_PM_ON_AC = lib.mkForce "on";
+      WIFI_PWR_ON_AC = lib.mkForce "on";
+      SOUND_POWER_SAVE_ON_AC = lib.mkForce 1;
+      # Autosuspend everything except the RTL8159 USB NIC (primary link,
+      # initrd remote-unlock) and the BT radio (Home Assistant BLE).
+      USB_DENYLIST = lib.mkForce "0bda:815a 13d3:3585";
+
+      # Portable use stays performance-first (deliberate).
       CPU_ENERGY_PERF_POLICY_ON_BAT = lib.mkForce "performance";
       CPU_BOOST_ON_BAT = lib.mkForce 1;
       CPU_HWP_DYN_BOOST_ON_BAT = lib.mkForce 1;
@@ -404,6 +505,10 @@ in
       };
     };
   };
+
+  # powertop --auto-tune would force USB autosuspend onto the RTL8159 NIC
+  # and the BT radio without a denylist; TLP covers the same knobs with the
+  # explicit USB_DENYLIST above.
   powerManagement.powertop.enable = lib.mkForce false;
 
   graphical.theme.name = "gruvbox";
