@@ -1,0 +1,145 @@
+--- a/src/wiphy.c
++++ b/src/wiphy.c
+@@ -28,11 +28,13 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <errno.h>
++#include <fcntl.h>
+ #include <linux/if_ether.h>
+ #include <fnmatch.h>
+ #include <unistd.h>
+ #include <string.h>
+ #include <limits.h>
++#include <sys/stat.h>
+ 
+ #include <ell/ell.h>
+ 
+@@ -58,12 +60,15 @@
+ #include "src/band.h"
+ 
+ #define EXT_CAP_LEN 10
++#define ADDRESS_RANDOMIZATION_SEED_LEN 32
+ 
+ static struct l_genl_family *nl80211 = NULL;
+ static struct l_hwdb *hwdb;
+ static char **whitelist_filter;
+ static char **blacklist_filter;
+ static int mac_randomize_bytes = 6;
++static uint8_t address_randomization_seed[ADDRESS_RANDOMIZATION_SEED_LEN];
++static bool have_address_randomization_seed;
+ static char regdom_country[2];
+ static uint32_t work_ids;
+ static unsigned int wiphy_dump_id;
+@@ -836,7 +841,11 @@
+ 	struct l_checksum *sha = l_checksum_new(L_CHECKSUM_SHA256);
+ 
+ 	l_checksum_update(sha, ssid, ssid_len);
+-	l_checksum_update(sha, wiphy->permanent_addr,
++	if (have_address_randomization_seed)
++		l_checksum_update(sha, address_randomization_seed,
++				sizeof(address_randomization_seed));
++	else
++		l_checksum_update(sha, wiphy->permanent_addr,
+ 				sizeof(wiphy->permanent_addr));
+ 	l_checksum_get_digest(sha, addr, mac_randomize_bytes);
+ 
+@@ -2834,6 +2843,55 @@
+ 	return item->id;
+ }
+ 
++static bool wiphy_load_address_randomization_seed(const char *path)
++{
++	uint8_t seed[ADDRESS_RANDOMIZATION_SEED_LEN + 1];
++	struct stat st;
++	size_t offset = 0;
++	ssize_t bytes;
++	int fd;
++
++	fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++	if (fd < 0)
++		goto error;
++
++	if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 ||
++			(st.st_mode & (S_IRWXG | S_IRWXO)) ||
++			st.st_size != ADDRESS_RANDOMIZATION_SEED_LEN)
++		goto close_error;
++
++	while (offset < sizeof(seed)) {
++		bytes = read(fd, seed + offset, sizeof(seed) - offset);
++		if (bytes < 0) {
++			if (errno == EINTR)
++				continue;
++
++			goto close_error;
++		}
++
++		if (!bytes)
++			break;
++
++		offset += bytes;
++	}
++
++	close(fd);
++
++	if (offset != ADDRESS_RANDOMIZATION_SEED_LEN)
++		goto error;
++
++	memcpy(address_randomization_seed, seed,
++			sizeof(address_randomization_seed));
++	explicit_bzero(seed, sizeof(seed));
++	return true;
++
++close_error:
++	close(fd);
++error:
++	explicit_bzero(seed, sizeof(seed));
++	return false;
++}
++
+ static int wiphy_init(void)
+ {
+ 	struct l_genl *genl = iwd_get_genl();
+@@ -2871,6 +2929,15 @@
+ 
+ 	if (blacklist)
+ 		blacklist_filter = l_strsplit(blacklist, ',');
++
++	s = l_settings_get_value(config, "General",
++					"AddressRandomizationSeedFile");
++	if (s) {
++		have_address_randomization_seed =
++			wiphy_load_address_randomization_seed(s);
++		if (!have_address_randomization_seed)
++			l_warn("Unable to load address randomization seed");
++	}
+ 
+ 	s = l_settings_get_value(config, "General",
+ 						"AddressRandomizationRange");
+@@ -2908,6 +2975,10 @@
+ 	nl80211 = NULL;
+ 	mac_randomize_bytes = 6;
+ 
++	explicit_bzero(address_randomization_seed,
++			sizeof(address_randomization_seed));
++	have_address_randomization_seed = false;
++
+ 	l_dbus_unregister_interface(dbus_get_bus(), IWD_WIPHY_INTERFACE);
+ 
+ 	l_hwdb_unref(hwdb);
+--- a/src/iwd.config.rst
++++ b/src/iwd.config.rst
+@@ -106,6 +106,15 @@
+        to be generated each time connecting to a given SSID while still hiding
+        the permanent address.
+ 
++   * - AddressRandomizationSeedFile
++     - Values: file path
++
++       When set, use the 32 raw bytes in this file instead of the adapter's
++       permanent address when deriving per-network randomized addresses.  This
++       stabilizes these addresses when the kernel-reported permanent address is
++       unstable.  The file must be regular, owned by root, have no group or
++       other permissions, and must be kept private.
++
+    * - AddressRandomizationRange
+      - Values: **full**, nic

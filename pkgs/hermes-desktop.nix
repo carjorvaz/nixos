@@ -8,6 +8,8 @@
   stdenv,
   hermesAgent ? inputs.hermes-agent.packages.${stdenv.hostPlatform.system}.default,
   hermesCliPath ? lib.getExe hermesAgent,
+  remoteUrl ? null,
+  remoteTokenFile ? null,
 }:
 
 let
@@ -137,6 +139,7 @@ let
     }
   );
 in
+assert (remoteUrl == null) == (remoteTokenFile == null);
 stdenv.mkDerivation {
   pname = "hermes-desktop";
   inherit version;
@@ -156,11 +159,25 @@ stdenv.mkDerivation {
 
 
     makeHermesDesktopWrapper() {
+      local remote_args=()
+      ${lib.optionalString (remoteUrl != null) ''
+        remote_args+=(
+          --set HERMES_DESKTOP_REMOTE_URL ${lib.escapeShellArg remoteUrl}
+          --run ${lib.escapeShellArg ''
+            if [ ! -r ${lib.escapeShellArg (toString remoteTokenFile)} ]; then
+              echo "Hermes Desktop remote token is unavailable: ${toString remoteTokenFile}" >&2
+              exit 1
+            fi
+            export HERMES_DESKTOP_REMOTE_TOKEN="$(${pkgs.coreutils}/bin/cat ${lib.escapeShellArg (toString remoteTokenFile)})"
+          ''}
+        )
+      ''}
       makeWrapper ${lib.getExe electron} "$1" \
         --add-flags "$out/share/hermes-desktop" \
         --set HERMES_DESKTOP_HERMES ${lib.escapeShellArg hermesCliPath} \
         --set HERMES_DESKTOP_NATIVE_SUDO 1 \
-        --set ELECTRON_IS_DEV 0
+        --set ELECTRON_IS_DEV 0 \
+        "''${remote_args[@]}"
     }
 
     makeHermesDesktopWrapper "$out/bin/hermes-desktop"

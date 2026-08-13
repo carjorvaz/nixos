@@ -457,6 +457,24 @@
         "type": "github"
       }
     },
+    "flake-utils_4": {
+      "inputs": {
+        "systems": "systems_6"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "git-hooks": {
       "inputs": {
         "flake-compat": [
@@ -1153,11 +1171,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785290166,
-        "narHash": "sha256-RnlEfL/Z7bN3IfrAJkzXPCbawrQVsET+bFsbbr0P6Kc=",
+        "lastModified": 1786608669,
+        "narHash": "sha256-WxZWa4zFv8E+5NIldRqJLC3q2l6u6htifshmG9gI0EA=",
         "ref": "refs/heads/master",
-        "rev": "fbfaad9722b0e336e39285018232326b5e6d7ec2",
-        "revCount": 109,
+        "rev": "8ae95f27b00c658fee490f79551fe89e7b4282c6",
+        "revCount": 115,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
@@ -1292,6 +1310,7 @@
         "pdf-translator": "pdf-translator",
         "rustab": "rustab",
         "simple-nixos-mailserver": "simple-nixos-mailserver",
+        "strava-trophy-rs": "strava-trophy-rs",
         "telegram-mirror-rs": "telegram-mirror-rs",
         "tuxedo-nixos": "tuxedo-nixos"
       }
@@ -1380,6 +1399,28 @@
         "type": "gitlab"
       }
     },
+    "strava-trophy-rs": {
+      "inputs": {
+        "flake-utils": "flake-utils_3",
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786599519,
+        "narHash": "sha256-OqEXN9ZyTpIIpYlSIZBX5ArV1ExREutTJ1NPQXYf5i0=",
+        "ref": "refs/heads/main",
+        "rev": "aa639d74971d755b70795f0fb50a4873df02a5f6",
+        "revCount": 10,
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/strava-trophy-rs.git"
+      },
+      "original": {
+        "ref": "refs/heads/main",
+        "type": "git",
+        "url": "ssh://git@github.com/carjorvaz/strava-trophy-rs.git"
+      }
+    },
     "systems": {
       "locked": {
         "lastModified": 1681028828,
@@ -1455,9 +1496,24 @@
         "type": "github"
       }
     },
+    "systems_6": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
     "telegram-mirror-rs": {
       "inputs": {
-        "flake-utils": "flake-utils_3",
+        "flake-utils": "flake-utils_4",
         "nixpkgs": [
           "nixpkgs-unstable"
         ]

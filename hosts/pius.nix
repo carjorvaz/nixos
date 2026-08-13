@@ -65,6 +65,7 @@ in
     "${self}/profiles/nixos/bazarr.nix"
     "${self}/profiles/nixos/cl-olx-scraper.nix"
     "${self}/profiles/nixos/ott-rs.nix"
+    "${self}/profiles/nixos/terreno.nix"
     "${self}/profiles/nixos/telegram-mirror.nix"
     "${self}/profiles/nixos/firecrawl.nix"
     "${self}/profiles/nixos/pdf-translator.nix"

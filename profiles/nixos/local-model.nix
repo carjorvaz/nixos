@@ -5,8 +5,16 @@
 }:
 
 let
-  modelId = "trajanus-ornith/ornith-1.0-35b-heretic-q4km-262k";
-  modelPath = "/models/gguf/ornith-1.0-35b/llmfan46/Ornith-1.0-35B-uncensored-heretic-Q4_K_M.gguf";
+  # Speed champion since 2026-08-11 (see /models/run-artifacts/ff711-squeeze2/speed2.tsv):
+  # Qwen3.6-35B-A3B (MoE, 3B active) IQ4_XS-4.19bpw + in-model MTP spec decoding,
+  # n-max 2 → 27-28 tok/s decode, ~200 tok/s prefill, at FULL 262144 ctx (28/30 GB).
+  # That is ~4.4x the dense FF711 27B (6.2 tok/s). FF711 files stay on disk:
+  # switch back by changing modelPath to the FF711 LOW-MTP-IQ4_XS.gguf and
+  # mmprojPath to the FF711 mmproj-F16.gguf (alias/comment update too).
+  # Caveat: MTP acceptance drops above temp 1.0 (measured at 0.7).
+  modelId = "trajanus-a3b/qwen3.6-35b-a3b-mtp-iq4xs-262k";
+  modelPath = "/models/gguf/qwen3.6-35b-a3b-mtp/byteshape/MTP-GPU-5/Qwen3.6-35B-A3B-IQ4_XS-4.19bpw.gguf";
+  mmprojPath = "/models/gguf/qwen3.6-35b-a3b-mtp/byteshape/MTP-GPU-5/mmproj-bf16.gguf";
   llamaBin = "/models/sota-src/llama.cpp-mainline-latest/build-vulkan/bin/llama-server";
   llamaLibDir = "/models/sota-src/llama.cpp-mainline-latest/build-vulkan/bin";
   localModelDomain = "llm.trajanus.vaz.ovh";
@@ -62,18 +70,24 @@ in
         host = "127.0.0.1";
         port = localModelPort;
         model = modelPath;
+        mmproj = mmprojPath;
         alias = modelId;
         no-webui = true;
         n-gpu-layers = 99;
         flash-attn = "on";
+        # Full 256k context verified (speed2.tsv): A3B is pure-attention MoE,
+        # KV ≈ 28.7 KB/token → 262144 ctx ≈ 7.5 GB at q4_0; measured 28/30 GB
+        # total, 27-29 t/s. Fits, with zram swap as safety net.
         ctx-size = 262144;
         parallel = 1;
-        threads = 4;
-        threads-batch = 4;
+        threads = 8;
+        threads-batch = 8;
         batch-size = 1024;
         ubatch-size = 512;
         cache-type-k = "q4_0";
         cache-type-v = "q4_0";
+        spec-type = "draft-mtp";
+        spec-draft-n-max = 2;
         no-host = true;
         poll = 0;
         timeout = 3600;

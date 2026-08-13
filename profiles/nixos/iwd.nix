@@ -16,7 +16,7 @@
 
       settings.General = {
         AddressRandomization = "network";
-        AddressRandomizationRange = "nic";
+        AddressRandomizationRange = "full";
         # Regulatory domain for Portugal.
         Country = "PT";
       };

@@ -3,6 +3,7 @@ let
   hadrianusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFI1Mcb4pU6+2ZCmS5wBJqb4oLZdcSxryvTOUf9ZLxIU root@hadrianus";
   juliusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEIQuRyifNhgbFI8ufu22kcj1Jx8WkTRlpl2HIFGZBZ root@julius";
   trajanusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPGoGQXDEcTd0T72g+YRzoQO30E09BvbfD9eBtcl3NRf root@trajanus";
+  phoneputerSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKdeg5qEW5tEXXFbsVXJOBXgULiwdZwaX4bYxMTqVOrC root@phoneputer";
   systems = [
     piusSystem
     hadrianusSystem
@@ -19,6 +20,9 @@ let
 in
 {
   "cjvHashedPassword.age".publicKeys = systems ++ users;
+  "phoneputerIwdMacSeed.age".publicKeys = [ phoneputerSystem ] ++ users;
+  "phoneputerWirelessPrimary.age".publicKeys = [ phoneputerSystem ] ++ users;
+  "phoneputerWirelessSecondary.age".publicKeys = [ phoneputerSystem ] ++ users;
   "piusInitrdHostKey.age".publicKeys = [
     piusSystem
   ]
@@ -84,7 +88,20 @@ in
   # Brave Search API key (omp web_search, etc.)
   "brave-search-api-key.age".publicKeys = users;
 
+  # Session token shared by the trajanus Hermes backend and Desktop on air
+  "hermesDashboardSessionToken.age".publicKeys = [ trajanusSystem ] ++ users;
+
   # Private Lisp corpus share credential
+  "terrenoEnv.age".publicKeys = [
+    piusSystem
+    hadrianusSystem
+  ]
+  ++ users;
+  "terrenoHtpasswd.age".publicKeys = [
+    piusSystem
+    hadrianusSystem
+  ]
+  ++ users;
   "lispCorpusShareHtpasswd.age".publicKeys = [
     piusSystem
     hadrianusSystem

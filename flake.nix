@@ -4,6 +4,16 @@
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
+    nixpkgs-mobile = {
+      url = "https://releases.nixos.org/nixos/unstable/nixos-26.05pre940249.00c21e4c93d9/nixexprs.tar.xz";
+      flake = false;
+    };
+
+    mobile-nixos = {
+      url = "github:mwlaboratories/mobile-nixos/sdm845-bleeding-edge";
+      flake = false;
+    };
+
     nix-darwin.url = "github:LnL7/nix-darwin/master";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs-darwin";
 
@@ -48,6 +58,10 @@
 
     cl-ultimate-tic-tac-toe.url = "github:carjorvaz/cl-ultimate-tic-tac-toe";
     cl-ultimate-tic-tac-toe.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
+    # Terreno: GPX runs -> 3D-printable trophy web app (private tailnet test).
+    strava-trophy-rs.url = "git+ssh://git@github.com/carjorvaz/strava-trophy-rs.git?ref=refs/heads/main";
+    strava-trophy-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     # Deploy ott-rs from the reviewed master release line.
     ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git?ref=refs/heads/master";
@@ -233,6 +247,21 @@
       impermanenceLoginRecordsModule = ./profiles/nixos/impermanence/login-records.nix;
       zfsBootRollbackModule = ./profiles/nixos/impermanence/rollback-zfs-boot.nix;
       zfsShutdownRollbackModule = ./profiles/nixos/impermanence/rollback-zfs-shutdown.nix;
+
+      mkPhoneputer =
+        buildPlatform:
+        import "${inputs.nixpkgs-mobile}/nixos/lib/eval-config.nix" {
+          system = "aarch64-linux";
+          specialArgs = { inherit inputs self; };
+          modules = [
+            { nixpkgs = { inherit buildPlatform; }; }
+            inputs.agenix.nixosModules.default
+            (import "${inputs.mobile-nixos}/lib/configuration.nix" {
+              device = "oneplus-enchilada";
+            })
+            ./hosts/phoneputer.nix
+          ];
+        };
     in
     {
       nixosConfigurations = {
@@ -257,6 +286,7 @@
           specialArgs = { inherit inputs self; };
           modules = baseModules ++ [
             inputs.ott-rs.nixosModules.ott-rs
+            inputs.strava-trophy-rs.nixosModules.terreno
             inputs.cl-olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             inputs.telegram-mirror-rs.nixosModules.default
@@ -289,6 +319,9 @@
             ./hosts/pius-unlock-bridge.nix
           ];
         };
+
+        phoneputer = mkPhoneputer "x86_64-linux";
+        phoneputer-native = mkPhoneputer "aarch64-linux";
 
         julius = inputs.nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";

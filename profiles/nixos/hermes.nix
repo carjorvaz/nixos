@@ -1,7 +1,9 @@
 {
+  config,
   inputs,
   lib,
   pkgs,
+  self,
   ...
 }:
 
@@ -9,6 +11,8 @@ let
   hermesStateDir = "/var/lib/hermes";
   hermesHome = "${hermesStateDir}/.hermes";
   hermesWorkspace = "${hermesStateDir}/workspace";
+  hermesBackendDomain = "hermes.trajanus.vaz.ovh";
+  hermesBackendPort = 9119;
   nixosMirror = "/home/cjv/sync/nixos";
   simplexStateDir = "${hermesStateDir}/.simplex";
   simplexDbPrefix = "${simplexStateDir}/simplex";
@@ -243,6 +247,21 @@ let
     '';
   };
 
+  hermesBackendStart = pkgs.writeShellScript "hermes-backend-start" ''
+    set -euo pipefail
+
+    token_file="$CREDENTIALS_DIRECTORY/HERMES_DASHBOARD_SESSION_TOKEN"
+    if [ ! -s "$token_file" ]; then
+      echo "Hermes backend session-token credential is missing or empty." >&2
+      exit 1
+    fi
+
+    export HERMES_DASHBOARD_SESSION_TOKEN="$(<"$token_file")"
+    exec ${lib.getExe hermesPackage} serve \
+      --host 127.0.0.1 \
+      --port ${toString hermesBackendPort}
+  '';
+
   simplexConsole = pkgs.writeShellApplication {
     name = "hermes-simplex-console";
     text = ''
@@ -298,6 +317,11 @@ in
 {
   imports = [ inputs.hermes-agent.nixosModules.default ];
 
+  age.secrets.hermesDashboardSessionToken = {
+    file = "${self}/secrets/hermesDashboardSessionToken.age";
+    mode = "0400";
+  };
+
   services.hermes-agent = {
     enable = true;
     package = hermesPackage;
@@ -329,6 +353,31 @@ in
           XDG_CONFIG_HOME = "${hermesStateDir}/home/.config";
           XDG_DATA_HOME = "${hermesStateDir}/home/.local/share";
         };
+      };
+    };
+  };
+
+  services.nginx = {
+    tailscaleAuth = {
+      enable = true;
+      virtualHosts = [ hermesBackendDomain ];
+    };
+
+    virtualHosts.${hermesBackendDomain} = {
+      forceSSL = true;
+      useACMEHost = "vaz.ovh";
+      extraConfig = ''
+        client_max_body_size 1G;
+      '';
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString hermesBackendPort}";
+        proxyWebsockets = true;
+        extraConfig = ''
+          proxy_set_header Host 127.0.0.1:${toString hermesBackendPort};
+          proxy_buffering off;
+          proxy_read_timeout 1d;
+          proxy_send_timeout 1d;
+        '';
       };
     };
   };
@@ -399,6 +448,60 @@ in
         "${hermesHome}/auth.json"
         simplexChatDb
       ];
+    };
+
+    hermes-backend = {
+      description = "Hermes Desktop backend";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      restartTriggers = [
+        ./hermes.nix
+        config.age.secrets.hermesDashboardSessionToken.file
+      ];
+      path = hermesBrowserPackages;
+      environment = {
+        AGENT_BROWSER_EXECUTABLE_PATH = lib.getExe pkgs.brave;
+        HOME = hermesStateDir;
+        HERMES_CONFIG_MUTABLE = "false";
+        HERMES_HOME = hermesHome;
+        HERMES_MANAGED = "nixos";
+        PYTHONPATH = "${hermesMutableConfigHook}/${pkgs.python312.sitePackages}";
+      };
+      unitConfig.ConditionPathExists = "${hermesHome}/auth.json";
+      serviceConfig = {
+        User = "hermes";
+        Group = "hermes";
+        WorkingDirectory = hermesWorkspace;
+        ExecStart = hermesBackendStart;
+        LoadCredential = [
+          "HERMES_DASHBOARD_SESSION_TOKEN:${config.age.secrets.hermesDashboardSessionToken.path}"
+        ];
+        Restart = "always";
+        RestartSec = 5;
+        TimeoutStopSec = 30;
+        UMask = "0007";
+        CapabilityBoundingSet = "";
+        LockPersonality = true;
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [
+          "/home/cjv/org"
+          nixosMirror
+          hermesStateDir
+        ];
+        RemoveIPC = true;
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+      };
     };
 
     hermes-simplex = {

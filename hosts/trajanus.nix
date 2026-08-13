@@ -73,7 +73,17 @@ in
     "${self}/profiles/nixos/libvirt.nix"
     "${self}/profiles/nixos/ssh.nix"
 
-    "${self}/profiles/nixos/local-model.nix"
+    # Local LLM serving (llama-cpp + llm.trajanus.vaz.ovh nginx vhost).
+    # BROUGHT DOWN 2026-08-11: vibe-check verdict "not good enough" (dense
+    # 27B ~6 t/s; A3B MoE 27 t/s but quality didn't pass). Re-enable by
+    # uncommenting; profile retains model paths, quant choices, and the
+    # A3B-vs-FF711 swap documentation.
+    # NOTE: /models/sota-src (llama.cpp builds) and /models/engines were
+    # pruned 2026-08-11 — re-clone and rebuild the Vulkan llama-server
+    # binary before re-enabling. Model weights were also deleted
+    # (pius:/persist/models/bench/trajanus-llm-experiment-20260811 holds
+    # the experiment record; weights are re-downloadable from HF).
+    # "${self}/profiles/nixos/local-model.nix"
 
     # STATE: sudo tailscale up
     # STATE: sudo tailscale set --exit-node=pius
@@ -172,13 +182,33 @@ in
     # Let uniwill_laptop claim the shared WMI GUID. eeepc_wmi is the competing
     # claimant we have actually observed on this hardware. Keep cdc_ncm away
     # from the RTL8159 so the vendor r8152 driver can claim it.
+    #
+    # mt7921e is deliberately NOT blacklisted: blacklisting also denies
+    # systemd-modules-load, which left the WiFi card (MediaTek MT7922,
+    # PCI 14C3:7922, driven by mt7921e) without a driver at 0000:03:00.0.
     blacklistedKernelModules = [
       "cdc_ncm"
       "eeepc_wmi"
-      "mt7921e"
-      "mt7921_common"
-      "mt7921u"
     ];
+
+    # The MT7922 card arrives powered off at 0000:03:00.0 and only
+    # initializes once the driver binds, so load it from the initrd: the card
+    # is ready early and the initrd has the driver for WiFi remote unlock.
+    kernelModules = [ "mt7921e" ];
+    initrd.systemd.network.networks."10-${remoteUnlockInterface}" = {
+      matchConfig.Name = remoteUnlockInterface;
+      networkConfig = {
+        Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
+        DHCP = "no";
+        Gateway = remoteUnlockGateway;
+        LinkLocalAddressing = "no";
+      };
+    };
+
+    # Nothing in the initrd needs network-online.target (sshd unlock only
+    # orders after network.target), and wait-online would stall the initrd
+    # when the USB NIC is not plugged in. Keep the initrd unblocked.
+    initrd.systemd.network.wait-online.enable = false;
   };
 
   nix.settings.system-features = lib.mkAfter [ "gccarch-armv6kz" ];
@@ -225,26 +255,30 @@ in
     driver = "r8152";
   };
 
-  boot.initrd.systemd.network.networks."10-${remoteUnlockInterface}" = {
-    matchConfig.Name = remoteUnlockInterface;
-    networkConfig = {
-      Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
-      DHCP = "no";
-      Gateway = remoteUnlockGateway;
-      LinkLocalAddressing = "no";
-    };
-  };
-
   # Keep the wired unlock NIC on the same static private address after the real
-  # system boots. trajanus is now wired-only: NetworkManager and Wi-Fi are off,
-  # and systemd-networkd owns the RTL8159 interface so the LAN rescue address is
-  # stable in both initrd and the running system.
+  # system boots. systemd-networkd owns the RTL8159 interface so the LAN rescue
+  # address is stable in both initrd and the running system; wifi (iwd +
+  # networkd DHCP on 40-wifi) is the fallback when the USB NIC is unplugged.
   networking = {
     useDHCP = false;
     useNetworkd = true;
     networkmanager.enable = false;
     wireless.enable = false;
+    # iwd dodges the wpa_supplicant/mt7921e PTK-installation failure. Connect
+    # once with `iwctl station wlan0 connect <ssid>`; iwd saves the profile in
+    # /var/lib/iwd and auto-connects on every boot (missing AutoConnect in a
+    # saved profile defaults to true).
+    wireless.iwd = {
+      enable = true;
+      settings.General = {
+        Country = "PT";
+      };
+    };
   };
+
+  # iwd persists the wifi profile here; without it, the saved connection is
+  # wiped on every boot (ZFS root rollback).
+  environment.persistence."/persist".directories = [ "/var/lib/iwd" ];
   systemd = {
     network = {
       enable = true;
@@ -257,6 +291,20 @@ in
           LinkLocalAddressing = "no";
         };
       };
+      networks."40-wifi" = {
+        # Match by MAC: udev/iwd name the interface wlan0 or wlp3s0 depending
+        # on probe order, so a name match is fragile.
+        matchConfig.PermanentMACAddress = "60:ff:9e:40:77:0a";
+        networkConfig.DHCP = "yes";
+        # Required: with wait-online.anyInterface below, boot waits for the
+        # wired NIC OR wifi, whichever comes online first. Without this the
+        # wifi link is ignored and a boot without the USB NIC stalls 120 s.
+        linkConfig.RequiredForOnline = "yes";
+      };
+
+      # Boot must not depend on the RTL8159 being plugged in: wait for the
+      # first available link (wired or wifi) instead of all of them.
+      wait-online.anyInterface = true;
     };
 
     tmpfiles.rules = [
@@ -356,7 +404,6 @@ in
       };
     };
   };
-
   powerManagement.powertop.enable = lib.mkForce false;
 
   graphical.theme.name = "gruvbox";
