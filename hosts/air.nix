@@ -521,6 +521,7 @@ in
       "chrome-devtools-mcp"
       "herdr"
       "llama.cpp"
+      "mas"
       "pi-coding-agent"
       "playwright-cli"
       "trash"
@@ -570,6 +571,11 @@ in
       # - Match URI by host
       # - Unlock with biometrics, both in extension settings and desktop app settings
       # - Enable browser integration in desktop app settings)
+      # Xcode: App Store id 497799835. masApps resolves via the `mas` CLI
+      # (in brews above) and runs `mas install` during darwin-rebuild
+      # activation. Xcode is required to build mlx from source (the `metal`
+      # shader compiler ships only inside Xcode).
+      Xcode = 497799835;
       Bitwarden = 1352778147;
       #"Davinci Resolve" = 571213070;
       # STATE: Enable in Safari > Settings > Extensions.
