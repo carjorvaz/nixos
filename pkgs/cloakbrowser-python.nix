@@ -4,7 +4,7 @@
 }:
 
 python3Packages.buildPythonApplication rec {
-  pname = "cloakbrowser-python";
+  pname = "cloakbrowser";
   version = "0.4.8";
   pyproject = true;
   disabled = python3Packages.pythonOlder "3.9";

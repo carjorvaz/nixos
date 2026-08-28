@@ -50,6 +50,7 @@ in
   home-manager.users.cjv = {
     # Solves small cursor on HiDPI.
     home.pointerCursor = {
+      enable = true;
       name = "breeze_cursors";
       package = pkgs.kdePackages.breeze;
       size = 24;

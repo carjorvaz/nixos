@@ -141,7 +141,7 @@ in
     "layout.css.prefers-color-scheme.content-override" = 2;
   };
 
-  linuxOnlySettings = lib.optionalAttrs pkgs.stdenv.isLinux {
+  linuxOnlySettings = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
     # Force hardware video decoding
     "media.ffmpeg.vaapi.enabled" = true;
     "media.hardware-video-decoding.force-enabled" = true;

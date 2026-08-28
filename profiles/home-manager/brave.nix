@@ -27,7 +27,7 @@ let
     }
   );
   rustabExtensionHomePath =
-    if pkgs.stdenv.isDarwin then
+    if pkgs.stdenv.hostPlatform.isDarwin then
       "Library/Application Support/rustab/chrome-extension"
     else
       ".local/share/rustab/chrome-extension";
@@ -113,7 +113,7 @@ in
     # real directory tree here rather than a symlinked top-level directory,
     # since Brave appears not to register the unpacked extension reliably from
     # a symlink target.
-    file = lib.mkIf pkgs.stdenv.isDarwin (
+    file = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin (
       {
         "${rustabExtensionHomePath}" = {
           source = rustabExtension;
@@ -125,7 +125,7 @@ in
 
     activation = {
       rustabChromeExtensionPathMigration = lib.hm.dag.entryBefore [ "checkLinkTargets" ] (
-        lib.optionalString pkgs.stdenv.isDarwin ''
+        lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
           rustabExtensionPath="$HOME/${rustabExtensionHomePath}"
 
           # Earlier generations exposed the whole extension directory as a
@@ -138,7 +138,7 @@ in
       );
 
       rustabChromiumNativeMessagingHosts = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-        lib.optionalString pkgs.stdenv.isDarwin ''
+        lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
           for rustabHostDirRel in ${rustabDarwinNativeMessagingHostDirsArgs}; do
             rustabHostDir="$HOME/$rustabHostDirRel"
             rustabHostFile="$rustabHostDir/rustab_mediator.json"
@@ -155,7 +155,7 @@ in
       # store. Materialize those JSON files as real copies after link generation
       # so Brave can discover and install the extensions.
       braveDarwinExternalExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] (
-        lib.optionalString pkgs.stdenv.isDarwin ''
+        lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
           braveExternalExtensionsDir="$HOME/${braveDarwinExternalExtensionsHomeDir}"
 
           if [ -d "$braveExternalExtensionsDir" ]; then
@@ -184,9 +184,9 @@ in
 
     # Brave on macOS comes from the Homebrew cask, so skip the nix package
     # (commandLineArgs and dictionaries are unsupported when package = null).
-    package = if pkgs.stdenv.isDarwin then null else pkgs.brave;
+    package = if pkgs.stdenv.hostPlatform.isDarwin then null else pkgs.brave;
 
-    commandLineArgs = lib.optionals (!pkgs.stdenv.isDarwin) [
+    commandLineArgs = lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
       # https://www.reddit.com/r/archlinux/comments/15sse7i/psa_chromium_dropped_gnomekeyring_support_use/
       # https://www.reddit.com/r/archlinux/comments/18w78i5/comment/l87j82j/
       "--password-store=libsecret"
@@ -198,7 +198,7 @@ in
       "--load-extension=${pkgs.org-dump-extension}"
     ];
 
-    nativeMessagingHosts = lib.optionals (!pkgs.stdenv.isDarwin) [ rustab ];
+    nativeMessagingHosts = lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [ rustab ];
 
     # Linux supports both self-hosted and Chrome Web Store external extensions
     # directly. On macOS, BPC also stays declarative because air.nix installs a
@@ -210,7 +210,7 @@ in
         updateUrl = bpcExtensionUpdateUrl;
       }
     ]
-    ++ lib.optionals (!pkgs.stdenv.isDarwin) [
+    ++ lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
       {
         id = inputs.rustab.lib.chromeExtensionId;
         updateUrl = rustabExtensionUpdateUrl;

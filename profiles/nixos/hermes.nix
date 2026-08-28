@@ -19,13 +19,10 @@ let
   simplexChatDb = "${simplexDbPrefix}_chat.db";
   simplexFilesDir = "${simplexStateDir}/files";
   simplexTempDir = "${simplexStateDir}/tmp";
-  # Hermes 0.17.0 passes numeric contact IDs to SimpleX DM send paths but uses
-  # display-name syntax, so replies are silently rejected as "no contact <id>".
-  # Use the daemon's structured numeric-ID API until upstream fixes both paths.
-  simplexDirectSendOld = ''cmd_str = f"@{chat_id} {content}"'';
-  simplexDirectSendNew = ''cmd_str = f"/_send @{chat_id} json {json.dumps([{'msgContent': {'type': 'text', 'text': content}}])}"'';
-  simplexStandaloneSendOld = ''cmd_str = f"@{chat_id} {message}"'';
-  simplexStandaloneSendNew = ''cmd_str = f"/_send @{chat_id} json {json.dumps([{'msgContent': {'type': 'text', 'text': message}}])}"'';
+  # Hermes 0.17.0-0.19.x rejected numeric contact IDs on SimpleX DM send
+  # paths; we patched the adapter locally. Upstream 0.20.6 ships the
+  # structured `/_send … json` form itself, so only the attachment-path
+  # fixes remain below.
   simplexPendingFileOld = lib.concatStringsSep "\n" [
     "            # Voice notes typically arrive before the file finishes"
     "            # downloading. Defer the message until rcvFileComplete fires."
@@ -106,12 +103,6 @@ let
           chmod -R u+w "$out/share/hermes-agent/plugins"
 
           substituteInPlace "$out/share/hermes-agent/plugins/platforms/simplex/adapter.py" \
-            --replace-fail \
-              ${lib.escapeShellArg simplexDirectSendOld} \
-              ${lib.escapeShellArg simplexDirectSendNew} \
-            --replace-fail \
-              ${lib.escapeShellArg simplexStandaloneSendOld} \
-              ${lib.escapeShellArg simplexStandaloneSendNew} \
             --replace-fail \
               ${lib.escapeShellArg simplexPendingFileOld} \
               ${lib.escapeShellArg simplexPendingFileNew} \

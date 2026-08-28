@@ -81,8 +81,7 @@ stdenv.mkDerivation (finalAttrs: {
   nativeBuildInputs = [
     makeWrapper
     copyDesktopItems
-  ]
-  ++ lib.optionals stdenv.hostPlatform.isDarwin [ desktopToDarwinBundle ];
+  ];
 
   desktopItems = [
     (makeDesktopItem {
@@ -111,18 +110,6 @@ stdenv.mkDerivation (finalAttrs: {
     cp res/misc/brain/brain.png $out/share/icons/hicolor/48x48/apps/brainworkshop.png
 
     runHook postInstall
-  '';
-
-  # write-darwin-bundle (from desktopToDarwinBundle) bakes the desktop file's
-  # Name into CFBundleIdentifier as `org.nixos.<Name>`, producing
-  # `org.nixos.Brain Workshop` — bundle IDs cannot contain spaces. Rewrite
-  # the plist after fixupPhase to a conformant identifier.
-  postFixup = lib.optionalString stdenv.hostPlatform.isDarwin ''
-    plist="$out/Applications/Brain Workshop.app/Contents/Info.plist"
-    substituteInPlace "$plist" \
-      --replace-fail \
-        "<string>org.nixos.Brain Workshop</string>" \
-        "<string>org.nixos.brainworkshop</string>"
   '';
 
   meta = {

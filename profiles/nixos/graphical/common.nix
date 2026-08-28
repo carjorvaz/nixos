@@ -409,7 +409,7 @@
       (discord.override { withOpenASAR = true; }) # Disable if on aarch64
       foliate
       ib-tws
-      libreoffice-fresh
+      libreoffice-stable
       mattermost-desktop
       metadata-cleaner
       monero-gui

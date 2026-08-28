@@ -1,5 +1,4 @@
 {
-  buildNpmPackage,
   electron,
   inputs,
   lib,
@@ -14,14 +13,10 @@
 
 let
   hermesNpmLib = hermesAgent.passthru.hermesNpmLib;
-  npm = hermesNpmLib.mkNpmPassthru {
-    dirs = [
-      "apps/desktop"
-      "apps/shared"
-    ];
-  };
 
-  packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/apps/desktop/package.json"));
+  packageJson = builtins.fromJSON (
+    builtins.readFile (inputs.hermes-agent + "/apps/desktop/package.json")
+  );
   macBuild = packageJson.build.mac or { };
   macExtendInfo = macBuild.extendInfo or { };
   desktopMetadataVersion = packageJson.version;
@@ -32,7 +27,7 @@ let
   version = lib.getVersion hermesAgent;
   electronHeaders = pkgs.fetchurl {
     url = "https://artifacts.electronjs.org/headers/dist/v${electron.version}/node-v${electron.version}-headers.tar.gz";
-    hash = "sha256-0nUJBQDEikyYntZwq+ycH32mzEQtQmz3ICz9eeTMpJk=";
+    hash = "sha256-CyzcARd1+GhWr8ED7HBYW2MYD+tgetqZFMkaivaGvw0=";
   };
 
   nodePtyPlatform =
@@ -79,65 +74,67 @@ let
     )
   );
 
-  renderer = buildNpmPackage (
-    npm
-    // {
-      pname = "hermes-desktop-renderer";
-      inherit version;
+  renderer = hermesNpmLib.buildNpmPackage {
+    dirs = [
+      "apps/desktop"
+      "apps/shared"
+    ];
 
-      doCheck = true;
+    pname = "hermes-desktop-renderer";
+    inherit version;
 
-      buildPhase = ''
-        runHook preBuild
+    doCheck = true;
 
-        mkdir -p apps/desktop/build
-        patchShebangs .
+    buildPhase = ''
+      runHook preBuild
+      mkdir -p apps/desktop/build
+      patchShebangs .
 
-        pushd apps/desktop
-        npm exec tsc -b
-        npm exec vite build
-        node scripts/bundle-electron-main.mjs
+      pushd apps/desktop
+      npm exec -- tsc -b
+      npm exec -- vite build
+      node scripts/bundle-electron-main.mjs
 
-        mkdir -p "$TMPDIR/electron-headers"
-        tar -xzf ${electronHeaders} -C "$TMPDIR/electron-headers" --strip-components=1
-        npm rebuild node-pty \
-          --build-from-source \
-          --runtime=electron \
-          --target=${electron.version} \
-          --nodedir="$TMPDIR/electron-headers" \
-          --disturl="" \
-          --offline
-        node scripts/stage-native-deps.mjs ${nodePtyPlatform} ${nodePtyArch}
-        popd
+      mkdir -p "$TMPDIR/electron-headers"
+      tar -xzf ${electronHeaders} -C "$TMPDIR/electron-headers" --strip-components=1
+      ${lib.getExe hermesNpmLib.node-gyp} rebuild \
+        --directory=../../node_modules/node-pty \
+        --build-from-source \
+        --runtime=electron \
+        --target=${electron.version} \
+        --nodedir="$TMPDIR/electron-headers" \
+        --disturl="" \
+        --offline
+      node scripts/stage-native-deps.mjs ${nodePtyPlatform} ${nodePtyArch}
+      popd
 
-        runHook postBuild
-      '';
+      runHook postBuild
+    '';
 
-      checkPhase = ''
-        runHook preCheck
+    checkPhase = ''
+      runHook preCheck
 
-        pushd apps/desktop
-        npm run postbuild
-        test -f dist/node_modules/node-pty/build/Release/pty.node
-        popd
+      pushd apps/desktop
+      npm run postbuild
+      test -f dist/node_modules/node-pty/build/Release/pty.node
+      popd
 
-        runHook postCheck
-      '';
+      runHook postCheck
+    '';
 
-      installPhase = ''
-        runHook preInstall
+    installPhase = ''
+      runHook preInstall
 
-        mkdir -p $out
-        cp -r apps/desktop/dist $out/
-        echo '{"schemaVersion":1,"commit":"nix","branch":"nix","dirty":false,"source":"nix"}' > $out/install-stamp.json
-        cp apps/desktop/package.json $out/
-        substituteInPlace $out/package.json \
-          --replace-fail '"version": "${desktopMetadataVersion}"' '"version": "${version}"'
+      mkdir -p $out
+      cp -r apps/desktop/dist $out/
+      echo '{"schemaVersion":1,"commit":"nix","branch":"nix","dirty":false,"source":"nix"}' > $out/install-stamp.json
+      cp apps/desktop/package.json $out/
+      substituteInPlace $out/package.json \
+        --replace-fail '"version": "${desktopMetadataVersion}"' '"version": "${version}"'
 
-        runHook postInstall
-      '';
-    }
-  );
+      runHook postInstall
+    '';
+  };
 in
 assert (remoteUrl == null) == (remoteTokenFile == null);
 stdenv.mkDerivation {

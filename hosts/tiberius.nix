@@ -26,13 +26,13 @@ in
   ];
 
   boot = {
-    # TEMPORARY: stock kernel/zfs pair from cache.nixos.org. server.nix's
-    # CachyOS server-lto default has no substituter and must build remotely;
-    # the remote builders are wired (pius/trajanus via remote-builder.nix) and
-    # signature trust is proven, but pius currently drops connections from
-    # this host and trajanus is disk-full. Flip to cachyosKernels (delete this
-    # override) once either builder can serve tiberius, then `nix copy` the
-    # closure or rebuild via the configured buildMachines.
+    # Stock kernel/zfs pair from cache.nixos.org — deliberate choice: the
+    # CachyOS server-lto kernel has no substituter and building it for this
+    # host was not worth the pain (7 GB RAM box; remote-build detours via
+    # pius/trajanus shelved). The remote builders stay wired and proven for
+    # everything else. To flip later: delete the two mkForce lines, build
+    # kernelPackages.zfs_cachyos on a builder, `nix copy` the closure back,
+    # then `nixos-rebuild switch`.
     kernelPackages = lib.mkForce pkgs.linuxPackages;
     zfs.package = lib.mkForce pkgs.zfs;
     initrd.availableKernelModules = [

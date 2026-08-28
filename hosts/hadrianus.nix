@@ -28,6 +28,7 @@ in
     "${self}/profiles/nixos/ntfy.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/nginx/bastion.nix"
+    "${self}/profiles/nixos/terreno-bastion.nix"
     "${self}/profiles/nixos/nginx/blog.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/umami.nix"

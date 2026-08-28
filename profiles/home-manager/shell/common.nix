@@ -47,8 +47,8 @@
     fzf = {
       enable = true;
       defaultCommand = "fd --type f --hidden";
-      fileWidgetCommand = "fd --type f --hidden";
-      changeDirWidgetCommand = "fd --type d --hidden";
+      fileWidget.command = "fd --type f --hidden";
+      changeDirWidget.command = "fd --type d --hidden";
     };
 
     starship.enable = true;

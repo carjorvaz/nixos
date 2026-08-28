@@ -67,16 +67,16 @@
     ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git?ref=refs/heads/master";
     ott-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    pdf-translator.url = "github:carjorvaz/pdf-translator-rs";
+    pdf-translator.url = "git+ssh://git@github.com/carjorvaz/pdf-translator-rs.git";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     rustab.url = "github:carjorvaz/rustab";
     rustab.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     telegram-mirror-rs.url = "git+ssh://git@github.com/carjorvaz/telegram-mirror-rs.git";
-    telegram-mirror-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    telegram-mirror-rs.inputs.nixpkgs.follows = "nixpkgs";
 
-    hermes-agent.url = "github:NousResearch/hermes-agent/v2026.7.20";
+    hermes-agent.url = "github:NousResearch/hermes-agent/v2026.8.27";
 
     llm-agents.url = "github:numtide/llm-agents.nix";
 
@@ -220,7 +220,7 @@
         {
           nixpkgs.overlays = [
             localPackagesOverlay
-            inputs.llm-agents.overlays.default
+            inputs.llm-agents.overlays.shared-nixpkgs
           ];
           programs = {
             command-not-found.enable = false;

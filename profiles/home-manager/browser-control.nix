@@ -24,7 +24,7 @@ in
       KETCH_NO_UPDATE_NOTIFIER = "1";
     };
 
-    file = lib.mkIf pkgs.stdenv.isDarwin {
+    file = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
       ".agent-browser/config.json".text = builtins.toJSON {
         executablePath = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
       };
@@ -43,7 +43,7 @@ in
 
     activation = {
       ketchStateHardening = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-        lib.optionalString pkgs.stdenv.isDarwin ''
+        lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
           ketchConfigDir="$HOME/Library/Application Support/ketch"
           ketchConfig="$ketchConfigDir/config.json"
 

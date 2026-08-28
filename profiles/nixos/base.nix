@@ -17,6 +17,7 @@ let
   allowedUnfree = [
     "claude-code"
     "discord"
+    "discord-unwrapped"
     "ib-tws"
     "ib-tws-unwrapped"
     "intel-ocl"

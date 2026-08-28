@@ -136,129 +136,129 @@ in
     };
   };
 
-  systemd.services = {
-    ott-rs = {
-      unitConfig.OnSuccess = [
-        "ott-rs-health-sample.service"
-        "ott-rs-health-priority.service"
-      ];
-      serviceConfig = {
-        Restart = "on-failure";
-        RestartSec = "5min";
-      };
-    };
-
-    ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce broadHealthSampleCommand;
-
-    ott-rs-health-priority = {
-      description = "Confirm priority ott-rs playback health";
-      after = [
-        "network-online.target"
-        "ott-rs.service"
-      ];
-      wants = [ "network-online.target" ];
-      path = [ config.services.ott-rs.ffmpegPackage ];
-      unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
-      serviceConfig = {
-        Type = "oneshot";
-        User = "ott-rs";
-        Group = "ott-rs";
-        UMask = "0027";
-        StateDirectory = "ott-rs";
-        StateDirectoryMode = "0700";
-        ReadWritePaths = [ healthDir ];
-        LockPersonality = true;
-        MemoryDenyWriteExecute = true;
-        NoNewPrivileges = true;
-        PrivateDevices = true;
-        PrivateTmp = true;
-        ProtectClock = true;
-        ProtectControlGroups = true;
-        ProtectHome = true;
-        ProtectHostname = true;
-        ProtectKernelLogs = true;
-        ProtectKernelModules = true;
-        ProtectKernelTunables = true;
-        ProtectSystem = "strict";
-        RestrictAddressFamilies = [
-          "AF_UNIX"
-          "AF_INET"
-          "AF_INET6"
+  systemd = {
+    services = {
+      ott-rs = {
+        unitConfig.OnSuccess = [
+          "ott-rs-health-sample.service"
+          "ott-rs-health-priority.service"
         ];
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        SystemCallArchitectures = "native";
+        serviceConfig = {
+          Restart = "on-failure";
+          RestartSec = "5min";
+        };
       };
-      script = ''
-        ${priorityHealthSampleCommand}
-        ${priorityHealthSampleCommand}
-        ${priorityBenficaHealthSampleCommand}
-      '';
-    };
-    ott-rs-health-wide = {
-      description = "Wide sport-family ott-rs playback health";
-      after = [
-        "network-online.target"
-        "ott-rs.service"
-      ];
-      wants = [ "network-online.target" ];
-      path = [ config.services.ott-rs.ffmpegPackage ];
-      unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
-      serviceConfig = {
-        Type = "oneshot";
-        User = "ott-rs";
-        Group = "ott-rs";
-        UMask = "0027";
-        StateDirectory = "ott-rs";
-        StateDirectoryMode = "0700";
-        ReadWritePaths = [ healthDir ];
-        LockPersonality = true;
-        MemoryDenyWriteExecute = true;
-        NoNewPrivileges = true;
-        PrivateDevices = true;
-        PrivateTmp = true;
-        ProtectClock = true;
-        ProtectControlGroups = true;
-        ProtectHome = true;
-        ProtectHostname = true;
-        ProtectKernelLogs = true;
-        ProtectKernelModules = true;
-        ProtectKernelTunables = true;
-        ProtectSystem = "strict";
-        RestrictAddressFamilies = [
-          "AF_UNIX"
-          "AF_INET"
-          "AF_INET6"
+
+      ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce broadHealthSampleCommand;
+
+      ott-rs-health-priority = {
+        description = "Confirm priority ott-rs playback health";
+        after = [
+          "network-online.target"
+          "ott-rs.service"
         ];
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        SystemCallArchitectures = "native";
+        wants = [ "network-online.target" ];
+        path = [ config.services.ott-rs.ffmpegPackage ];
+        unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
+        serviceConfig = {
+          Type = "oneshot";
+          User = "ott-rs";
+          Group = "ott-rs";
+          UMask = "0027";
+          StateDirectory = "ott-rs";
+          StateDirectoryMode = "0700";
+          ReadWritePaths = [ healthDir ];
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectClock = true;
+          ProtectControlGroups = true;
+          ProtectHome = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+        };
+        script = ''
+          ${priorityHealthSampleCommand}
+          ${priorityHealthSampleCommand}
+          ${priorityBenficaHealthSampleCommand}
+        '';
       };
-      script = lib.concatMapStringsSep "\n" (
-        channel: widePriorityHealthSampleCommand channel
-      ) sportFamilyChannels;
+      ott-rs-health-wide = {
+        description = "Wide sport-family ott-rs playback health";
+        after = [
+          "network-online.target"
+          "ott-rs.service"
+        ];
+        wants = [ "network-online.target" ];
+        path = [ config.services.ott-rs.ffmpegPackage ];
+        unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
+        serviceConfig = {
+          Type = "oneshot";
+          User = "ott-rs";
+          Group = "ott-rs";
+          UMask = "0027";
+          StateDirectory = "ott-rs";
+          StateDirectoryMode = "0700";
+          ReadWritePaths = [ healthDir ];
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectClock = true;
+          ProtectControlGroups = true;
+          ProtectHome = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+        };
+        script = lib.concatMapStringsSep "\n" widePriorityHealthSampleCommand sportFamilyChannels;
+      };
     };
-  };
 
-  systemd.timers.ott-rs-health-wide = {
-    description = "Refresh wide sport-family ott-rs playback health";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* *:05/20:00";
-      Persistent = true;
-      RandomizedDelaySec = "1m";
-      Unit = "ott-rs-health-wide.service";
+    timers.ott-rs-health-wide = {
+      description = "Refresh wide sport-family ott-rs playback health";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* *:05/20:00";
+        Persistent = true;
+        RandomizedDelaySec = "1m";
+        Unit = "ott-rs-health-wide.service";
+      };
     };
-  };
 
-  systemd.timers.ott-rs-health-priority = {
-    description = "Refresh priority ott-rs playback health";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* *:00/4:00";
-      Persistent = true;
-      RandomizedDelaySec = "30s";
-      Unit = "ott-rs-health-priority.service";
+    timers.ott-rs-health-priority = {
+      description = "Refresh priority ott-rs playback health";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* *:00/4:00";
+        Persistent = true;
+        RandomizedDelaySec = "30s";
+        Unit = "ott-rs-health-priority.service";
+      };
     };
   };
 

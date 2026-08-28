@@ -169,14 +169,6 @@ in
     # reaching boot-complete.target, otherwise systemd-boot can fall back.
     lanzaboote.bootCounting.initialTries = 3;
 
-    initrd.availableKernelModules = [
-      "xhci_pci"
-      "thunderbolt"
-      "nvme"
-      "usb_storage"
-      "sd_mod"
-    ];
-
     # Conexant SN6140 internal mic fixes:
     # 1. GPIO 0 must be enabled for the mic to produce signal (not just noise).
     #    Upstream fix needed: SND_PCI_QUIRK(0x1d05, 0x137d, ..., CXT_FIXUP_GPIO1)
@@ -207,32 +199,14 @@ in
 
     zfs.extraPools = [ "zdata" ];
 
-    # Carry the local GXxHRXx uniwill_laptop platform-profile patch until this
-    # EC-backed quiet/balanced/performance mapping lands upstream. Carry the
-    # Realtek out-of-tree r8152 module so the RTL8159 USB 10G NIC binds as
-    # Ethernet instead of cdc_ncm, including in initrd for remote unlock.
-    extraModulePackages =
-      let
-        kp = config.boot.kernelPackages;
-      in
-      [
-        (pkgs.callPackage ./trajanus/realtek-r8152.nix {
-          kernelPackages = kp;
-        })
-        (pkgs.stdenv.mkDerivation {
-          pname = "uniwill-laptop-patched";
-          version = kp.kernel.version;
-          src = kp.kernel.src;
-          patches = [ "${self}/patches/uniwill-laptop-platform-profile-xmg-evo.patch" ];
-          nativeBuildInputs = [ pkgs.kmod ] ++ kp.kernel.moduleBuildDependencies;
-          makeFlags = kp.kernelModuleMakeFlags ++ [
-            "M=$(PWD)/drivers/platform/x86/uniwill"
-            "INSTALL_MOD_PATH=$(out)"
-          ];
-          buildFlags = [ "modules" ];
-          installTargets = [ "modules_install" ];
-        })
-      ];
+    # Carry the Realtek out-of-tree r8152 module so the RTL8159 USB 10G NIC
+    # binds as Ethernet instead of cdc_ncm, including in initrd for remote
+    # unlock.
+    extraModulePackages = [
+      (pkgs.callPackage ./trajanus/realtek-r8152.nix {
+        kernelPackages = config.boot.kernelPackages;
+      })
+    ];
 
     # Let uniwill_laptop claim the shared WMI GUID. eeepc_wmi is the competing
     # claimant we have actually observed on this hardware. Keep cdc_ncm away
@@ -250,23 +224,36 @@ in
     # initializes once the driver binds, so load it from the initrd: the card
     # is ready early and the initrd has the driver for WiFi remote unlock.
     kernelModules = [ "mt7921e" ];
-    initrd.systemd.network.networks."10-${remoteUnlockInterface}" = {
-      matchConfig.Name = remoteUnlockInterface;
-      networkConfig = {
-        Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
-        DHCP = "no";
-        Gateway = remoteUnlockGateway;
-        LinkLocalAddressing = "no";
+    initrd = {
+      availableKernelModules = [
+        "xhci_pci"
+        "thunderbolt"
+        "nvme"
+        "usb_storage"
+        "sd_mod"
+      ];
+
+      systemd.network = {
+        networks."10-${remoteUnlockInterface}" = {
+          matchConfig.Name = remoteUnlockInterface;
+          networkConfig = {
+            Address = "${remoteUnlockAddress}/${toString remoteUnlockPrefixLength}";
+            DHCP = "no";
+            Gateway = remoteUnlockGateway;
+            LinkLocalAddressing = "no";
+          };
+        };
+
+        # Nothing in the initrd needs network-online.target (sshd unlock only
+        # orders after network.target), and wait-online would stall the initrd
+        # when the USB NIC is not plugged in. Keep the initrd unblocked.
+        wait-online.enable = false;
       };
     };
-
-    # Nothing in the initrd needs network-online.target (sshd unlock only
-    # orders after network.target), and wait-online would stall the initrd
-    # when the USB NIC is not plugged in. Keep the initrd unblocked.
-    initrd.systemd.network.wait-online.enable = false;
   };
 
   nix.settings.system-features = lib.mkAfter [ "gccarch-armv6kz" ];
+
 
   specialisation = {
     llm-vulkan-gtt.configuration = {
