@@ -412,5 +412,8 @@ in
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
+  # Sign store paths produced for remote builders (tiberius trusts this key).
+  nix.settings.secret-key-files = [ "/persist/etc/nix/builder.signing-key" ];
+
   system.stateVersion = "23.05";
 }
