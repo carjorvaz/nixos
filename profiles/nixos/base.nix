@@ -21,6 +21,7 @@ let
     "ib-tws"
     "ib-tws-unwrapped"
     "intel-ocl"
+    "nvidia-kernel-modules"
     "nvidia-persistenced"
     "nvidia-settings"
     "nvidia-x11"

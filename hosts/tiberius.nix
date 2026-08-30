@@ -18,6 +18,7 @@ in
     "${self}/profiles/nixos/base.nix"
     "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
+    "${self}/profiles/nixos/gpu/nvidia.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/zramSwap.nix"
@@ -73,6 +74,22 @@ in
     distributedBuilds = true;
     # Builders over the tailnet; reachable once `sudo tailscale up` has run.
     buildMachines = [
+      {
+        # pius first: trajanus is disk-full and its daemon dies mid-build.
+        hostName = "pius";
+        sshUser = "nix-ssh";
+        sshKey = "/persist/etc/ssh/builder@tiberius";
+        systems = [ "x86_64-linux" ];
+        protocol = "ssh-ng";
+        maxJobs = 6;
+        speedFactor = 2;
+        supportedFeatures = [
+          "nixos-test"
+          "benchmark"
+          "big-parallel"
+          "kvm"
+        ];
+      }
       {
         hostName = "trajanus";
         sshUser = "nix-ssh";
