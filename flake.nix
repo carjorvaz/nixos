@@ -336,6 +336,22 @@
           ];
         };
 
+        tiberius = inputs.nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = { inherit inputs self; };
+          modules = baseModules ++ [
+            ./hosts/tiberius.nix
+            ./disko/tiberius.nix
+            impermanenceBaseModule
+            zfsBootRollbackModule
+            {
+              _module.args.disks = [
+                "/dev/sda"
+                "/dev/sdb"
+              ];
+            }
+          ];
+        };
         trajanus = inputs.nixpkgs-unstable.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = { inherit inputs self; };

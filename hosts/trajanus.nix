@@ -254,6 +254,8 @@ in
 
   nix.settings.system-features = lib.mkAfter [ "gccarch-armv6kz" ];
 
+  # Sign store paths produced for remote builders (tiberius trusts this key).
+  nix.settings.secret-key-files = [ "/persist/etc/nix/builder.signing-key" ];
 
   specialisation = {
     llm-vulkan-gtt.configuration = {
