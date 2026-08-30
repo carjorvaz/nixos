@@ -3,12 +3,14 @@ let
   hadrianusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFI1Mcb4pU6+2ZCmS5wBJqb4oLZdcSxryvTOUf9ZLxIU root@hadrianus";
   juliusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEIQuRyifNhgbFI8ufu22kcj1Jx8WkTRlpl2HIFGZBZ root@julius";
   trajanusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPGoGQXDEcTd0T72g+YRzoQO30E09BvbfD9eBtcl3NRf root@trajanus";
+  tiberiusSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICX0M2EnM7JcZfCi9w7OkXht64HRRd0/BJxiIGbkSEJg root@tiberius";
   phoneputerSystem = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKdeg5qEW5tEXXFbsVXJOBXgULiwdZwaX4bYxMTqVOrC root@phoneputer";
   systems = [
     piusSystem
     hadrianusSystem
     juliusSystem
     trajanusSystem
+    tiberiusSystem
   ];
 
   airUser = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKabE30sEDKJPK6Oq5zHn80qyakDSMqG3Y5tAfcUs2c9 cjv@air";
