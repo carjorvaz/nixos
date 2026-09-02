@@ -16,6 +16,7 @@ let
 
   allowedUnfree = [
     "claude-code"
+    "cuda_nvcc"
     "discord"
     "discord-unwrapped"
     "ib-tws"

@@ -11,6 +11,24 @@ let
   # USB Ethernet (Realtek r8152). The onboard RJ45 is BMC-only (NC-SI sideband);
   # the host has no wired NIC of its own.
   iface = "enp0s20f0u5";
+  qwenRuntimeRoot = "/root/vllm-port";
+  qwenCuda = pkgs.cudaPackages.cuda_nvcc;
+  qwenRuntimePackages = [
+    config.hardware.nvidia.package
+    pkgs.bash
+    pkgs.coreutils
+    pkgs.gnupatch
+    pkgs.ninja
+    pkgs.python312
+    pkgs.stdenv.cc
+    qwenCuda
+  ];
+  qwenRuntimePath = lib.makeBinPath qwenRuntimePackages;
+  qwenLibraryPath = lib.makeLibraryPath [
+    config.hardware.nvidia.package
+    pkgs.stdenv.cc.cc.lib
+    pkgs.zlib
+  ];
 in
 {
   imports = [
@@ -66,6 +84,56 @@ in
           prefixLength = 24;
         }
       ];
+    };
+  };
+
+  # The root filesystem rolls back on every boot. Preserve the complete model
+  # runtime—including weights, venv, patch stack, caches, and benchmark
+  # evidence—rather than relying on machine-local GC roots or downloads.
+  environment.persistence."/persist".directories = [ qwenRuntimeRoot ];
+
+  systemd.services.tiberius-qwen38-vllm = {
+    description = "Tiberius Qwen3.8-27B vLLM inference";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "nvidia-persistenced.service"
+    ];
+
+    path = qwenRuntimePackages;
+    environment = {
+      ALLOW_BUSY_GPU = "0";
+      HOME = "/root";
+      PROFILE = "mtp-graphs";
+      PYTHONUNBUFFERED = "1";
+      TRITON_CACHE_DIR = "${qwenRuntimeRoot}/triton-cache";
+      TRITON_PTXAS_PATH = "${qwenCuda}/bin/ptxas";
+      VLLM_CUDA_BIN = "${qwenCuda}/bin";
+      VLLM_DIRECT_LAUNCH = "1";
+      VLLM_LD_LIBRARY_PATH = qwenLibraryPath;
+      VLLM_ROOT = qwenRuntimeRoot;
+      VLLM_RUNTIME_PATH = qwenRuntimePath;
+      VLLM_VENV = "${qwenRuntimeRoot}/venv";
+    };
+
+    unitConfig = {
+      ConditionPathExists = "${qwenRuntimeRoot}/repo/tiberius/start_qwen.sh";
+      RequiresMountsFor = qwenRuntimeRoot;
+      StartLimitIntervalSec = 0;
+    };
+
+    serviceConfig = {
+      Type = "simple";
+      WorkingDirectory = qwenRuntimeRoot;
+      ExecStart = "${pkgs.bash}/bin/bash ${qwenRuntimeRoot}/repo/tiberius/start_qwen.sh";
+      Restart = "on-failure";
+      RestartSec = "10s";
+      TimeoutStopSec = "3min";
+      KillMode = "control-group";
+      LimitMEMLOCK = "infinity";
+      LimitNOFILE = 1048576;
+      TasksMax = "infinity";
     };
   };
 
