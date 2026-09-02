@@ -429,7 +429,7 @@ in
     };
 
     systemPackages = with pkgs; [
-      colima # Streamlines Docker, just run `colima start`.
+      # colima # Re-enable when a local Docker VM is needed; also pulls in QEMU.
       docker
       htop
       freerdp

@@ -65,11 +65,13 @@ in
     pandoc # markdown preview/export
     pyright
     python3Packages.pygments
-    cargo
-    rustc
+    # Use project dev shells for the Rust compiler and Cargo.
+    # cargo
+    # rustc
     rust-analyzer
     texlab
-    texlive.combined.scheme-full # Quite big, around 20GB. Remove if I'm running out of space.
+    # Keep full TeX Live opt-in; use a project shell when needed.
+    # texlive.combined.scheme-full
     sqlite # org-roam
     zstd # undo-fu-session compression
     imagemagick
