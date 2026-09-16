@@ -1,0 +1,112 @@
+--- a/v1/attention/ops/int4_per_token_head.py
++++ b/v1/attention/ops/int4_per_token_head.py
+@@ -1084,6 +1084,83 @@
+     return out2d.reshape(orig_shape).to(orig_dtype)
+ 
+ 
++# Butterfly (gather) Hadamard kernel — the replacement for the dense-matrix
++# tiers when D exceeds the matrix smem budget and hadacore is unavailable
++# (e.g. head_dim = 256 on SM75/Turing, where the MMA tier's H matrix would
++# need 2·D² = 128 KiB).  It performs the same log2(D) in-register stages as
++# the PyTorch fallback, in the same order and in fp32, but in ONE launch.
++#
++# Total fp32 working set per program is ROWS · D · 4 bytes; cap it at 32 KiB
++# so the tile stays inside the register file on every SM75 profile.
++_TRITON_HADAMARD_BUTTERFLY_MAX_D = 4096
++_BUTTERFLY_TILE_BYTES = 32768
++
++
++@triton.jit
++def _hadamard_butterfly_kernel(
++    x_ptr,
++    out_ptr,
++    n_rows,
++    stride_x_row: tl.int64,
++    stride_o_row: tl.int64,
++    ROWS: tl.constexpr,
++    D: tl.constexpr,
++    STAGES: tl.constexpr,
++):
++    """Unnormalized fp32 Walsh-Hadamard butterfly along the last axis.
++
++    Stage ``s`` pairs every element with its ``1 << s`` neighbour:
++    ``x + partner`` where the stage bit is clear, ``partner - x`` where it
++    is set — identical arithmetic and identical stage order to the
++    ``torch.stack([a + b, a - b])`` loop it replaces.
++    """
++    pid = tl.program_id(0)
++    rows = pid * ROWS + tl.arange(0, ROWS)
++    cols = tl.arange(0, D)
++    row_mask = rows < n_rows
++    x = tl.load(
++        x_ptr + rows[:, None] * stride_x_row + cols[None, :],
++        mask=row_mask[:, None],
++        other=0.0,
++    ).to(tl.float32)
++    for stage in tl.static_range(0, STAGES):
++        bit = 1 << stage
++        partner = tl.gather(x, tl.broadcast_to((cols ^ bit)[None, :], x.shape), axis=1)
++        x = tl.where((cols[None, :] & bit) == 0, x + partner, partner - x)
++    tl.store(
++        out_ptr + rows[:, None] * stride_o_row + cols[None, :],
++        x.to(out_ptr.dtype.element_ty),
++        mask=row_mask[:, None],
++    )
++
++
++def _triton_hadamard_butterfly(x: torch.Tensor) -> torch.Tensor:
++    """H_d × x for D above the dense-matrix tiers, without a D × D matrix.
++
++    Numerically identical to the PyTorch stage loop in ``fast_hadamard_transform``:
++    fp32 add/sub only, same pairing, same stage order.  One kernel launch
++    instead of 8 stages of view/slice/stack/reshape (≈24 launches and 8
++    full-size temporaries per call on CUDA).
++    """
++    d = x.shape[-1]
++    orig_shape = x.shape
++    x2d = x.contiguous().reshape(-1, d)
++    out2d = torch.empty_like(x2d)
++    rows = max(1, min(16, _BUTTERFLY_TILE_BYTES // (d * 4)))
++    _hadamard_butterfly_kernel[(triton.cdiv(x2d.shape[0], rows),)](
++        x2d,
++        out2d,
++        x2d.shape[0],
++        x2d.stride(0),
++        out2d.stride(0),
++        ROWS=rows,
++        D=d,
++        STAGES=d.bit_length() - 1,
++        num_warps=4,
++    )
++    return out2d.reshape(orig_shape)
++
++
+ # Public API
+ def fast_hadamard_transform(x: torch.Tensor) -> torch.Tensor:
+     """Unnormalized Walsh-Hadamard Transform along the last dimension.
+@@ -1093,6 +1170,7 @@
+     Three-tier dispatch:
+       1. Hadacore CUDA Tensor Core kernel (sm_80+).
+       2. Triton MMA matmul kernel (CUDA fallback + ROCm MFMA/WMMA path).
++      2b. Triton butterfly kernel (CUDA fp32, D above the matrix budget).
+       3. PyTorch butterfly (CPU and any GPU/dtype combo Triton can't take).
+     """
+     d = x.shape[-1]
+@@ -1124,6 +1202,17 @@
+     ):
+         return _triton_hadamard_transform(x)
+ 
++    # Tier 2b — Triton butterfly.  Reached on CUDA when hadacore is
++    # unavailable (sm_75 and below) and D is past the dense-matrix tier
++    # (D > 128): the fp32-only gate keeps the existing per-dtype rounding
++    # of the PyTorch fallback for half/bfloat16 callers.
++    if (
++        x.is_cuda
++        and x.dtype == torch.float32
++        and _TRITON_HADAMARD_MAX_D < d <= _TRITON_HADAMARD_BUTTERFLY_MAX_D
++    ):
++        return _triton_hadamard_butterfly(x)
++
+     # Tier 3 — PyTorch butterfly (CPU / unsupported dtype / D < 16).
+     h = 1
+     while h < d:

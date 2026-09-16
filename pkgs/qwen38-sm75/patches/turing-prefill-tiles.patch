@@ -1,0 +1,203 @@
+--- a/v1/attention/ops/turing_prefill_attn.py
++++ b/v1/attention/ops/turing_prefill_attn.py
+@@ -10,7 +10,7 @@
+ import triton.language as tl
+ from torch.nn.attention import SDPBackend, sdpa_kernel
+ from torch.nn.attention.bias import causal_lower_right
+-from torch.nn.functional import scaled_dot_product_attention
++from .turing_prefill_tiles import scaled_dot_product_attention
+ 
+ 
+ @triton.jit
+--- /dev/null
++++ b/v1/attention/ops/turing_prefill_tiles.py
+@@ -0,0 +1,113 @@
++"""SM75 D256 lower-right causal GQA prefill; other inputs retain PyTorch SDPA.
++
++A 256-key Cutlass tile keeps the FP32 output accumulator in registers. The
++pinned PyTorch template is copied into the extension build cache, never edited
++in site-packages. VLLM_TURING_PREFILL_TILE=0 selects the original implementation.
++"""
++from functools import cache
++import fcntl
++import hashlib
++import os
++from pathlib import Path
++
++import torch
++from torch.nn.attention.bias import CausalBias, CausalVariant
++from torch.nn.functional import scaled_dot_product_attention as reference_attention
++
++
++@cache
++def _is_sm75(device):
++    return torch.cuda.get_device_capability(device) == (7, 5)
++
++
++def _prepare_header(build):
++    header = (Path(torch.__file__).parent / "include/ATen/native/transformers/cuda/"
++              "mem_eff_attention/kernel_forward.h")
++    original = header.read_bytes()
++    expected = "3f8734984c5b15b947b26ff663d99466f0916f746082417e56acd15243efe832"
++    if hashlib.sha256(original).hexdigest() != expected:
++        raise RuntimeError("PyTorch attention template changed; revalidate the SM75 tile port")
++    text = original.decode()
++    edits = [
++        ("  static constexpr int kNumWarpsPerBlock =\n"
++         "      kQueriesPerBlock * kKeysPerBlock / (32 * 32);",
++         "  // Wider N warp tiles preserve the small query operand's load iterator.\n"
++         "  static constexpr int kWarpN = kKeysPerBlock == 256 ? 64 : 32;\n"
++         "  static constexpr int kNumWarpsPerBlock =\n"
++         "      kQueriesPerBlock * kKeysPerBlock / (32 * kWarpN);", 1),
++        ("  static constexpr int kMinBlocksPerSm =\n",
++         "  static constexpr int kMinBlocksPerSm = kKeysPerBlock == 256 ? 1 :\n", 1),
++        ("cutlass::gemm::GemmShape<32, 32, GemmType::WarpK>",
++         "cutlass::gemm::GemmShape<32, kWarpN, GemmType::WarpK>", 2),
++        ("typename DefaultGemm::Mma::Policy::Operator::Shape, // WarpShape",
++         "// Widening N does not change A's M/K layout.\n"
++         "            cutlass::gemm::GemmShape<32, 32, GemmType::WarpK>,", 1),
++    ]
++    for before, after, count in edits:
++        if text.count(before) != count:
++            raise RuntimeError("Unexpected PyTorch attention template layout")
++        text = text.replace(before, after)
++    build.mkdir(parents=True, exist_ok=True)
++    destination = build / "turing_kernel_forward.h"
++    with (build / ".header.lock").open("a+") as lock:
++        fcntl.flock(lock, fcntl.LOCK_EX)
++        if not destination.exists() or destination.read_text() != text:
++            temporary = build / f".header-{os.getpid()}.tmp"
++            temporary.write_text(text)
++            os.replace(temporary, destination)
++
++
++@cache
++def load_turing_prefill_tiles():
++    from torch.utils.cpp_extension import get_default_build_root, load
++    import vllm
++
++    name = "qwen38_turing_prefill_tiles"
++    build = Path(os.environ.get("TORCH_EXTENSIONS_DIR", get_default_build_root())) / name
++    _prepare_header(build)
++    cutlass = Path(vllm.__file__).parent / "third_party/deep_gemm/include"
++    load(
++        name=name,
++        sources=[str(Path(__file__).with_suffix(".cu"))],
++        build_directory=str(build),
++        extra_include_paths=[str(build), str(cutlass)],
++        extra_cflags=["-O3", "-std=c++17"],
++        extra_cuda_cflags=[
++            "-O3", "-std=c++17", "--expt-relaxed-constexpr",
++            "-gencode=arch=compute_75,code=sm_75",
++        ],
++        is_python_module=False,
++    )
++    return torch.ops.qwen38_turing_prefill_tiles.attention.default
++
++
++def scaled_dot_product_attention(q, k, v, *, attn_mask, scale):
++    supported = (
++        os.environ.get("VLLM_TURING_PREFILL_TILE", "256") == "256"
++        and q.is_cuda
++        and q.dtype == k.dtype == v.dtype == torch.float16
++        and q.ndim == k.ndim == v.ndim == 4
++        and q.shape[-1] == 256
++        and k.shape == v.shape
++        and q.shape[:2] == k.shape[:2]
++        and q.shape[0] > 0 and q.shape[1] > 0
++        and k.stride(1) == v.stride(1) == 0
++        and all(
++            t.device == q.device and t.stride(-1) == 1
++            and not t.requires_grad and t.data_ptr() % 16 == 0
++            and all(stride % 8 == 0 for stride in t.stride()[:-1])
++            for t in (q, k, v)
++        )
++        and 0 < q.shape[-2] <= k.shape[-2]
++        and isinstance(attn_mask, CausalBias)
++        and attn_mask.variant == CausalVariant.LOWER_RIGHT
++        and attn_mask.seq_len_q == q.shape[-2]
++        and attn_mask.seq_len_kv == k.shape[-2]
++        and scale is not None
++        and _is_sm75(q.device)
++    )
++    if not supported:
++        return reference_attention(q, k, v, attn_mask=attn_mask, scale=scale)
++    return load_turing_prefill_tiles()(
++        q.permute(0, 2, 1, 3), k[:, 0], v[:, 0], scale
++    ).permute(0, 2, 1, 3)
+--- /dev/null
++++ b/v1/attention/ops/turing_prefill_tiles.cu
+@@ -0,0 +1,73 @@
++// SM75 instantiation of the pinned PyTorch Cutlass attention template.
++// D256 and a 256-key tile keep the FP32 output accumulator in registers.
++#include <ATen/core/Tensor.h>
++#include <ATen/ops/empty.h>
++#include <c10/cuda/CUDAGuard.h>
++#include <c10/cuda/CUDAStream.h>
++#include <c10/cuda/CUDAException.h>
++#include <torch/library.h>
++#include "turing_kernel_forward.h"
++
++namespace qwen38_turing_prefill_tiles {
++using namespace PyTorchMemEffAttention;
++using Kernel = AttentionKernel<cutlass::half_t, cutlass::arch::Sm75,
++                               true, 32, 256, 256, false, false>;
++static_assert(!Kernel::kNeedsOutputAccumulatorBuffer);
++
++at::Tensor attention(const at::Tensor& q, const at::Tensor& k,
++                     const at::Tensor& v, double scale) {
++  TORCH_CHECK(q.is_cuda() && q.dim() == 4 && q.size(3) == 256 &&
++              q.stride(3) == 1, "q: CUDA [B,M,H,256]");
++  TORCH_CHECK(k.dim() == 3 && v.sizes() == k.sizes() &&
++              k.size(0) == q.size(0) && k.size(2) == 256,
++              "kv: [B,N,256]");
++  TORCH_CHECK(q.size(0) > 0 && q.size(2) > 0 &&
++              q.size(1) > 0 && q.size(1) <= k.size(1),
++              "nonempty causal lower-right shape");
++  for (const auto* t : {&q, &k, &v}) {
++    TORCH_CHECK(t->device() == q.device() && t->scalar_type() == at::kHalf &&
++                t->stride(t->dim() - 1) == 1, "FP16 input/device");
++  }
++  const c10::cuda::CUDAGuard guard(q.device());
++  cudaDeviceProp properties;
++  C10_CUDA_CHECK(cudaGetDeviceProperties(&properties, q.get_device()));
++  TORCH_CHECK(properties.major == 7 && properties.minor == 5,
++              "SM75 prefill requires a Turing GPU");
++  TORCH_CHECK(sizeof(Kernel::SharedStorage) <= properties.sharedMemPerBlockOptin,
++              "tile shared storage exceeds device capacity");
++  auto out = at::empty(q.sizes(), q.options());
++  Kernel::Params p;
++  p.query_ptr = reinterpret_cast<const cutlass::half_t*>(q.data_ptr());
++  p.key_ptr = reinterpret_cast<const cutlass::half_t*>(k.data_ptr());
++  p.value_ptr = reinterpret_cast<const cutlass::half_t*>(v.data_ptr());
++  p.output_ptr = reinterpret_cast<cutlass::half_t*>(out.data_ptr());
++  p.scale = scale;
++  p.head_dim = p.head_dim_value = 256;
++  p.num_batches = q.size(0);
++  p.num_queries = q.size(1);
++  p.num_heads = q.size(2);
++  p.num_keys = k.size(1);
++  p.q_strideB = q.stride(0); p.q_strideM = q.stride(1); p.q_strideH = q.stride(2);
++  p.k_strideB = k.stride(0); p.k_strideM = k.stride(1); p.k_strideH = 0;
++  p.v_strideB = v.stride(0); p.v_strideM = v.stride(1); p.v_strideH = 0;
++  p.o_strideM = out.stride(1);
++  p.custom_mask_type = Kernel::CausalFromBottomRight;
++  Kernel::check_supported(p);
++  auto fn = attention_kernel_batched_impl<Kernel>;
++  if (sizeof(Kernel::SharedStorage) > 48 * 1024) {
++    C10_CUDA_CHECK(cudaFuncSetAttribute(
++        fn, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(Kernel::SharedStorage)));
++  }
++  fn<<<p.getBlocksGrid(), p.getThreadsGrid(), sizeof(Kernel::SharedStorage),
++       c10::cuda::getCurrentCUDAStream()>>>(p);
++  C10_CUDA_KERNEL_LAUNCH_CHECK();
++  return out;
++}
++} // namespace qwen38_turing_prefill_tiles
++
++TORCH_LIBRARY(qwen38_turing_prefill_tiles, m) {
++  m.def("attention(Tensor q, Tensor k, Tensor v, float scale) -> Tensor");
++}
++TORCH_LIBRARY_IMPL(qwen38_turing_prefill_tiles, CUDA, m) {
++  m.impl("attention", qwen38_turing_prefill_tiles::attention);
++}

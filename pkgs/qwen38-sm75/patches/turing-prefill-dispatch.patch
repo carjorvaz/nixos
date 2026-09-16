@@ -1,0 +1,38 @@
+--- a/v1/worker/gpu_model_runner.py
++++ b/v1/worker/gpu_model_runner.py
+@@ -3989,20 +3989,24 @@
+-    @staticmethod
+     def _is_uniform_decode(
++        self,
+         max_num_scheduled_tokens: int,
+         uniform_decode_query_len: int,
+         num_tokens: int,
+         num_reqs: int,
+         force_uniform_decode: bool | None = None,
+     ) -> bool:
+-        """
+-        Checks if it's a decode batch with same amount scheduled tokens
+-        across all requests.
+-        """
+-        return (
++        """Require actual decode state, not just the captured query shape."""
++        if force_uniform_decode is not None:
++            return force_uniform_decode
++        if (
++            max_num_scheduled_tokens != uniform_decode_query_len
++            or num_tokens != max_num_scheduled_tokens * num_reqs
++        ):
++            return False
++        # A short prefill/extend can have the same shape as speculative decode.
++        # Replaying that graph would skip its recurrent-state initialization.
++        return bool(
+             (
+-                (max_num_scheduled_tokens == uniform_decode_query_len)
+-                and (num_tokens == max_num_scheduled_tokens * num_reqs)
+-            )
+-            if force_uniform_decode is None
+-            else force_uniform_decode
++                self.input_batch.num_computed_tokens_cpu[:num_reqs]
++                >= self.input_batch.num_prompt_tokens[:num_reqs]
++            ).all()
+         )

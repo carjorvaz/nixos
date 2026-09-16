@@ -1,0 +1,156 @@
+--- a/model_executor/models/qwen3_dflash.py
++++ b/model_executor/models/qwen3_dflash.py
+@@ -409,6 +409,8 @@
+ @support_torch_compile
+ class DFlashQwen3Model(nn.Module):
+     decoder_layer_cls = DFlashQwen3DecoderLayer
++    # Subclasses with their own initialization keep their original residual range.
++    residual_scale = 1.0
+ 
+     hf_to_vllm_mapper = WeightsMapper(
+         orig_to_new_substr={
+@@ -439,6 +441,14 @@
+         self.config = vllm_config.speculative_config.draft_model_config.hf_config
+         self.vocab_size = self.config.vocab_size
+         self.quant_config = get_draft_quant_config(vllm_config)
++        # BF16-trained residuals can overflow FP16 before the next pre-norm.
++        # A power-of-two change of units preserves normalized activations without
++        # changing Q/K/V, MLP gate/up, convolution, or selector weights.
++        self.residual_scale = (
++            1.0 / 256
++            if vllm_config.speculative_config.draft_model_config.dtype == torch.float16
++            else 1.0
++        )
+ 
+         drafter_config = getattr(self.config, "eagle_config", {})
+         drafter_config.update(getattr(self.config, "dflash_config", {}))
+@@ -501,6 +511,17 @@
+             self.config.hidden_size,
+             eps=self.config.rms_norm_eps,
+         )
++        if self.residual_scale != 1.0:
++            epsilon_scale = self.residual_scale * self.residual_scale
++            # Without fc, callers pass unscaled target context directly to the
++            # hidden norm. That context never joins the query residual stream.
++            if self.use_aux_hidden_state:
++                self.hidden_norm.variance_epsilon *= epsilon_scale
++            self.norm.variance_epsilon *= epsilon_scale
++            for layer in self.layers:
++                layer.input_layernorm.variance_epsilon *= epsilon_scale
++                layer.post_attention_layernorm.variance_epsilon *= epsilon_scale
++            logger.info("DFlash FP16 residual scale: %g", self.residual_scale)
+ 
+     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+         embeds = self.embed_tokens(input_ids)
+@@ -508,6 +529,10 @@
+             # Replace masked slots with the dedicated mask embedding.
+             is_mask = (input_ids == self.mask_token_id).unsqueeze(-1)
+             embeds = torch.where(is_mask, self.mask_embedding.to(embeds.dtype), embeds)
++        if self.residual_scale != 1.0:
++            # The embedding table may be shared with the target after loading;
++            # scale only the drafter's gathered rows, including its mask embedding.
++            embeds = embeds * self.residual_scale
+         return embeds
+ 
+     def _build_context_kv_buffers(
+@@ -516,6 +541,7 @@
+         has_bias: bool,
+     ) -> None:
+         self._hidden_norm_weight = self.hidden_norm.weight.data
++        self._hidden_norm_eps = self.hidden_norm.variance_epsilon
+ 
+         # KV projection weights: [num_layers * 2 * kv_size, hidden_size]
+         kv_weights = [_dense_kv_rows(a) for a in layers_attn]
+@@ -562,14 +588,16 @@
+         self._kv_size = attn0.kv_size
+         self._head_dim = attn0.head_dim
+         self._num_kv_heads = attn0.num_kv_heads
+-        self._rms_norm_eps = attn0.q_norm.variance_epsilon
++        # Per-head epsilon stays unscaled: Q/K projections consume normalized
++        # activations. Keep it separate from the rescaled context hidden norm.
++        self._rms_norm_eps = attn0.k_norm.variance_epsilon
+         # Validation that all layers have the same attention config
+         for attn in layers_attn[1:]:
+             assert (
+                 attn.kv_size == self._kv_size
+                 and attn.head_dim == self._head_dim
+                 and attn.num_kv_heads == self._num_kv_heads
+-                and attn.q_norm.variance_epsilon == self._rms_norm_eps
++                and attn.k_norm.variance_epsilon == self._rms_norm_eps
+             ), "All layers must have the same attn config for DFlash precomputation"
+ 
+         # References to inner Attention layers for direct cache writes
+@@ -589,7 +617,7 @@
+             normed_context_states,
+             context_states,
+             self._hidden_norm_weight,
+-            self._rms_norm_eps,
++            self._hidden_norm_eps,
+         )
+         all_kv_flat = F.linear(
+             normed_context_states, self._fused_kv_weight, self._fused_kv_bias
+@@ -718,6 +746,35 @@
+         tp_size = get_tensor_model_parallel_world_size()
+         tp_rank = get_tensor_model_parallel_rank()
+         for name, loaded_weight in weights:
++            if self.residual_scale != 1.0:
++                module_name, _, parameter_name = name.rpartition(".")
++                if (module_name == "fc" and self.use_aux_hidden_state) or (
++                    module_name.endswith((".self_attn.o_proj", ".mlp.down_proj"))
++                ):
++                    projection = self.get_submodule(module_name)
++                    weight_name = (
++                        "weight_scale"
++                        if hasattr(projection, "weight_scale")
++                        else "weight"
++                    )
++                    if parameter_name in (weight_name, "bias"):
++                        if not loaded_weight.is_floating_point():
++                            raise TypeError(
++                                f"DFlash residual scaling requires a floating-point "
++                                f"weight or quantization scale, got {name} "
++                                f"({loaded_weight.dtype})."
++                            )
++                        # RMSNorm(s*x, eps*s*s) = RMSNorm(x, eps). Apply s to
++                        # every residual-producing projection before its FP16
++                        # output can overflow, scaling quantization scales, not
++                        # packed integers. Loading in FP32 also avoids overflow
++                        # during the checkpoint's initial cast to FP16.
++                        # Do not mutate source tensors: each load (including a
++                        # reload) transforms the original weights exactly once,
++                        # before packing and fused context-KV materialization.
++                        loaded_weight = loaded_weight.to(
++                            dtype=torch.float32, copy=True
++                        ).mul_(self.residual_scale)
+             if "attention_sink_bias" in name:
+                 # Sink bias is per-head; shard it across TP ranks like the
+                 # attention heads themselves.
+@@ -730,7 +787,7 @@
+     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+         loader = AutoWeightsLoader(self)
+         return loader.load_weights(
+-            self._preprocess(weights), mapper=self.hf_to_vllm_mapper
++            self._preprocess(self.hf_to_vllm_mapper.apply(weights))
+         )
+ 
+ 
+--- a/model_executor/layers/vocab_parallel_embedding.py
++++ b/model_executor/layers/vocab_parallel_embedding.py
+@@ -496,12 +496,15 @@
+                 self.shard_indices.added_vocab_end_index,
+             )
+         else:
+-            masked_input = input_
++            # Speculative verification pads unused slots with -1 even at TP=1.
++            # Mask before all embedding methods, including quantized gathers.
++            input_mask = (input_ < 0) | (input_ >= self.num_embeddings_per_partition)
++            masked_input = input_.masked_fill(input_mask, 0)
+         # Get the embeddings.
+         output_parallel = self.quant_method.embedding(self, masked_input.long())
+         # Mask the output embedding.
++        output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
+         if self.tp_size > 1:
+-            output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
+             # Reduce across all the model parallel GPUs.
+             return tensor_model_parallel_all_reduce(output_parallel)
+         return output_parallel

@@ -11,11 +11,16 @@
 
   hardware.nvidia = {
     modesetting.enable = true;
-    # Open kernel module: NVIDIA-official (shipped in the same driver package,
-    # supported since Turing, upstream's default going forward) and current.
-    # Inference speed is identical to the closed flavor; this tracks upstream
-    # and newer kernels better.
-    open = true;
+    # Proprietary kernel module, not the open one: this card hit the Turing
+    # GSP Xid 119 -> 154 fault mode twice in two days on the open module +
+    # GSP (595.71.05), each time costing a host reboot, and
+    # NVreg_EnableGpuFirmware=0 is a no-op when `open` is true (nixpkgs also
+    # asserts GSP cannot be disabled on the open module). Inference speed is
+    # identical; only the kernel-module derivation moves.
+    open = false;
+    # Keep the GSP RISC-V core out of the path entirely.
+    gsp.enable = false;
+    moduleParams.nvidia.NVreg_EnableGpuFirmware = 0;
     nvidiaSettings = false;
     # Keep the card initialized so CUDA contexts survive idle periods.
     nvidiaPersistenced = true;
