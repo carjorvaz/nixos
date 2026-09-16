@@ -1,6 +1,6 @@
 # Repository Docs
 
-This directory is the repo-local source of truth for durable guidance that is too detailed for `AGENTS.md`.
+This directory documents the repository's architecture, tooling, validation, and public/private boundaries.
 
 Start here:
 
@@ -9,5 +9,3 @@ Start here:
 - [Tooling](TOOLING.md) — high-leverage tooling defaults for the dev shell, `just`, Jujutsu-on-Git, and review surfaces.
 - [Public boundary](PUBLIC_BOUNDARY.md) — what is safe to commit, evaluate, log, or run in a public infrastructure repository.
 - [Plans](PLANS.md) — when to create checked-in execution plans and when to keep notes private.
-
-Keep `AGENTS.md` short and map-like. Put stable rules in these focused docs, and promote rules to scripts or flake checks when repeated mistakes are easy to detect mechanically.

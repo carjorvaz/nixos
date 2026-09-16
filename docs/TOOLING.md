@@ -49,6 +49,12 @@ If a workflow still uses `git commit` directly, run `nix develop -c jj status` a
 
 In this flake repo, remember that new files imported by Nix must be Git-tracked before flake evaluation sees them. When adding a new Nix-imported file, add it to Git before trusting `nix eval`, `nix build`, or `scripts/validate`.
 
+## Pi configuration ownership
+
+Nix installs Pi and helper wrappers. Live Pi settings, models, themes, prompts,
+and extensions remain mutable under `~/.pi/agent`, rather than managed by Nix.
+Project `.pi/` resources are only for configuration specific to that checkout.
+
 ## Review surface
 
 Prefer structural, high-signal review tools where available:

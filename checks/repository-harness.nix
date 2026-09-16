@@ -10,7 +10,6 @@ in
     missing=0
     for path in \
       .gitignore \
-      AGENTS.md \
       docs/README.md \
       docs/ARCHITECTURE.md \
       docs/VALIDATION.md \
@@ -34,22 +33,6 @@ in
       echo "scripts/validate must be executable" >&2
       exit 1
     fi
-
-    for needle in \
-      docs/README.md \
-      docs/ARCHITECTURE.md \
-      docs/VALIDATION.md \
-      docs/TOOLING.md \
-      docs/PUBLIC_BOUNDARY.md \
-      docs/PLANS.md \
-      justfile \
-      scripts/validate
-    do
-      if ! grep -Fq "$needle" AGENTS.md README.org docs/README.md docs/VALIDATION.md docs/PLANS.md; then
-        echo "harness guidance should mention $needle" >&2
-        exit 1
-      fi
-    done
 
     if ! grep -Fxq ".jj/" .gitignore; then
       echo ".gitignore must keep colocated Jujutsu state local with .jj/" >&2
