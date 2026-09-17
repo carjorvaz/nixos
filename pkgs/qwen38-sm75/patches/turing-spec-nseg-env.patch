@@ -1,0 +1,22 @@
+--- a/v1/attention/ops/spec_decode_attn.py	2026-09-16 23:54:22.068280566 +0100
++++ b/v1/attention/ops/spec_decode_attn.py	2026-09-16 23:54:22.104280969 +0100
+@@ -200,7 +200,18 @@
+             # Compile/load before any CUDA graph can capture this state's use.
+             self.turing_partial = load_turing_partial()
+         if num_segments is None:
+-            num_segments = 32 if self.turing_partial is not None else NUM_SEGMENTS
++            # Turing native partials: the segment count is the split-KV
++            # parallelism. 32 is the validated default; VLLM_TURING_SPEC_NSEG
++            # is an experiment override. The Triton kernels take NSEG as a
++            # constexpr, so each value compiles its own kernel (no stale
++            # graphs when swapping values between boots).
++            _override = os.environ.get("VLLM_TURING_SPEC_NSEG")
++            if _override:
++                num_segments = int(_override)
++            else:
++                num_segments = (
++                    32 if self.turing_partial is not None else NUM_SEGMENTS
++                )
+         self.nseg = num_segments
+         n = max_num_reqs * num_heads * qmax * self.nseg
+         self.part_o = torch.empty(n, head_dim, dtype=torch.float32, device=device)
