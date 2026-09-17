@@ -250,6 +250,13 @@ PPL 10.94) and a 100k lifecycle 5/5; its serving pool is 4.5 GiB at 235k, but
 quality harnesses need a smaller pool because `prompt_logprobs` has no scratch
 at the int8 full-vocabulary lm_head.
 
+The unit reads an optional `serve.env` file from the runtime root
+(`EnvironmentFile=-/persist/qwen38-sm75/serve.env`), so environment knobs can
+be changed without a rebuild: e.g. `VLLM_MARLIN_INPUT_DTYPE=int8` with
+`VLLM_MARLIN_INT8_INCLUDE_RE='\.mlp\.(gate_up|down)_proj'` for the prefill-heavy
+profile, or `VLLM_TURING_SPEC_NSEG=16` to retune the split-KV segments. CLI
+arguments still live in `hosts/tiberius.nix`.
+
 Cold-start validation must reach API readiness under the service memory limits:
 kernel-only checks miss CUDA-graph scratch allocation. Speculative attention scratch
 capacity follows configured concurrency, captured when the backend is constructed,
