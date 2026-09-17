@@ -350,3 +350,19 @@ kernel: no skip, so no acceptance risk at all, but pays the drafter), a
 `VLLM_MTP_LOOKUP_MIN` sweep between 12 and 32, variable verify length driven by
 the match, and the int8-QK prefill attention (`VLLM_PREFILL_ATTN=int8` already
 exists upstream but was worth only +0.4% in upstream's own config).
+
+V2 runner check (why the lookup was ported to V1 instead): upstream's LABD
+lookup lives in the V2 speculator (`v1/worker/gpu/spec_decode/dflash2/lookup.py`
+plus `VLLM_DFLASH2_CHAIN`), and V2 already has an MTP speculator, so
+`VLLM_USE_V2_MODEL_RUNNER=1` with `method: mtp` was the obvious home. Same
+runtime, same host, same acceptance:
+
+| prompt | V1 MTP | V2 MTP |
+| --- | --- | --- |
+| 2k | 100.3 (morning) / 90.6 (today) | 90.3 |
+| 8k | 110.6 / 88.8 | 89.5 |
+| 32k | 74.6 / 75.7 | 76.2 |
+| 64k | 72.6 / 67.9 | 65.9 |
+
+V2 is at or below V1 everywhere except 32k, so the port went into the V1 MTP
+proposer and reuses only the lookup kernel from the V2 tree.
