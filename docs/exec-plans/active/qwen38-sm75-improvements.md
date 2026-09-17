@@ -244,3 +244,51 @@ prepare service re-links `venv` only after a successful patched install, so a
 bad series leaves the previous generation in place. The driver change needs a
 reboot and a console for rollback; boot with the previous systemd-boot
 generation if the proprietary module does not load.
+
+## Long-context campaign (2026-09-17)
+
+Long-context decode was attention-bound, not GEMM-bound: a 64k decode profile
+showed the split-KV partial kernel at ~58% of the step (`partial_kernel`
+451 ms + `qwen38_turing::partial` 95 ms of a 684 ms window; Marlin ~30%). The
+kernel staged each packed-int4 K/V element with a scalar byte load (two lanes
+reading the same byte, ~16 useful bytes per warp transaction), leaving it
+latency-bound at ~27 GB/s effective. `patches/turing-spec-staging.patch`
+vectorizes the staging: each lane loads two 4-byte words of one row and stores
+16 halves, warp-contiguous across two 128-byte rows per instruction. The
+attention reference suite (fp32 comparison and live CUDA-graph replay) passes.
+
+| prompt | before | after | delta |
+|---|---|---|---|
+| 2k | 95.1 | 100.3 | +5% |
+| 8k | 98.5 | 110.6 | +12% |
+| 32k | 50.3 | 74.6 | +48% |
+| 64k | 42.9 | 72.6 | +69% |
+| 128k | 24.0 | 49.1 | +105% |
+
+Follow-ups measured in the same window:
+
+- **MTP depth at long context**: k=5 (61.6 at 64k) and k=6 (59.2) both lose to
+  k=4 (62.5): each extra draft pass costs ~2x a target layer's attention, more
+  than the acceptance it buys. MTP4 stays.
+- **ngram_gpu** (`method: ngram_gpu`, k=7, lookup min/max 2/8) on the verbatim
+  copy task at 32k: acceptance 4.4, 100+ tok/s against MTP's 3.5 / 82; on chat
+  prompts acceptance collapses to ~1.1 (~29 tok/s). Shipped as the documented
+  copy-mode `serve.env` profile.
+- **int8 MLP activations**: +8-10% TTFT at 32k/64k, ~10% slower steps; stays a
+  toggle, not the default.
+- **nseg** 16/64/128 at 32k/64k: no effect (50.3/36.2 baseline, 59.5-51.3 and
+  36.6-36.7 with acceptance taken into account); superseded by the staging
+  fix.
+- **Prefill** is unchanged and GEMM-dominated; its remaining levers are the
+  int8 profile above and, at 50k+, an int8-QK prefill attention kernel.
+- The MTP + prompt-lookup **hybrid** (llama.cpp's `draft-mtp,ngram-mod`, which
+  reports 74-token mean chains and 129 -> 140 tok/s at 90k) has no vLLM
+  equivalent; upstream's chain patch is DFlash2-specific. Porting the lookup
+  idea to the MTP speculator is the largest remaining project.
+
+Copy-mode tuning (same window): the prompt-lookup match window (min/max 2/8 vs
+16/64) does not change acceptance on the verbatim task (4.435 either way), and
+a 16-token verify block (k=15) is infeasible on Turing: the proposer/attention
+kernel requests 81,920 B of shared memory against the 65,536 B limit, the same
+wall as the campaign's native int4 prefill attention. Copy mode therefore stays
+at k=7 (8-token blocks, ~100 tok/s on the copy task against MTP's 82).

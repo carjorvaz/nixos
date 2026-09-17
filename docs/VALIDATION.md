@@ -252,10 +252,19 @@ at the int8 full-vocabulary lm_head.
 
 The unit reads an optional `serve.env` file from the runtime root
 (`EnvironmentFile=-/persist/qwen38-sm75/serve.env`), so environment knobs can
-be changed without a rebuild: e.g. `VLLM_MARLIN_INPUT_DTYPE=int8` with
-`VLLM_MARLIN_INT8_INCLUDE_RE='\.mlp\.(gate_up|down)_proj'` for the prefill-heavy
-profile, or `VLLM_TURING_SPEC_NSEG=16` to retune the split-KV segments. CLI
-arguments still live in `hosts/tiberius.nix`.
+be changed without a rebuild. Two measured profiles:
+
+- **Copy/edit mode** (quoting or rewriting long documents):
+  `QWEN_EXTRA_ARGS=--speculative-config '{"method":"ngram_gpu","num_speculative_tokens":7,"prompt_lookup_min":2,"prompt_lookup_max":8}'`
+  replaces MTP with prompt-lookup drafting. On a 32k-token verbatim-reproduction
+  task this reads **100+ tok/s against MTP's 82** (acceptance 4.4 vs 3.5); on
+  ordinary chat it collapses (acceptance ~1.1, ~29 tok/s), so it is a
+  copy/edit profile, not a default.
+- **Prefill-heavy mode**: `VLLM_MARLIN_INPUT_DTYPE=int8` with
+  `VLLM_MARLIN_INT8_INCLUDE_RE='\.mlp\.(gate_up|down)_proj'` trades about 10%
+  of step time for ~8-10% faster cold prefill at 32k/64k.
+
+CLI arguments otherwise still live in `hosts/tiberius.nix`.
 
 Cold-start validation must reach API readiness under the service memory limits:
 kernel-only checks miss CUDA-graph scratch allocation. Speculative attention scratch
