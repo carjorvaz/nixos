@@ -24,20 +24,26 @@ let
     rev = "18349177b7962ef1d699dc154844f9c04317a474";
     hash = "sha256-KAB81VzNkPr4Hy2Vqbt09MAn7crBkVDAk4tvatRte7w=";
   };
+  # Content-address this directory so unrelated repo commits do not change the
+  # asset store path (which would restart the service on every switch).
+  local = builtins.path {
+    path = ./.;
+    name = "qwen38-sm75-local";
+  };
   assets = runCommand "qwen38-sm75-assets" { } ''
     mkdir -p "$out"
-    cp ${./prepare-runtime.py} "$out/prepare-runtime.py"
-    cp ${./prepare-model.py} "$out/prepare-model.py"
-    cp ${./requirements.lock} "$out/requirements.lock"
-    cp ${./check-attention.py} "$out/check-attention.py"
-    cp ${./check-downloads.py} "$out/check-downloads.py"
-    cp ${./check-prefill.py} "$out/check-prefill.py"
-    cp ${./check-prefix.py} "$out/check-prefix.py"
-    cp ${./check-gdn.py} "$out/check-gdn.py"
-    cp ${./bench-one.py} "$out/bench-one.py"
-    cp ${./prepare-uncensored.py} "$out/prepare-uncensored.py"
-    cp ${./soak.py} "$out/soak.py"
-    cp -r ${./patches} "$out/patches"
+    cp ${local}/prepare-runtime.py} "$out/prepare-runtime.py"
+    cp ${local}/prepare-model.py} "$out/prepare-model.py"
+    cp ${local}/requirements.lock} "$out/requirements.lock"
+    cp ${local}/check-attention.py} "$out/check-attention.py"
+    cp ${local}/check-downloads.py} "$out/check-downloads.py"
+    cp ${local}/check-prefill.py} "$out/check-prefill.py"
+    cp ${local}/check-prefix.py} "$out/check-prefix.py"
+    cp ${local}/check-gdn.py} "$out/check-gdn.py"
+    cp ${local}/bench-one.py} "$out/bench-one.py"
+    cp ${local}/prepare-uncensored.py} "$out/prepare-uncensored.py"
+    cp ${local}/soak.py} "$out/soak.py"
+    cp -r ${local}/patches} "$out/patches"
   '';
   python = "${python312}/bin/python3.12";
   compiler = cudaPackages.backendStdenv.cc;
