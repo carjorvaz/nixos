@@ -303,6 +303,48 @@ Two prefill knobs are closed: `--max-num-batched-tokens 4096` **does not fit**
 memory ceiling with a 5.5 GiB int4 pool), and `VLLM_PREFILL_ATTN=int8` (the
 upstream int8-QK prefill attention) measures 54.4 s against 54.2 s at 64k and
 151.5 s against 151.2 s at 128k -- no effect, matching upstream's own +0.4%.
+The same int8 path is inert in the attention-dominated regime that cached
+continuations live in: appending a 16k tail to a 32k/48k cache, or a 32k tail
+to a 64k cache, moves by under 0.2 s (25.73/29.28/69.13 s against
+25.63/29.17/68.99 s).
+
+**Interactive latency is the tail's attention over the whole context.** With
+prefix caching warm, appending tokens to a long conversation costs the tail at
+a rate that falls with context (measured with 8-token replies):
+
+| prompt | cached | tail | TTFT | tail rate |
+| --- | --- | --- | --- | --- |
+| 32k cold | 0 | 32k | 40.4 s | 792 tok/s |
+| 48k | 32k | 16k | 25.6 s | 624 tok/s |
+| 64k | 48k | 16k | 29.2 s | 549 tok/s |
+| 96k | 64k | 32k | 69.0 s | 464 tok/s |
+| 248k cached (lifecycle) | 246k | 2k | 8.5 s | ~240 tok/s |
+
+So the 8.5 s cached turn at 248k is not a cache problem: it is the 2k tail
+scoring against 248k keys, at the same rate a cold prefill of that size runs.
+The lever is a long-context prefill attention kernel (long-q tiles and int8
+scores), not scheduling.
+
+**Decode is at the weight-read floor.** At W4A16 the 27B target reads roughly
+13-14 GiB per step, about 23-25 ms at the card's effective bandwidth, which is
+the bulk of a 2k step (91 tok/s at acceptance 3.17 means ~35 ms per step).
+Further decode gains therefore have to come from acceptance (more tokens per
+weight read) or from compressing the weights further -- not from kernel
+micro-tuning. The measured levers that remain are the variable-length draft
+block for greedy copy work and sub-4-bit weights or KV.
+
+**Measurement hygiene on this host.** `qwen38-sm75-bench` and
+`qwen38-sm75-soak` build their prompts from one repeated word, so they are
+stable *repetition* workloads, not chat: they are the right instrument for
+decode-rate and stability comparisons, and they cannot exercise the history
+lookup (whose proposals come from repeats) beyond what a filler prompt allows.
+Use `qwen38-sm75-copy-bench` for copy/edit drafting and
+`qwen38-sm75-sample-probe` for sampled traffic (default sampling:
+temperature 1.0, top_k 20, top_p 0.95, from the model's `generation_config`).
+Readings taken while `tiberius-qwen38-warmup.service` is still running come out
+10-15% low with depressed acceptance, and a health poll right after a restart
+can answer from the *old* process: wait for the unit's MainPID to change before
+measuring (see `wait_restart.sh` in the operator notes).
 
 CLI arguments otherwise still live in `hosts/tiberius.nix`.
 

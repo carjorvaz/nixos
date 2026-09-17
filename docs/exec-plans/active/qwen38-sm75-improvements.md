@@ -420,3 +420,27 @@ Next projects, in the order their measured payoffs justify:
 3. **Sub-4-bit KV.** Attention is 20-30% of a long-context step, and this pin
    has no KVarN: a 3-bit K with per-channel scales would cut attention traffic
    ~25% and grow usable context 30-50%. New kernel, not a port.
+
+### Interactive latency, the decode floor, and two new tools
+
+Cached continuations are where a long-context agent lives, so the tail was
+measured directly (prefix cache warm, 8-token replies, appending a fresh tail
+to a cached prefix): 624 tok/s at 32k of context, 549 at 48k, 464 at 64k, and
+~240 at 248k, which is exactly the 8.5 s cached turn in the lifecycle check.
+The tail is scored against every key in the context, so this is a
+long-context *attention* cost, not a scheduling one, and the int8-QK prefill
+attention is inert here too (under 0.2 s over the whole sequence).
+
+Decode is at the weight-read floor: the W4A16 target reads ~13-14 GiB per step
+(~23-25 ms at the card's effective bandwidth) and a 2k step measures ~35 ms at
+acceptance 3.17. Every remaining decode percent has to come from acceptance or
+from compressing the weights/KV further; kernel micro-tuning is spent.
+
+Two tools are now part of the package so these numbers can be reproduced:
+`qwen38-sm75-copy-bench` (verbatim-reproduction drafting bench, with sampling
+controls) and `qwen38-sm75-sample-probe` (acceptance, per-position acceptance
+and throughput under default sampling). Measurement hygiene learned the hard
+way: `bench`/`soak` use a repeated-word filler (a stable repetition workload,
+not chat), the warmup service depresses readings by 10-15% while it runs, and a
+health poll after a restart can answer from the old process -- wait for the
+unit's MainPID to change first.

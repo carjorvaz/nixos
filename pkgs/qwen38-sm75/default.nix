@@ -43,6 +43,8 @@ let
     cp ${local}/bench-one.py "$out/bench-one.py"
     cp ${local}/prepare-uncensored.py "$out/prepare-uncensored.py"
     cp ${local}/soak.py "$out/soak.py"
+    cp ${local}/copy-bench.py "$out/copy-bench.py"
+    cp ${local}/sample-probe.py "$out/sample-probe.py"
     cp -r ${local}/patches "$out/patches"
   '';
   python = "${python312}/bin/python3.12";
@@ -161,6 +163,20 @@ let
     ${environment}
     exec "$root/venv/bin/python" "${assets}/soak.py" "$@"
   '';
+  copyBench = writeShellScriptBin "qwen38-sm75-copy-bench" ''
+    set -euo pipefail
+    root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
+    root="$(${coreutils}/bin/realpath -e "$root")"
+    ${environment}
+    exec "$root/venv/bin/python" "${assets}/copy-bench.py" "$@"
+  '';
+  sampleProbe = writeShellScriptBin "qwen38-sm75-sample-probe" ''
+    set -euo pipefail
+    root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
+    root="$(${coreutils}/bin/realpath -e "$root")"
+    ${environment}
+    exec "$root/venv/bin/python" "${assets}/sample-probe.py" "$@"
+  '';
   prepareUncensored = writeShellScriptBin "qwen38-sm75-prepare-uncensored" ''
     set -euo pipefail
     if [ "$#" -gt 1 ]; then
@@ -187,6 +203,8 @@ symlinkJoin {
     check
     bench
     soak
+    copyBench
+    sampleProbe
     prepareUncensored
   ];
   meta = {
