@@ -444,3 +444,44 @@ way: `bench`/`soak` use a repeated-word filler (a stable repetition workload,
 not chat), the warmup service depresses readings by 10-15% while it runs, and a
 health poll after a restart can answer from the old process -- wait for the
 unit's MainPID to change first.
+
+### Closed for this configuration (measured, do not retry)
+
+* **A draft block longer than k=4**: raising `num_speculative_tokens` to 15 needs
+  ~0.5 GiB more KV budget (5.97 against 5.5 GiB at 262144 max len), because the
+  lookahead slots and the int4 spec scratch are accounted inside the pool. With
+  262k context there is no room; at 235k it would fit at the cost of context.
+  The lookup's long-block idea therefore stops at 5 tokens per step for greedy
+  copy work.
+* **int8-QK prefill attention**: the upstream implementation lives inside
+  `flash_attn.py`, and SM75 cannot run FA2. Our path is TRITON_ATTN plus the
+  Cutlass tile port, so `VLLM_PREFILL_ATTN` is inert here in both the cold and
+  the tail regime (under 0.2 s over 25-69 s runs).
+* **Prefill chunks of 4096**: 110 MiB allocation against 117 MiB free.
+* **`--draft_sample_method greedy`**: 3.01 sampled acceptance against 3.23 for
+  probabilistic drafts -- a dense q gets `min(1, p/q)` where a point mass only
+  gets `p(x)`.
+* **V2 model runner with MTP**: below V1 at every size except 32k.
+
+### Next projects, with their measured justification
+
+1. **int8-QK prefill for the Turing tile kernel.** The tail a cached turn pays
+   for is the score GEMM against every key in the context, and the upstream
+   int8 path measures 1.35x FA2 at kv=51200 and +5.3% end-to-end prefill at
+   51k -- but it is wired into the FA2 backend only, which SM75 cannot use.
+   Porting it means an s8-mma variant of `turing_prefill_tiles.cu` (the fp16
+   tile that already keeps its accumulator in registers is the scaffold), the
+   per-(head, d) K mean smoothing pass into int8 scratch, per-64-key scales,
+   and fp32 softmax accumulation. Quality gates: the 248k lifecycle retrieval,
+   GSM8K 94.5% and PPL 10.88. This is the only remaining lever that targets the
+   *interactive* case the user hits every turn (8.5 s at 248k).
+2. **Fuse the k draft passes into one CUDA graph.** At 8k a step is ~35 ms with
+   the target's weight read as the floor, so the draft chain plus sampler is
+   ~10-12 ms of launches and small kernels; sampled steps add ~3 ms more. The
+   V2 autoregressive speculator in this same tree (`autoregressive/speculator.py`,
+   `_fused_multi_step_decode`) is the reference implementation for capturing the
+   chain. Expected a few percent at short context, less at depth.
+3. **Sub-4-bit KV.** Attention is 20-30% of a deep step and 3-bit K with
+   per-channel scales would cut its traffic ~25% *and* free pool memory (which
+   is what blocks the longer draft block above). New kernel; no KVarN in this
+   pin.
