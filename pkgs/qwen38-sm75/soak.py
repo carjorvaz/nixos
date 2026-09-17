@@ -92,8 +92,8 @@ def worker(base, model, sizes, deadline):
         cold = rng.random() < 0.65
         if cold:
             content = f"nonce-{rng.getrandbits(48):012x} " + content
-        before = scrape(base)
         try:
+            before = scrape(base)
             completion, ttft, decode = chat(base, model, content, 128, 1800)
             after = scrape(base)
             with LOCK:
