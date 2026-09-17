@@ -453,10 +453,13 @@ unit's MainPID to change first.
   262k context there is no room; at 235k it would fit at the cost of context.
   The lookup's long-block idea therefore stops at 5 tokens per step for greedy
   copy work.
-* **int8-QK prefill attention**: the upstream implementation lives inside
-  `flash_attn.py`, and SM75 cannot run FA2. Our path is TRITON_ATTN plus the
-  Cutlass tile port, so `VLLM_PREFILL_ATTN` is inert here in both the cold and
-  the tail regime (under 0.2 s over 25-69 s runs).
+* **int8-QK prefill attention**: it is gated on an *unquantized* KV cache
+  (`not is_quantized_kv_cache(self.kv_cache_dtype)`) and on FA2, which SM75
+  cannot run; the Triton kernel quantizes fp16 K on the fly, so it cannot read
+  our per-token-head int4 cache at all. The int4 KV cache is what buys 262k
+  context on a 22 GiB card, so this lever is structurally incompatible with the
+  configuration, not merely unwired: measured inert in both the cold and the
+  tail regime (under 0.2 s over 25-69 s runs).
 * **Prefill chunks of 4096**: 110 MiB allocation against 117 MiB free.
 * **`--draft_sample_method greedy`**: 3.01 sampled acceptance against 3.23 for
   probabilistic drafts -- a dense q gets `min(1, p/q)` where a point mass only
@@ -469,12 +472,15 @@ unit's MainPID to change first.
    for is the score GEMM against every key in the context, and the upstream
    int8 path measures 1.35x FA2 at kv=51200 and +5.3% end-to-end prefill at
    51k -- but it is wired into the FA2 backend only, which SM75 cannot use.
-   Porting it means an s8-mma variant of `turing_prefill_tiles.cu` (the fp16
-   tile that already keeps its accumulator in registers is the scaffold), the
-   per-(head, d) K mean smoothing pass into int8 scratch, per-64-key scales,
-   and fp32 softmax accumulation. Quality gates: the 248k lifecycle retrieval,
-   GSM8K 94.5% and PPL 10.88. This is the only remaining lever that targets the
-   *interactive* case the user hits every turn (8.5 s at 248k).
+   That port would have to dequantize our int4 K first (the upstream kernel
+   quantizes fp16 K on the fly), i.e. write an s8-mma variant of
+   `turing_prefill_tiles.cu` (the fp16 tile that already keeps its accumulator
+   in registers is the scaffold) that unpacks the packed int4 cache in the
+   kernel, mean-smooths K per (head, d) into int8 scratch, applies per-64-key
+   scales and accumulates in fp32. It is the only remaining lever that targets
+   the *interactive* case the user hits every turn (8.5 s at 248k), but it is a
+   new kernel rather than a port. Quality gates: the 248k lifecycle retrieval,
+   GSM8K 94.5% and PPL 10.88.
 2. **Fuse the k draft passes into one CUDA graph.** At 8k a step is ~35 ms with
    the target's weight read as the floor, so the draft chain plus sampler is
    ~10-12 ms of launches and small kernels; sampled steps add ~3 ms more. The
