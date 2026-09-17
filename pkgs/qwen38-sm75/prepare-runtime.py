@@ -144,6 +144,20 @@ def serve(root, assets, identity, fingerprint, arguments):
         parsed = shlex.split(extra)
         print(f"qwen38-sm75: appending QWEN_EXTRA_ARGS={parsed!r}", flush=True)
         arguments = [*arguments, *parsed]
+    # Safe mode for stability bisects: drop the speculative-decoding flag and
+    # its value so the engine runs the target without a draft model.
+    if os.environ.get("QWEN_DISABLE_SPEC", "0") == "1":
+        filtered, skip = [], False
+        for argument in arguments:
+            if skip:
+                skip = False
+                continue
+            if argument == "--speculative-config":
+                skip = True
+                continue
+            filtered.append(argument)
+        print("qwen38-sm75: QWEN_DISABLE_SPEC=1; speculative config removed", flush=True)
+        arguments = filtered
     # Hold the model lock too: standalone preparation must not modify files in
     # use by this server. File descriptors remain open through exec.
     with (root / "models/.prepare.lock").open("a+") as model_lock:
