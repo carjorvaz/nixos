@@ -36,6 +36,7 @@ let
     cp ${./check-gdn.py} "$out/check-gdn.py"
     cp ${./bench-one.py} "$out/bench-one.py"
     cp ${./prepare-uncensored.py} "$out/prepare-uncensored.py"
+    cp ${./soak.py} "$out/soak.py"
     cp -r ${./patches} "$out/patches"
   '';
   python = "${python312}/bin/python3.12";
@@ -147,6 +148,13 @@ let
     ${environment}
     exec "$root/venv/bin/python" "${assets}/bench-one.py" "$@"
   '';
+  soak = writeShellScriptBin "qwen38-sm75-soak" ''
+    set -euo pipefail
+    root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
+    root="$(${coreutils}/bin/realpath -e "$root")"
+    ${environment}
+    exec "$root/venv/bin/python" "${assets}/soak.py" "$@"
+  '';
   prepareUncensored = writeShellScriptBin "qwen38-sm75-prepare-uncensored" ''
     set -euo pipefail
     if [ "$#" -gt 1 ]; then
@@ -172,6 +180,7 @@ symlinkJoin {
     serve
     check
     bench
+    soak
     prepareUncensored
   ];
   meta = {
