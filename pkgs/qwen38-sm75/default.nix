@@ -32,18 +32,18 @@ let
   };
   assets = runCommand "qwen38-sm75-assets" { } ''
     mkdir -p "$out"
-    cp ${local}/prepare-runtime.py} "$out/prepare-runtime.py"
-    cp ${local}/prepare-model.py} "$out/prepare-model.py"
-    cp ${local}/requirements.lock} "$out/requirements.lock"
-    cp ${local}/check-attention.py} "$out/check-attention.py"
-    cp ${local}/check-downloads.py} "$out/check-downloads.py"
-    cp ${local}/check-prefill.py} "$out/check-prefill.py"
-    cp ${local}/check-prefix.py} "$out/check-prefix.py"
-    cp ${local}/check-gdn.py} "$out/check-gdn.py"
-    cp ${local}/bench-one.py} "$out/bench-one.py"
-    cp ${local}/prepare-uncensored.py} "$out/prepare-uncensored.py"
-    cp ${local}/soak.py} "$out/soak.py"
-    cp -r ${local}/patches} "$out/patches"
+    cp ${local}/prepare-runtime.py "$out/prepare-runtime.py"
+    cp ${local}/prepare-model.py "$out/prepare-model.py"
+    cp ${local}/requirements.lock "$out/requirements.lock"
+    cp ${local}/check-attention.py "$out/check-attention.py"
+    cp ${local}/check-downloads.py "$out/check-downloads.py"
+    cp ${local}/check-prefill.py "$out/check-prefill.py"
+    cp ${local}/check-prefix.py "$out/check-prefix.py"
+    cp ${local}/check-gdn.py "$out/check-gdn.py"
+    cp ${local}/bench-one.py "$out/bench-one.py"
+    cp ${local}/prepare-uncensored.py "$out/prepare-uncensored.py"
+    cp ${local}/soak.py "$out/soak.py"
+    cp -r ${local}/patches "$out/patches"
   '';
   python = "${python312}/bin/python3.12";
   compiler = cudaPackages.backendStdenv.cc;

@@ -305,6 +305,10 @@ in
         MTP_DRAFT_VOCAB = "1";
         PYTORCH_ALLOC_CONF = "expandable_segments:True";
         VLLM_ENGINE_STALL_SENTINEL_S = "120";
+        # Turing port: propose the whole draft block from the request's own
+        # history when the context repeats (copy/edit work) and skip the
+        # drafter; greedy requests only, and only after a fully accepted step.
+        VLLM_MTP_LOOKUP = "1";
       };
       serviceConfig = {
         Type = "exec";
@@ -423,6 +427,10 @@ in
         # live. Keys on completed steps, so a chunked prefill (which completes
         # a step per chunk) cannot false-positive however long it runs.
         VLLM_ENGINE_STALL_SENTINEL_S = "120";
+        # Turing port: propose the whole draft block from the request's own
+        # history when the context repeats (copy/edit work) and skip the
+        # drafter; greedy requests only, and only after a fully accepted step.
+        VLLM_MTP_LOOKUP = "1";
       };
       serviceConfig = {
         Type = "exec";

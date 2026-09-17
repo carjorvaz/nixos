@@ -292,3 +292,61 @@ a 16-token verify block (k=15) is infeasible on Turing: the proposer/attention
 kernel requests 81,920 B of shared memory against the 65,536 B limit, the same
 wall as the campaign's native int4 prefill attention. Copy mode therefore stays
 at k=7 (8-token blocks, ~100 tok/s on the copy task against MTP's 82).
+
+### MTP history lookup: built, measured, shipped
+
+The last bullet above is now done, on the V1 runner rather than by porting
+upstream's DFlash2 speculator (the V2 runner also has an MTP speculator with
+the LABD lookup, but V2 MTP measured 9-19% slower than V1 MTP on chat at the
+same acceptance, so the runner was left alone).
+
+Design (`patches/turing-mtp-history-lookup.patch`, three files):
+
+- `update_lookup_history` keeps each request's token history in a device
+  buffer, appended from the authoritative `sampled_token_ids` (accepted draft
+  prefix plus bonus) by a one-program-per-request Triton kernel. The input
+  batch's CPU token buffer is only read for the initial prompt: it lags the
+  sampler by one token, which silently misaligns any history built from it.
+- `_lookup_propose` calls upstream's `suffix_lookup` over that history and, when
+  the match is long enough, returns the continuation as the whole draft block
+  and skips the drafter's forward pass entirely.
+- The skip decision is read from pinned memory that earlier steps filled with
+  asynchronous copies, so the host never waits for this step's kernel -- a
+  first version that synced per step cost 5-20% of chat decode by breaking the
+  async-scheduling overlap.
+- Gates: greedy batches only (the proposal carries no draft distribution, which
+  is lossless exactly where the rejection sampler ignores it), a match of at
+  least `VLLM_MTP_LOOKUP_MIN` (default 24) tokens, and a previous step that
+  accepted every draft it was given. Without the last two, coincidental matches
+  in filler text start chains whose drafts are wrong and acceptance falls.
+- `suffix_lookup` grew a `min_tail` argument (default 0 = upstream behaviour).
+  With the most-recent tie-break, a nearby repeat that has three tokens left
+  wins against the copy it is a repeat of; the MTP caller asks for `min_tail=k`
+  so only matches that can fill a whole block are considered.
+
+Measurements (same runtime and host, chat sizes are the filler prompt, copy is
+the verbatim-reproduction task):
+
+| task | MTP | MTP + lookup |
+| --- | --- | --- |
+| 2k chat | 90.4-92.2 | 90.4-92.0 tok/s |
+| 8k chat | 88.3-89.2 | 89.2-90.3 tok/s |
+| 32k chat | 76.1 | 76.1 tok/s |
+| 64k chat | 68.3 | 68.4 tok/s |
+| 128k chat | 57.3 | 57.9 tok/s |
+| 32k copy | 97.5 / 91.0 | 98.2 / 93.8 tok/s (exact) |
+| 60k copy | 78.4 | 89.7 tok/s (exact) |
+| GSM8K | 94.5% | 94.5% (n=200) |
+
+So: free on chat, +14.4% on long copy, and the 32k copy result is a wash
+because the drafter already scores ~4.0 acceptance there. Enabled in the unit
+environment; the absolute numbers are ~10% below the morning's baseline on the
+same host for reasons outside this patch (both runtimes, both governors, and
+the lookup-off arm reproduce today's numbers).
+
+Remaining ideas, in order of expected value: a *fused* mode that runs the
+drafter and keeps the lookup only where the two agree (upstream's `fuse_draft`
+kernel: no skip, so no acceptance risk at all, but pays the drafter), a
+`VLLM_MTP_LOOKUP_MIN` sweep between 12 and 32, variable verify length driven by
+the match, and the int8-QK prefill attention (`VLLM_PREFILL_ATTN=int8` already
+exists upstream but was worth only +0.4% in upstream's own config).

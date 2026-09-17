@@ -252,14 +252,31 @@ at the int8 full-vocabulary lm_head.
 
 The unit reads an optional `serve.env` file from the runtime root
 (`EnvironmentFile=-/persist/qwen38-sm75/serve.env`), so environment knobs can
-be changed without a rebuild. Two measured profiles:
+be changed without a rebuild. Measured profiles:
 
+- **MTP history lookup** (on by default: `VLLM_MTP_LOOKUP=1` in the unit
+  environment, tunable through `serve.env`). Before drafting, the proposer asks
+  whether the tokens the request just produced already occurred earlier in that
+  request's own context; if so it proposes that continuation and skips the
+  drafter entirely. Greedy requests only, and only after a step that accepted
+  every draft it was given, so prose cannot start a chain on a coincidence.
+  Measured against MTP on the same runtime and host: chat unaffected to within
+  noise (2k 90.4/91.0, 8k 88.3/89.2-90.3, 32k 76.1/76.1, 64k 68.3/68.4,
+  128k 57.3/57.9 tok/s), while a 60k-token verbatim-reproduction task reads
+  **89.7 tok/s against 78.4** (acceptance 4.06 vs 3.66) with exact copies
+  preserved; at 32k the same task is a wash because the MTP drafter already
+  scores ~4.0 there. GSM8K stays 94.5% (n=200).
+  Knobs: `VLLM_MTP_LOOKUP_MIN` (match length to trust, default 24),
+  `VLLM_MTP_LOOKUP_NMIN`/`NMAX` (kernel match window, default 4/32),
+  `VLLM_MTP_LOOKUP_SEARCH` (history window, default all of it).
 - **Copy/edit mode** (quoting or rewriting long documents):
   `QWEN_EXTRA_ARGS=--speculative-config '{"method":"ngram_gpu","num_speculative_tokens":7,"prompt_lookup_min":2,"prompt_lookup_max":8}'`
   replaces MTP with prompt-lookup drafting. On a 32k-token verbatim-reproduction
   task this reads **100+ tok/s against MTP's 82** (acceptance 4.4 vs 3.5); on
   ordinary chat it collapses (acceptance ~1.1, ~29 tok/s), so it is a
-  copy/edit profile, not a default.
+  copy/edit profile, not a default. The history lookup above reaches the same
+  acceptance without giving up chat, so prefer it and keep this profile for
+  A/B reference.
 - **Prefill-heavy mode**: `VLLM_MARLIN_INPUT_DTYPE=int8` with
   `VLLM_MARLIN_INT8_INCLUDE_RE='\.mlp\.(gate_up|down)_proj'` trades about 10%
   of step time for ~8-10% faster cold prefill at 32k/64k.
