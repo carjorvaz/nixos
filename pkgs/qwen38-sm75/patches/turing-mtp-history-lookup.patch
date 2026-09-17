@@ -43,7 +43,7 @@
  from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
  from vllm.model_executor.model_loader import get_model
  from vllm.model_executor.models import (
-@@ -81,6 +110,20 @@
+@@ -81,6 +110,27 @@
          self.speculative_config = vllm_config.speculative_config
          self.draft_model_config = self.speculative_config.draft_model_config
          self.method = self.speculative_config.method
@@ -52,6 +52,13 @@
 +        self.runner = runner
 +        self._lookup_enabled = os.environ.get("VLLM_MTP_LOOKUP", "0") == "1"
 +        self._lookup_min = int(os.environ.get("VLLM_MTP_LOOKUP_MIN", "24"))
++        # Sampled requests are served too: the proposal carries no draft
++        # distribution, which the rejection sampler treats as a one-hot draft
++        # (draft_sample_method="greedy" semantics) -- exact, with acceptance
++        # p(x) per position instead of 1.
++        self._lookup_sample = (
++            os.environ.get("VLLM_MTP_LOOKUP_SAMPLED", "0") == "1"
++        )
 +        self._lookup_nmin = int(os.environ.get("VLLM_MTP_LOOKUP_NMIN", "4"))
 +        self._lookup_nmax = int(os.environ.get("VLLM_MTP_LOOKUP_NMAX", "32"))
 +        self._lookup_search = int(
@@ -64,7 +71,7 @@
          self.pass_hidden_states_to_model = pass_hidden_states_to_model
          self._share_mtp_indices = False
  
-@@ -504,6 +547,166 @@
+@@ -504,6 +554,168 @@
              )
          return draft_token_ids, draft_probs
  
@@ -179,7 +186,9 @@
 +        """
 +        if self.method != "mtp" or self.num_speculative_tokens < 1:
 +            return None
-+        if self._lookup_state is False or not sampling_metadata.all_greedy:
++        if self._lookup_state is False:
++            return None
++        if not self._lookup_sample and not sampling_metadata.all_greedy:
 +            return None
 +        if getattr(self, "runner", None) is None or batch_size > len(self._lk_req):
 +            return None
@@ -231,7 +240,7 @@
      def take_last_draft_probs(self) -> torch.Tensor | None:
          return self._last_draft_probs
  
-@@ -530,6 +733,10 @@
+@@ -530,6 +742,10 @@
          self.num_speculative_tokens = num_speculative_tokens
          self._last_draft_probs = None
          batch_size = common_attn_metadata.batch_size()
