@@ -104,12 +104,30 @@ def main():
     parser.add_argument("--output-tokens", type=int, default=256)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--word", default="benchmark")
+    parser.add_argument(
+        "--text-file",
+        default=None,
+        help=(
+            "build the prompt from this text file (~4 chars per token) instead "
+            "of one repeated word. The repeated word is a stable repetition "
+            "workload: good for decode-rate comparisons, but it cannot stand in "
+            "for prose or for the history lookup's copy/edit case."
+        ),
+    )
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
 
     # One word per token is close enough for a repeated filler prompt; the
     # server's own usage counts are what get reported.
-    prompt = " ".join([args.word] * args.prompt_tokens)
+    if args.text_file:
+        with open(args.text_file) as handle:
+            body = handle.read()
+        want = max(1, args.prompt_tokens) * 4
+        while len(body) < want:
+            body = body + "\n" + body
+        prompt = body[:want]
+    else:
+        prompt = " ".join([args.word] * args.prompt_tokens)
     results = []
     for run in range(args.runs):
         before = scrape_metrics(base)

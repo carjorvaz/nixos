@@ -69,22 +69,46 @@ def main() -> None:
         "--prompt",
         default="Write one short sentence about the sea.",
     )
+    ap.add_argument(
+        "--text-file",
+        default=None,
+        help="use this text file as the prompt (~4 chars per token) instead",
+    )
+    ap.add_argument(
+        "--prompt-tokens",
+        type=int,
+        default=2000,
+        help="with --text-file, how many tokens of it to use",
+    )
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args()
 
+    prompt = args.prompt
+    if args.text_file:
+        with open(args.text_file) as handle:
+            body = handle.read()
+        want = max(1, args.prompt_tokens) * 4
+        while len(body) < want:
+            body = body + "\n" + body
+        prompt = body[:want]
+
     before = scrape_metrics(args.base_url)
     start = time.time()
+    firsts: list[float] = []
     samples = []
     for _ in range(args.n):
+        request_start = time.time()
         payload = {
             "model": args.model,
-            "messages": [{"role": "user", "content": args.prompt}],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": args.max_tokens,
             "temperature": args.temperature,
             "top_k": args.top_k,
             "top_p": args.top_p,
+            "stream": True,
         }
         text = ""
+        first_at = None
         with http(args.base_url, "/v1/chat/completions", payload, timeout=600) as r:
             for line in r:
                 line = line.decode().strip()
@@ -96,12 +120,17 @@ def main() -> None:
                 delta = json.loads(blob)
                 for choice in delta.get("choices", []):
                     delta_obj = choice.get("delta") or {}
-                    text += (
+                    piece = (
                         delta_obj.get("content")
                         or delta_obj.get("reasoning_content")
                         or ""
                     )
+                    if piece and first_at is None:
+                        first_at = time.time()
+                    text += piece
         samples.append(text)
+        if first_at is not None:
+            firsts.append(first_at - request_start)
     elapsed = time.time() - start
 
     after = scrape_metrics(args.base_url)
@@ -136,7 +165,15 @@ def main() -> None:
         "acceptance_length": round(acceptance, 3),
         "generation_tokens": gen,
         "tok_per_step": round(gen / steps, 3) if steps else None,
+        "elapsed_s": round(elapsed, 2),
+        # Engine-side rates: they include the prefill, so compare arms with the
+        # same prompt, or use steps_per_s with acceptance_length.
         "generation_tok_s": round(gen / elapsed, 2),
+        "steps_per_s": round(steps / elapsed, 2) if elapsed else None,
+        "step_ms": round(1000 * elapsed / steps, 2) if steps else None,
+        # Client-side first-token latency, informational (it overlaps the decode
+        # window when the server streams reasoning content).
+        "ttft_s": round(sum(firsts) / len(firsts), 3) if firsts else None,
         "per_position_acceptance": per_pos,
         "top_first_words": words.most_common(6),
         "distinct_first_words": len(words),

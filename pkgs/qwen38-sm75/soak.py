@@ -83,9 +83,18 @@ def chat(base, model, content, max_tokens, timeout):
     return completion, (first - started if first else None), decode
 
 
-def worker(base, model, sizes, deadline):
+def worker(base, model, sizes, deadline, text=None):
     rng = random.Random(threading.get_ident())
-    pool = {size: " ".join(["soak"] * size) for size in sizes}
+    if text is None:
+        pool = {size: " ".join(["soak"] * size) for size in sizes}
+    else:
+        pool = {}
+        for size in sizes:
+            need = max(1, size) * 4
+            body = text
+            while len(body) < need:
+                body = body + "\n" + body
+            pool[size] = body[:need]
     while not STOP.is_set() and time.monotonic() < deadline:
         size = rng.choices(sizes, weights=[4, 3, 2, 1][: len(sizes)])[0]
         content = pool[size]
@@ -173,13 +182,30 @@ def main():
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--sizes", default="256,1024,4096,16384")
     parser.add_argument("--out-dir", default="/data/ab")
+    parser.add_argument(
+        "--text-file",
+        default=None,
+        help=(
+            "build prompts from this text file (~4 chars per token) instead of "
+            "one repeated word; the repeated word is a stable repetition "
+            "workload, not prose"
+        ),
+    )
     args = parser.parse_args()
     sizes = [int(value) for value in args.sizes.split(",")]
+    text = None
+    if args.text_file:
+        with open(args.text_file) as handle:
+            text = handle.read()
     deadline = time.monotonic() + args.minutes * 60
     monitor_thread = threading.Thread(target=monitor, args=(args.out_dir, args.base_url.rstrip("/"), deadline), daemon=True)
     monitor_thread.start()
     workers = [
-        threading.Thread(target=worker, args=(args.base_url.rstrip("/"), args.model, sizes, deadline), daemon=True)
+        threading.Thread(
+            target=worker,
+            args=(args.base_url.rstrip("/"), args.model, sizes, deadline, text),
+            daemon=True,
+        )
         for _ in range(args.workers)
     ]
     for thread in workers:

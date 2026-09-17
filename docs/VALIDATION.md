@@ -333,6 +333,27 @@ weight read) or from compressing the weights further -- not from kernel
 micro-tuning. The measured levers that remain are the variable-length draft
 block for greedy copy work and sub-4-bit weights or KV.
 
+**Realistic text, not filler.** `--text-file` (wikitext-2 test, first N tokens)
+on `qwen38-sm75-bench` gives the numbers a real session sees. Greedy decode,
+128-token replies, acceptance in brackets:
+
+| prompt | filler decor (repeated word) | realistic text |
+| --- | --- | --- |
+| 8k | 90.3 [3.25] | **104.4 [3.64]** |
+| 32k | 76.1 [3.11] | **97.7 [3.85]** |
+| 64k | 68.3 [3.21] | 68.3 [3.12] |
+| 128k | 57.3 [3.43] | **63.8 [3.69]** |
+
+The filler understates short and mid-context decode by 15-25% because the model
+answers a wall of one repeated word with prose, which the drafter predicts
+badly. Sampled (temperature 1.0 / top_k 20 / top_p 0.95) realistic text at 8k
+runs 3.22 tokens per step and ~38 ms per step against greedy's 3.64 and ~35 ms,
+so the user-facing penalty for sampling is about 19% at 8k, not the 45% the
+filler suggested. The history lookup is exactly neutral on this text (8k 104.30
+against 104.37, 32k 97.13 against 97.67, identical acceptance): it does not
+fire, which is the intended do-no-harm property, and its measured benefit
+stays where it was measured, on greedy verbatim copy/edit work.
+
 **Measurement hygiene on this host.** `qwen38-sm75-bench` and
 `qwen38-sm75-soak` build their prompts from one repeated word, so they are
 stable *repetition* workloads, not chat: they are the right instrument for
