@@ -112,7 +112,10 @@ in
     # The model loader streams 18.5 GB through the page cache; at the kernel
     # defaults the reclaim watermark is too small for that scan and the box goes
     # OOM. Keep a 512 MB reserve and reclaim earlier (watermark_scale_factor).
+    # sysrq is armed so the Xid-storm watchdog can force a kernel-level reboot
+    # when a wedged GPU prevents the normal shutdown path from completing.
     kernel.sysctl = {
+      "kernel.sysrq" = 1;
       "vm.min_free_kbytes" = lib.mkForce 524288;
       "vm.watermark_scale_factor" = lib.mkForce 200;
     };
@@ -209,7 +212,15 @@ in
             if [ "$delta" -gt 100 ]; then
               ${pkgs.util-linux}/bin/logger -t tiberius-xid-watch "Xid storm: +$delta lines; stopping inference engines"
               ${config.systemd.package}/bin/systemctl stop tiberius-qwen38.service tiberius-qwen38-uncensored.service tiberius-ninfer.service 2>/dev/null || true
-              sleep 300
+              sleep 60
+              after=$(${pkgs.util-linux}/bin/dmesg 2>/dev/null | ${pkgs.gnugrep}/bin/grep -c Xid || true)
+              if [ "$after" -gt "$((now + 100))" ]; then
+                # The storm outlived the engine: the driver is wedged, and the
+                # normal shutdown path is known to hang here. Force a reboot.
+                ${pkgs.util-linux}/bin/logger -t tiberius-xid-watch "Xid storm continues after engine stop; forcing reboot"
+                echo b > /proc/sysrq-trigger
+              fi
+              prev=$after
             fi
             sleep 30
           done
