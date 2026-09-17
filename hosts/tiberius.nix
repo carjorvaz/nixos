@@ -144,6 +144,18 @@ in
   # Runtime generations, pinned checkpoints and JIT caches live directly on the
   # persistent filesystem; no mutable runtime is copied through the Nix store.
   environment.systemPackages = [ qwenPackage ];
+
+  # A driver Xid storm fills the journal until the unit's own logs are evicted.
+  # Keep the journal on disk with a much larger burst so an incident leaves
+  # evidence; the impermanent root means it does not accumulate across boots.
+  services.journald = {
+    storage = "persistent";
+    extraConfig = ''
+      RateLimitIntervalSec=10s
+      RateLimitBurst=200000
+      SystemMaxUse=2G
+    '';
+  };
   systemd.services = {
     # Keep NInfer available for manual fallback, but boot into vLLM. Never let
     # both resident engines contend for the single GPU or the API port.
@@ -167,6 +179,44 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         ExecStart = "${lib.getBin config.hardware.nvidia.package}/bin/nvidia-smi -i 0 -pl 280";
+      };
+    };
+
+    # A storm of Xid lines (hundreds per sampling window) means the GPU
+    # channel is wedged: the engine cannot make progress and the driver floods
+    # the journal with preemption retries. Stopping the engine releases the
+    # channel it owns and keeps the exchange readable. Single Xid lines are
+    # ignored; the threshold is deliberately far above transient noise.
+    tiberius-gpu-xid-watch = {
+      description = "Stop the inference engine on a GPU Xid storm";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "simple";
+        Restart = "always";
+        RestartSec = "30s";
+        ExecStart = pkgs.writeShellScript "tiberius-xid-watch" ''
+          set -u
+          prev=0
+          while true; do
+            now=$(${pkgs.util-linux}/bin/dmesg 2>/dev/null | ${pkgs.gnugrep}/bin/grep -c Xid || true)
+            if [ "$now" -lt "$prev" ]; then
+              delta=0 # ring buffer wrapped; rebaseline
+            else
+              delta=$((now - prev))
+            fi
+            prev=$now
+            if [ "$delta" -gt 100 ]; then
+              ${pkgs.util-linux}/bin/logger -t tiberius-xid-watch "Xid storm: +$delta lines; stopping inference engines"
+              ${config.systemd.package}/bin/systemctl stop tiberius-qwen38.service tiberius-qwen38-uncensored.service tiberius-ninfer.service 2>/dev/null || true
+              sleep 300
+            fi
+            sleep 30
+          done
+        '';
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
       };
     };
 
@@ -247,6 +297,11 @@ in
       };
       serviceConfig = {
         Type = "exec";
+        # Optional operator overrides, e.g. VLLM_MARLIN_INPUT_DTYPE=int8
+        # with VLLM_MARLIN_INT8_INCLUDE_RE for a prefill-heavy profile, or
+        # VLLM_TURING_SPEC_NSEG for a split-KV segment sweep. Absent by
+        # default; unit Environment= still supplies the validated values.
+        EnvironmentFile = "-${qwenRuntimeRoot}/serve.env";
         ExecStart = "${qwenPackage}/bin/qwen38-sm75-serve ${
           lib.escapeShellArgs [
             "/data/qwen38-uncensored/models/hybrid-dv8-mtp4c"
@@ -360,6 +415,11 @@ in
       };
       serviceConfig = {
         Type = "exec";
+        # Optional operator overrides, e.g. VLLM_MARLIN_INPUT_DTYPE=int8
+        # with VLLM_MARLIN_INT8_INCLUDE_RE for a prefill-heavy profile, or
+        # VLLM_TURING_SPEC_NSEG for a split-KV segment sweep. Absent by
+        # default; unit Environment= still supplies the validated values.
+        EnvironmentFile = "-${qwenRuntimeRoot}/serve.env";
         ExecStart = "${qwenPackage}/bin/qwen38-sm75-serve ${
           lib.escapeShellArgs [
             "${qwenRuntimeRoot}/models/target"
