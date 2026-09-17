@@ -263,12 +263,29 @@ be changed without a rebuild. Measured profiles:
   Measured against MTP on the same runtime and host: chat unaffected to within
   noise (2k 90.4/91.0, 8k 88.3/89.2-90.3, 32k 76.1/76.1, 64k 68.3/68.4,
   128k 57.3/57.9 tok/s), while a 60k-token verbatim-reproduction task reads
-  **89.7 tok/s against 78.4** (acceptance 4.06 vs 3.66) with exact copies
-  preserved; at 32k the same task is a wash because the MTP drafter already
-  scores ~4.0 there. GSM8K stays 94.5% (n=200).
+  **90.7 tok/s against 78.4** (acceptance 4.06 vs 3.66) with exact copies
+  preserved. GSM8K stays 94.5% (n=200).
   Knobs: `VLLM_MTP_LOOKUP_MIN` (match length to trust, default 24),
   `VLLM_MTP_LOOKUP_NMIN`/`NMAX` (kernel match window, default 4/32),
-  `VLLM_MTP_LOOKUP_SEARCH` (history window, default all of it).
+  `VLLM_MTP_LOOKUP_SEARCH` (history window, default all of it),
+  `VLLM_MTP_LOOKUP_SAMPLED` (serve sampled requests too, default 0 -- see
+  below).
+- **Sampled traffic is the default, and it is not greedy.** Requests that omit
+  sampling parameters get the model's `generation_config.json`
+  (`temperature` 1.0, `top_k` 20, `top_p` 0.95); two identical requests return
+  different text. The drafter then runs *probabilistically* as well, and the
+  numbers differ from every greedy figure: sampled chat settles at acceptance
+  **3.19-3.23** (per position 0.84 / 0.63 / 0.41 / 0.30 against greedy
+  0.79 / 0.63 / 0.40 / 0.30), and a 32k verbatim-copy task reads 97.8 tok/s
+  (acceptance 4.03) sampled against 98.2 greedy -- the same, because a copy is
+  a high-probability path either way. At 60k the sampled copy drifts off the
+  verbatim text (`copy_exact` false, 77.5 tok/s against the greedy 90.7), so
+  "copy" workloads are only reliably copies when the client is greedy.
+  Point-mass proposals are exact for any target but are accepted with
+  probability `p(x)` instead of `min(1, p/q)`, so routing the lookup into
+  sampled requests *loses*: 3.82 against the drafter's 4.03 on the 32k copy
+  task. That is why the lookup is greedy-only (upstream's DFlash chain has the
+  same gate) and why `VLLM_MTP_LOOKUP_SAMPLED` defaults to 0.
 - **Copy/edit mode** (quoting or rewriting long documents):
   `QWEN_EXTRA_ARGS=--speculative-config '{"method":"ngram_gpu","num_speculative_tokens":7,"prompt_lookup_min":2,"prompt_lookup_max":8}'`
   replaces MTP with prompt-lookup drafting. On a 32k-token verbatim-reproduction
@@ -280,6 +297,12 @@ be changed without a rebuild. Measured profiles:
 - **Prefill-heavy mode**: `VLLM_MARLIN_INPUT_DTYPE=int8` with
   `VLLM_MARLIN_INT8_INCLUDE_RE='\.mlp\.(gate_up|down)_proj'` trades about 10%
   of step time for ~8-10% faster cold prefill at 32k/64k.
+
+Two prefill knobs are closed: `--max-num-batched-tokens 4096` **does not fit**
+(cold start dies with a 110 MiB allocation against 117 MiB free, so 2048 is the
+memory ceiling with a 5.5 GiB int4 pool), and `VLLM_PREFILL_ATTN=int8` (the
+upstream int8-QK prefill attention) measures 54.4 s against 54.2 s at 64k and
+151.5 s against 151.2 s at 128k -- no effect, matching upstream's own +0.4%.
 
 CLI arguments otherwise still live in `hosts/tiberius.nix`.
 

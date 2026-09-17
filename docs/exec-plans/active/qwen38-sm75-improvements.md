@@ -366,3 +366,57 @@ runtime, same host, same acceptance:
 
 V2 is at or below V1 everywhere except 32k, so the port went into the V1 MTP
 proposer and reuses only the lookup kernel from the V2 tree.
+
+### Sampled traffic: what the agent actually gets (and what that changes)
+
+Everything above was measured in greedy mode. The production client (OMP) sends
+no sampling parameters, so the server applies the model's
+`generation_config.json`: `temperature` 1.0, `top_k` 20, `top_p` 0.95 (verified:
+two identical requests return different text). That changes the picture:
+
+| task | greedy | sampled (temp 1.0 / top_k 20) |
+| --- | --- | --- |
+| chat acceptance, per step | 3.1-3.25 | 3.19-3.23 |
+| chat per-position acceptance | 0.79 / 0.63 / 0.40 / 0.30 | 0.84 / 0.63 / 0.41 / 0.30 |
+| copy 32k, exact | 98.2 tok/s, acc 4.03 | 97.8 tok/s, acc 4.03 (`copy_exact` still true) |
+| copy 60k | 90.7 tok/s, acc 4.06, exact | 77.5 tok/s, acc 3.65, **not exact** |
+
+Consequences, all measured rather than assumed:
+
+* `k=4` is still the right depth: the per-position decay is
+  indistinguishable between modes, and position 4 still returns ~0.3 tokens per
+  step for one extra draft pass.
+* `draft_sample_method`: production's `probabilistic` beats `greedy` on sampled
+  traffic (3.23 vs 3.01 acceptance), because a dense draft q gets
+  `min(1, p/q)` acceptance while a point-mass draft only gets `p(x)`.
+* That is also why the history lookup must stay greedy-only: on the 32k copy
+  task the lookup's point-mass fills score 3.82 against the probabilistic
+  drafter's 4.03. The knob `VLLM_MTP_LOOKUP_SAMPLED=1` exists to re-run that
+  A/B; the default is 0. Upstream gates its own drafter-free chain the same way.
+* A prefill chunk of 4096 tokens does not fit in 22 GiB (out of memory with 110
+  MiB requested and 117 MiB free), so 2048 is the ceiling and there is no
+  chunk-size headroom left; int8-QK prefill attention is a no-op here
+  (54.4 s vs 54.2 s at 64k, 151.5 s vs 151.2 s at 128k).
+
+Next projects, in the order their measured payoffs justify:
+
+1. **Variable verify length driven by the lookup.** A hit currently fills only
+   `k` slots, so a greedy copy tops out at 5 tokens/step. The target forward
+   costs the same weight reads for q=5 and q=17; only attention grows, so a
+   16-token history fill would be worth ~6 tokens/step in *sampled* mode too
+   (sum of per-position acceptance over 16 positions at the measured decay),
+   and 17 in greedy. Plumbing: `SchedulerOutput.num_spec_tokens_to_schedule` is
+   one int per step, so the scheduler needs a hint from the previous step's
+   probe (the ngram_gpu path already returns per-request valid counts, and
+   `_spec_attn_qmax`/`VLLM_SPEC_DECODE_ATTN_QMAX` plus
+   `max_cudagraph_capture_size` gate the q=17 verify shape; the partial turing
+   kernel's `kRows=32, qt=32//G` already covers q<=32). `min_tail=k` in
+   `suffix_lookup` then has to follow the scheduled block.
+2. **Interactive long-context latency.** A cached continuation at 248k still
+   costs ~8.8 s because the uncached tail attends over the whole context
+   (2048 q against 248k kv), which is why the tail prefills at ~230 tok/s while
+   a cold 248k prefill runs at ~363 tok/s. The levers are a long-q prefill tile
+   and int8-QK scores; both need measuring before they are worth porting.
+3. **Sub-4-bit KV.** Attention is 20-30% of a long-context step, and this pin
+   has no KVarN: a 3-bit K with per-channel scales would cut attention traffic
+   ~25% and grow usable context 30-50%. New kernel, not a port.
