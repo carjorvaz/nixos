@@ -325,6 +325,16 @@ scoring against 248k keys, at the same rate a cold prefill of that size runs.
 The lever is a long-context prefill attention kernel (long-q tiles and int8
 scores), not scheduling.
 
+**Night run (realistic text, deep context).** A 5.5-hour soak of the deployed
+runtime with `--text-file` prompts at 4k/16k/64k: 683 requests, 0 errors,
+0 Xid, decode means 108.4 / 100.2 / 77.9 tok/s, acceptance 3.76, and the
+lifecycle check passed 5/5 (cold 248k 683 s, cached 8.5 s, recompute correct).
+Morning gates on the same process: GSM8K 94.5% (n=200), tool-call roundtrip
+fine, GPU 37 C idle. On a *realistic* continuation prompt (wikitext) the
+history lookup reaches acceptance 5.0 -- every draft accepted, 127.8 tok/s
+against the ~100 tok/s the drafter alone manages -- because reproducing text
+that is already in the context is exactly its case.
+
 **Decode is at the weight-read floor.** At W4A16 the 27B target reads roughly
 13-14 GiB per step, about 23-25 ms at the card's effective bandwidth, which is
 the bulk of a 2k step (91 tok/s at acceptance 3.17 means ~35 ms per step).
