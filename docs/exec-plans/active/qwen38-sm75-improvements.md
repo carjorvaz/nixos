@@ -780,3 +780,46 @@ and it is ~99% of unquantized on the headline metric. int8 *activations* do
 cost a little (published +0.9% to +2.2% perplexity), which is why that profile
 stays a profile. A 3-bit requantization would be a quality gamble for a decode
 gain smaller than the lossless adaptive win already staged above.
+
+### Adaptive verify block: built, mechanism verified, deploy deferred
+
+State of the work (all of it gated behind `VLLM_MTP_ADAPTIVE_K`, so with that
+env unset every file behaves as before -- production was re-verified against
+the k=4 baseline to the millisecond after each experiment):
+
+* `outputs.py` carries `spec_block_hint`; `gpu_model_runner.py` reads the ask
+  after the proposal and knows both strides (`spec_strides`), and
+  `_is_uniform_decode` accepts either; `scheduler.py` keeps the configured k as
+  the maximum and uses `VLLM_MTP_ADAPTIVE_K` as the base unless the ask stands;
+  `llm_base_proposer.py` runs the base probe, a second long probe while a copy
+  is running, asks for the long block, proposes the long block's own tokens on
+  a long step, chains only the base number of drafts and pads otherwise, and
+  holds the block for `VLLM_MTP_ADAPTIVE_STICKY` (default 4) steps after the
+  match flag drops; `cudagraph_dispatcher.py` accepts any stride in the set and
+  only keys FULL decode graphs for sizes a stride divides; `compilation.py`
+  unions the spec shapes with the original capture sizes instead of replacing
+  them (replacing them dropped the small shapes and measured slow).
+
+Verified in the live runtime: chat step times match k=4 exactly at 2k/8k/32k/64k
+(33.3/35.8/39.3/44.0 ms); the ask reached the scheduler (a k=8 step appears in
+the debug trace); a long step reported `count=9`, i.e. all eight lookup tokens
+plus the bonus accepted; and the gates correctly refused a coincidental match
+(`valid=[4] len=[32] count=[3]` never took the long block). The 60k verbatim
+copy measured acceptance 4.21/4.36 against the k=4 baseline's 4.06 *before*
+stickiness was added -- stickiness is the piece expected to lift it to ~6-9,
+and it is implemented but not yet measured.
+
+To resume: boot `K=8 QMAX=16 CAP=16 VLLM_MTP_ADAPTIVE_K=4` (with
+`VLLM_MTP_ADAPTIVE_DEBUG=1` to watch `ADAPTDBG`), run the 60k copy twice,
+confirm the sampled path is untouched (`sample_probe`), run GSM8K and PPL, then
+bake the six files as one patch, rebuild, prepare and enable through
+`serve.env` (`QWEN_EXTRA_ARGS` with a duplicate `--speculative-config` carrying
+`num_speculative_tokens: 8`, plus `VLLM_MTP_ADAPTIVE_K=4`).
+
+**Operational gotcha that cost this night: orphaned engines.** `systemctl stop`
+on a transient ab unit returns before the engine's child exits, and that child
+keeps 16-21 GiB of the card for tens of seconds; the next boot then dies with
+"Free memory on device cuda:0 ... less than desired GPU memory utilization",
+which reads like a config error and is not. Always: stop, wait ~30 s, verify
+`nvidia-smi` reports under 500 MiB (killing whatever holds it in a loop), then
+start; and prefer one boot per experiment over rapid restarts.
