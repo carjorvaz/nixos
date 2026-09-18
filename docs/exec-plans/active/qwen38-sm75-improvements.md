@@ -534,3 +534,51 @@ the package under the running service and a restart failed with 203/EXEC; there
 is now a root at `/nix/var/gcroots/qwen38-sm75-deploy`. The runtime
 preparation must run inside its 3 GiB memory bound (or with the engine
 stopped): on a 7.5 GiB host it cannot share RAM with a loaded engine.
+
+### One SM75 wall behind three closed doors (and where the tail really goes)
+
+Three separate "make the batch wider" experiments die in the same place -- an
+int4 attention Triton kernel asking for more than SM75's 64 KiB of shared
+memory, because the tile grows with the query block:
+
+| experiment | kernel | required |
+| --- | --- | --- |
+| `num_speculative_tokens 15` (lookup long block) | int4 packed attention | 81,920 B |
+| `--max-num-seqs 2` (two clients at once) | int4 packed attention (`_launch_packed_attn`) | 81,920 B |
+| `VLLM_INT4_MQ_3D=1` (the campaign's multi-query 3D path) | int4 packed attention | engine dies at the first spec step |
+
+They are one project, not three: re-tile the kernel so a program's shared
+memory does not grow with the query block (split the query block across
+programs, or shrink the key tile), and all three reopen. Until then the cap in
+`zz-turing-mq3d-scratch-cap.patch` keeps the 2D fallback reachable, and the
+service serves one sequence with k=4.
+
+**The prefill tail is compute-bound and nearly done.** A local microbenchmark of
+the serving path (`prefill_bench.py`, no server needed) splits the paged-int4
+gather from the attention:
+
+| kv | q | run | gather | attention |
+| --- | --- | --- | --- | --- |
+| 16k | 2048 | 31.6 ms | 0.23 ms | 31.4 ms |
+| 64k | 2048 | 100.7 ms | 0.92 ms | 99.8 ms |
+| 128k | 2048 | 203.4 ms | 1.84 ms | 201.5 ms |
+
+The gather that the vectorized-staging lesson suggested would be a bottleneck is
+1-3%: the tail is the attention, at a steady ~16.6 TFLOPS of score GEMM (33
+TFLOPS counting softmax and PV) -- roughly 60% of the sm75 fp16/fp32-accumulate
+ceiling. There is no lossless tile win of the size the campaign found in the
+decode path; the remaining tail levers are int8 scores (the upstream path
+cannot read int4 KV, so this is a dequant-in-kernel s8-mma variant, cos >
+0.99999 by their measurement) or a mask-free causal path, both kernel projects.
+
+**From z.ai's infrastructure write-ups** (their GLM-5.3 build, plus the
+coding-agent-serving post): the transferable parts for a single 2080 Ti are
+methodological rather than architectural -- dense, local, cheap, verifiable
+feedback (the microbenchmark above is exactly that; their LayerSplit/EPD/
+ReplaySSM work is multi-GPU), a `tl.dot` precision audit (we are safe: sm75 has
+no TF32, and `FLA_TRIL_PRECISION=ieee` already forces IEEE for the FLA kernels),
+and one operational idea worth keeping: speculative acceptance metrics as an
+anomaly signal (very low `specacceptlength` with high `specacceptrate` flagged
+their corrupt generations). We already record per-position acceptance in
+`soak.py`; the thresholds to watch are acceptance below ~1.5 for minutes with
+requests in flight.
