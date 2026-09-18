@@ -491,3 +491,46 @@ unit's MainPID to change first.
    per-channel scales would cut its traffic ~25% *and* free pool memory (which
    is what blocks the longer draft block above). New kernel; no KVarN in this
    pin.
+
+### Concurrency, VRAM headroom, and the upstream refresh (measured)
+
+**A second client cannot share the GPU yet.** With `--max-num-seqs 2` the int4
+packed attention kernel asks for 81,920 B of shared memory against SM75's
+65,536 B and the engine dies on the first speculative step; the request to lower
+the block count came from the tile widening with the *sequence* count, not the
+query count, so k=2 (2x3=6 queries) fails the same way. The scratch plan's
+capacity is now backstopped at one 16-query program
+(`zz-turing-mq3d-scratch-cap.patch`), which is a no-op at `max-num-seqs 1` and
+makes the 2D fallback reachable, but the fallback kernel is the one that needs
+the 80 KiB tile. Until the kernel is re-tuned to split its tile over sequences,
+one sequence is served at a time: a second request queues, and the prefix cache
+plus the 30 s SSE keep-alive keep that queue usable (two concurrent 16k streams
+measured 84 tok/s aggregate at `max-num-seqs 1`, i.e. the streams serialize at
+full single-stream speed).
+
+**KVarN.** It exists upstream as a separate installer (`kvarn/install.sh`,
+`kvarn-0.28.0.patch` + `kvarn-v2-runner-0.28.0.patch`) and buys 1.7x the pool,
+but upstream's own README prices it at **half the decode rate past ~100k**
+(32.0 against 68.1 tok/s at 112k), to be taken when a request would not
+otherwise fit. We already run a more aggressive KV than upstream's own tiers
+(int4 per-token-head against their `fast` bf16 and `long` fp8), so there is no
+free VRAM in KVarN at our decode rates. Where VRAM can actually come from:
+the pool/context trade (the pool needs ~22.5 KB per token, so 5.5 GiB holds
+262k, 4.1 GiB holds 192k, 2.75 GiB holds 128k), the mamba-align retirement fix
+(already in our local set), or a sub-4-bit KV kernel.
+
+**Upstream refresh checked, not needed yet.** Upstream has moved 68 commits
+past our pin but is still on vLLM 0.28.0, and the diff in the paths we use is
+materially already ours: our `turing-mamba-retirement.patch` is byte-identical
+to their new `mamba-align-retire-null-gaps.patch`, our three `zz-upstream-*`
+patches are byte-identical to theirs, and the rest is env registration (the
+int4-mq3d knobs), an sm89-only fp8 split-KV patch, and CPU-offload work. They
+did fix the same glob-vs-`series` ordering trap we would have to handle at the
+next rebase, which stays on the list for the 0.29 jump.
+
+**Deployment gotchas worth remembering.** A store path referenced only by a
+`/run/systemd/system` drop-in has no GC root, so the nightly `nix-gc` collected
+the package under the running service and a restart failed with 203/EXEC; there
+is now a root at `/nix/var/gcroots/qwen38-sm75-deploy`. The runtime
+preparation must run inside its 3 GiB memory bound (or with the engine
+stopped): on a 7.5 GiB host it cannot share RAM with a loaded engine.
