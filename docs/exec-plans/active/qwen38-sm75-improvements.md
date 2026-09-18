@@ -582,3 +582,36 @@ anomaly signal (very low `specacceptlength` with high `specacceptrate` flagged
 their corrupt generations). We already record per-position acceptance in
 `soak.py`; the thresholds to watch are acceptance below ~1.5 for minutes with
 requests in flight.
+
+### The int4 attention was dotting in fp32 -- lossless fix, and what it unblocks
+
+The packed-int4 Triton attention dequantized its nibbles to fp32 and dotted
+them there. On sm75 an fp32 `tl.dot` has no tensor cores to run on, and the
+fp32 K/V tiles are also what the 64 KiB shared-memory limit was counting. Since
+the unpacked nibbles are integers in [0, 15] -- exact in fp16 -- and the
+per-token-head scales and zero-point corrections stay in fp32, casting them to
+the query dtype is numerically identical while halving the tiles
+(`zz-turing-int4-fp16-dots.patch`; the P operand of the P@V dot also moves to
+fp16, the standard flash-attention arrangement).
+
+Consequences, measured:
+
+* `VLLM_INT4_MQ_3D=1` -- the campaign's multi-query 3D path, previously
+  unusable on sm75 -- now boots and serves. It measures at **parity** with the
+  native path (step times within +-5%: 33.4 against 35.2 ms at 2k, 39.5
+  against 39.6 at 32k, 46.5 against 45.7 at 64k), so production keeps the
+  native path; the point is that the fallback is no longer broken and no
+  longer slow.
+* The shared-memory half of the long-verify block's blocker is gone. What
+  remains is only the KV pool: every lookahead token costs ~43 MiB of the 5.5
+  GiB budget, so `k>4` at 262144 max len still does not fit. `k=8` (a 9-token
+  verify block) would need roughly 256k max len -- about 2% of context for
+  ~1.8x the tokens per step on greedy copy/edit work. That is the user's call,
+  not a blocked experiment.
+
+Also from the z.ai write-ups (full text): their TF32 `tl.dot` bug class cannot
+reach us (sm75 has no TF32, our kernels dot int8/fp16, and
+`FLA_TRIL_PRECISION=ieee` covers the FLA state kernels), their 1.71x kernel win
+came from V-tiling that repeated normalization -- a search we ran across our
+own attention kernels without finding an analogue -- and their operational
+lesson (speculative acceptance metrics as an anomaly signal) is recorded above.

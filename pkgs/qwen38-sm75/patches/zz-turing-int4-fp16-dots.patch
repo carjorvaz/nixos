@@ -1,0 +1,47 @@
+Keep the int4 attention dequantized nibbles in the query dtype: they are
+integers in [0, 15], exact in fp16, so the dots stay numerically identical
+while using the fp16 tensor-core path (the fp32 path has no tensor cores on
+sm75) and the K/V tiles halve -- which is what made the 64 KiB shared-memory
+limit reject the multi-query 3D path (now boots and measures at parity with
+the native path) and what any longer verify block would otherwise hit.
+
+--- generated hunks below ---
+--- a/v1/attention/ops/int4_per_token_head.py
++++ b/v1/attention/ops/int4_per_token_head.py
+@@ -550,12 +550,18 @@
+         )
+         # Dequantize KV.  INT4 unpacks nibbles as plain uint [0..15];
+         # the zero-point is applied on the score side.
++        # Turing port: the unpacked nibbles are integers in [0, 15], which are
++        # exact in fp16, so keeping them in the query's dtype is numerically
++        # identical to fp32 while using the fp16 tensor-core path instead of the
++        # fp32 FMA fallback -- and it halves the tile's shared memory, which is
++        # what the 64 KiB SM75 limit was counting.
++        _q_dtype = q_ptr.dtype.element_ty
+         K_s0_u, K_s1_u = unpack_int4_nibbles(K_packed)
+-        K_s0 = K_s0_u.to(tl.float32)
+-        K_s1 = K_s1_u.to(tl.float32)
++        K_s0 = K_s0_u.to(_q_dtype)
++        K_s1 = K_s1_u.to(_q_dtype)
+         V_s0_u, V_s1_u = unpack_int4_nibbles(V_packed)
+-        V_s0 = V_s0_u.to(tl.float32)
+-        V_s1 = V_s1_u.to(tl.float32)
++        V_s0 = V_s0_u.to(_q_dtype)
++        V_s1 = V_s1_u.to(_q_dtype)
+ 
+         ks_idx = (
+             physical_block_idx * stride_ks_blk
+@@ -632,8 +638,11 @@
+ 
+         # Fuse v per-(token, head) scale into P.  INT4 also subtracts
+         # the v-zero-point contribution from each stream once.
+-        P_v = (P * v_token_head_scales[None, :]).to(tl.float32)
+-        Pv_zp_sum = tl.sum(P_v * v_zp[None, :], axis=1)
++        # v-scale stays fp32 for the zero-point sum; only the P@V dot uses the
++        # fp16 tensor-core operands (the standard flash-attention arrangement).
++        P_v_f32 = P * v_token_head_scales[None, :]
++        Pv_zp_sum = tl.sum(P_v_f32 * v_zp[None, :], axis=1)
++        P_v = P_v_f32.to(_q_dtype)
+         acc_s0 += tl.dot(P_v, V_s0) - Pv_zp_sum[:, None]
+         acc_s1 += tl.dot(P_v, V_s1) - Pv_zp_sum[:, None]
+ 
