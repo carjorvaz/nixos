@@ -685,3 +685,49 @@ the log above now records. A static k=8 profile is a one-line change; doing it
 adaptively (4 normally, 8-16 after a lookup hit) needs a scheduler-to-runner
 handshake, because the scheduler currently fixes k per step from config rather
 than from what the proposal found.
+
+### k=8 needs to be adaptive, and only a greedy client pays for it
+
+Static k=8 was measured before building anything (same runtime, realistic text,
+`K=8` plus `QMAX=16`, capture size 16):
+
+| context | k=4 step | k=8 step | chat cost |
+| --- | --- | --- | --- |
+| 2k | 34.5 ms | 40.0 ms | +16% |
+| 8k | 36.3 | 44.1 | +22% |
+| 32k | 39.8 | 52.3 | +31% |
+| 64k | 46.7 | 64.3 | +38% |
+
+Acceptance does rise with the wider block (4.41 at 2k, 4.89 at 32k against
+3.79/3.85), but not enough: every step pays four more MTP-layer forwards, and
+the verify attention is wider for every request. Copy work gets *worse* too
+(68.7 tok/s, acceptance 3.75, against 98 tok/s and 4.03) when the lookup cannot
+fill eight slots, because the drafter then runs seven passes to produce four
+useful tokens. Two useful facts came out of it: **k=8 boots at the full 262144
+context on the same 5.5 GiB pool** (no context trade at all, contrary to the
+k=15 estimate), and the native verify path handles q=9 with `QMAX=16`.
+
+So the win exists only in adaptive form: schedule 8 slots for the step *after*
+the lookup reports a long match, 4 otherwise. The design, with the pieces this
+window verified:
+
+* the proposer already reads the previous step's match length through pinned
+  memory, so it can ask for a long block without a sync;
+* the ask travels to the scheduler through one new field on
+  `ModelRunnerOutput` (`spec_block_hint`); the scheduler uses the configured k
+  as the maximum and a base of 4;
+* inside that path the batch is greedy by construction (the lookup only serves
+  greedy requests), so padded draft positions need no draft probabilities --
+  the sampler ignores them -- which removes the fiddly part of the port;
+* the drafter's chain is capped at the base k and padded to the scheduled
+  width, so a long block is never paid for by seven draft passes.
+
+It is deliberately not built: the win applies to greedy copy/edit clients only,
+and the sampling log added the same day is what says whether such a client
+exists. Until then the default stays k=4 at 262144.
+
+Quality re-validated on the deployed runtime (after the fp16 int4 change, the
+scratch cap, the fp16 verify path and the sampling log): PPL 10.8797 over 25,092
+tokens (English 10.8077, Danish 10.938) against the historical 10.88, and GSM8K
+94.5% (n=200) against 94.5% -- no drift, which also says the fp16 tensor-core
+dequantization is numerically equivalent in practice, not just in argument.
