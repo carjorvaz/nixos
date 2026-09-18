@@ -731,3 +731,52 @@ scratch cap, the fp16 verify path and the sampling log): PPL 10.8797 over 25,092
 tokens (English 10.8077, Danish 10.938) against the historical 10.88, and GSM8K
 94.5% (n=200) against 94.5% -- no drift, which also says the fp16 tensor-core
 dequantization is numerically equivalent in practice, not just in argument.
+
+### pi is wired, and the adaptive block is one graph-shape fix from done
+
+**pi is a client now.** `~/.pi/agent/models.json` carries a `tiberius` provider
+(`http://tiberius:8080/v1`, model `qwen3.8-27b`, context 262144, temperature 0)
+and `auth.json` a placeholder key (vLLM needs none, pi requires one). pi's
+thinking levels had to be remapped: this model's template accepts only
+`xhigh`, `medium` and `low`, and pi's `high` default was rejected with a 400, so
+off/minimal/low -> low, medium -> medium, high/xhigh/max -> xhigh. Verified
+end-to-end; the sampling log shows the Mac (`client=100.75.134.73`) sending
+`temp=0.0` with a 4197-character agentic prompt and a tool loop.
+
+That settles the adaptive-block question: **pi is greedy**, so the history
+lookup applies to it and a longer verify block would pay.
+
+**The adaptive block works but is blocked on the cudagraph stride.** Built and
+exercised (four files, gated behind `VLLM_MTP_ADAPTIVE_K`, off by default):
+the proposer asks through a new `spec_block_hint` on `ModelRunnerOutput`, the
+scheduler keeps the configured k as the maximum and the base k otherwise, an
+un-hinted step chains only the base number of drafts and pads the rest, and a
+second pipelined probe (run only while a copy is already running) decides
+whether a match can fill the whole long block. With the env set, base steps
+match the k=4 baseline exactly and the copy acceptance jumped to 4.4 against
+3.4 when the long block engaged -- the mechanism is right.
+
+What stops it: the cudagraph machinery carries a single spec stride
+(`config_k + 1`), pads to it and asserts on it. Base steps are 5 tokens, long
+ones 9, so with the config at 8 the base steps assert; relaxing the stride to 5
+instead makes the capture sizes collapse to multiples of 5 and drops the small
+shapes everything else uses, which measured slow (8k 80.7 against 97.5, 64k
+52.8 against 69.8). Doing it properly means teaching the dispatcher and the
+capture sizing about two strides, which is a container-level change and not
+something to rush. The code stays out of the repository (so the next switch or
+prepare discards it) and is inert in the live runtime without the env -- the
+production numbers after the experiment match the k=4 baseline to the millisecond.
+
+**Quality question, answered from the project's own tables.** On IFBench
+(prompt-level strict) Qwen's model card reports 79.5 for the unquantized model
+and this stack measures 78.3, so the whole W4A16 quantization costs about one
+point (~1.5% relative); the fast variant we serve adds an int4 GPTQ lm_head and
+MTP for +0.6% perplexity and *better* GSM8K (96.5% against 95.5%). Our own
+re-validation reads PPL 10.8797 (10.77/10.91 published for this variant) and
+GSM8K 94.5%. And the comparison the fear is about is not available on this
+hardware at all: 8-bit weights are ~27 GB against 21.7 GiB of VRAM, so the
+model only fits at 4 bits -- the current quality is the achievable quality here,
+and it is ~99% of unquantized on the headline metric. int8 *activations* do
+cost a little (published +0.9% to +2.2% perplexity), which is why that profile
+stays a profile. A 3-bit requantization would be a quality gamble for a decode
+gain smaller than the lossless adaptive win already staged above.
