@@ -615,3 +615,39 @@ reach us (sm75 has no TF32, our kernels dot int8/fp16, and
 came from V-tiling that repeated normalization -- a search we ran across our
 own attention kernels without finding an analogue -- and their operational
 lesson (speculative acceptance metrics as an anomaly signal) is recorded above.
+
+### Where a deep decode step actually goes (measured, no profiler needed)
+
+By running the same decode with speculation off (`QWEN_DISABLE_SPEC=1`) and on
+(k=4), on realistic wikitext at four contexts, the step splits cleanly:
+
+| context | k=0 step | k=4 step | draft chain (4 passes) | share |
+| --- | --- | --- | --- | --- |
+| 2k | 29.0 ms | 33.5 ms | 4.5 ms | 13% |
+| 8k | 29.9 ms | 36.2 ms | 6.3 ms | 17% |
+| 32k | 33.5 ms | 39.5 ms | 6.0 ms | 15% |
+| 64k | 38.0 ms | 44.8 ms | 7.7 ms | 17% |
+
+At 64k that closes: ~24 ms of weight reads (the W4A16 floor), ~7.7 ms of draft
+passes, ~5 ms of split-KV verify attention (the vectorized-staging path; ~0.65
+ms per full-attention layer), ~1 ms of int4 KV traffic, and the rest GDN,
+sampler and host. The fp16 int4 fix is worth ~2% at 64k and nothing at 128k,
+because the decode attention was never the depth bottleneck; the tail prefill
+is (see the microbenchmark above), and int8 scores are closed on sm75 (the
+upstream kernel cannot even be lowered: Triton's TTGIR pass fails on its s8
+dot at every tile size, its fp16 mode is numerically wrong for this rotated
+int4 layout, and usable tile sizes exceed 64 KiB of shared memory -- the third
+int8-attention dead end after the FA2-only wiring and the unquantized-KV gate).
+
+Consequences for long context, in order of measured value:
+
+1. **A longer verify block is the only remaining large long-context gain**, and
+   it is a context trade: k=8 (a 9-token block) needs roughly 256k max len for
+   ~1.8x tokens per step on greedy copy/edit work. The kernel side is ready
+   (the shared-memory half of the blocker went with the fp16 fix).
+2. The fused draft capture targets 4.5-7.7 ms of every step (13-17%), so its
+   ceiling is ~6-12% at short and mid context and less at depth.
+3. Everything else is at its floor: weights dominate the decode, the tail
+   prefill runs at ~60% of the sm75 fp32-accumulate ceiling with the gather at
+   1-3%, and the profiler cannot dump traces in this build (CUDA graphs or
+   eager), so microbenchmarks like `prefill-bench.py` remain the instrument.
