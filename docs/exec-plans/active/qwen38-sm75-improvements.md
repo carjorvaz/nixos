@@ -651,3 +651,37 @@ Consequences for long context, in order of measured value:
    prefill runs at ~60% of the sm75 fp32-accumulate ceiling with the gather at
    1-3%, and the profiler cannot dump traces in this build (CUDA graphs or
    eager), so microbenchmarks like `prefill-bench.py` remain the instrument.
+
+### Client sampling is now logged, and two more projects closed by measurement
+
+**The sampling log is live** (`zz-turing-sampling-log.patch`): one INFO line per
+request with the source address, a prompt digest, character count, temperature,
+top_p/top_k/min_p/seed/n/stream, tool count, reasoning effort and max tokens.
+It is read-only and logs no prompt text. Why it matters: the history lookup --
+the only feature that changes copy/edit throughput -- serves greedy requests
+only, so whether to build more of it depends on what each client actually
+sends. `grep 'sampling-log'` on the unit's journal tells you which client is
+which and what it sends.
+
+**The fused draft capture is closed.** V2's model runner was re-measured on
+realistic text with all of this week's fixes in place and is now at parity with
+V1 (step times 34.6/35.7/39.3/46.3 ms at 2k/8k/32k/64k against V1's
+34.5/36.3/39.8/46.7, slightly ahead at 8k and beyond). Our TRITON_ATTN backend
+advertises `supports_draft_decode_metadata_update = True`, so V2's *fused
+multi-step draft decode* was active during that run -- and it gains nothing
+over V1's Python draft loop. The draft chain's 4.5-7.7 ms per step is therefore
+device work (four MTP-layer forwards), not launch or host overhead, so
+capturing it buys nothing in either runner. That cancels the "fused capture"
+item that had been ranked first among the lossless decode levers.
+
+**What that leaves.** On decode: acceptance (a model-level property) and the
+copy-path long block. On the interactive path: a genuinely better fp16 prefill
+attention kernel (int8 is closed three ways, the gather is 1-3%, the kernel is
+at ~60% of the sm75 ceiling). On configuration: the k=8 verify block, which is
+now the single largest available win -- about 1.8x tokens per step on greedy
+copy/edit work for roughly 2% of context -- and it waits only on knowing
+whether a client that does copy-shaped work actually samples greedily, which
+the log above now records. A static k=8 profile is a one-line change; doing it
+adaptively (4 normally, 8-16 after a lookup hit) needs a scheduler-to-runner
+handshake, because the scheduler currently fixes k per step from config rather
+than from what the proposal found.

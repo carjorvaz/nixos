@@ -1,0 +1,115 @@
+Log the sampling parameters of every incoming request, once, at INFO: the
+source address identifies the client, the digest identifies the prompt
+template, and temperature/top_p/top_k/min_p/tools/effort decide which speed
+features apply (the history lookup serves greedy requests only). Read-only.
+
+--- generated hunks below ---
+--- a/entrypoints/openai/sampling_log.py
++++ b/entrypoints/openai/sampling_log.py
+@@ -0,0 +1,80 @@
++"""One INFO line per request describing the sampling parameters that arrived.
++
++Read-only: it inspects a request that already arrived and writes one line.
++Sampling parameters decide which speed features apply -- the history lookup
++serves greedy requests only, and speculative drafting is only exact when the
++client's parameters are known -- so the journal should say what each client
++actually sends. No prompt text is logged, only its size and a short digest.
++"""
++
++from __future__ import annotations
++
++import hashlib
++
++from vllm.logger import init_logger
++
++logger = init_logger(__name__)
++
++
++def _text(part) -> str:
++    if part is None:
++        return ""
++    if isinstance(part, str):
++        return part
++    if isinstance(part, dict):
++        return str(part.get("text") or part.get("content") or "")
++    return str(part)
++
++
++def messages_text(messages) -> str:
++    pieces = []
++    for message in messages or []:
++        if isinstance(message, dict):
++            pieces.append(str(message.get("role") or ""))
++            pieces.append(_text(message.get("content")))
++        else:
++            pieces.append(str(getattr(message, "role", "") or ""))
++            pieces.append(_text(getattr(message, "content", None)))
++    return "".join(pieces)
++
++
++def prompt_text(prompt) -> str:
++    if isinstance(prompt, str):
++        return prompt
++    if isinstance(prompt, (list, tuple)):
++        return "".join(_text(item) for item in prompt)
++    return _text(prompt)
++
++
++def _digest(text: str) -> str:
++    return hashlib.sha1(text[:4096].encode("utf-8", "ignore")).hexdigest()[:8]
++
++
++def log_request(source, route: str, request, submission) -> None:
++    client = getattr(getattr(source, "client", None), "host", None) or "?"
++    kwargs = getattr(request, "chat_template_kwargs", None)
++    effort = kwargs.get("reasoning_effort") if isinstance(kwargs, dict) else None
++    if route == "chat":
++        text = messages_text(submission)
++    else:
++        text = prompt_text(submission)
++    logger.info(
++        "sampling-log route=%s client=%s digest=%s chars=%d temp=%s top_p=%s "
++        "top_k=%s min_p=%s seed=%s n=%s stream=%s tools=%d effort=%s "
++        "max_tokens=%s",
++        route,
++        client,
++        _digest(text),
++        len(text),
++        getattr(request, "temperature", None),
++        getattr(request, "top_p", None),
++        getattr(request, "top_k", None),
++        getattr(request, "min_p", None),
++        getattr(request, "seed", None),
++        getattr(request, "n", None),
++        getattr(request, "stream", None),
++        len(getattr(request, "tools", None) or []),
++        effort,
++        getattr(request, "max_tokens", None)
++        or getattr(request, "max_completion_tokens", None),
++    )
+--- a/entrypoints/openai/chat_completion/api_router.py
++++ b/entrypoints/openai/chat_completion/api_router.py
+@@ -59,6 +59,10 @@
+     if handler is None:
+         raise NotImplementedError("The model does not support Chat Completions API")
+ 
++    from vllm.entrypoints.openai.sampling_log import log_request
++
++    log_request(raw_request, "chat", request, request.messages)
++
+     generator = await handler.create_chat_completion(request, raw_request)
+ 
+     if isinstance(generator, ErrorResponse):
+--- a/entrypoints/openai/completion/api_router.py
++++ b/entrypoints/openai/completion/api_router.py
+@@ -52,6 +52,10 @@
+     if handler is None:
+         raise NotImplementedError("The model does not support Completions API")
+ 
++    from vllm.entrypoints.openai.sampling_log import log_request
++
++    log_request(raw_request, "completion", request, request.prompt)
++
+     generator = await handler.create_completion(request, raw_request)
+ 
+     if isinstance(generator, ErrorResponse):
