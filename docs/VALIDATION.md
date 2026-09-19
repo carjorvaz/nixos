@@ -361,6 +361,21 @@ IFBench point below the unquantized model), the whole quantization stack costs
 about 1.3% relative -- which is why 3-bit weights or 2-bit KV would be a poor
 trade rather than a free win.
 
+**Closed performance levers on this host (measured, do not retry).** The
+prefill tile port's constants were swept rather than assumed: warpN=32 does not
+compile, warpN=128 is 5x slower on both the 64k and 256k shapes (register
+spills break the load iterator), and `minBlocksPerSm=2` gains 3% at 64k and
+nothing at depth. The shipped values were already right, and at 32 TFLOPS
+effective the kernel runs at 60-70% of the sm75 fp32-accumulate ceiling, so the
+tail is bound by the Cutlass template rather than by its constants. Windowing a
+drafter is closed too: giving the MTP drafter a 4096-token attention window
+(the depth-dependent part of its 4.5->7.7 ms chain at 64k) is ~25% slower per
+step at 8k (44.9 ms against 35.8 ms) and raises an illegal memory access at 64k
+(Xid 31, GPU MMU fault), because the staged int4 spec kernel indexes the block
+table assuming the full-causal layout. Both were live-only experiments whose
+defaults matched shipped behaviour. They are recorded here because they are the
+two things a future agent is most likely to try again.
+
 **Realistic text, not filler.** `--text-file` (wikitext-2 test, first N tokens)
 on `qwen38-sm75-bench` gives the numbers a real session sees. Greedy decode,
 128-token replies, acceptance in brackets:

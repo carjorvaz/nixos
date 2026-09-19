@@ -109,6 +109,104 @@ Decisions taken from this window:
   17 GB HF download runs; both a downloader and one engine boot were OOM-killed
   in that combination. Downloads now run as a transient unit capped at 1 GiB,
   and GPU boots are not run next to large downloads.
+- **Campaign complete, remaining work parked**: see *Parked work (resume
+  recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
+  rebase, the Xid bisect arms, a prefill rewrite and concurrency.
+
+## Parked work (resume recipes)
+
+The performance campaign is complete: decode sits at the weight-read floor,
+prefill attention at 60-70% of the sm75 ceiling, speculation past k=4 is
+measured out (static and adaptive), and the quantization stack costs ~1.3%
+relative against an unquantized model. The items below are deliberately not
+scheduled. Each carries its recipe, expected effect and evidence so it can be
+picked up cold without re-deriving anything. Measured results behind them live
+in `docs/VALIDATION.md`.
+
+### Uncensored lm_head and MTP requantization
+
+*Parked 2026-09-19, only worth doing if the uncensored model is actually used.*
+
+The uncensored build is coherent but ~8% slower than the fast variant
+(89.7 tok/s @8k, 82.7 @32k, acceptance 3.31/3.51) because its lm_head/embed are
+int8 and its MTP head is bf16 over the full 248k vocabulary. The hybrid draft
+head (`hybrid-dv8-mtp4c`: int8 40k draft head + int4 MTP) already recovered
+most of the gap and is what the uncensored unit last served; what remains is a
+GPTQ-calibrated int4 lm_head plus a draft vocabulary built from the uncensored
+weights' own outputs.
+
+Recipe: `pkgs/qwen38-sm75/prepare-uncensored.py` prepares the checkpoint (it
+prints `Already ready` and exits when nothing is stale),
+`pkgs/qwen38-sm75/build-draft-head.py` builds the 40k draft head (bits=8 was
+used; bits=4 is the untested arm), and upstream's `prepare/quant_lm_head.py`,
+`quant_mtp.py` and `build_draft_vocab.py` are the calibration path against the
+uncensored weights; the RTN int4 alternative needs no calibration data. Validate
+with the quality battery (GSM8K n=200 plus the PPL pairs) and the 8k/32k decode
+pair. The bar to beat is 89.7 tok/s @8k at GSM8K 96.5 / PPL 10.94.
+
+### Sub-4-bit weights or KV
+
+*Parked on quality grounds, not feasibility.*
+
+3-bit weights are worth roughly +25% decode at every context, and 3-bit KV
+frees ~1.4 GiB (enough for longer verify blocks), but the quality budget is
+real and small: the 4-bit KV cache costs +0.32% perplexity against float16 on
+the same pool, and the W4A16 weights are already ~1 IFBench point below the
+unquantized model. Anything below 4 bits spends measurable quality for gains
+the lossless work could not find either. Revisit only as a *profile* with its
+own manifest (the int8-activation variant is the documented middle ground at
++0.9-2.2% PPL), never as a replacement for the W4A16 path.
+
+### vLLM 0.29 rebase
+
+*Parked until upstream moves; no functional gap is open.*
+
+The runtime is pinned at 0.28.0 with 19 local patches, and the fixes worth
+having (SSE keep-alive, engine stall sentinel, completion log) were backported
+and verified byte-identical to upstream's newer versions. Upstream has also
+fixed a glob-vs-`series` patch-ordering trap our local set would otherwise hit.
+Recipe: bump the pinned revision in `default.nix`, run `prepare-runtime.py` (it
+reports "Expected 31 upstream patches", applies `source/patches/series` in
+order, then the sorted local patches), re-run the full validation, and re-check
+the two results that depend on upstream behaviour: V2 fused draft capture
+(parity when last measured) and the adaptive verify block (measured to lose;
+its design notes stay in this file).
+
+### Xid 45 bisect arms
+
+*Parked 2026-09-19: no stability soak is needed. The watchdog stays armed and
+the incident notes stay outside the repo.*
+
+The fault class has not reproduced in ~1500 requests across several soaks. If
+it returns, the bisect arms are: 250 W instead of 280 W, speculation disabled
+(`K=0`), async scheduling off, and the tiled prefill kernel off
+(`VLLM_TURING_PREFILL_TILE=0`) -- each booted twice per the A/B protocol above,
+with `tiberius-gpu-xid-watch.service` recording rather than reacting. Useful
+calibration from 2026-09-19: an engine fault does raise an Xid on this card (a
+deliberately broken experiment's illegal memory access produced Xid 31, GPU MMU
+fault), so a zero-Xid soak is evidence rather than a blind instrument.
+
+### Prefill kernel beyond the Cutlass template
+
+*Parked: the remaining tail gap is template-shaped, not tuning-shaped.*
+
+Tail prefill runs at 32 TFLOPS effective -- 60-70% of what fp16 with fp32
+accumulation reaches on sm75 -- and the tile constants are already the right
+ones (see the closed list). The next step is a different kernel family
+(hand-written smem attention, or fp16 accumulation with an error bound): a
+rewrite whose plausible ceiling is +20-30% on the 8.5 s cached turn at 248k.
+The int4 routes stay closed: an int8 prefill needs an unquantized KV whose
+Triton s8 dot will not lower on sm75, and the fp16 fallback exceeds its error
+budget by 4405x on the rotated int4 layout.
+
+### Concurrency and multi-sequence serving
+
+*Parked: one user, and the earlier C1 measurements stand.*
+
+Every throughput knob is tuned for `max-num-seqs=1`. Serving several streams
+needs a second KV pool (the 262k configuration needs 5.97 GiB beyond what the
+card has spare) or a shorter context; the wall-clock fallback is the uncensored
+engine as a second service on port 8082.
 
 ## A/B protocol (remaining arms)
 
@@ -445,11 +543,13 @@ not chat), the warmup service depresses readings by 10-15% while it runs, and a
 health poll after a restart can answer from the old process -- wait for the
 unit's MainPID to change first.
 
-#- **Prefill tile constants, swept rather than assumed** (the loader's
+- **Prefill tile constants, swept rather than assumed** (the loader's
   constants were made env-tunable in the live runtime, with today's values as
-  defaults; discarded at the next prepare). warpN=32 does not compile, warpN=128
-  is 5x slower on both the 64k and 256k shapes (register spills break the load
-  iterator), and minBlocksPerSm=2 gains 3% at 64k and nothing at depth. The
+  defaults; discarded at the next prepare, and the harness that applies it is
+  kept in the repo as `pkgs/qwen38-sm75/tile-sweep.py`). warpN=32 does not
+  compile, warpN=128 is 5x slower on both the 64k and 256k shapes (register
+  spills break the load iterator), and minBlocksPerSm=2 gains 3% at 64k and
+  nothing at depth. The
   shipped constants were already right: at 32 TFLOPS effective the kernel runs
   at 60-70% of the sm75 fp32-accumulate ceiling, so the tail is bound by the
   Cutlass template, not by its constants.
