@@ -78,7 +78,11 @@ in
     "${self}/profiles/nixos/server.nix"
     "${self}/profiles/nixos/bootloader/systemd-boot.nix"
     "${self}/profiles/nixos/gpu/nvidia.nix"
-    "${self}/profiles/nixos/ninfer-qwen.nix"
+    # Unimported 2026-09-19: ninfer-sm75 no longer builds (dies in the fixup
+    # phase after ~1h26m with the daemon disconnecting), which blocks every
+    # configuration build for this host. Restore together with the service
+    # override below once the package builds again.
+    # "${self}/profiles/nixos/ninfer-qwen.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/zramSwap.nix"
@@ -162,10 +166,13 @@ in
   systemd.services = {
     # Keep NInfer available for manual fallback, but boot into vLLM. Never let
     # both resident engines contend for the single GPU or the API port.
-    tiberius-ninfer = {
-      wantedBy = lib.mkForce [ ];
-      conflicts = [ "tiberius-qwen38.service" ];
-    };
+    # Parked with the profile import above (the unit no longer exists without
+    # it). The `conflicts`/`after` references to it elsewhere in this file stay
+    # as bare names, which systemd accepts for absent units.
+    # tiberius-ninfer = {
+    #   wantedBy = lib.mkForce [ ];
+    #   conflicts = [ "tiberius-qwen38.service" ];
+    # };
 
     # The card is factory-capped at 250 W and supports 280 W; under vLLM load
     # it drew 245 W at ~1724 MHz at the cap and 273-287 W at 1680-1800 MHz
