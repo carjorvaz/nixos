@@ -823,3 +823,38 @@ keeps 16-21 GiB of the card for tens of seconds; the next boot then dies with
 which reads like a config error and is not. Always: stop, wait ~30 s, verify
 `nvidia-smi` reports under 500 MiB (killing whatever holds it in a loop), then
 start; and prefer one boot per experiment over rapid restarts.
+
+### Adaptive verify block: measured, and it does not pay (kept out of production)
+
+The block was finished and tuned through five variants on the live runtime.
+Every variant is lossless (the sampler verifies everything), chat parity was
+achieved (base steps match k=4 to the millisecond), and the mechanism provably
+works: the ask reaches the scheduler, long steps appear, and when they engage
+they are fully accepted (`count=9`, i.e. all eight lookup tokens plus the bonus
+in one step).
+
+It still loses on every configuration measured:
+
+| variant | 60k copy, 1024-token span | chat 64k step | long steps fully accepted |
+| --- | --- | --- | --- |
+| k=4 baseline (shipped) | acceptance 4.06, **89.9 tok/s** | 45.5-46.6 ms | - |
+| long block 9 tokens, full-accept gate | 4.41-4.53, 86.1-87.1 | 43.9-48.6 | 4-10 of 22-29 |
+| long block 9, relaxed ask | 3.38, 70.5 | - | 4 of 12 |
+| long block 9, productivity hold | 4.37, 86.1 | 48.6 | 5 of 22 |
+| long block 7, productivity hold | 4.25, 83.5 | 48.1 | - |
+
+Reading: acceptance rises 9-11% on the verbatim task, but the wider verify at
+60k costs more than the extra tokens buy, so end-to-end decode falls ~4%; and
+with the machinery enabled chat at 64k loses ~4% as well. The reason the long
+block engages so rarely is visible in the debug trace: the benchmark's
+repetitive filler produces *long but unreliable* matches (`len=[32]` with
+`count=[3]`), and the gates correctly refuse them. The shipped base lookup
+(5 tokens per step, greedy only) already captures the reliable part.
+
+What would change the verdict: a cheaper wide verify (the int4 partial kernel's
+staging is already vectorized; the int8 score path is closed three ways) or a
+workload with sustained verbatim spans whose continuations are actually
+correct -- which is what pi's real traffic will show through the acceptance
+metric. Until then the default stays k=4 with the base lookup, and none of this
+code is in the repository: the staged copy in the live runtime is inert without
+`VLLM_MTP_ADAPTIVE_K` and is discarded by the next prepare.
