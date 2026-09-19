@@ -109,6 +109,15 @@ Decisions taken from this window:
   17 GB HF download runs; both a downloader and one engine boot were OOM-killed
   in that combination. Downloads now run as a transient unit capped at 1 GiB,
   and GPU boots are not run next to large downloads.
+- **Published as a fork.** The Turing series now lives publicly as
+  `carjorvaz/HyperQwen` (branch `turing`), a real fork of upstream HyperQwen
+  (formerly `syv-ai/qwen38-27b-rtx3090`) based on the pin this runtime uses. Its
+  CI job applies the full series, the 31 upstream patches and these 19, to a
+  pristine vLLM 0.28.0 checkout and fails on the first rejection; the first run
+  passed. The fork's copies carry a prose header per patch and are otherwise the
+  same hunks as `pkgs/qwen38-sm75/patches/`, which stays the copy the runtime
+  identity pins. Keeping those two in step, and reading the series from the fork
+  instead of a local directory, is the obvious next packaging step.
 - **Campaign complete, remaining work parked**: see *Parked work (resume
   recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
   rebase, the Xid bisect arms, a prefill rewrite and concurrency.
