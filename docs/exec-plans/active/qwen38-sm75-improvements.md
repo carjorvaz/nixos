@@ -445,7 +445,26 @@ not chat), the warmup service depresses readings by 10-15% while it runs, and a
 health poll after a restart can answer from the old process -- wait for the
 unit's MainPID to change first.
 
-### Closed for this configuration (measured, do not retry)
+#- **Prefill tile constants, swept rather than assumed** (the loader's
+  constants were made env-tunable in the live runtime, with today's values as
+  defaults; discarded at the next prepare). warpN=32 does not compile, warpN=128
+  is 5x slower on both the 64k and 256k shapes (register spills break the load
+  iterator), and minBlocksPerSm=2 gains 3% at 64k and nothing at depth. The
+  shipped constants were already right: at 32 TFLOPS effective the kernel runs
+  at 60-70% of the sm75 fp32-accumulate ceiling, so the tail is bound by the
+  Cutlass template, not by its constants.
+- **Draft attention window** (live-only, off by default, discarded at the next
+  prepare). The depth-dependent ~3.2 ms of the draft chain is the drafter
+  attending over the whole context, which is wasted on a local prediction, so
+  windowing it to 4096 tokens looked like +7-15% at depth with exactly correct
+  outputs. It is not viable here: the windowed spec-attention path is ~25%
+  slower per step at 8k (44.9 ms against 35.8 ms) and raises an illegal memory
+  access at 64k (Xid 31, GPU MMU fault) because the staged int4 spec kernel
+  indexes the block table assuming the full-causal layout. Corollary worth
+  keeping: an engine fault does raise an Xid on this card, so the zero-Xid soak
+  readings are real evidence rather than a blind instrument.
+
+## Closed for this configuration (measured, do not retry)
 
 * **A draft block longer than k=4**: raising `num_speculative_tokens` to 15 needs
   ~0.5 GiB more KV budget (5.97 against 5.5 GiB at 262144 max len), because the
