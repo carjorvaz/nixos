@@ -126,6 +126,17 @@ Decisions taken from this window:
   deployed runtime byte for byte, except the three staged experiments that only
   ever lived in the live venv (the adaptive verify block, the draft window, the
   tile tunables), all of which were inert by default and are now dropped.
+
+  **Deployed 2026-09-19.** New runtime
+  `324c552dc59a7903-a90d53cd30404021be964c8bc90eee85` at revision
+  `4aaf580d113e`, with the identity keyed `upstream/` plus `turing/`. Parity
+  against the previous runtime: 8k step 35.7 ms and acceptance 3.541 (the
+  pre-switch measurement was 35.8 ms and 3.541), 64k step 46.0 ms, and the
+  verbatim copy bench at ~32k gives 105.8 tok/s at acceptance 4.064 with
+  `copy_exact: true`, so the history lookup is live. The staged experiments are
+  gone from the tree: no file mentions any of their knobs. The previous runtime
+  stays on disk for rollback, and the whole switch took 5m49s because the wheel
+  cache is reused.
 - **Campaign complete, remaining work parked**: see *Parked work (resume
   recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
   rebase, the Xid bisect arms, a prefill rewrite and concurrency.
