@@ -138,7 +138,7 @@ Decisions taken from this window:
   stays on disk for rollback, and the whole switch took 5m49s because the wheel
   cache is reused.
 
-  A working clone for day-to-day sessions lives at `~/Downloads/HyperQwen`
+  A working clone for day-to-day sessions lives at `~/Documents/HyperQwen`
   (origin the fork, `upstream` fetch-only with pushes disabled), and bumping the
   pin is a two-line edit in `default.nix` — the comment there says how to
   compute the hash. The pre-nix campaign tree on the host
