@@ -18,11 +18,14 @@
 }:
 
 let
-  upstream = fetchFromGitHub {
-    owner = "syv-ai";
-    repo = "qwen38-27b-rtx3090";
-    rev = "18349177b7962ef1d699dc154844f9c04317a474";
-    hash = "sha256-KAB81VzNkPr4Hy2Vqbt09MAn7crBkVDAk4tvatRte7w=";
+  # Single source of truth: the fork carries both series, upstream's 3090
+  # patches and the Turing port, so the pin and the patches cannot drift apart.
+  revision = "4aaf580d113ee7e478cf15519d61648366210a31";
+  stack = fetchFromGitHub {
+    owner = "carjorvaz";
+    repo = "HyperQwen";
+    rev = revision;
+    hash = "sha256-4sERzvl08CL2SCorU4qvirikmnR3s6HaPoszWddxmFU=";
   };
   # Content-address this directory so unrelated repo commits do not change the
   # asset store path (which would restart the service on every switch).
@@ -45,7 +48,6 @@ let
     cp ${local}/soak.py "$out/soak.py"
     cp ${local}/copy-bench.py "$out/copy-bench.py"
     cp ${local}/sample-probe.py "$out/sample-probe.py"
-    cp -r ${local}/patches "$out/patches"
   '';
   python = "${python312}/bin/python3.12";
   compiler = cudaPackages.backendStdenv.cc;
@@ -104,6 +106,9 @@ let
     export PIP_CERT="$SSL_CERT_FILE"
     export PYTHONNOUSERSITE=1
     unset PYTHONPATH PYTHONHOME
+    # The pinned source revision, part of the runtime identity. Bumping the
+    # pin in default.nix is the only place the stack is versioned.
+    export QWEN_SOURCE_REVISION=${revision}
     export XDG_CACHE_HOME="$root/cache"
     export HF_HOME="$root/cache/huggingface"
     export PIP_CACHE_DIR="$root/cache/pip"
@@ -128,7 +133,7 @@ let
     ${coreutils}/bin/mkdir -p "$root"
     root="$(${coreutils}/bin/realpath "$root")"
     ${environment}
-    ${python} ${assets}/prepare-runtime.py "$root" ${upstream} ${assets} ${python}
+    ${python} ${assets}/prepare-runtime.py "$root" ${stack} ${assets} ${python}
     exec "$root/venv/bin/python" ${assets}/prepare-model.py "$root"
   '';
   serve = writeShellScriptBin "qwen38-sm75-serve" ''
@@ -136,7 +141,7 @@ let
     root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
     root="$(${coreutils}/bin/realpath -e "$root")"
     ${environment}
-    exec ${python} ${assets}/prepare-runtime.py "$root" ${upstream} ${assets} ${python} --serve "$@"
+    exec ${python} ${assets}/prepare-runtime.py "$root" ${stack} ${assets} ${python} --serve "$@"
   '';
   check = writeShellScriptBin "qwen38-sm75-check" ''
     set -euo pipefail
@@ -209,7 +214,7 @@ symlinkJoin {
   ];
   meta = {
     description = "Pinned Qwen3.8-27B vLLM runtime preparation and serving for Turing GPUs";
-    homepage = "https://github.com/syv-ai/qwen38-27b-rtx3090";
+    homepage = "https://github.com/carjorvaz/HyperQwen";
     mainProgram = "qwen38-sm75-serve";
     platforms = [ "x86_64-linux" ];
   };

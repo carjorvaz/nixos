@@ -115,9 +115,17 @@ Decisions taken from this window:
   CI job applies the full series, the 31 upstream patches and these 19, to a
   pristine vLLM 0.28.0 checkout and fails on the first rejection; the first run
   passed. The fork's copies carry a prose header per patch and are otherwise the
-  same hunks as `pkgs/qwen38-sm75/patches/`, which stays the copy the runtime
-  identity pins. Keeping those two in step, and reading the series from the fork
-  instead of a local directory, is the obvious next packaging step.
+  same hunks as the local copies that used to live in `pkgs/qwen38-sm75/patches/`.
+
+  **Moved to a single source of truth (2026-09-19, later window).** The package
+  now fetches only the fork, at a rev that pins both series, and the local patch
+  directory is gone: `default.nix` holds the revision, `prepare-runtime.py`
+  reads `patches/` plus `patches-turing/series` from it, and the revision feeds
+  the runtime identity through `QWEN_SOURCE_REVISION`. Verified before deploying:
+  the fork's full stack applied to a pristine vLLM 0.28.0 wheel reproduces the
+  deployed runtime byte for byte, except the three staged experiments that only
+  ever lived in the live venv (the adaptive verify block, the draft window, the
+  tile tunables), all of which were inert by default and are now dropped.
 - **Campaign complete, remaining work parked**: see *Parked work (resume
   recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
   rebase, the Xid bisect arms, a prefill rewrite and concurrency.

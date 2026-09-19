@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Prepare a pinned, separately staged runtime, or serve an already ready one."""
+"""Prepare a pinned, separately staged runtime, or serve an already ready one.
+
+The patch stack is the pinned source's: `patches/` (upstream's 3090 series)
+followed by `patches-turing/` in `series` order (the Turing port). The assets
+directory carries only the model preparation, checks and benchmarks that run
+against the prepared runtime.
+"""
 
 import fcntl
 import hashlib
@@ -13,7 +19,11 @@ import sys
 import uuid
 
 
-REVISION = "18349177b7962ef1d699dc154844f9c04317a474"
+REVISION = os.environ.get("QWEN_SOURCE_REVISION", "")
+if not REVISION:
+    raise RuntimeError(
+        "QWEN_SOURCE_REVISION is unset; run this through the packaged wrappers"
+    )
 VLLM_VERSION = "0.28.0"
 IDENTITY_ENV = (
     "PATH", "CC", "CXX", "CUDAHOSTCXX", "NVCC_CCBIN", "CUDA_HOME",
@@ -25,14 +35,31 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def turing_series(source):
+    """The Turing port patches, in the order patches-turing/series states."""
+    names = (source / "patches-turing/series").read_text().split()
+    files = sorted(path.name for path in (source / "patches-turing").glob("*.patch"))
+    if not names or sorted(names) != files:
+        raise RuntimeError("patches-turing/series does not match patches-turing/*.patch")
+    patches = []
+    for name in names:
+        path = source / "patches-turing" / name
+        if not path.is_file():
+            raise RuntimeError(f"patches-turing/series names a missing patch: {name}")
+        patches.append(path)
+    return patches
+
+
 def specification(source, assets, python):
     upstream = sorted(
         path for path in (source / "patches").glob("*.patch")
         if path.name != "dflash2-backport.patch"
     )
-    local = sorted((assets / "patches").glob("*.patch"))
-    if len(upstream) != 31 or not local:
-        raise RuntimeError("Expected 31 upstream patches and the local Turing port patches")
+    turing = turing_series(source)
+    if len(upstream) != 31 or not turing:
+        raise RuntimeError(
+            "Expected the pinned source to carry the 3090 series and the Turing port"
+        )
     identity = {
         "schema": 1,
         "revision": REVISION,
@@ -42,7 +69,7 @@ def specification(source, assets, python):
         "preparer": digest(Path(__file__)),
         "patches": {
             **{f"upstream/{p.name}": digest(p) for p in upstream},
-            **{f"local/{p.name}": digest(p) for p in local},
+            **{f"turing/{p.name}": digest(p) for p in turing},
         },
     }
     fingerprint = hashlib.sha256(
