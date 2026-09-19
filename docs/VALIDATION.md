@@ -343,6 +343,24 @@ weight read) or from compressing the weights further -- not from kernel
 micro-tuning. The measured levers that remain are the variable-length draft
 block for greedy copy work and sub-4-bit weights or KV.
 
+**What the quantization costs, measured against a full-precision cache.** The
+same server, same 5.5 GiB pool, KV cache at float16 instead of int4 (which buys
+65k context instead of 262k, and is the only higher-precision comparison that
+fits this card at all -- int8 is not a vLLM cache dtype, and 8-bit weights are
+27 GB):
+
+| KV cache | PPL en / da / all | GSM8K (n=200) |
+| --- | --- | --- |
+| int4 per-token-head (production, 262k) | 10.8077 / 10.938 / **10.8797** | **94.5%** |
+| float16 (65k context) | 10.7653 / 10.9096 / **10.8451** | **95.5%** |
+
+So the 4-bit cache costs +0.32% perplexity and one GSM8K point, the latter
+inside the +-1.1 point binomial noise of 200 questions: not measurable beyond a
+fraction of a percent. Against the model's own published tables (W4A16 ~1
+IFBench point below the unquantized model), the whole quantization stack costs
+about 1.3% relative -- which is why 3-bit weights or 2-bit KV would be a poor
+trade rather than a free win.
+
 **Realistic text, not filler.** `--text-file` (wikitext-2 test, first N tokens)
 on `qwen38-sm75-bench` gives the numbers a real session sees. Greedy decode,
 128-token replies, acceptance in brackets:
