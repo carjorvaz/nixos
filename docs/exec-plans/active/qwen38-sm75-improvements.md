@@ -137,6 +137,15 @@ Decisions taken from this window:
   gone from the tree: no file mentions any of their knobs. The previous runtime
   stays on disk for rollback, and the whole switch took 5m49s because the wheel
   cache is reused.
+
+  A working clone for day-to-day sessions lives at `~/Downloads/HyperQwen`
+  (origin the fork, `upstream` fetch-only with pushes disabled), and bumping the
+  pin is a two-line edit in `default.nix` — the comment there says how to
+  compute the hash. The pre-nix campaign tree on the host
+  (`/persist/root/vllm-port`, model copies and an old venv) was pruned the same
+  day: it freed about 30 GB of exclusive space, from 79% to 63% on that pool.
+  The previous runtime stays for rollback, and the pip/compile caches stay
+  because they are what makes a re-prepare take six minutes instead of twenty.
 - **Campaign complete, remaining work parked**: see *Parked work (resume
   recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
   rebase, the Xid bisect arms, a prefill rewrite and concurrency.

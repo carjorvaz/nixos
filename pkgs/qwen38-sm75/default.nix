@@ -20,6 +20,8 @@
 let
   # Single source of truth: the fork carries both series, upstream's 3090
   # patches and the Turing port, so the pin and the patches cannot drift apart.
+  # Bump both together: `rev` to the fork commit, `hash` to
+  # `nix hash path --type sha256 <the unpacked GitHub archive, root stripped>`.
   revision = "4aaf580d113ee7e478cf15519d61648366210a31";
   stack = fetchFromGitHub {
     owner = "carjorvaz";
