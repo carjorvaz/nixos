@@ -75,7 +75,7 @@ def specification(source, assets, python):
     fingerprint = hashlib.sha256(
         json.dumps(identity, sort_keys=True).encode()
     ).hexdigest()
-    return identity, fingerprint, upstream + local
+    return identity, fingerprint, upstream + turing
 
 
 def runtime_ready(root, identity, fingerprint):
