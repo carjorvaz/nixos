@@ -22,12 +22,12 @@ let
   # patches and the Turing port, so the pin and the patches cannot drift apart.
   # Bump both together: `rev` to the fork commit, `hash` to
   # `nix hash path --type sha256 <the unpacked GitHub archive, root stripped>`.
-  revision = "cedd8089fbf122637b063edf620725235eca2d79";
+  revision = "241e01bfe2d079b1d49fb6fc0a576fa36cdd3d1c";
   stack = fetchFromGitHub {
     owner = "carjorvaz";
     repo = "qwen38-27b-rtx2080ti";
     rev = revision;
-    hash = "sha256-fXWBUJRxF7wGvMTfBo43Fjxbf42DLnHZz1+IOw+u8t0=";
+    hash = "sha256-m2y/g0b4mWLI+auXIf9Aww8SF/E42EAeodZuyPfnp10=";
   };
   # Content-address this directory so unrelated repo commits do not change the
   # asset store path (which would restart the service on every switch).
