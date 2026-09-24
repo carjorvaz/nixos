@@ -22,12 +22,12 @@ let
   # patches and the Turing port, so the pin and the patches cannot drift apart.
   # Bump both together: `rev` to the fork commit, `hash` to
   # `nix hash path --type sha256 <the unpacked GitHub archive, root stripped>`.
-  revision = "4aaf580d113ee7e478cf15519d61648366210a31";
+  revision = "e716361cdb37b012c0a22a95756bb7d77389f295";
   stack = fetchFromGitHub {
     owner = "carjorvaz";
-    repo = "HyperQwen";
+    repo = "qwen38-27b-rtx2080ti";
     rev = revision;
-    hash = "sha256-4sERzvl08CL2SCorU4qvirikmnR3s6HaPoszWddxmFU=";
+    hash = "sha256-WLiPmQzDRVj7CdyRGeHqlLNIX2hMDRXDtJxx94hVeV8=";
   };
   # Content-address this directory so unrelated repo commits do not change the
   # asset store path (which would restart the service on every switch).
@@ -46,6 +46,7 @@ let
     cp ${local}/check-prefix.py "$out/check-prefix.py"
     cp ${local}/check-gdn.py "$out/check-gdn.py"
     cp ${local}/bench-one.py "$out/bench-one.py"
+    cp ${local}/bench-llama.py "$out/bench-llama.py"
     cp ${local}/prepare-uncensored.py "$out/prepare-uncensored.py"
     cp ${local}/soak.py "$out/soak.py"
     cp ${local}/copy-bench.py "$out/copy-bench.py"
@@ -163,6 +164,13 @@ let
     ${environment}
     exec "$root/venv/bin/python" "${assets}/bench-one.py" "$@"
   '';
+  benchLlama = writeShellScriptBin "qwen38-sm75-bench-llama" ''
+    set -euo pipefail
+    root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
+    root="$(${coreutils}/bin/realpath -e "$root")"
+    ${environment}
+    exec "$root/venv/bin/python" "${assets}/bench-llama.py" "$@"
+  '';
   soak = writeShellScriptBin "qwen38-sm75-soak" ''
     set -euo pipefail
     root="''${QWEN_RUNTIME_ROOT:-/persist/qwen38-sm75}"
@@ -209,6 +217,7 @@ symlinkJoin {
     serve
     check
     bench
+    benchLlama
     soak
     copyBench
     sampleProbe
