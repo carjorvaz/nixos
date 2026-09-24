@@ -48,10 +48,6 @@ in
     };
 
     file = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
-      ".agent-browser/config.json".text = builtins.toJSON {
-        executablePath = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
-      };
-
       # ~/.local/bin precedes Homebrew and the nix-darwin user profile, so
       # these reviewed builds remain authoritative even before a full system
       # switch updates /etc/profiles/per-user.

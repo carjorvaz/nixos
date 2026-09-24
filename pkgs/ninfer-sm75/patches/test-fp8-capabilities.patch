@@ -1,0 +1,144 @@
+--- a/tests/ops/linear/test_fp8_a8.cpp
++++ b/tests/ops/linear/test_fp8_a8.cpp
+@@ -94,10 +94,16 @@
+         const std::size_t a16 = ops::linear_workspace_capacity_bytes(
+             QType::FP8_E4M3FN_ROW_BF16S, problem.rows, problem.input_rows,
+             ops::LinearPolicy::A16Only, 1, 2048);
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++        if (one != 0 || two != 0 || forty_eight != 0 || early_interval != 0 ||
++            hot_interval != 0 || exact_1024 != 0 || exact_1048 != 0 || spanning != 0 || a16 != 0)
++#else
+         if ((one != 0) != problem.a8_at_one || (two != 0) != problem.a8_at_two ||
+             early_interval != 0 || forty_eight <= two || hot_interval != forty_eight ||
+             exact_1024 <= forty_eight || exact_1048 <= exact_1024 || spanning != exact_1048 ||
+-            a16 != 0) {
++            a16 != 0)
++#endif
++ {
+             std::cerr << "FP8 A8 workspace interval contract mismatch for N=" << problem.rows
+                       << " K=" << problem.input_rows << '\n';
+             ++failures;
+--- a/tests/ops/linear_add/test_fp8.cpp
++++ b/tests/ops/linear_add/test_fp8.cpp
+@@ -187,8 +187,14 @@
+         QType::FP8_E4M3FN_ROW_BF16S, n, k, ops::LinearPolicy::AllowA8, 1, 1024);
+     const std::size_t exact_1024 = ops::linear_add_workspace_capacity_bytes(
+         QType::FP8_E4M3FN_ROW_BF16S, n, k, ops::LinearPolicy::AllowA8, 1024, 1024);
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    if (a16_interval != 0 || pre_boundary != 0 || hot_interval != 0 || exact_48 != 0 ||
++        through_1024 != 0 || exact_1024 != 0)
++#else
+     if (a16_interval != 0 || pre_boundary != 0 || hot_interval != exact_48 ||
+-        through_1024 != exact_1024 || exact_1024 <= exact_48) {
++        through_1024 != exact_1024 || exact_1024 <= exact_48)
++#endif
++ {
+         std::cerr << "FP8 linear_add [" << n << ',' << k
+                   << "]: workspace interval contract mismatch\n";
+         ++failures;
+--- a/tests/ops/test_attn_input_proj.cpp
++++ b/tests/ops/test_attn_input_proj.cpp
+@@ -384,8 +384,14 @@
+         QType::FP8_E4M3FN_ROW_BF16S, kRows, kHidden, ops::LinearPolicy::AllowA8, 1024, 1024);
+     const std::size_t a16 = ops::attn_input_proj_workspace_capacity_bytes(
+         QType::FP8_E4M3FN_ROW_BF16S, kRows, kHidden, ops::LinearPolicy::A16Only, 1, 2048);
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    if (one != 0 || ten != 0 || eleven != 0 || forty_eight != 0 ||
++        hot_interval != 0 || exact_1024 != 0 || a16 != 0)
++#else
+     if (one != 0 || ten != 0 || eleven == 0 || forty_eight <= eleven ||
+-        hot_interval != forty_eight || exact_1024 <= forty_eight || a16 != 0) {
++        hot_interval != forty_eight || exact_1024 <= forty_eight || a16 != 0)
++#endif
++    {
+         std::cerr << "FP8 attention input workspace interval contract mismatch\n";
+         ++failures;
+     }
+--- a/tests/ops/test_gdn_input_proj.cpp
++++ b/tests/ops/test_gdn_input_proj.cpp
+@@ -298,8 +298,14 @@
+         QType::FP8_E4M3FN_ROW_BF16S, kRows, kHidden, ops::LinearPolicy::AllowA8, 1024, 1024);
+     const std::size_t a16 = ops::gdn_input_proj_workspace_capacity_bytes(
+         QType::FP8_E4M3FN_ROW_BF16S, kRows, kHidden, ops::LinearPolicy::A16Only, 1, 2048);
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    if (one != 0 || seven != 0 || eight != 0 || forty_eight != 0 ||
++        hot_interval != 0 || exact_1024 != 0 || a16 != 0)
++#else
+     if (one != 0 || seven != 0 || eight == 0 || forty_eight <= eight ||
+-        hot_interval != forty_eight || exact_1024 <= forty_eight || a16 != 0) {
++        hot_interval != forty_eight || exact_1024 <= forty_eight || a16 != 0)
++#endif
++    {
+         std::cerr << "FP8 gdn input workspace interval contract mismatch\n";
+         ++failures;
+     }
+--- a/tests/ops/test_gdn_input_proj_conv_snapshot.cpp
++++ b/tests/ops/test_gdn_input_proj_conv_snapshot.cpp
+@@ -1031,6 +1031,29 @@
+         return ops::gdn_input_proj_conv_snapshot_workspace_capacity_bytes(
+             QType::FP8_E4M3FN_ROW_BF16S, 16384, 5120, policy, batch, min_width, max_width);
+     };
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    const std::size_t fp8_a16_w4 = fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 4, 4);
++    const std::size_t fp8_a16_w6 = fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 6, 6);
++    if (fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 1, 3) != 0 || fp8_a16_w4 == 0 ||
++        fp8_a16_w6 <= fp8_a16_w4 ||
++        fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 7, 10) != 0 ||
++        fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 1, 9) != fp8_a16_w6 ||
++        fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 11, 11) == 0) {
++        std::cerr << "FP8 A16 snapshot capacity lost its route witnesses\n";
++        ++failures;
++    }
++    for (int batch : {1, 2, 8}) {
++        for (int width = 1; width <= 16; ++width) {
++            for (int first : {1, width}) {
++                if (fp8_snapshot_capacity(ops::LinearPolicy::AllowA8, batch, first, width) !=
++                    fp8_snapshot_capacity(ops::LinearPolicy::A16Only, batch, first, width)) {
++                    std::cerr << "FP8 snapshot fallback must declare exactly A16 capacity\n";
++                    ++failures;
++                }
++            }
++        }
++    }
++#else
+     const std::size_t fp8_a16_w4 = fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 4, 4);
+     const std::size_t fp8_a16_w6 = fp8_snapshot_capacity(ops::LinearPolicy::A16Only, 1, 6, 6);
+     const std::size_t fp8_a8_w10 = fp8_snapshot_capacity(ops::LinearPolicy::AllowA8, 1, 10, 10);
+@@ -1046,6 +1069,7 @@
+         std::cerr << "FP8 snapshot capacity did not preserve measured route witnesses\n";
+         ++failures;
+     }
++#endif
+     failures += run_q4_q5();
+     failures += run_w8();
+ #if defined(NINFER_SM75) || defined(NINFER_SM86)
+--- a/tests/ops/test_gdn_input_proj_conv_record.cpp
++++ b/tests/ops/test_gdn_input_proj_conv_record.cpp
+@@ -553,6 +553,19 @@
+         return ops::gdn_input_proj_conv_record_workspace_capacity_bytes(
+             QType::FP8_E4M3FN_ROW_BF16S, 16384, 5120, policy, batch, min_width, max_width);
+     };
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    for (int batch : {1, 2, 8}) {
++        for (int width = 2; width <= 16; ++width) {
++            for (int first : {2, width}) {
++                if (fp8_record_capacity(ops::LinearPolicy::A16Only, batch, first, width) != 0 ||
++                    fp8_record_capacity(ops::LinearPolicy::AllowA8, batch, first, width) != 0) {
++                    std::cerr << "FP8 record fallback must retain zero A16 scratch capacity\n";
++                    ++failures;
++                }
++            }
++        }
++    }
++#else
+     const std::size_t fp8_b1_w10 = fp8_record_capacity(ops::LinearPolicy::AllowA8, 1, 10, 10);
+     const std::size_t fp8_b2_w4  = fp8_record_capacity(ops::LinearPolicy::AllowA8, 2, 4, 4);
+     if (fp8_record_capacity(ops::LinearPolicy::A16Only, 1, 2, 16) != 0 ||
+@@ -563,6 +576,7 @@
+         std::cerr << "FP8 record capacity did not preserve measured route witnesses\n";
+         ++failures;
+     }
++#endif
+     failures += run_q4_q5();
+     failures += run_w8();
+ #if defined(NINFER_SM75) || defined(NINFER_SM86)

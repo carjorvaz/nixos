@@ -16,9 +16,9 @@ let
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
-  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 80 --offset 0 --strategy focus --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
-  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
-  priorityBenficaHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact 'benfica tv' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 80 --offset 0 --strategy focus --candidates-per-channel 3 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
+  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  priorityBenficaHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact 'benfica tv' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
   sportFamilyChannels = [
     "sport tv 1"
     "sport tv 2"
@@ -35,7 +35,7 @@ let
   ];
   widePriorityHealthSampleCommand =
     channel:
-    "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-wide-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --limit 1 --offset 0 --strategy focus --channel-exact '${channel}' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+    "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-wide-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact '${channel}' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
 in
 {
   users = {
@@ -109,6 +109,8 @@ in
       tokenFile = config.age.secrets.ottTvClientApiToken.path;
       playbackDeviceProfile = "android-tv";
       playbackRecoveryStatePath = "/var/lib/ott-rs/state/client-api-playback-recovery.json";
+      forwardAllPlaybackHeaders = true;
+      playbackDirectUpstreams = true;
     };
 
     web = {
@@ -191,7 +193,6 @@ in
           SystemCallArchitectures = "native";
         };
         script = ''
-          ${priorityHealthSampleCommand}
           ${priorityHealthSampleCommand}
           ${priorityBenficaHealthSampleCommand}
         '';

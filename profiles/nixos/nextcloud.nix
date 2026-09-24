@@ -28,7 +28,7 @@ in
 
   services.nextcloud = {
     enable = true;
-    package = pkgs.nextcloud33; # Need to manually increment with every update
+    package = pkgs.nextcloud34; # Major upgrades require an app compatibility review.
     hostName = domain;
     database.createLocally = true;
     configureRedis = true;
@@ -40,33 +40,22 @@ in
     extraApps =
       let
         packagedApps = config.services.nextcloud.package.packages.apps;
-        memoriesApp = pkgs.nextcloud-app-memories;
-
-        # nixpkgs 25.11's Nextcloud 33 app index dropped `news`, but pius
-        # still has it enabled in production. Keep shipping the last
-        # known-good Nextcloud 33 release until nixpkgs reintroduces it.
-        newsApp =
-          packagedApps.news or (pkgs.fetchNextcloudApp {
-            appName = "news";
-            appVersion = "28.0.1";
-            url = "https://github.com/nextcloud/news/releases/download/28.0.1/news.tar.gz";
-            hash = "sha256-53zwBxm/vUqQvc3h9od73RYxqJhh0M6lVS4//bJHMuA=";
-            license = "agpl3Plus";
-            description = "An RSS/Atom feed reader";
-            homepage = "https://github.com/nextcloud/news";
-          });
-
-        # The app store listing is still stale for Nextcloud 33, but the
-        # upstream 0.9.0 release explicitly adds NC33 compatibility.
-        cameraRawPreviewsApp = pkgs.fetchNextcloudApp {
-          appName = "camerarawpreviews";
-          appVersion = "0.9.0";
-          url = "https://github.com/ariselseng/camerarawpreviews/releases/download/v0.9.0/camerarawpreviews_nextcloud.tar.gz";
-          hash = "sha256-UsvRbsNSnh4qS9nP/lEbRMMKHLZSp03azCf8lvIS7Pk=";
-          license = "agpl3Only";
-          description = "Preview and show camera RAW files in Nextcloud";
-          homepage = "https://github.com/ariselseng/camerarawpreviews";
-        };
+        cameraRawPreviewsApp =
+          (pkgs.fetchNextcloudApp {
+            appName = "camerarawpreviews";
+            appVersion = "1.1.3";
+            url = "https://github.com/ariselseng/camerarawpreviews/releases/download/v1.1.3/camerarawpreviews_nextcloud.tar.gz";
+            hash = "sha256-d3SxLG99pQvU+IsCvAV0DkRIo4pP1fmP610IqtX7E+w=";
+            license = "agpl3Only";
+            description = "Preview and show camera RAW files in Nextcloud";
+            homepage = "https://github.com/ariselseng/camerarawpreviews";
+          }).overrideAttrs
+            (old: {
+              # The bundled RAW fallback needs the NixOS loader and C++ runtime.
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.autoPatchelfHook ];
+              buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.stdenv.cc.cc.lib ];
+              phases = old.phases ++ [ "fixupPhase" ];
+            });
       in
       {
         inherit (packagedApps)
@@ -75,15 +64,14 @@ in
           contacts
           cospend
           mail
+          memories
+          news
           notes
           previewgenerator # Useful on its own; required by Memories when enabled
           tasks
           ;
 
         camerarawpreviews = cameraRawPreviewsApp;
-        memories = memoriesApp;
-
-        news = newsApp;
       };
 
     settings = {
@@ -138,7 +126,12 @@ in
   # helpers that enabled apps such as Memories expect.
   systemd.services = {
     nextcloud-cron.path = nextcloudOccHelpers;
-    nextcloud-setup.path = nextcloudOccHelpers;
+    nextcloud-setup = {
+      path = nextcloudOccHelpers;
+      postStart = ''
+        ${config.services.nextcloud.occ}/bin/nextcloud-occ app:disable app_api
+      '';
+    };
     nextcloud-update-db.path = nextcloudOccHelpers;
   };
 }

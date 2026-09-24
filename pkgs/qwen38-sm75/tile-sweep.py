@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make the prefill tile port's constants tunable, for a sweep.
 
-The prefill tile port (carjorvaz/HyperQwen `patches-turing/prefill-attn-tiles.patch`)
+The prefill tile port (carjorvaz/qwen38-27b-rtx2080ti `patches-turing/prefill-attn-tiles.patch`)
 rewrites PyTorch's attention header at load time; its warp-N tile and its
 minimum blocks per SM were fixed choices. This script reads both from the environment, writes them into the
 header, and names the JIT build directory after them -- a header change alone

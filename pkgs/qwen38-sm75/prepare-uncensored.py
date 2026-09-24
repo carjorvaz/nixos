@@ -7,11 +7,14 @@ systemd unit is started. It downloads the pinned revision into
 ``ROOT/models/uncensored`` and verifies size and SHA-256 of every file and the
 shard/index tensor coverage before publishing a readiness manifest.
 
-Scope note: the uncensored checkpoint ships an int8 lm_head/embed and a bf16
-MTP head, so it is slower than the calibrated int4 fast variant (measured
-~30% lower decode with MTP4). It is an alternative model, not a drop-in
-replacement; requantizing its lm_head/MTP against its own weights is the only
-way to close that gap.
+Scope note: this is an alternative model, not a drop-in replacement. Measured
+against the production target on the same prompt, its prefill is identical and
+its per-step time is slightly better, but it decodes ~24% fewer tokens per second
+- entirely because its abliterated MTP head accepts fewer drafts (2.7 vs ~4.2
+tokens per step). Its own optimum is a shorter speculative chain (MTP3, measured
+61.6 -> 64.0 tok/s over MTP4); the serving scripts pick that up via
+flip-to-uncensored.sh. Head dtype is not the cause: this checkpoint ships int4
+lm_head/embed with GPTQ-calibrated heads.
 """
 
 import fcntl
@@ -31,29 +34,38 @@ _spec.loader.exec_module(helper)
 
 
 PIN = (
-    "leminkozey/Qwen3.8-27B-Uncensored-W4A16-AutoRound",
-    "f958acb153eb8c7bbd25638149c8c75185559226",
+    "Marcin116/Qwen3.8-27B-Uncensored-W4A16-RTX3090-MTP4-embed-int4",
+    "17e82c6ed1d308d06f1f7c2445cef6aa2a10d4cc",
 )
 
-# (size, sha256), hashed from the pinned revision's download. The repository
-# also carries *.bak files; they are intentionally not part of the model.
+# (size, sha256), hashed from the pinned revision's download. Lineage:
+# Qwen/Qwen3.8-27B -> orcarouter/Qwen3.8-27B-Uncensored (abliterated, the
+# independently verified one) -> noon-at-cgn/...-W4A16-AutoRound ->
+# protogeni/...-RTX3090-MTP4 -> this repository (INT4 token embeddings; every
+# other tensor byte-identical to the protogeni source). Built with
+# syv-ai/qwen38-27b-rtx3090 for low-latency MTP speculative decoding, and it
+# carries the mtp_draft_vocab_ids.pt plus MTP extras the serving config expects.
 ASSETS = {
+    "BUILD_INFO.md": (2436, "4e904aea42653899734d39593f035d5e1df6bff9134d306c275f6bc8fd96021c"),
     "chat_template.jinja": (8952, "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"),
-    "config.json": (16746, "48f115f0c4641c58426e55b49d20d9ae220d386949bc61cd175e5581f5ba1dfb"),
-    "generation_config.json": (214, "6ef70d6670f24f03a9041724c7663ef26bc1e678d10f79c93fe11c192ba14b7d"),
-    "model-00001-of-00007.safetensors": (3211003472, "1db7aff443812f7bd11869336c0b75a6ec59e70f089bf65208598a6bbe7a5eb3"),
-    "model-00002-of-00007.safetensors": (3195027104, "4b0c689af764d1fd35dd271ab95f7aa20bf305197fd98e68ad69a7367b199b13"),
-    "model-00003-of-00007.safetensors": (3195027104, "75da50f643fb84a21cefe5a5186b3db35e6a941f21401e650e684eb7f3d34d1d"),
-    "model-00004-of-00007.safetensors": (3217442568, "487171bff5e5361f3e6dba6b5da765b17e78a154823b5145dab616ec37cac67c"),
+    "config.json": (22271, "ac3ccb54e6f53105cb0c8244d60bd55c5d97c9cbfac9592c282fc8c029f318c8"),
+    "generation_config.json": (214, "477f11fe8f40945690a1df951acb82bfc75c68502aa10a02f436b25aea41b483"),
+    "LICENSE": (11358, "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"),
+    "model-00001-of-00007.safetensors": (3211003472, "098ab1bf1f19503295a0eccc94d341eab7d8eaf063701503d20b1bb283824c03"),
+    "model-00002-of-00007.safetensors": (3195027104, "34f6f3248523d9bc3def2eeb89621882202753059f5cc5eda6d8fd69dfb0aae2"),
+    "model-00003-of-00007.safetensors": (3195027104, "1b71bc623c85741c969dd70820c621cbaa9b4ba65e7c430c7bf37643e57c46c6"),
+    "model-00004-of-00007.safetensors": (3217442568, "ad40637ca14ff3f1d33fe966b82cdc1bd8ab91fb2239cc981f3cfbd1bc1301a7"),
     "model-00005-of-00007.safetensors": (699275200, "0994bb8d91c07ceefc4bfffd3a7b7fd110cc9bd3ce865bdcb2821abf02a02fab"),
-    "model-00006-of-00007.safetensors": (1291274752, "b2e0854ed3be3141ed79f4204f7aa8e616da626d4662017117330490747c2036"),
-    "model-00007-of-00007.safetensors": (1291264320, "ce55d80ec123bac872f2ff27eb39b2c11d50ede0b0e272656738b628b7f496a9"),
-    "model.safetensors.index.json": (198612, "d96e1d1a01dd2ad852fd34bd7624917a96731aa4d15f48c4aaba5217b6525552"),
-    "model_extra_tensors.safetensors": (849400392, "1d8268aa85ace093a561e3e7b63b9d390dac1cd55a90cd55b5ec509c3c9da9fe"),
-    "processor_config.json": (1220, "bfbc24af59a3e73a9cd0653b8d4ae758dfaec4e3e6c15dfb1c6c8ee8d5683c85"),
-    "quantization_config.json": (11374, "804a69418fb6070b312327f778952739a9c742c13aa2e3eaa0042bdaefe43c78"),
-    "tokenizer.json": (19989325, "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523"),
+    "model-00006-of-00007.safetensors": (655575539, "c62d3ad3045ff222ab60e00b57f23ac30ebf9211da941db4d90f2279dfd7a915"),
+    "model-00007-of-00007.safetensors": (655565120, "7ac881a6dfc9d75e7211c370febfe835fab42dbecdc7c48f551cccc171284acb"),
+    "model_extra_tensors.safetensors": (327162544, "ebc7f6ef31723081c64bc5dfe9a7b76b8ceb4e969f6b977d732ec9f8451ace12"),
+    "model.safetensors.index.json": (200182, "9ad95c7931a6b87eda720477691f7487744740e0bfefed5c794c6ab1331b395f"),
+    "mtp_draft_vocab_ids.pt": (329341, "258abe858bed3b676368da9d330f2c33c32a4b34d3a0fb56918f4bcd276b3509"),
+    "processor_config.json": (1191, "d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1"),
+    "quantization_config.json": (16136, "394dacad1bd8e205d420dbc55ac3d87b4fe98b114479e8b34f2c9b90f3c922f3"),
+    "README.md": (14262, "ed15c2ef7a32cd7345a62218d367a99dd821b458dcc98127209effaa80cececf"),
     "tokenizer_config.json": (1165, "792fa3f0cb88b111e54ef3134c873531008c4df471d108da17903426e308aa7b"),
+    "tokenizer.json": (19989325, "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523"),
 }
 
 SCHEMA = 1

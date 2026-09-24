@@ -1,0 +1,24 @@
+--- a/src/ops/linear/w8/w8_dispatch.cpp
++++ b/src/ops/linear/w8/w8_dispatch.cpp
+@@ -32,6 +32,11 @@
+             if (t <= 48) { return launch_w8_mma_r64x16_c48_k128_a1; }
+             return launch_w8_mma_r64_c128;
+         case 248320:
++#if defined(NINFER_SM75)
++            // Turing has no BF16 tensor cores. The existing full-range SIMT
++            // route avoids small-T MMA emulation for decode/short verification.
++            if (t <= 4) { return launch_w8_simt_r8_c4; }
++#endif
+             if (t <= 33) { return launch_w8_small_t; }
+             if (t <= 48) { return launch_w8_mma_r64x16_c48_k128_a1; }
+             if (t <= 64) { return launch_w8_mma_r32_c64; }
+--- a/tests/ops/linear/test_w8_a16.cpp
++++ b/tests/ops/linear/test_w8_a16.cpp
+@@ -15,6 +15,7 @@
+     int failures = 0;
+ 
+     constexpr std::array kN248320K5120{
++        a16(2),  a16(3),  a16(4),  a16(5),
+         a16(1),  a16(6),  a16(16), a16(17), a16(32), a16(33),
+         a16(34), a16(48), a16(49), a16(64), a16(65),
+     };

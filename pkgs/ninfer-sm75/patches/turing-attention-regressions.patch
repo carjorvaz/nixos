@@ -1,0 +1,85 @@
+--- a/tests/ops/test_gqa_attention.cpp
++++ b/tests/ops/test_gqa_attention.cpp
+@@ -19,6 +19,30 @@
+ using namespace ninfer::test;
+ 
+ namespace {
++
++// Warm each route before capture. Append is idempotent at fixed positions;
++// poison output before each replay so a stale result cannot satisfy the oracle.
++template <class Launch>
++void eager_and_graph(Launch launch, void* output, std::size_t bytes) {
++    launch(nullptr);
++    cuda_synchronize();
++    cudaStream_t stream;
++    cudaGraph_t graph;
++    cudaGraphExec_t executable;
++    cuda_check(cudaStreamCreate(&stream), "create graph test stream");
++    cuda_check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal), "begin capture");
++    launch(stream);
++    cuda_check(cudaStreamEndCapture(stream, &graph), "end capture");
++    cuda_check(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0), "instantiate graph");
++    for (int replay = 0; replay < 2; ++replay) {
++        cuda_check(cudaMemsetAsync(output, 0xff, bytes, stream), "poison graph output");
++        cuda_check(cudaGraphLaunch(executable, stream), "replay graph");
++        cuda_synchronize(stream);
++    }
++    cuda_check(cudaGraphExecDestroy(executable), "destroy graph executable");
++    cuda_check(cudaGraphDestroy(graph), "destroy graph");
++    cuda_check(cudaStreamDestroy(stream), "destroy graph test stream");
++}
+ 
+ constexpr std::int32_t kHeadDim       = 256;
+ constexpr std::int32_t kQuantGroup    = 64;
+@@ -976,9 +1000,10 @@
+     GuardedDeviceBuffer workspace_buffer(std::max<std::size_t>(workspace_bytes, 256));
+     WorkspaceArena workspace(DeviceSpan{workspace_buffer.data(), workspace_buffer.bytes()});
+ 
+-    ops::gqa_attention(tq, tk, tv, tp, Tensor{}, ttable_row, kAttentionScale, cache.batch_view(),
+-                       envelope, workspace, tout, nullptr);
+-    cuda_synchronize();
++    eager_and_graph([&](cudaStream_t stream) {
++        ops::gqa_attention(tq, tk, tv, tp, Tensor{}, ttable_row, kAttentionScale, cache.batch_view(),
++                           envelope, workspace, tout, stream);
++    }, dout.data(), q_bits.size() * sizeof(std::uint16_t));
+ 
+     const std::string label = case_label("gqa_attention", geometry, dtype, test_case, mapping);
+     const std::vector<std::uint16_t> output_bits =
+@@ -1038,9 +1063,10 @@
+     GuardedDeviceBuffer workspace_buffer(std::max<std::size_t>(workspace_bytes, 256));
+     WorkspaceArena workspace(DeviceSpan{workspace_buffer.data(), workspace_buffer.bytes()});
+ 
+-    ops::gqa_attention_cached(tq, tp, kAttentionScale, cache.view(), envelope, workspace, tout,
+-                              nullptr);
+-    cuda_synchronize();
++    eager_and_graph([&](cudaStream_t stream) {
++        ops::gqa_attention_cached(tq, tp, kAttentionScale, cache.view(), envelope, workspace, tout,
++                                  stream);
++    }, dout.data(), q_bits.size() * sizeof(std::uint16_t));
+ 
+     const std::string label =
+         case_label("gqa_attention_cached", geometry, dtype, test_case, mapping);
+@@ -1285,6 +1311,23 @@
+                                         150u + geometry.q_heads, 129, 61);
+         }
+ 
++        // Turing has 32-token tiles in 64-token pages. Cover both half-pages,
++        // partial query tiles and fragmented physical storage (including fill).
++        if (dtype == DType::I8) {
++            for (const int base : {31, 32, 63, 64, 95, 96}) {
++                const AttentionCase test_case{33, base, 256, 501u + unsigned(base)};
++                failures += run_a1_case(geometry, dtype, test_case, MappingPattern::Fragmented);
++                failures += run_a3_case(geometry, dtype, test_case, MappingPattern::Fragmented);
++            }
++            failures += run_a1_case(geometry, dtype, {129, 61, 256, 701u}, MappingPattern::Fragmented);
++        }
++        // All speculative decode widths, crossing a page with non-contiguous KV.
++        for (int width = 1; width <= 6; ++width) {
++            const AttentionCase test_case{width, 255, 512, 801u + unsigned(width)};
++            failures += run_a1_case(geometry, dtype, test_case, MappingPattern::Fragmented);
++            failures += run_a3_case(geometry, dtype, test_case, MappingPattern::Fragmented);
++        }
++
+         const AttentionCase a1_cases[] = {
+             {1, 0, 1, 201u},    {6, 17, 23, 202u},   {7, 17, 512, 203u},
+             {17, 31, 48, 204u}, {66, 63, 129, 205u},

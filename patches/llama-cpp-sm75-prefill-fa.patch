@@ -1,0 +1,129 @@
+sm75 prefill FlashAttention tile fix: on Turing the query tile is capped at
+ncols1 = 32/ncols2, so the gqa_ratio>4 default (ncols2=8) ran prefill with a
+4-row query tile and re-read K/V for every query block. ncols2=1 keeps the tile
+maximal: +4% prefill at a 32k prompt, +12% at 128k. Adds prefill-shaped FA
+correctness cases (20/20 against the CPU reference) and env-gated tuning knobs.
+
+Context and measurements: docs/exec-plans/active/llamacpp-parity.md
+("Prefill is MMQ plus attention").
+
+Apply on top of patches/llama-cpp-native-q4-dequant.patch (or on b11050 for the
+FA change alone, which is independent of the quantized-KV loader).
+
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 5fd128e..bc71a06 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -160,7 +160,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+         }
+     }
+ 
+-    if (Q->ne[1] <= 32/ncols2 || (GGML_CUDA_CC_IS_NVIDIA(cc) && ggml_cuda_highest_compiled_arch(cc) == GGML_CUDA_CC_TURING) ||
++    static const bool no_turing_small = []() { return getenv("GGML_FA_NO_TURING_SMALL") != nullptr; }();
++    if (Q->ne[1] <= 32/ncols2 || (!no_turing_small && GGML_CUDA_CC_IS_NVIDIA(cc) && ggml_cuda_highest_compiled_arch(cc) == GGML_CUDA_CC_TURING) ||
+             (GGML_CUDA_CC_IS_AMD(cc) && DKQ > 256)) {
+         ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 32/ncols2, ncols2>(ctx, dst);
+         return;
+@@ -181,6 +182,20 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+     float max_bias = 0.0f;
+     memcpy(&max_bias, (const float *) KQV->op_params + 1, sizeof(float));
+ 
++    // experimental override for tile-shape sweeps (prefill only)
++    {
++        static const int ov = []() { const char * e = getenv("GGML_FA_NCOLS2"); return e ? atoi(e) : 0; }();
++        if (ov > 0 && Q->ne[1] > 16) {
++            switch (ov) {
++                case 1: ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 1>(ctx, dst); return;
++                case 2: ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 2>(ctx, dst); return;
++                case 4: ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst); return;
++                case 8: ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst); return;
++                default: break;
++            }
++        }
++    }
++
+     // Edge cases like no mask, ALiBi, unpadded K/V, or misaligned addresses for large data transfers
+     //     are put into the template specialization without GQA optimizations.
+     bool use_gqa_opt = mask && max_bias == 0.0f && K->ne[1] % FATTN_KQ_STRIDE == 0;
+@@ -242,6 +257,15 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+         }
+     }
+ 
++    // Turing: the 64/ncols2 query tile does not fit in shared memory, so ncols1 is
++    // capped at 32/ncols2. For prefill-sized batches the resulting small query tile
++    // multiplies K/V re-reads, which costs more than the GQA sharing saves; ncols2=1
++    // keeps the query tile maximal (measured +3% prefill on sm75, Qwen3.8-27B).
++    if (use_gqa_opt && gqa_ratio > 4 && turing_mma_available(cc) && Q->ne[1] > 16) {
++        ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 1>(ctx, dst);
++        return;
++    }
++
+     if (use_gqa_opt && gqa_ratio > 4) {
+         ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
+         return;
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 6305230..8337353 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -321,6 +321,26 @@ bool ggml_cuda_should_use_mmvq(enum ggml_type type, int cc, int64_t ne11) {
+     }
+     // k-quants cost more to decode and mvq redoes that per column, so MMQ wins sooner.
+     // Only list quant-types MMQ supports, others would fall back to cuBLAS.
++    // Turing: k-quants pay the dequant cost per column in MMVQ, MMQ shares it across the batch.
++    if (GGML_CUDA_CC_IS_NVIDIA(cc) && cc == GGML_CUDA_CC_TURING) {
++        static const int turing_mmvq_max = []() {
++            const char * e = getenv("GGML_CUDA_TURING_MMVQ_MAX_N");
++            return e ? atoi(e) : 8;
++        }();
++        switch (type) {
++            case GGML_TYPE_Q2_K:
++            case GGML_TYPE_Q3_K:
++            case GGML_TYPE_Q4_K:
++            case GGML_TYPE_Q5_K:
++            case GGML_TYPE_Q6_K:
++            case GGML_TYPE_IQ3_S:
++            case GGML_TYPE_IQ4_XS:
++            case GGML_TYPE_IQ4_NL:
++                return ne11 <= turing_mmvq_max;
++            default:
++                return ne11 <= MMVQ_MAX_BATCH_SIZE;
++        }
++    }
+     if (GGML_CUDA_CC_IS_NVIDIA(cc) && cc == GGML_CUDA_CC_ADA_LOVELACE) {
+         switch (type) { // tuned on RTX 4090
+             case GGML_TYPE_Q2_K:
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index d62477d..5fd105f 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -10679,6 +10679,14 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         }
+     }
+ 
++    // Prefill-shaped FA on the production geometry (multi-row query tiling).
++    for (ggml_type tk : { GGML_TYPE_F16, GGML_TYPE_Q4_0 }) {
++        for (int64_t kv : { 1024, 4096 }) {
++            test_cases.emplace_back(new test_flash_attn_ext(256, 256, 24, {4, 1}, kv, 32,  true, false, 0, 0, GGML_PREC_F32, tk, GGML_TYPE_Q4_0));
++            test_cases.emplace_back(new test_flash_attn_ext(256, 256, 24, {4, 1}, kv, 512, true, false, 0, 0, GGML_PREC_F32, tk, GGML_TYPE_Q4_0));
++        }
++    }
++
+     for (int hsk : { 40, 64, 72, 80, 96, 128, 192, 256, 320, 512, 576 }) {
+         for (int hsv : { 40, 64, 72, 80, 96, 128, 192, 256, 512 }) {
+             if (hsk != 96 && hsk != 192 && hsk != 320 && hsk != 576 && hsk != hsv) continue;
+@@ -11277,6 +11285,15 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+         }
+     }
+ 
++    // prefill-shaped FA on the production model geometry: D=256, 24 Q heads,
++    // 4 KV heads, q=32/512 -> exercises the multi-row query tiling path.
++    for (int64_t kv : { 1024, 4096 }) {
++        for (int64_t nb : { 32, 512 }) {
++            test_cases.emplace_back(new test_flash_attn_ext(256, 256, 24, {4, 1}, kv, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0));
++            test_cases.emplace_back(new test_flash_attn_ext(256, 256, 24, {4, 1}, kv, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16,  GGML_TYPE_Q4_0));
++        }
++    }
++
+     // sparse decode at long context
+     test_cases.emplace_back(new test_flash_attn_ext(512, 512, 1, { 8, 1}, 49152, 1, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,    0));
+     test_cases.emplace_back(new test_flash_attn_ext(512, 512, 1, { 8, 1}, 49152, 1, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false, 2048));

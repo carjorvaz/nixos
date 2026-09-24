@@ -63,9 +63,11 @@
     strava-trophy-rs.url = "git+ssh://git@github.com/carjorvaz/strava-trophy-rs.git?ref=refs/heads/main";
     strava-trophy-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
-    # Deploy ott-rs from the reviewed master release line.
+    # Deploy ott-rs from the reviewed master release line. Pin the exact
+    # nixpkgs the packaged FFmpeg field-duration patch was qualified against;
+    # following this host's nixpkgs would pull a newer FFmpeg the patch rejects.
     ott-rs.url = "git+ssh://git@github.com/carjorvaz/ott-rs.git?ref=refs/heads/master";
-    ott-rs.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    ott-rs.inputs.nixpkgs.url = "github:NixOS/nixpkgs/567a49d1913ce81ac6e9582e3553dd90a955875f";
 
     pdf-translator.url = "git+ssh://git@github.com/carjorvaz/pdf-translator-rs.git";
     pdf-translator.inputs.nixpkgs.follows = "nixpkgs-unstable";
@@ -129,16 +131,24 @@
 
       localPackagesOverlay = final: _: mkLocalPackages final;
 
-      # Some local wrappers target redistributable frontends around upstream
-      # unfree apps; allow those specific inputs when exposing flake package
-      # outputs without broadening host-level package policy.
+      # Allow the unfree runtimes required by exposed local packages, without
+      # broadening host-level package policy.
       localPackagesNixpkgsConfig = {
         allowUnfreePredicate =
           pkg:
           builtins.elem (inputs.nixpkgs.lib.getName pkg) [
             "cloakbrowser"
             "cloakbrowser-chromium"
+            "cuda_cccl"
+            "cuda_cudart"
+            "cuda_nvcc"
+            "cuda_nvtx"
             "discord"
+            "libcublas"
+            "libcurand"
+            "libnvjitlink"
+            "libnvvm"
+            "nvidia-x11"
           ];
       };
 

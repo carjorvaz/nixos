@@ -4,6 +4,37 @@ Status: active (2026-09-16).
 
 ## Goal
 
+## Uncensored lane replaced with the verified Orca checkpoint
+
+The uncensored lane previously pinned `leminkozey/Qwen3.8-27B-Uncensored-W4A16-AutoRound`,
+which is an AutoRound quant of a *different* abliteration (JonathanColetti) with an
+int8 lm_head/embed. It is superseded and its references here are historical.
+
+`pkgs/qwen38-sm75/prepare-uncensored.py` now pins
+`Marcin116/Qwen3.8-27B-Uncensored-W4A16-RTX3090-MTP4-embed-int4` at
+`17e82c6ed1d308d06f1f7c2445cef6aa2a10d4cc`, with per-file SHA-256s recorded from the
+verified download. Lineage: Qwen/Qwen3.8-27B -> orcarouter/Qwen3.8-27B-Uncensored
+(the abliteration with independent forensic verification) -> AutoRound W4A16 ->
+protogeni MTP serving optimization -> this repo (int4 token embeddings, everything
+else byte-identical). It keeps the vision tower, the MTP head and its own MTP draft
+vocabulary.
+
+`tiberius-qwen38-uncensored` now serves `/persist/qwen38-sm75/models/uncensored`
+(the old `hybrid-dv8-mtp4c` lane on /data is retired) with the production KV/context
+budget, and `num_speculative_tokens = 3`.
+
+Measured on tiberius against the production target, same prompt, same script:
+prefill identical (39.8 vs 39.9 s) and per-step time slightly better (44.8 vs 50 ms),
+but decode 64.0 tok/s against 84.7 - entirely from speculative acceptance (2.73 vs
+~4.2 tokens per step). That is a property of the abliterated MTP head, not of the
+head dtype. MTP3 is this checkpoint's own optimum (61.6 at MTP4, 56.0 at MTP2).
+
+`flip-to-uncensored.sh` / `flip-to-production.sh` on tiberius swap the *main* port
+between the two checkpoints by re-running production's own ExecStart with the model
+path (and draft count) changed; nothing in the NixOS configuration is touched, since
+/etc is read-only on that host. The parallel unit on port 8082 remains the
+non-disruptive way to run both at once.
+
 Carry the already-measured 2080 Ti campaign results into the pinned
 `qwen38-sm75` 0.28.0 package, and close the remaining open kernel/observability
 items with measurement rather than inference. Non-goal: chasing the RTX 3090
@@ -110,7 +141,7 @@ Decisions taken from this window:
   in that combination. Downloads now run as a transient unit capped at 1 GiB,
   and GPU boots are not run next to large downloads.
 - **Published as a fork.** The Turing series now lives publicly as
-  `carjorvaz/HyperQwen` (branch `turing`), a real fork of upstream HyperQwen
+  `carjorvaz/qwen38-27b-rtx2080ti` (branch `turing`), a real fork of upstream HyperQwen
   (formerly `syv-ai/qwen38-27b-rtx3090`) based on the pin this runtime uses. Its
   CI job applies the full series, the 31 upstream patches and these 19, to a
   pristine vLLM 0.28.0 checkout and fails on the first rejection; the first run
@@ -138,7 +169,7 @@ Decisions taken from this window:
   stays on disk for rollback, and the whole switch took 5m49s because the wheel
   cache is reused.
 
-  A working clone for day-to-day sessions lives at `~/Documents/HyperQwen`
+  A working clone for day-to-day sessions lives at `~/Documents/qwen38-27b-rtx2080ti`
   (origin the fork, `upstream` fetch-only with pushes disabled), and bumping the
   pin is a two-line edit in `default.nix` — the comment there says how to
   compute the hash. The pre-nix campaign tree on the host
@@ -196,18 +227,72 @@ own manifest (the int8-activation variant is the documented middle ground at
 
 ### vLLM 0.29 rebase
 
-*Parked until upstream moves; no functional gap is open.*
+*Done 2026-09-24; deployed and validated on tiberius.*
 
-The runtime is pinned at 0.28.0 with 19 local patches, and the fixes worth
-having (SSE keep-alive, engine stall sentinel, completion log) were backported
-and verified byte-identical to upstream's newer versions. Upstream has also
-fixed a glob-vs-`series` patch-ordering trap our local set would otherwise hit.
-Recipe: bump the pinned revision in `default.nix`, run `prepare-runtime.py` (it
-reports "Expected 31 upstream patches", applies `source/patches/series` in
-order, then the sorted local patches), re-run the full validation, and re-check
-the two results that depend on upstream behaviour: V2 fused draft capture
-(parity when last measured) and the adaptive verify block (measured to lose;
-its design notes stay in this file).
+The runtime is on vLLM 0.29.0 with the fork's turing branch at
+`cedd8089fbf122637b063edf620725235eca2d79`. The pin is `default.nix`'s revision
++ archive hash; `prepare-runtime.py` reads both series in order
+(`patches/series`, skipping `dflash2-backport.patch`, then
+`patches-turing/series`), applies them at `--fuzz 0`, and asserts the 44-patch
+3090 series. Retired because upstream carries them: the mamba null-gap
+retirement, the engine completion/stall backports, and SSE keep-alive (native
+in 0.29). One Turing patch was added (`envs-knobs`) so every fork knob is
+registered in `envs.py`.
+
+The port's kernel suite found and fixed a real bug in
+`spec-attn-register-softmax`: its running-max update used the tile-local max,
+so a fully masked trailing tile dropped the last segment (kv_len 2049/4097/8197
+with 16-query blocks, ~0.1 relative RMS). The update now carries
+`max(running, tile)`; the same bug was live in the 0.28 runtime built after
+2026-09-23. `check-prefix.py` needed one 0.29 harness adjustment: upstream's
+`Scheduler._mamba_block_aligned_split` now reads
+`mamba_has_prefill_checkpoint_blocks`, which is false for this configuration.
+
+Validation on the deployed runtime: `check attention`, `prefill`, `prefix`,
+`gdn`, `downloads` all PASS. The wikitext bench (realistic text, greedy, 128
+tokens) is 114.6 / 101.8 / 81.7 / 81.5 tok/s at 8k / 32k / 64k / 128k against
+the 0.28 table's 104.4 / 97.7 / 68.3 / 63.8 — no losses, +4 to +28% deeper.
+Rollback: the 0.28 runtime stays under `/persist/qwen38-sm75/runtimes`; revert
+the pin and switch. The two upstream-behaviour checks named in the old recipe
+were both run on 0.29 (see the fused-capture and adaptive-block sections): the
+fused capture is at parity and now the default, and the adaptive block keeps
+its measured verdict.
+
+Quality re-validation on the deployed runtime (2026-09-24, production stack):
+GSM8K **95.5%** (n=200, mean 377 tokens) against 94.5%, and PPL **10.8818**
+(en 10.8096, da 10.9401; 25,092 tokens) against 10.8797 — no drift. The
+uncensored checkpoint on the same runtime: GSM8K **97.5%** against 96.5%, PPL
+**10.9337** against 10.94. The lookup now runs on both runners: `mtp-lookup-v2.patch` adds it to
+the V2 `MTPSpeculator` (matching `req_states.all_token_ids`, the same gate, a
+point mass for the draft distribution, device-side only). On the V2 runner the
+32k-word copy measures acceptance 4.19-4.22 at 107 tok/s against the V2
+baseline's 3.66-3.84 at 94-98 and V1+lookup's 3.73-3.93 at 96-101; prose is at
+parity and sampled traffic untouched. Production PPL reads 10.8817 and GSM8K
+95.5% on the deployed V2+lookup stack. The V1 pin was removed and production
+runs the upstream-default V2.
+
+The uncensored lane's MTP3 setting was a 0.28-era conclusion. On 0.29 V2+lookup
+the same checkpoint measures 112.8 / 105.1 tok/s at 8k / 32k and 104.7-106.2 on
+the 32k copy with `num_speculative_tokens = 4`, against MTP3's 104.3 / 89.1 /
+87.9 and MTP5's 116.3 / 93.5 / 98.2. Its unit now uses 4. Swapping in the base
+model's MTP head was tried and is blocked by a tensor-shape mismatch (its own
+head and the base's differ); it would need a matched export.
+
+The "uncensored is smarter" observation is noise: GSM8K at n=500 reads **94.8%**
+for the target (mean 369 tokens) against **95.2%** for the uncensored (mean
+371) — a two-question difference at that sample size. The earlier n=200 97.5%
+vs 95.5% was inside the interval.
+
+`VLLM_MTP_LOOKUP_SAMPLED=1` was exercised on the V2 path: a 40-request sampled
+probe reads identical to the default (acceptance 3.254, 63 tok/s, same
+per-position rates), the sampled verbatim copy stays exact, and no errors were
+logged. The default stays off, matching V1: the sampled lookup measured a loss
+on free-form prose, and the probe's short filler is not that workload.
+
+The two lanes now conflict in both directions (`tiberius-qwen38` declares
+`tiberius-qwen38-uncensored.service` alongside `tiberius-ninfer`), so
+`systemctl start` on either one takes the other down; the target remains the
+enabled-at-boot default and the uncensored lane stays a manual toggle.
 
 ### Xid 45 bisect arms
 
@@ -830,6 +915,23 @@ device work (four MTP-layer forwards), not launch or host overhead, so
 capturing it buys nothing in either runner. That cancels the "fused capture"
 item that had been ranked first among the lossless decode levers.
 
+**Re-checked on 0.29.0 (2026-09-24).** The default flipped: the 0.29 runtime
+boots V2 (`gpu_worker.py: Using V2 Model Runner`) for the production serve
+line, so the fused draft decode is now what production runs. Same-session V1
+(`VLLM_USE_V2_MODEL_RUNNER=0`) against V2 at *identical* acceptance on
+realistic text (k=4, greedy, 128 tokens, wikitext) gave step times of
+33.9/34.3/37.8/43.5 ms (V1) against 34.1/34.9/37.9/43.1 ms (V2) at
+2k/8k/32k/64k -- parity, so the closed verdict holds with V2 now the default.
+One consequence matters: the Turing MTP history lookup is V1-only
+(`v1/spec_decode/llm_base_proposer.py`; V2's `MTPSpeculator` has no lookup and
+`gpu/spec_decode/adaptive_verification.py` is DSpark-only), so V2 silently
+drops a shipped feature. On the canonical copy bench (`--words 32000
+--output-tokens 512`, greedy) V1+lookup measured 96.3/101.5 tok/s at
+acceptance 3.73/3.93 against V2's 93.8/98.0 at 3.66/3.84, and prose is at
+parity, so `VLLM_USE_V2_MODEL_RUNNER=0` in `serve.env` is the setting that
+keeps the lookup for free. Production was left on the V2 default while this is
+reviewed.
+
 **What that leaves.** On decode: acceptance (a model-level property) and the
 copy-path long block. On the interactive path: a genuinely better fp16 prefill
 attention kernel (int8 is closed three ways, the gather is 1-3%, the kernel is
@@ -1014,3 +1116,15 @@ correct -- which is what pi's real traffic will show through the acceptance
 metric. Until then the default stays k=4 with the base lookup, and none of this
 code is in the repository: the staged copy in the live runtime is inert without
 `VLLM_MTP_ADAPTIVE_K` and is discarded by the next prepare.
+
+**Re-checked on 0.29.0 (2026-09-24).** Nothing in 0.29 changes the verdict.
+Upstream's `v1/worker/gpu/spec_decode/adaptive_verification.py` is a
+confidence-scored global draft budget, but it is wired to DSpark only; the V2
+`MTPSpeculator` still chains a fixed `num_speculative_steps` with no per-step
+block, and `v1/cudagraph_dispatcher.py` still keys one
+`uniform_decode_query_len = 1 + num_speculative_tokens`, i.e. the single-stride
+assumption the experiment had to patch around. The cost side is unchanged by
+construction: the Turing verify kernels are byte-identical between the 0.28
+and 0.29 trees (checked during the port), so the wider verify still costs what
+it cost when the five variants lost ~4% end to end. The design notes above
+remain the reference for a future attempt; nothing was rebuilt.

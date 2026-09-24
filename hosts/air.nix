@@ -515,7 +515,6 @@ in
     };
 
     brews = [
-      "agent-browser"
       "bun"
       "can1357/tap/omp"
       "chrome-devtools-mcp"

@@ -255,12 +255,17 @@ in
       };
     };
 
-    # Optional second model: the uncensored W4A16 checkpoint, staged under
-    # /data (the persistent pool is full with the production model). It is
-    # never enabled at boot; start it by hand, Conflicts takes the production
-    # engine down first. Scope: its int8 lm_head/embed and bf16 MTP head make
-    # it measurably slower than the calibrated fast variant, so this unit is
-    # for evaluating the different weights, not as a drop-in replacement.
+    # Optional second model: the uncensored W4A16 checkpoint, staged beside the
+    # production one under /persist. Never enabled at boot, and it can never run
+    # at the same time as the production engine: both are ~20 GB on a 22 GB card,
+    # so the serve unit below conflicts with production and is ordered after its
+    # shutdown. Scope: it is the
+    # Orca abliteration (orcarouter lineage, independently verified) requantized
+    # W4A16 with int4/GPTQ-calibrated heads, so prefill and per-step time match
+    # the production target; it decodes ~24% fewer tokens per second purely
+    # because its abliterated MTP head accepts fewer drafts (2.7 vs ~4.2 tokens
+    # per step). Not a drop-in: a smarter draft head, not a dtype change, is what
+    # would close that. Its own speculative optimum is MTP3, not MTP4.
     tiberius-qwen38-uncensored-prepare = {
       description = "Prepare the optional uncensored Qwen3.8 checkpoint";
       wants = [ "network-online.target" ];
@@ -273,7 +278,10 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${qwenPackage}/bin/qwen38-sm75-prepare-uncensored /data/qwen38-uncensored";
+        # Same root as the production prepare unit: the uncensored checkpoint is
+        # staged beside the production one under /persist, not under /data (which
+        # held the retired hybrid lane and did not have room for a second model).
+        ExecStart = "${qwenPackage}/bin/qwen38-sm75-prepare-uncensored ${qwenRuntimeRoot}";
         TimeoutStartSec = "infinity";
         MemoryHigh = "512M";
         MemoryMax = "1G";
@@ -283,7 +291,7 @@ in
     };
 
     tiberius-qwen38-uncensored = {
-      description = "Qwen3.8-27B uncensored on the RTX 2080 Ti (optional, port 8082)";
+      description = "Qwen3.8-27B uncensored on the RTX 2080 Ti (alternative lane)";
       conflicts = [
         "tiberius-qwen38.service"
         "tiberius-ninfer.service"
@@ -326,13 +334,18 @@ in
         EnvironmentFile = "-${qwenRuntimeRoot}/serve.env";
         ExecStart = "${qwenPackage}/bin/qwen38-sm75-serve ${
           lib.escapeShellArgs [
-            "/data/qwen38-uncensored/models/hybrid-dv8-mtp4c"
+            "/persist/qwen38-sm75/models/uncensored"
             "--served-model-name"
-            "qwen3.8-27b-uncensored"
+            # Same port and model name as the production unit on purpose: the two
+            # can never run together (both are ~20 GB on a 22 GB card), so serving
+            # the same slot makes a flip invisible to clients - only the weights
+            # change. The unit conflicts with production and is ordered after its
+            # shutdown, and it is not enabled at boot.
+            modelAlias
             "--host"
             "0.0.0.0"
             "--port"
-            "8082"
+            (toString qwenPort)
             "--dtype"
             "float16"
             "--language-model-only"
@@ -344,12 +357,13 @@ in
             "float16"
             "--mamba-ssm-cache-dtype"
             "float16"
-            # Its int8 lm_head/embed and bf16 MTP head are ~1 GiB heavier
-            # than the fast variant; 4.5 GiB KV is what fits at 235k context.
+            # Same KV and context budget as the production unit: this
+            # checkpoint was measured booting under those exact flags at 20.9 GB
+            # (it carries int4 lm_head/embed and its own MTP draft vocabulary).
             "--kv-cache-memory"
-            "4831838208"
+            "5905580032"
             "--max-model-len"
-            "235000"
+            "262144"
             "--max-num-seqs"
             "1"
             "--max-num-batched-tokens"
@@ -362,6 +376,12 @@ in
             "--speculative-config"
             (builtins.toJSON {
               method = "mtp";
+              # Measured on the 0.29.0 runtime (V2 runner, MTP history lookup):
+              # 112.8 / 105.1 tok/s at 8k / 32k and 104.7 on the 32k-word copy,
+              # against MTP3's 104.3 / 89.1 / 87.9 and MTP5's 116.3 / 93.5 /
+              # 98.2. The 4th draft position accepts enough to pay for itself;
+              # width past that only wins at short context. Earlier numbers on
+              # the 0.28 stack had MTP3 ahead, which is why this was 3.
               num_speculative_tokens = 4;
               draft_sample_method = "probabilistic";
               attention_backend = "TRITON_ATTN";
@@ -409,7 +429,13 @@ in
     tiberius-qwen38 = {
       description = "Qwen3.8-27B on the RTX 2080 Ti (vLLM)";
       wantedBy = [ "multi-user.target" ];
-      conflicts = [ "tiberius-ninfer.service" ];
+      # Symmetric with the uncensored lane: either start takes the other down,
+      # so toggling in either direction cannot leave two engines on one 22 GB
+      # card (which fails the second one with a memory error).
+      conflicts = [
+        "tiberius-ninfer.service"
+        "tiberius-qwen38-uncensored.service"
+      ];
       requires = [ "tiberius-qwen38-prepare.service" ];
       after = [
         "tiberius-qwen38-prepare.service"
@@ -474,9 +500,11 @@ in
             "262144"
             "--max-num-seqs"
             "1"
-            # Keep the validated MTP4/INT4 prefill page-aligned (1632 tokens).
+            # Two 1632-token pages per prefill chunk: the scheduler caps at
+            # 3264 here, which halves the per-chunk repack and launch overhead
+            # against 2048 (measured on the Turing stack, 2026-09-24).
             "--max-num-batched-tokens"
-            "2048"
+            "4096"
             "--enable-prefix-caching"
             # Hash granularity is independent of the 1632-token physical page.
             "--prefix-match-unit"

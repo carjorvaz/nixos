@@ -285,8 +285,14 @@ def preparer_digest():
 
 
 def stamp(path):
+    # Deliberately no ctime: it is inode metadata, not content evidence, and it
+    # changes whenever the link count changes. Seeding a second model family from
+    # a file that is byte-identical in both (hard link) would otherwise invalidate
+    # the first family's manifest and make the serving wrapper reject a healthy
+    # model. size + mtime + inode + device still bind the recorded evidence to an
+    # unchanged local file.
     info = path.stat()
-    return {"size": info.st_size, "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns, "inode": info.st_ino, "device": info.st_dev}
+    return {"size": info.st_size, "mtime_ns": info.st_mtime_ns, "inode": info.st_ino, "device": info.st_dev}
 
 
 def inventory():

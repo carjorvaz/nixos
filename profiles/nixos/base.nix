@@ -12,16 +12,27 @@ let
   bootstrapPassword = config.cjv.bootstrap.initialHashedPassword;
   loginPasswordFile = config.age.secrets.cjvHashedPassword.path;
   hasCoredumpSettings = options.systemd.coredump ? settings;
+  hasJournaldSettings = options.services.journald ? settings;
   hasManCacheEnable = lib.versionAtLeast lib.version "26.05pre";
 
   allowedUnfree = [
     "claude-code"
+    # CUDA toolkit/runtime pieces for Beellama, NInfer and the Turing vLLM port.
+    # FlashInfer's JIT also includes cuRAND headers.
+    # All unfree under the same NVIDIA EULA.
+    "cuda_cccl"
+    "cuda_cudart"
     "cuda_nvcc"
+    "cuda_nvtx"
     "discord"
     "discord-unwrapped"
     "ib-tws"
     "ib-tws-unwrapped"
     "intel-ocl"
+    "libcublas"
+    "libcurand"
+    "libnvjitlink"
+    "libnvvm"
     "nvidia-kernel-modules"
     "nvidia-persistenced"
     "nvidia-settings"
@@ -261,10 +272,19 @@ in
       })
     ];
 
-    journald.extraConfig = ''
-      SystemMaxUse=50M
-      RuntimeMaxUse=10M
-    '';
+    journald =
+      lib.optionalAttrs hasJournaldSettings {
+        settings.Journal = {
+          SystemMaxUse = "50M";
+          RuntimeMaxUse = "10M";
+        };
+      }
+      // lib.optionalAttrs (!hasJournaldSettings) {
+        extraConfig = ''
+          SystemMaxUse=50M
+          RuntimeMaxUse=10M
+        '';
+      };
   };
 
   users = {

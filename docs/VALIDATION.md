@@ -397,6 +397,12 @@ against 104.37, 32k 97.13 against 97.67, identical acceptance): it does not
 fire, which is the intended do-no-harm property, and its measured benefit
 stays where it was measured, on greedy verbatim copy/edit work.
 
+That table is the vLLM 0.28.0 / V1-runner measurement. The same instrument on
+the 0.29.0 V2+lookup stack reads **112.4 / 99.8 / 80.6 / 80.4 tok/s** at
+8k / 32k / 64k / 128k (acceptance 3.97 / 3.97 / 3.54 / 4.10), so the table is
+a floor rather than a target; the full record is in the exec plan's
+“vLLM 0.29 rebase” section.
+
 **Measurement hygiene on this host.** `qwen38-sm75-bench` and
 `qwen38-sm75-soak` build their prompts from one repeated word, so they are
 stable *repetition* workloads, not chat: they are the right instrument for
@@ -435,6 +441,125 @@ An EOS-only or empty reply is a failed sample, not a fast decode result. Retain
 outliers and strict-format failures; post-hoc semantic audits must not rewrite
 the original quality scores. Record process identity and host memory pressure,
 and distinguish cold versus warmed CUDA compilation caches.
+
+## llama.cpp-family runtime on the Turing card
+
+Mainline llama.cpp (`pkgs/llama-cpp-cuda.nix`, pinned b11050) and beellama.cpp
+v0.4.6 (`pkgs/beellama-cuda.nix`) were measured against the vLLM fork on the
+same host and 280 W limit, one runtime at a time. Decode used greedy requests
+and the same prompts as the fork's bench; acceptance comes from llama-server's
+`llamacpp:spec_decode_*` counters with the same `1 + accepted/drafts`
+convention. `qwen38-sm75-bench-llama` measures a running llama-server the way
+`qwen38-sm75-bench` measures vLLM; `--nonce` forces a cold prefill.
+
+| workload | vLLM fork | llama.cpp MTP2 | llama.cpp MTP2 + ngram-mod |
+| --- | ---: | ---: | ---: |
+| filler 2k / 8k / 32k tok/s | 80 / 83 / 74 | 49 / 49 / 40 | 85 / 73 / 186 |
+| wikitext 8k / 32k tok/s | 99.5 / 96.3 | 52 / 42 | 84 / 78 |
+| wikitext 128k cached tok/s | 63.8 | - | 22-36 |
+| cold prefill 8k / 32k tok/s | 872 / 792 | - | 688 / 596 |
+
+Long-context sweep (unique nonce prompts, context larger than the prompt so
+context shifting cannot inflate speculation; same day, greedy, wikitext):
+
+| prompt | llama.cpp cold prefill | llama.cpp decode | vLLM cold prefill | vLLM decode |
+| --- | ---: | ---: | ---: | ---: |
+| 32k | 596 tok/s | 35-43 tok/s | 792 tok/s | 73.7 tok/s |
+| 64k | 510 tok/s | 34-37 tok/s | 678 tok/s | 76.2 tok/s |
+| 128k | 390 tok/s | 22-36 tok/s | 555 tok/s | 49.8 tok/s |
+| 262k | 269 tok/s (IQ4_XS) | ~21 tok/s | 363 tok/s (248k) | ~25 tok/s (est.) |
+
+- Prefill is 25-30 % behind at every depth; ubatch size is not the lever
+  (`-ub 512/1024/2048` measured 596/605/602 tok/s at 32k). Decode stays ~2x
+  behind. A unique fact near the beginning of a 128k prompt was recovered on
+  both engines (llama TTFT 317 s, vLLM 236 s). ik_llama matches mainline
+  prefill at 128k (386.6 vs 389.6 tok/s) but decodes only 9.8-10.5 tok/s
+  there; its 8 GiB default `--cache-ram` must be bounded (`--cache-ram 1024`)
+  or the 7.5 GiB host thrashes.
+- 262k needs UD-IQ4_XS (14.25 GiB) with q4_0 KV at ~21 GB VRAM;
+  UD-Q4_K_M fails at load (22.3 GiB of weights+KV+state against 22.5 GiB
+  physical). IQ4_XS measures 269 tok/s cold prefill and ~21 tok/s decode at
+  262k, with no i-quant penalty visible in prefill.
+- Benchmark hygiene: a prompt that fills the configured context triggers
+  context shifting, which lets the ngram drafter lock onto shifted history and
+  inflate acceptance (32k filler in a 32k context reported 186 tok/s /
+  acceptance 25; the same prompt in a 128k context decodes 35-43 tok/s).
+
+A second tuning round, guided by the r/LocalLLaMA mirror on pius, added:
+
+- **Best upstream chat config**: `--spec-type draft-mtp --spec-draft-n-max 6
+  --spec-draft-p-min 0.75`, which reaches 56.0/40.3 tok/s (8k/32k wikitext)
+  greedy and 40.9 tok/s sampled at acceptance 3.27 -- matching the fork's
+  sampled acceptance, but still ~80 ms per step against the fork's ~38 ms.
+- **ik_llama.cpp + ubergarm `MTP-IQ4_KS`** (`--merge-qkv -muge
+  --ctx-checkpoints 0`, q8_0 KV) is the fastest chat engine measured: 57.7
+  tok/s at 8k and 40.9 at 32k wikitext with MTP4. `--ctx-checkpoints 0` is
+  mandatory for this hybrid model; the default checkpoints allocate ~150 MiB
+  each and kill the 32k prefill. The build recipe is ik_llama.cpp `7cff686d`
+  with `-DGGML_CUDA=ON -DGGML_CUDA_F16=ON -DCMAKE_CUDA_ARCHITECTURES=75`.
+- **Greedy copy/edit is now faster than the fork**: the mainline tuned hybrid
+  (`ngram-mod,draft-mtp`, `n-match 24`, `n-min 48`, `n-max 64`) reaches
+  86.7/80.9 tok/s, and the ik `ngram-mod`+MTP chain **105.2 tok/s at 8k**
+  against the fork's 99.5. Both collapse under production sampling (40-44
+  tok/s), so they are greedy-client profiles.
+- **Native q4_0 K/V dequant in the FlashAttention MMA tile loader**
+  (`patches/llama-cpp-native-q4-dequant.patch`, source build on b11050) removes
+  the per-layer f16 conversion that quantized caches previously paid for every
+  verify pass. The CPU-reference FA suite passes 12/12 and GSM8K on the patched
+  build scores **96.5% (n=200)** against the fork's published 94.5%. End to
+- **Turing MMVQ tuning for batches 2-8** (`patches/llama-cpp-sm75-mmvq-batch.patch`):
+  MMVQ re-loads the activation vector per (row block, column), so the L2 traffic
+  scales as `ncols/rows`; `rows_per_block=4` with one warp for the k-quant and
+  i-quant classes lifts the production shapes from 414-438 to 466-535 GB/s at
+  n=3 and from 305-376 to 364-456 GB/s at n=5 (CPU-reference tests 36/36). This
+  is what makes deeper drafts viable: at 64k context / 32k prompt, **MTP4 now
+  reaches 54.4 tok/s (acceptance 4.20) against MTP2's 47.0 and the base model's
+  25.3**, where before the fix MTP4 was slower than MTP2.
+- **sm75 prefill attention tile fix** (`patches/llama-cpp-sm75-prefill-fa.patch`):
+  on Turing the query tile is capped at `ncols1 = 32/ncols2`, so the `gqa_ratio>4`
+  default (`ncols2=8`) ran prefill with a 4-row tile and re-read K/V for every
+  query block. `ncols2=1` keeps the tile maximal: **+4% prefill at a 32k prompt
+  (615 -> 640 tok/s) and +12% at a 128k prompt (385 -> 430 tok/s, TTFT 319 s ->
+  287 s)**, decode unchanged. Prefill-shaped FA correctness cases on the
+  production geometry (q=32/512, D=256, 24 Q / 4 KV heads) pass 20/20 against
+  the CPU reference.
+  end, the 128k-prompt MTP2 step drops 82.4 -> 75.2 ms (decode 26.6 -> 30.7
+  tok/s); at a 64k prompt in a 128k context the same build measures 43.9 tok/s
+  (step 64.2 ms) against the fork's 49.8 (step 58.5 ms), and the 262k IQ4_XS
+  step drops 135.8 -> 114.6 ms. Prefill keeps the conversion path
+  (the in-kernel dequant costs 22% at prefill-sized batches).
+- The mirror's 16 GB-VRAM study independently documents MTP `n=2` as optimal
+  without a confidence gate and adds the sm75 analysis that the 48 Gated
+  DeltaNet layers run a sequential FP32 scan -- the likely bound on batched
+  speculative verification on Turing and the reason the fork's custom sm75 GDN
+  and split-KV verify kernels matter.
+
+Measured verdict:
+
+- **The chat gap is the draft chain.** Base steps run at the same ~465 GB/s
+  (vLLM 13-14 GiB in 29 ms, llama.cpp 16.4 GiB in 35 ms). Each sequential MTP
+  pass costs ~9-10 ms in llama.cpp against ~1.1 ms in the fork, because the
+  fork drafts with an int4 head over a 40k draft vocabulary while llama.cpp
+  re-runs a Q6_K 248k-vocabulary head every pass. MTP depth, a standalone MTP
+  sidecar, UD-IQ4_XS, KVarN and beellama v0.4.6 all leave that gap intact;
+  mainline is 7-10 % faster than beellama at identical acceptance.
+- **DFlash2 is closed on sm75**: 3.735 tokens/step at 2k but a ~65 ms drafter
+  pass in both runtimes.
+- **The ngram hybrid is the win and it is sampling-dependent.** With greedy
+  clients it beats the fork on repetitive work (186 vs 74 tok/s at 32k) and
+  gets within 15-20 % on wikitext. Under the production sampling defaults
+  (temperature 1.0, top_k 20, top_p 0.95) it collapses to 36.6 tok/s at 8k,
+  matching why the fork keeps its own history lookup greedy-only. Production
+  OMP samples, so this is a copy/edit or greedy-tool profile, not a chat
+  default.
+- **Prefill and long-context decode are ~20 % behind**, the closest part of
+  the comparison.
+
+The structural fix for chat parity is the fork's recipe: a restricted (40k)
+draft head and vocabulary ported to a GGUF MTP sidecar plus a draft-vocabulary
+map and a cheap draft pass in the runtime. That is a loader and spec-loop
+patch, not a configuration change. The measurement campaign and the open items
+live in `docs/exec-plans/active/llamacpp-parity.md`.
 
 ## Deploy and rebuild commands
 

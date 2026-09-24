@@ -1,0 +1,72 @@
+--- a/tests/ops/test_attn_input_proj.cpp
++++ b/tests/ops/test_attn_input_proj.cpp
+@@ -497,7 +497,11 @@
+     int failures = 0;
+     failures += run_q4_q5();
+     failures += run_bf16_target();
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    std::cout << "SKIP NVFP4 projection: requires a build targeting sm_120a\n";
++#else
+     failures += run_nvfp4_target();
++#endif
+     failures += run_fp8_target();
+     failures += run_w8_target();
+     failures += run_w8_companion();
+--- a/tests/ops/test_gdn_input_proj.cpp
++++ b/tests/ops/test_gdn_input_proj.cpp
+@@ -323,7 +323,11 @@
+     int failures = 0;
+     failures += run_q4_q5();
+     failures += run_w8();
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    std::cout << "SKIP NVFP4 projection: requires a build targeting sm_120a\n";
++#else
+     failures += run_nvfp4();
++#endif
+     failures += run_fp8();
+     std::cout << (failures == 0 ? "OK" : "FAIL") << " gdn_input_proj\n";
+     return failures == 0 ? 0 : 1;
+--- a/tests/ops/test_gdn_input_proj_conv_snapshot.cpp
++++ b/tests/ops/test_gdn_input_proj_conv_snapshot.cpp
+@@ -1012,6 +1012,7 @@
+         std::cerr << "W8 snapshot interval did not preserve its zero/nonzero route boundary\n";
+         ++failures;
+     }
++#if !defined(NINFER_SM75) && !defined(NINFER_SM86)
+     const std::size_t nvfp4_a4_4 = ops::gdn_input_proj_conv_snapshot_workspace_capacity_bytes(
+         QType::NVFP4, 16384, 5120, ops::LinearPolicy::AllowA4, 1, 4, 4);
+     if (ops::gdn_input_proj_conv_snapshot_workspace_capacity_bytes(
+@@ -1024,6 +1025,7 @@
+         std::cerr << "NVFP4 snapshot interval did not preserve its A16/A4 route boundary\n";
+         ++failures;
+     }
++#endif
+     const auto fp8_snapshot_capacity = [](ops::LinearPolicy policy, std::int32_t batch,
+                                           std::int32_t min_width, std::int32_t max_width) {
+         return ops::gdn_input_proj_conv_snapshot_workspace_capacity_bytes(
+@@ -1046,7 +1048,11 @@
+     }
+     failures += run_q4_q5();
+     failures += run_w8();
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    std::cout << "SKIP NVFP4 projection: requires a build targeting sm_120a\n";
++#else
+     failures += run_nvfp4();
++#endif
+     failures += run_fp8();
+     std::cout << (failures == 0 ? "OK" : "FAIL") << " gdn_input_proj_conv_snapshot\n";
+     return failures == 0 ? 0 : 1;
+--- a/tests/ops/test_gdn_input_proj_conv_record.cpp
++++ b/tests/ops/test_gdn_input_proj_conv_record.cpp
+@@ -565,7 +565,11 @@
+     }
+     failures += run_q4_q5();
+     failures += run_w8();
++#if defined(NINFER_SM75) || defined(NINFER_SM86)
++    std::cout << "SKIP NVFP4 projection: requires a build targeting sm_120a\n";
++#else
+     failures += run_nvfp4();
++#endif
+     failures += run_fp8();
+     std::cout << (failures == 0 ? "OK" : "FAIL") << " gdn_input_proj_conv_record\n";
+     return failures == 0 ? 0 : 1;

@@ -10,16 +10,10 @@
     environmentFile = config.age.secrets.piusTelegramEnv.path;
     archiveDir = "/persist/telegram-mirror/archive";
     skipMedia = true;
-    timer.enable = false;
-  };
-
-  systemd.timers.telegram-mirror = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "weekly";
-      Persistent = true;
-      RandomizedDelaySec = "1h";
-      Unit = "telegram-mirror.service";
+    timer = {
+      onCalendar = "*-*-* *:00/15:00";
+      randomizedDelaySec = "1m";
+      persistent = true;
     };
   };
 

@@ -1,0 +1,87 @@
+--- a/src/ops/linear_add/q5/q5_linear_add_plan.h
++++ b/src/ops/linear_add/q5/q5_linear_add_plan.h
+@@ -16,6 +16,7 @@
+     MmaResidualR64C24,
+     MmaResidualR64C64,
+     MmaResidualR64C128,
++    Sm75PrefillSlices,
+ };
+ 
+ struct Q5LinearAddProblem {
+--- a/src/ops/linear_add/q5/q5_linear_add_plan.cpp
++++ b/src/ops/linear_add/q5/q5_linear_add_plan.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include "ops/linear_add/q5/q5_linear_add_kernels.h"
+ 
++#include <algorithm>
+ #include <array>
+ #include <limits>
+ #include <stdexcept>
+@@ -82,6 +83,8 @@
+ 
+ const char* q5_linear_add_schedule_name(Q5LinearAddScheduleId schedule) noexcept {
+     switch (schedule) {
++    case Q5LinearAddScheduleId::Sm75PrefillSlices:
++        return "linear_add.q5.sm75.prefill_slices4.residual";
+     case Q5LinearAddScheduleId::GemvResidual:
+         return "linear_add.q5.gemv.residual";
+     case Q5LinearAddScheduleId::Split2ExactResidual:
+@@ -106,6 +109,14 @@
+     if (!q5_linear_add_admits(problem)) {
+         throw std::invalid_argument("q5 linear_add: exact problem or column count is not admitted");
+     }
++
++#if defined(NINFER_SM75)
++    // Only admitted text residual shapes, with the existing A16 contract.
++    // Keep BF16 exponent range and zero workspace; no activation conversion.
++    if (problem.cols >= 129 && problem.cols <= 1024) {
++        return {Q5LinearAddScheduleId::Sm75PrefillSlices, 0};
++    }
++#endif
+ 
+     const auto resolve_from = [&](const auto& routes) -> Q5LinearAddPlan {
+         for (const RouteSpec& route : routes) {
+@@ -138,6 +149,20 @@
+     (void)ws;
+ 
+     switch (plan.schedule) {
++    case Q5LinearAddScheduleId::Sm75PrefillSlices:
++        // Explicit slices, not the grid.y-limit helper. Direct low-level calls
++        // cannot recursively reselect this route. Each residual is updated once.
++        for (std::int32_t offset = 0; offset < x.ne[1]; offset += 4) {
++            const std::int32_t count = std::min<std::int32_t>(4, x.ne[1] - offset);
++            const Tensor input = x.slice(1, offset, count);
++            Tensor residual = residual_out.slice(1, offset, count);
++            if (count == 1) {
++                q5_linear_add_gemv_residual_launch(input, w, residual, stream);
++            } else {
++                q5_linear_add_split2_exact_launch(input, w, residual, stream);
++            }
++        }
++        return;
+     case Q5LinearAddScheduleId::GemvResidual:
+         q5_linear_add_gemv_residual_launch(x, w, residual_out, stream);
+         return;
+--- a/tests/ops/linear_add/test_q5_a16.cpp
++++ b/tests/ops/linear_add/test_q5_a16.cpp
+@@ -12,15 +12,15 @@
+ int q5_a16_conformance() {
+     // Starts of the registered positive-T regions. run_shape checks b-1/b/b+1 for every start,
+     // plus one interior point for every region, through the public Op.
+-    constexpr std::array<std::int32_t, 5> kK6144RouteStarts{2, 14, 33, 49, 129};
+-    constexpr std::array<std::int32_t, 6> kK6144RouteInteriors{1, 8, 24, 40, 96, 256};
++    constexpr std::array<std::int32_t, 6> kK6144RouteStarts{2, 14, 33, 49, 129, 1025};
++    constexpr std::array<std::int32_t, 12> kK6144RouteInteriors{1, 8, 24, 40, 96, 256, 384, 512, 768, 976, 1023, 1024};
+ 
+     int failures = 0;
+     failures += ninfer::test::linear_add::run_shape(
+         "Q5_A16 LinearAdd", WeightFormat::Q5G64F16S,
+         ShapeCase{5120, 6144, 401U, kK6144RouteStarts, kK6144RouteInteriors});
+-    constexpr std::array<std::int32_t, 5> kK17408RouteStarts{2, 17, 33, 49, 129};
+-    constexpr std::array<std::int32_t, 6> kK17408RouteInteriors{1, 8, 24, 40, 96, 256};
++    constexpr std::array<std::int32_t, 6> kK17408RouteStarts{2, 17, 33, 49, 129, 1025};
++    constexpr std::array<std::int32_t, 12> kK17408RouteInteriors{1, 8, 24, 40, 96, 256, 384, 512, 768, 976, 1023, 1024};
+     failures += ninfer::test::linear_add::run_shape(
+         "Q5_A16 LinearAdd", WeightFormat::Q5G64F16S,
+         ShapeCase{5120, 17408, 409U, kK17408RouteStarts, kK17408RouteInteriors});

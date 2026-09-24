@@ -1,0 +1,110 @@
+--- a/src/ops/common/mma.cuh
++++ b/src/ops/common/mma.cuh
+@@ -7,6 +7,14 @@
+ #include <cuda_fp16.h>
+ 
+ namespace ninfer::ops {
++
++// Keep unused SM75 activation lanes deterministic, including under alternate
++// MMA schedules. Do not let shared-memory contents become implicit operands.
++#if defined(NINFER_SM75)
++inline constexpr bool kMmaRequiresInitializedPadding = true;
++#else
++inline constexpr bool kMmaRequiresInitializedPadding = false;
++#endif
+ 
+ __device__ __forceinline__ void ldmatrix_x1(unsigned& r0, unsigned addr) {
+     asm volatile("ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%0}, [%1];\n"
+--- a/src/ops/linear/w8/w8_small_t_mma.cuh
++++ b/src/ops/linear/w8/w8_small_t_mma.cuh
+@@ -102,6 +102,7 @@
+ 
+     const auto stage_x = [&](int group_k0) {
+         constexpr bool kPaddedStage =
++            kMmaRequiresInitializedPadding ||
+             Schedule::kActivationStage == W8SmallTMmaActivationStage::PaddedZero;
+         constexpr int kStageCols     = kPaddedStage ? kTileCols : ActiveCols;
+         constexpr int kItemsPerSplit = kStageCols * (kTileK / 8);
+--- a/src/ops/linear/fp8/fp8_a16_mma.cuh
++++ b/src/ops/linear/fp8/fp8_a16_mma.cuh
+@@ -79,7 +79,8 @@
+     const auto stage_activation = [&](int group_k0) {
+         constexpr auto kActivationCache =
+             Schedule::kActivationCache == Fp8A16MmaCache::Default ? Cache::ca : Cache::cg;
+-        constexpr bool kPadded = Schedule::kActivationStage == Fp8A16MmaActivationStage::PaddedZero;
++        constexpr bool kPadded = kMmaRequiresInitializedPadding ||
++                                 Schedule::kActivationStage == Fp8A16MmaActivationStage::PaddedZero;
+         constexpr int kStageTokens = kPadded ? kTileTokens : ActiveTokens;
+         constexpr int kItems       = kStageTokens * (kTileK / 8);
+         for (int item = lane; item < kItems; item += 32) {
+--- a/src/ops/linear/q4/q4_small_t_mma.cuh
++++ b/src/ops/linear/q4/q4_small_t_mma.cuh
+@@ -103,14 +103,18 @@
+     const int row0    = static_cast<int>(blockIdx.x) * RowPolicy::kOutputRowsPerCta;
+ 
+     const auto stage_x = [&](int group_k0) {
+-        constexpr int kItemsPerSplit = ActiveCols * (kTileK / 8);
++        constexpr int kStageCols = kMmaRequiresInitializedPadding ? kTileCols : ActiveCols;
++        constexpr int kItemsPerSplit = kStageCols * (kTileK / 8);
+         for (int item = lane; item < kItemsPerSplit; item += 32) {
+             const int col = item / (kTileK / 8);
+             const int k8  = item - col * (kTileK / 8);
+             auto* dst     = &x_shared[warp][col * kTileK + q4_small_t_swizzle_64(col, k8 * 8)];
+-            cp_async<16>(
+-                dst,
+-                &x[static_cast<std::int64_t>(col) * kHidden + group_k0 + warp * kTileK + k8 * 8]);
++            if (col < ActiveCols) {
++                cp_async<16>(dst, &x[static_cast<std::int64_t>(col) * kHidden + group_k0 +
++                                      warp * kTileK + k8 * 8]);
++            } else {
++                store_vec(dst, make_int4(0, 0, 0, 0));
++            }
+         }
+     };
+ 
+--- a/src/ops/linear/w8/w8_rowsplit_gemm_medium_t_splitk.cuh
++++ b/src/ops/linear/w8/w8_rowsplit_gemm_medium_t_splitk.cuh
+@@ -48,12 +48,17 @@
+     const int cta_row0   = static_cast<int>(blockIdx.x) * kRowsPerCta;
+ 
+     const auto stage_x = [&](int k0) {
+-        for (int item = lane; item < local_cols * (kTileK / 8); item += 32) {
++        const int stage_cols = kMmaRequiresInitializedPadding ? kWarpCols : local_cols;
++        for (int item = lane; item < stage_cols * (kTileK / 8); item += 32) {
+             const int col = item / (kTileK / 8);
+             const int k8  = item - col * (kTileK / 8);
+             auto* dst     = &b_shared[warp][col * kTileK + w8_small_t_swizzle_64(col, k8 * 8)];
+-            cp_async<16, Cache::cg>(
+-                dst, &x[static_cast<std::int64_t>(n_base + col) * Hidden + k0 + k8 * 8]);
++            if (col < local_cols) {
++                cp_async<16, Cache::cg>(
++                    dst, &x[static_cast<std::int64_t>(n_base + col) * Hidden + k0 + k8 * 8]);
++            } else {
++                store_vec(dst, make_int4(0, 0, 0, 0));
++            }
+         }
+         cp_commit();
+     };
+--- a/src/ops/gdn_input_proj/w8/w8_gdn_input_gemm_splitk.cu
++++ b/src/ops/gdn_input_proj/w8/w8_gdn_input_gemm_splitk.cu
+@@ -99,12 +99,17 @@
+     const int cta_row0   = static_cast<int>(blockIdx.x) * kRowsPerCta;
+ 
+     const auto stage_x = [&](int k0) {
+-        for (int item = lane; item < local_cols * (kTileK / 8); item += 32) {
++        const int stage_cols = kMmaRequiresInitializedPadding ? kWarpCols : local_cols;
++        for (int item = lane; item < stage_cols * (kTileK / 8); item += 32) {
+             const int col = item / (kTileK / 8);
+             const int k8  = item - col * (kTileK / 8);
+             auto* dst     = &b_shared[warp][col * kTileK + swizzle_64(col, k8 * 8)];
+-            cp_async<16, Cache::cg>(
+-                dst, &x[static_cast<std::int64_t>(n_base + col) * kHidden + k0 + k8 * 8]);
++            if (col < local_cols) {
++                cp_async<16, Cache::cg>(
++                    dst, &x[static_cast<std::int64_t>(n_base + col) * kHidden + k0 + k8 * 8]);
++            } else {
++                store_vec(dst, make_int4(0, 0, 0, 0));
++            }
+         }
+         cp_commit();
+     };

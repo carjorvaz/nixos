@@ -1,0 +1,119 @@
+Turing MMVQ tuning for batches 2-8: rows_per_block 4 (one warp for the k-quant
+and i-quant classes) instead of 2, because MMVQ re-loads the activation vector
+per (row block, column) and the resulting L2 traffic scales as ncols/rows.
+Measured on the production shapes: n=3 +10-24%, n=5 +19-21%, n=8 +15-20%
+(GB/s of weights); n=1 unchanged. CPU-reference MUL_MAT tests for the
+production shapes at n=1/3/5 pass 36/36.
+
+End to end at 64k context / 32k prompt (K f16 + V q4_0, greedy wikitext):
+base 25.3 tok/s, MTP2 47.0 (acc 2.59), MTP4 54.4 (acc 4.20). Deeper drafts
+only became viable with this fix; at n=5 the untuned kernel ran at ~310 GB/s.
+
+Context and measurements: docs/exec-plans/active/llamacpp-parity.md
+("MMVQ activation re-reads: the wide-batch cliff").
+
+Apply on top of patches/llama-cpp-native-q4-dequant.patch and
+patches/llama-cpp-sm75-prefill-fa.patch (independent of both).
+
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 8337353..e01d10d 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -546,12 +546,32 @@ static constexpr __host__ __device__ int calc_nwarps(ggml_type type, int ncols_d
+             case 2:
+             case 3:
+             case 4:
+-                return 4;
++#ifdef GGML_MMVQ_TURING_N4_WARPS
++                return GGML_MMVQ_TURING_N4_WARPS;
++#else
++                // Turing, small batches: 1 warp per block measures faster than 4 for the
++                // i-quants and the 4-bit k-quants; Q6_K still prefers the wider block.
++                switch (type) {
++                    case GGML_TYPE_Q2_K:
++                    case GGML_TYPE_Q3_K:
++                    case GGML_TYPE_Q4_K:
++                    case GGML_TYPE_Q5_K:
++                    case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_IQ4_XS:
++                        return 1;
++                    default:
++                        return 4;
++                }
++#endif
+             case 5:
+             case 6:
+             case 7:
+             case 8:
+-                return 2;
++#ifdef GGML_MMVQ_TURING_N58_WARPS
++                return GGML_MMVQ_TURING_N58_WARPS;
++#else
++                return 1;
++#endif
+             default:
+                 return 1;
+         }
+@@ -588,11 +608,20 @@ static constexpr __host__ __device__ int calc_rows_per_block(int ncols_dst, int
+             case 2:
+             case 3:
+             case 4:
++#ifdef GGML_MMVQ_TURING_N4_ROWS
++                return GGML_MMVQ_TURING_N4_ROWS;
++#else
++                return 4;
++#endif
+             case 5:
+             case 6:
+             case 7:
+             case 8:
+-                return 2;
++#ifdef GGML_MMVQ_TURING_N58_ROWS
++                return GGML_MMVQ_TURING_N58_ROWS;
++#else
++                return 4;
++#endif
+             default:
+                 return 1;
+         }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 5fd105f..187085f 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -10679,6 +10679,15 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         }
+     }
+ 
++    // MMVQ config coverage on the production shapes (Turing rows-per-block/nwarps).
++    for (ggml_type ta : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_IQ4_XS }) {
++        for (int64_t n : { 1, 3, 5 }) {
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32, 17408, n, 5120, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32,  5120, n, 17408, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32, 10240, n, 5120, {1, 1}, {1, 1}));
++        }
++    }
++
+     // Prefill-shaped FA on the production geometry (multi-row query tiling).
+     for (ggml_type tk : { GGML_TYPE_F16, GGML_TYPE_Q4_0 }) {
+         for (int64_t kv : { 1024, 4096 }) {
+@@ -11208,6 +11217,20 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+     }
+ 
+     // Q4_K multi-column mat-vec
++    // Production model shapes (Qwen3.8-27B UD-Q4_K_M) at decode batch sizes,
++    // so the MMVQ/MMQ mix can be measured per matrix class.
++    for (int n : { 1, 3, 5, 8 }) {
++        for (ggml_type ta : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_IQ4_XS }) {
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32, 17408, n,  5120, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32,  5120, n, 17408, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32, 10240, n,  5120, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32,  6144, n,  5120, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32,  5120, n,  6144, {1, 1}, {1, 1}));
++            test_cases.emplace_back(new test_mul_mat(ta, GGML_TYPE_F32, 12288, n,  5120, {1, 1}, {1, 1}));
++        }
++        test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q6_K, GGML_TYPE_F32, 248320, n, 5120, {1, 1}, {1, 1}));
++    }
++
+     for (int64_t m : {4096, 6144, 6272, 14336}) {
+         for (int bs : {1, 2, 3, 4, 8}) {
+             test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_K, GGML_TYPE_F32, m, bs, 4096, {1, 1}, {1, 1}));

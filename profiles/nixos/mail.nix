@@ -204,41 +204,74 @@ in
     }
   ];
 
-  services.rspamd = {
-    localLuaRules = rspamdLocalRules;
-    locals = {
-      "options.inc".text = ''
-        dns {
-          nameserver = ["127.0.0.1"];
-        }
-      '';
-      "classifier-bayes.conf".text = lib.mkAfter ''
-        autolearn {
-          spam_threshold = 12.0;
-          junk_threshold = 10.0;
-          ham_threshold = -2.0;
-          check_balance = true;
-          min_balance = 0.6;
-        }
-      '';
-      "rbl.conf".text = ''
-        rbls {
-          senderscore_reputation {
-            disable_monitoring = true;
+  # DNSBLs (Spamhaus ZEN/DBL, DNSWL) refuse or rate-limit queries coming from
+  # public resolvers such as blocky's DoQ upstreams, silently disabling the
+  # blocklist layer. Give rspamd its own resolver that performs real recursion,
+  # bound to a spare loopback address so it does not clash with blocky on
+  # 127.0.0.1.
+  services = {
+    rspamd = {
+      localLuaRules = rspamdLocalRules;
+      locals = {
+        "options.inc".text = ''
+          dns {
+            # 127.0.0.4 is the local unbound instance (real recursion). DNSBLs
+            # such as Spamhaus ZEN/DBL and DNSWL refuse or rate-limit queries
+            # relayed through public resolvers like blocky's DoQ upstreams, so
+            # rspamd must not resolve through blocky.
+            nameserver = ["127.0.0.4"];
           }
-        }
-      '';
+        '';
+        "classifier-bayes.conf".text = lib.mkAfter ''
+          autolearn {
+            # 8 keeps autolearn reachable: most spam lands between add_header (6)
+            # and reject (15), and with the default 12 almost nothing qualified.
+            spam_threshold = 8.0;
+            junk_threshold = 10.0;
+            ham_threshold = -2.0;
+            check_balance = true;
+            min_balance = 0.6;
+          }
+        '';
+        "rbl.conf".text = ''
+          rbls {
+            senderscore_reputation {
+              disable_monitoring = true;
+            }
+          }
+        '';
+      };
+    };
+    kresd.enable = lib.mkForce false;
+    unbound = {
+      enable = true;
+      resolveLocalQueries = false;
+      settings = {
+        server = {
+          interface = [ "127.0.0.4" ];
+          access-control = [ "127.0.0.0/8 allow" ];
+          prefetch = true;
+          hide-identity = true;
+          hide-version = true;
+        };
+      };
     };
   };
-  services.kresd.enable = lib.mkForce false;
 
   systemd.services.rspamd = {
-    after = [ "blocky.service" ];
-    wants = [ "blocky.service" ];
+    after = [
+      "blocky.service"
+      "unbound.service"
+    ];
+    wants = [
+      "blocky.service"
+      "unbound.service"
+    ];
   };
 
   environment.persistence."/persist".directories = [
     "/var/lib/rspamd"
+    "/var/lib/unbound"
     # Rspamd Bayes/stat data is stored in the local Redis instance.
     "/var/lib/redis-rspamd"
     {

@@ -99,8 +99,14 @@ else
 fi
 
 if command -v nixfmt >/dev/null 2>&1; then
-  if ! nixfmt --check $(git ls-files '*.nix') >/dev/null 2>&1; then
-    echo "error: nixfmt found unformatted files. Run: nixfmt \$(git ls-files '*.nix')" >&2
+  nix_files=()
+  while IFS= read -r -d '' file; do
+    if [[ -f "$file" ]]; then
+      nix_files+=("$file")
+    fi
+  done < <(git ls-files -z -- '*.nix')
+  if ((${#nix_files[@]} > 0)) && ! nixfmt --check "${nix_files[@]}"; then
+    echo "error: nixfmt found unformatted files. Run nixfmt on the reported files." >&2
     exit 1
   fi
 else
