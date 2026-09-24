@@ -22,12 +22,12 @@ let
   # patches and the Turing port, so the pin and the patches cannot drift apart.
   # Bump both together: `rev` to the fork commit, `hash` to
   # `nix hash path --type sha256 <the unpacked GitHub archive, root stripped>`.
-  revision = "e716361cdb37b012c0a22a95756bb7d77389f295";
+  revision = "cedd8089fbf122637b063edf620725235eca2d79";
   stack = fetchFromGitHub {
     owner = "carjorvaz";
     repo = "qwen38-27b-rtx2080ti";
     rev = revision;
-    hash = "sha256-WLiPmQzDRVj7CdyRGeHqlLNIX2hMDRXDtJxx94hVeV8=";
+    hash = "sha256-fXWBUJRxF7wGvMTfBo43Fjxbf42DLnHZz1+IOw+u8t0=";
   };
   # Content-address this directory so unrelated repo commits do not change the
   # asset store path (which would restart the service on every switch).
@@ -211,7 +211,7 @@ let
 in
 assert lib.versions.majorMinor cudaPackages.cuda_nvcc.version == "12.9";
 symlinkJoin {
-  name = "qwen38-sm75-0.28.0";
+  name = "qwen38-sm75-0.29.0";
   paths = [
     prepare
     serve
@@ -225,7 +225,7 @@ symlinkJoin {
   ];
   meta = {
     description = "Pinned Qwen3.8-27B vLLM runtime preparation and serving for Turing GPUs";
-    homepage = "https://github.com/carjorvaz/HyperQwen";
+    homepage = "https://github.com/carjorvaz/qwen38-27b-rtx2080ti";
     mainProgram = "qwen38-sm75-serve";
     platforms = [ "x86_64-linux" ];
   };

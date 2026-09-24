@@ -17,7 +17,10 @@ def coordinator():
     return HybridKVCacheCoordinator(config,262144,8,True,True,False,1,1,BLOCK,HASH,num_prefill_lookahead=4)
 
 for prompt in [1,15,16,17,31,32,33,1632,1633,1648,32640,32641,32656,32768,32769,32783]:
-    sched=NS(cache_config=NS(block_size=BLOCK),block_size=BLOCK,hash_block_size=HASH,use_eagle=True,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=4)
+    sched=NS(cache_config=NS(block_size=BLOCK),block_size=BLOCK,hash_block_size=HASH,use_eagle=True,
+         # 0.29: internal Mamba prefill checkpoint blocks are disabled under
+         # Eagle/MTP, which is the configuration this check exercises.
+         mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=4)
     request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
     stops=[]
     while request.num_computed_tokens<prompt:
@@ -72,7 +75,10 @@ print('CACHE_CPU_REGRESSION_PASS',flush=True)
 
 for hash_size, lookahead in [(1,0),(1,1),(2,2),(4,4),(8,3),(16,4),(32,8)]:
     for prompt in range(1, 2*BLOCK+hash_size+1):
-        sched=NS(cache_config=NS(block_size=BLOCK),block_size=BLOCK,hash_block_size=hash_size,use_eagle=bool(lookahead),mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=lookahead)
+        sched=NS(cache_config=NS(block_size=BLOCK),block_size=BLOCK,hash_block_size=hash_size,use_eagle=bool(lookahead),
+                 # The spec below leaves num_prefill_checkpoint_blocks at 0, so
+                 # 0.29 disables internal Mamba prefill checkpoints here.
+                 mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=lookahead)
         request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
         stops=[]
         while request.num_computed_tokens<prompt:

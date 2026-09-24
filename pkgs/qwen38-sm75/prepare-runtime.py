@@ -24,7 +24,7 @@ if not REVISION:
     raise RuntimeError(
         "QWEN_SOURCE_REVISION is unset; run this through the packaged wrappers"
     )
-VLLM_VERSION = "0.28.0"
+VLLM_VERSION = "0.29.0"
 IDENTITY_ENV = (
     "PATH", "CC", "CXX", "CUDAHOSTCXX", "NVCC_CCBIN", "CUDA_HOME",
     "LD_LIBRARY_PATH", "TRITON_LIBCUDA_PATH", "TRITON_PTXAS_PATH",
@@ -35,30 +35,43 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def turing_series(source):
-    """The Turing port patches, in the order patches-turing/series states."""
-    names = (source / "patches-turing/series").read_text().split()
-    files = sorted(path.name for path in (source / "patches-turing").glob("*.patch"))
+def read_series(path):
+    """Names from a series file: one basename per line, `#` comments ignored."""
+    names = []
+    for line in path.read_text().splitlines():
+        name = line.split("#", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def series_patches(directory, skip=()):
+    """The patches a series file names, in order, minus `skip`.
+
+    The series file is the apply order (upstream's Dockerfile and checker use
+    it); a glob is not. It and the directory must agree exactly.
+    """
+    names = read_series(directory / "series")
+    files = sorted(path.name for path in directory.glob("*.patch"))
     if not names or sorted(names) != files:
-        raise RuntimeError("patches-turing/series does not match patches-turing/*.patch")
+        raise RuntimeError(f"{directory}/series does not match {directory}/*.patch")
     patches = []
     for name in names:
-        path = source / "patches-turing" / name
+        if name in skip:
+            continue
+        path = directory / name
         if not path.is_file():
-            raise RuntimeError(f"patches-turing/series names a missing patch: {name}")
+            raise RuntimeError(f"{directory}/series names a missing patch: {name}")
         patches.append(path)
     return patches
 
 
 def specification(source, assets, python):
-    upstream = sorted(
-        path for path in (source / "patches").glob("*.patch")
-        if path.name != "dflash2-backport.patch"
-    )
-    turing = turing_series(source)
-    if len(upstream) != 31 or not turing:
+    upstream = series_patches(source / "patches", skip=("dflash2-backport.patch",))
+    turing = series_patches(source / "patches-turing")
+    if len(upstream) != 44 or not turing:
         raise RuntimeError(
-            "Expected the pinned source to carry the 3090 series and the Turing port"
+            "Expected the pinned source to carry the 44-patch 3090 series and the Turing port"
         )
     identity = {
         "schema": 1,
@@ -134,6 +147,7 @@ def prepare(root, assets, python, identity, fingerprint, patches):
         print(f"qwen38-sm75: applying {patch.name}", flush=True)
         subprocess.run([
             "patch", "--batch", "--forward", "--no-backup-if-mismatch",
+            "--fuzz", "0",
             "-p1", "-d", str(package), "-i", str(patch),
         ], check=True)
 
