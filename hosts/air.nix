@@ -133,10 +133,39 @@ let
         --replace-fail \
           ${lib.escapeShellArg hermesGatewaySudoCallbackLine} \
           ${lib.escapeShellArg hermesGatewayNativeSudoReplacement}
+
+      # nixpkgs 26.11 deprecates the platform shortcuts; the pinned Hermes
+      # source predates the rename, so silence the evaluation warnings here.
+      substituteInPlace nix/hermes-agent.nix \
+        --replace-fail 'stdenv.isLinux' 'stdenv.hostPlatform.isLinux'
     '';
   };
+
+  # uv2nix 5a836d3 (pinned by hermes-agent) still reads the deprecated
+  # stdenv.isDarwin / stdenv.isLinux shortcuts. Upstream fixed this rename in
+  # 4b59abb2; apply the same rename to the pinned source instead of bumping
+  # uv2nix for the whole Hermes venv.
+  hermesUv2nix =
+    let
+      base = inputs.hermes-agent.inputs.uv2nix;
+      patchedSrc = pkgs.applyPatches {
+        name = "uv2nix-host-platform";
+        src = base.outPath;
+        postPatch = ''
+          substituteInPlace lib/build.nix \
+            --replace-fail 'stdenv.isDarwin' 'stdenv.hostPlatform.isDarwin' \
+            --replace-fail 'stdenv.isLinux' 'stdenv.hostPlatform.isLinux'
+        '';
+      };
+    in
+    (import "${patchedSrc}/flake.nix").outputs {
+      self = hermesUv2nix;
+      inherit (base.inputs) nixpkgs pyproject-nix;
+    };
+
   hermesAgentPackage = pkgs.callPackage "${hermesAgentSource}/nix/hermes-agent.nix" {
-    inherit (inputs.hermes-agent.inputs) uv2nix pyproject-nix pyproject-build-systems;
+    uv2nix = hermesUv2nix;
+    inherit (inputs.hermes-agent.inputs) pyproject-nix pyproject-build-systems;
     npm-lockfile-fix =
       inputs.hermes-agent.inputs.npm-lockfile-fix.packages.${pkgs.stdenv.hostPlatform.system}.default;
     rev = inputs.hermes-agent.rev or null;
@@ -890,6 +919,7 @@ in
       package = null;
       settings = {
         theme = "light:Gruvbox Light,dark:Gruvbox Dark Hard";
+        "font-size" = 16;
       };
     };
   };

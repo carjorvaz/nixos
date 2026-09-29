@@ -27,7 +27,7 @@ let
   version = lib.getVersion hermesAgent;
   electronHeaders = pkgs.fetchurl {
     url = "https://artifacts.electronjs.org/headers/dist/v${electron.version}/node-v${electron.version}-headers.tar.gz";
-    hash = "sha256-CyzcARd1+GhWr8ED7HBYW2MYD+tgetqZFMkaivaGvw0=";
+    hash = "sha256-xDgc5PpkcLpWHnlqVcjBD3SxJKtkUoSGLnJaSSrxJtI=";
   };
 
   nodePtyPlatform =

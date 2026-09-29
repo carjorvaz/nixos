@@ -22,6 +22,14 @@ in
 vesktop.overrideAttrs (old: {
   pname = "vesktop-discord";
 
+  # nixpkgs rev f45c6f04 carries a stale pnpm deps hash: pnpm 11.27 in this
+  # nixpkgs produces a different store dump than the one the upstream hash was
+  # generated from, so the fixed-output fetch always fails. Pin the hash this
+  # pnpm actually produces.
+  pnpmDeps = old.pnpmDeps.override {
+    hash = "sha256-SerOj/8E2ztHy60Nrr+kQdWHis9p4Anyt3ohaMvzUqA=";
+  };
+
   nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ perl ];
 
   postPatch = (old.postPatch or "") + ''
