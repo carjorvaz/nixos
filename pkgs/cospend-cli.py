@@ -77,6 +77,101 @@ def split_amount(amount: Decimal, members: list[dict[str, Any]]) -> list[Decimal
     return shares
 
 
+def bill_cents(bill: dict[str, Any]) -> int:
+    return int(Decimal(str(bill["amount"])).quantize(CENT) * 100)
+
+
+def bill_ower_cents(
+    bill: dict[str, Any], members: dict[int, dict[str, Any]]
+) -> dict[int, int]:
+    """Owed cents per member id for one bill (custom amounts or weighted split)."""
+    custom = bill.get("ower_amounts") or bill.get("owerAmounts")
+    if custom:
+        owed: dict[int, int] = {}
+        for entry in custom:
+            ower_id = int(entry.get("ower_id", entry.get("owerId")))
+            if ower_id not in members:
+                raise CospendError(
+                    f"Bill {bill.get('id')} references unknown custom ower {ower_id}"
+                )
+            owed[ower_id] = owed.get(ower_id, 0) + int(
+                Decimal(str(entry["amount"])).quantize(CENT) * 100
+            )
+        return owed
+    ower_ids = [int(value) for value in (bill.get("owerIds") or [])]
+    if not ower_ids:
+        ower_ids = [int(ower["id"]) for ower in bill.get("owers", [])]
+    if not ower_ids:
+        return {}
+    weights: list[Decimal] = []
+    for ower_id in ower_ids:
+        if ower_id not in members:
+            raise CospendError(f"Bill {bill.get('id')} references unknown ower {ower_id}")
+        weight = Decimal(str(members[ower_id].get("weight", 1)))
+        if weight <= 0:
+            raise CospendError(
+                f"Bill {bill.get('id')} has non-positive split weight for member {ower_id}"
+            )
+        weights.append(weight)
+    total_weight = sum(weights, Decimal("0"))
+    total = bill_cents(bill)
+    owed = {}
+    allocated = 0
+    for index, ower_id in enumerate(ower_ids):
+        if index == len(ower_ids) - 1:
+            share = total - allocated
+        else:
+            share = int(Decimal(total) * weights[index] / total_weight)
+            allocated += share
+        owed[ower_id] = owed.get(ower_id, 0) + share
+    return owed
+
+
+def compute_balances(
+    members: dict[int, dict[str, Any]], bills: list[dict[str, Any]]
+) -> dict[int, int]:
+    """Reconstruct every member balance in cents from raw bills (paid minus owed)."""
+    balances = {member_id: 0 for member_id in members}
+    for bill in bills:
+        payer_id = int(bill["payer_id"])
+        if payer_id not in balances:
+            raise CospendError(f"Bill {bill.get('id')} has unknown payer {payer_id}")
+        balances[payer_id] += bill_cents(bill)
+        for ower_id, cents in bill_ower_cents(bill, members).items():
+            balances[ower_id] -= cents
+    return balances
+
+
+def settlement_plan(balances: dict[int, int]) -> list[tuple[int, int, int]]:
+    """Greedy debtor-creditor matching; caller must ensure balances sum to zero."""
+    debtors = sorted(
+        ((member_id, cents) for member_id, cents in balances.items() if cents < 0),
+        key=lambda item: (item[1], item[0]),
+    )
+    creditors = sorted(
+        ((member_id, cents) for member_id, cents in balances.items() if cents > 0),
+        key=lambda item: (-item[1], item[0]),
+    )
+    plan: list[tuple[int, int, int]] = []
+    debtor_index = creditor_index = 0
+    while debtor_index < len(debtors) and creditor_index < len(creditors):
+        debtor_id, debtor_cents = debtors[debtor_index]
+        creditor_id, creditor_cents = creditors[creditor_index]
+        transfer = min(-debtor_cents, creditor_cents)
+        plan.append((debtor_id, creditor_id, transfer))
+        debtor_cents += transfer
+        creditor_cents -= transfer
+        if debtor_cents == 0:
+            debtor_index += 1
+        else:
+            debtors[debtor_index] = (debtor_id, debtor_cents)
+        if creditor_cents == 0:
+            creditor_index += 1
+        else:
+            creditors[creditor_index] = (creditor_id, creditor_cents)
+    return plan
+
+
 def bill_matches(bill: dict[str, Any], record: dict[str, Any]) -> bool:
     try:
         bill_amount = Decimal(str(bill["amount"])).quantize(CENT)
@@ -265,18 +360,101 @@ def choose_project(projects: list[dict[str, Any]], requested: str | None) -> dic
     return projects[0]
 
 
+def check_bot_contract(project: dict[str, Any]) -> list[dict[str, Any]]:
+    if int(project.get("myaccesslevel", 0)) != 2:
+        raise CospendError(
+            "Bot access must be exactly Participant (2); refusing broader or narrower access"
+        )
+    active_members = [
+        member for member in project.get("members", []) if member.get("activated")
+    ]
+    if {member.get("userid") for member in active_members} != {"carlos", "mafalda"}:
+        raise CospendError(
+            "Expected exactly active financial members carlos and mafalda"
+        )
+    return active_members
+
+
+def run_balance(args: argparse.Namespace) -> int:
+    password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
+    client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
+    project = choose_project(client.projects(), args.project)
+    check_bot_contract(project)
+    members_by_id = {int(member["id"]): member for member in project.get("members", [])}
+    bills = client.recent_bills(project["id"])
+    balances = compute_balances(members_by_id, bills)
+    total = sum(balances.values())
+
+    paid: dict[int, int] = {}
+    counts: dict[int, int] = {}
+    dates = [str(bill["date"]) for bill in bills if bill.get("date")]
+    for bill in bills:
+        payer_id = int(bill["payer_id"])
+        paid[payer_id] = paid.get(payer_id, 0) + bill_cents(bill)
+        counts[payer_id] = counts.get(payer_id, 0) + 1
+
+    def money(cents: int) -> str:
+        return format(Decimal(cents) / 100, ".2f")
+
+    def name(member_id: int) -> str:
+        return str(members_by_id.get(member_id, {}).get("name", f"id:{member_id}"))
+
+    plan = settlement_plan(balances) if total == 0 else None
+    report = {
+        "status": "balance",
+        "project": project["name"],
+        "project_id": project["id"],
+        "bills_counted": len(bills),
+        "date_range": [min(dates), max(dates)] if dates else None,
+        "paid_totals": [
+            {
+                "member": name(member_id),
+                "bills_as_payer": counts.get(member_id, 0),
+                "amount": money(paid.get(member_id, 0)),
+            }
+            for member_id in sorted(members_by_id)
+        ],
+        "balances": [
+            {"member": name(member_id), "balance": money(balances[member_id])}
+            for member_id in sorted(members_by_id)
+        ],
+        "sum_check": money(total),
+        "books_balanced": total == 0,
+        "suggested_transfers": (
+            [
+                {
+                    "from": name(debtor_id),
+                    "to": name(creditor_id),
+                    "amount": money(cents),
+                }
+                for debtor_id, creditor_id, cents in plan
+            ]
+            if plan is not None
+            else None
+        ),
+    }
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Preview and safely add one Cospend expense"
+        description="Preview and safely add one Cospend expense, or report balances"
     )
-    parser.add_argument("--description", required=True)
-    parser.add_argument("--amount", required=True)
-    parser.add_argument("--date", required=True, help="YYYY-MM-DD")
-    parser.add_argument("--payer", required=True, help="Exact member name or user ID")
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        choices=("add", "balance"),
+        default="add",
+        help="add (default): record one expense; balance: read-only who-owes-whom report",
+    )
+    parser.add_argument("--description")
+    parser.add_argument("--amount")
+    parser.add_argument("--date", help="YYYY-MM-DD")
+    parser.add_argument("--payer", help="Exact member name or user ID")
     parser.add_argument(
         "--for",
         dest="owers",
-        required=True,
         action="append",
         help="Exact member name or user ID; repeat for each participant",
     )
@@ -291,6 +469,21 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.mode == "balance":
+            return run_balance(args)
+        missing = [
+            flag
+            for flag, value in (
+                ("--description", args.description),
+                ("--amount", args.amount),
+                ("--date", args.date),
+                ("--payer", args.payer),
+                ("--for", args.owers),
+            )
+            if value is None
+        ]
+        if missing:
+            raise CospendError("Add mode requires " + ", ".join(missing))
         amount = parse_amount(args.amount)
         try:
             date = dt.date.fromisoformat(args.date).isoformat()
@@ -303,18 +496,7 @@ def main(argv: list[str] | None = None) -> int:
         password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
         client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
         project = choose_project(client.projects(), args.project)
-        if int(project.get("myaccesslevel", 0)) != 2:
-            raise CospendError(
-                "Bot access must be exactly Participant (2); refusing broader or narrower access"
-            )
-
-        active_members = [
-            member for member in project.get("members", []) if member.get("activated")
-        ]
-        if {member.get("userid") for member in active_members} != {"carlos", "mafalda"}:
-            raise CospendError(
-                "Expected exactly active financial members carlos and mafalda"
-            )
+        active_members = check_bot_contract(project)
         payer = resolve_named(active_members, args.payer, "payer")
         selected: list[dict[str, Any]] = []
         for query in args.owers:

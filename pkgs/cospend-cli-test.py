@@ -75,7 +75,7 @@ class CospendCliTests(unittest.TestCase):
             "user_comment": "",
         }
 
-    def invoke(self, fake, extra=None):
+    def invoke_with(self, fake, argv):
         stdout, stderr = io.StringIO(), io.StringIO()
         with (
             mock.patch.object(MODULE, "keychain_password", return_value="secret"),
@@ -83,8 +83,11 @@ class CospendCliTests(unittest.TestCase):
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(stderr),
         ):
-            code = MODULE.main(self.ARGS + (extra or []))
+            code = MODULE.main(argv)
         return code, stdout.getvalue(), stderr.getvalue()
+
+    def invoke(self, fake, extra=None):
+        return self.invoke_with(fake, self.ARGS + (extra or []))
 
     def matching_bill(self, token, marker=True):
         return {
@@ -237,6 +240,86 @@ class CospendCliTests(unittest.TestCase):
     def test_amount_rejects_fractional_cents(self):
         with self.assertRaises(MODULE.CospendError):
             MODULE.parse_amount("12.345")
+
+    def test_add_mode_requires_expense_fields(self):
+        fake = FakeClient()
+        code, _, stderr = self.invoke_with(fake, [])
+        self.assertEqual(code, 2)
+        self.assertIn("Add mode requires", stderr)
+        self.assertEqual(fake.create_calls, [])
+
+    def test_weighted_bill_split_truncates_then_assigns_residue(self):
+        members = {18: {"weight": 1}, 19: {"weight": 2}}
+        bill = {"id": 1, "amount": 10.00, "payer_id": 18, "owerIds": [18, 19]}
+        self.assertEqual(MODULE.bill_ower_cents(bill, members), {18: 333, 19: 667})
+
+    def test_custom_ower_amounts_are_honoured(self):
+        members = {18: {"weight": 1}, 19: {"weight": 1}}
+        bill = {
+            "id": 1,
+            "amount": 10.00,
+            "payer_id": 18,
+            "owerIds": [18, 19],
+            "ower_amounts": [{"ower_id": 19, "amount": "7.25"}],
+        }
+        self.assertEqual(MODULE.bill_ower_cents(bill, members), {19: 725})
+
+    def test_unknown_bill_member_fails_closed(self):
+        members = {18: {"weight": 1}}
+        bill = {"id": 1, "amount": 10.00, "payer_id": 18, "owerIds": [99]}
+        with self.assertRaises(MODULE.CospendError):
+            MODULE.bill_ower_cents(bill, members)
+
+    def test_balance_computation_matches_paid_minus_owed(self):
+        members = {
+            18: {"id": 18, "name": "Carlos Vaz", "weight": 1},
+            19: {"id": 19, "name": "Mafalda Ribeiro", "weight": 1},
+        }
+        bills = [
+            {"id": 1, "amount": 100.00, "payer_id": 18, "owerIds": [18, 19]},
+            {"id": 2, "amount": 372.00, "payer_id": 19, "owerIds": [18, 19]},
+        ]
+        balances = MODULE.compute_balances(members, bills)
+        self.assertEqual(balances, {18: -13600, 19: 13600})
+        self.assertEqual(MODULE.settlement_plan(balances), [(18, 19, 13600)])
+
+    def test_three_member_settlement_plan_matches_greedily(self):
+        plan = MODULE.settlement_plan({1: -3000, 2: -1000, 3: 4000})
+        self.assertEqual(plan, [(1, 3, 3000), (2, 3, 1000)])
+
+    def test_balance_mode_is_read_only_and_reports_zeroed_books(self):
+        fake = FakeClient()
+        fake.bills_responses = [
+            [
+                {"id": 1, "amount": 720.67, "payer_id": 18, "owerIds": [19], "date": "2026-09-29"},
+                {"id": 2, "amount": 720.67, "payer_id": 19, "owerIds": [18], "date": "2026-09-29"},
+            ]
+        ]
+        code, stdout, _ = self.invoke_with(fake, ["balance", "--project", "china-2026"])
+        self.assertEqual(code, 0)
+        self.assertEqual(fake.create_calls, [])
+        self.assertIn('"status": "balance"', stdout)
+        self.assertIn('"suggested_transfers": []', stdout)
+        self.assertIn('"books_balanced": true', stdout)
+
+    def test_unbalanced_books_omit_transfers(self):
+        fake = FakeClient()
+        fake.bills_responses = [
+            [
+                {
+                    "id": 1,
+                    "amount": 10.00,
+                    "payer_id": 18,
+                    "owerIds": [18, 19],
+                    "date": "2026-09-29",
+                    "ower_amounts": [{"ower_id": 19, "amount": "4.00"}],
+                }
+            ]
+        ]
+        code, stdout, _ = self.invoke_with(fake, ["balance", "--project", "china-2026"])
+        self.assertEqual(code, 0)
+        self.assertIn('"books_balanced": false', stdout)
+        self.assertIn('"suggested_transfers": null', stdout)
 
 
 if __name__ == "__main__":
