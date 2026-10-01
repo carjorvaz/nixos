@@ -1,6 +1,6 @@
 # tiberius: the engine's local patches, against upstream d6708a4aae15b4860000d54c8af9e84d684bce09.
 #
-# These two changes are one patch because they interleave in the same regions: the
+# The first two changes are one patch because they interleave in the same regions: the
 # host expert tier and the DAX window both edit expert_source.{hpp,cpp} (the
 # `pin_cache_complement` guard, and the `pinned()`/`device_alias()` path) and the
 # same resident-tier block in generate.cpp, so they cannot be applied separately
@@ -22,6 +22,22 @@
 #    without it cudaHostRegister is refused, the engine reports it once and keeps
 #    the pageable path.  Measured on the real corpus: prefill 13,136 -> 10,223 ms
 #    for a 4292-token prompt (327 -> 420 tok/s), decode unchanged.
+#
+# 3. STRATA_DENSE_FP16, the dense GEMMs on the FP16 tensor cores.  Turing has FP16
+#    tensor cores and no BF16 ones, so the dense GEMMs (Gemm::bf16 in
+#    src/prefill/gemm.cu, 482 calls per 4292-token prompt) were served by cuBLAS'
+#    FP32 SIMT fallback (`magma_sgemmEx_kernel`, 155 calls / 335.7 ms of a 9.2 s
+#    prompt).  The flag converts each operand pair to FP16 in the existing 64 MiB
+#    dequantization scratch and calls the same tensor-core path the FP16
+#    projections already use (accumulation stays FP32).  bf16 -> fp16 is exact
+#    for every value in fp16's finite range (8 vs 10 mantissa bits), and the
+#    operands were measured well inside it (max|X| 103.5, max|W| 11.56 against
+#    fp16's 65504; STRATA_GEMM_DEBUG prints them).  Measured 2026-10-01 on the
+#    real corpus, 3 runs/arm, flag on vs off in the same binary: 4292-token
+#    prompt 10,350 -> 9,845 ms (-4.9% mean, -5.8% median), 3514-token 9,782 ->
+#    9,179 (-6.2%); total kernel time 1564 -> 1302 ms (-16.8%).  The prompt-path
+#    state hash changes (different accumulation order; relative max deviation
+#    1.6e-6..5.3e-5) - it is a numerics change, hence opt-in, not a default.
 #
 # Merged by hand 2026-10-01 from the former pkgs/strata-sm75/hosttier.patch
 # (applied to d6708a4) and the tiberius-dma worktree's window change (whose base
@@ -803,3 +819,280 @@ index 6070087..66d7e38 100644
              }
          strata::prefill::Prefill::set_pinned_share(total ? (double) pinned / (double) total : 1.0);
      }
+
+diff --git a/src/prefill/gemm.cu b/src/prefill/gemm.cu
+--- a/src/prefill/gemm.cu
++++ b/src/prefill/gemm.cu
+@@ -5,6 +5,11 @@
+ #include <cublas_v2.h>
+ #include <cuda_runtime.h>
+ 
++#if !defined(__HIPCC__)
++#include <cuda_bf16.h>
++#include <cuda_fp16.h>
++#endif
++
+ #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
+ // The HIP compatibility shim maps CUDA shuffle spellings to Strata helpers.
+ // hipBLASLt's public headers declare native HIP shuffle functions, so keep
+@@ -42,6 +47,239 @@
+     }
+ }
+ 
++// ---------------------------------------------------------------------------------------------
++// Dense GEMMs on FP16 tensor cores:  STRATA_DENSE_FP16=1.
++//
++// Turing has FP16 tensor cores and no BF16 ones, so a BF16 operand pair can only be served by
++// cuBLAS' FP32 SIMT fallback (`magma_sgemmEx_kernel`).  Measured on this box (RTX 2080 Ti,
++// cublas 13.3), over the exact dense shapes of the prompt path: 6.3-9.0 TFLOPS for BF16 against
++// 32-60 TFLOPS for the same shape in FP16 (/data/gemm-probe.cu, /data/gemm-probe.out).
++//
++// bf16 -> fp16 is EXACT for every value in fp16's finite range: bf16 carries 8 mantissa bits and
++// fp16 carries 10, both binary, so every bf16 value in [2^-14, 65504) converts with no rounding
++// at all (and renormalises below that).  The operands that reach the tensor core are therefore
++// the same numbers as before, and the accumulation stays FP32 (CUBLAS_COMPUTE_32F, which nvcc
++// turns into the s1688 fp16 MMA with an fp32 accumulator - the same kernels the FP16 native
++// projection path already uses).  The whole difference is the accumulation order inside cuBLAS.
++//
++// The cost is one extra read+write of the activation (and, once per call, of the weight), which
++// is why the path is taken from `kFp16MinRows` rows up: below that the conversion dominates and
++// the BF16 SIMT kernel is no worse.
++//
++// PRECONDITION: |value| <= 65504 in both operands (fp16's finite range; above it the conversion
++// saturates to inf and the run is loud).  STRATA_GEMM_DEBUG=1 prints the true maximum of every
++// call's operands; /data/gemm-maxabs.log holds one full prompt's worth of those lines.
++constexpr int64_t kFp16MinRows = 32;
++
++bool dense_fp16_on() {
++    static const bool on = [] {
++        const char* v = std::getenv("STRATA_DENSE_FP16");
++        return v != nullptr && *v != '\0' && std::atoi(v) != 0;
++    }();
++    return on;
++}
++
++bool gemm_debug_on() {
++    static const bool on = [] {
++        const char* v = std::getenv("STRATA_GEMM_DEBUG");
++        return v != nullptr && *v != '\0' && std::atoi(v) != 0;
++    }();
++    return on;
++}
++
++#if !defined(__HIPCC__)
++
++struct alignas(16) F16x8 {
++    uint16_t v[8];
++};
++
++/// bf16 -> fp16, 8 elements per thread, round-to-nearest.
++__global__ void bf16_to_f16_kernel(const F16x8* __restrict__ src, F16x8* __restrict__ dst, long long n) {
++    const long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x;
++    if (i >= n) return;
++    const F16x8 a = src[i];
++    F16x8 b;
++#pragma unroll
++    for (int k = 0; k < 8; ++k)
++        b.v[k] = __half_as_ushort(__float2half_rn(__bfloat162float(__ushort_as_bfloat16(a.v[k]))));
++    dst[i] = b;
++}
++
++/// The unaligned / tail form: one element per thread.
++__global__ void bf16_to_f16_scalar_kernel(const uint16_t* __restrict__ src, uint16_t* __restrict__ dst,
++                                          long long n) {
++    const long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x;
++    if (i >= n) return;
++    dst[i] = __half_as_ushort(__float2half_rn(__bfloat162float(__ushort_as_bfloat16(src[i]))));
++}
++
++inline bool aligned16(const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15u) == 0; }
++
++void bf16_to_f16(const uint16_t* src, uint16_t* dst, int64_t n, cudaStream_t stream) {
++    if (n <= 0) return;
++    int64_t done = 0;
++    if (aligned16(src) && aligned16(dst)) {
++        const int64_t n8 = n >> 3;
++        if (n8 > 0) {
++            bf16_to_f16_kernel<<<(unsigned) ((n8 + 255) / 256), 256, 0, stream>>>((const F16x8*) src,
++                                                                                  (F16x8*) dst, (long long) n8);
++            done = n8 << 3;
++        }
++    }
++    if (done < n)
++        bf16_to_f16_scalar_kernel<<<(unsigned) ((n - done + 255) / 256), 256, 0, stream>>>(src + done, dst + done,
++                                                                                           (long long) (n - done));
++}
++
++/// STRATA_GEMM_DEBUG=1 only: max|v|, the count of non-finite values and the first index outside
++/// fp16's finite range, for a bf16 or fp16 buffer.  This is the evidence for the range
++/// precondition, and it blocks on the stream, so it must never be on for a measurement.
++struct Scan {
++    float max_abs = -1.0f;
++    long long nonfinite = -1;
++    long long first_big = -1;   // first index with |v| > 65504, -1 when there is none
++};
++
++__global__ void scan_kernel(const uint16_t* __restrict__ src, long long n, int as_bf16, float* __restrict__ fout,
++                            long long* __restrict__ lout) {
++    float m = 0.0f;
++    long long nf = 0;
++    for (long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x; i < n;
++         i += (long long) gridDim.x * blockDim.x) {
++        const uint16_t b = src[i];
++        if (as_bf16) {
++            if ((b & 0x7F80u) == 0x7F80u) ++nf;
++            const float f = __bfloat162float(__ushort_as_bfloat16(b));
++            const float a = fabsf(f);
++            if (a > m) m = a;
++            if (a > 65504.0f) atomicMin((long long*) &lout[1], (long long) i);
++        } else {
++            if ((b & 0x7C00u) == 0x7C00u) ++nf;
++            const float f = __half2float(__ushort_as_half(b));
++            const float a = fabsf(f);
++            if (a > m) m = a;
++            if (a > 65504.0f) atomicMin((long long*) &lout[1], (long long) i);
++        }
++    }
++    if (m > 0.0f) atomicMax((int*) fout, __float_as_int(m));
++    if (nf > 0) atomicAdd((unsigned long long*) &lout[0], (unsigned long long) nf);
++}
++
++__global__ void scan_init_kernel(float* __restrict__ fout, long long* __restrict__ lout) {
++    fout[0] = 0.0f;
++    lout[0] = 0;
++    lout[1] = 0x7FFFFFFFFFFFFFFFll;
++}
++
++/// The fp32 (engine output) form: max|v| and the number of non-finite values.
++__global__ void scan_f32_kernel(const float* __restrict__ src, long long n, float* __restrict__ fout,
++                                long long* __restrict__ lout) {
++    float m = 0.0f;
++    long long nf = 0;
++    for (long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x; i < n;
++         i += (long long) gridDim.x * blockDim.x) {
++        const float f = src[i];
++        if (!isfinite(f)) ++nf;
++        const float a = fabsf(f);
++        if (a > m) m = a;
++    }
++    if (m > 0.0f) atomicMax((int*) fout, __float_as_int(m));
++    if (nf > 0) atomicAdd((unsigned long long*) &lout[0], (unsigned long long) nf);
++}
++
++Scan debug_scan_f32(const float* src, int64_t n, cudaStream_t stream) {
++    static float* fbuf = nullptr;
++    static long long* lbuf = nullptr;
++    Scan r;
++    if (src == nullptr || n <= 0) return r;
++    if (fbuf == nullptr && (cudaMalloc(&fbuf, sizeof(float)) != cudaSuccess ||
++                            cudaMalloc(&lbuf, 2 * sizeof(long long)) != cudaSuccess))
++        return r;
++    scan_init_kernel<<<1, 1, 0, stream>>>(fbuf, lbuf);
++    scan_f32_kernel<<<128, 256, 0, stream>>>(src, (long long) n, fbuf, lbuf);
++    float hf = 0.0f;
++    long long hl[2] = {0, 0};
++    if (cudaMemcpyAsync(&hf, fbuf, sizeof(float), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
++    if (cudaMemcpyAsync(hl, lbuf, 2 * sizeof(long long), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
++    cudaStreamSynchronize(stream);
++    r.max_abs = hf;
++    r.nonfinite = hl[0];
++    r.first_big = -1;
++    return r;
++}
++
++Scan debug_scan(const uint16_t* src, int64_t n, int as_bf16, cudaStream_t stream) {
++    static float* fbuf = nullptr;
++    static long long* lbuf = nullptr;
++    Scan r;
++    if (src == nullptr || n <= 0) return r;
++    if (fbuf == nullptr && (cudaMalloc(&fbuf, sizeof(float)) != cudaSuccess ||
++                            cudaMalloc(&lbuf, 2 * sizeof(long long)) != cudaSuccess))
++        return r;
++    scan_init_kernel<<<1, 1, 0, stream>>>(fbuf, lbuf);
++    scan_kernel<<<128, 256, 0, stream>>>(src, (long long) n, as_bf16, fbuf, lbuf);
++    float hf = 0.0f;
++    long long hl[2] = {0, 0};
++    if (cudaMemcpyAsync(&hf, fbuf, sizeof(float), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
++    if (cudaMemcpyAsync(hl, lbuf, 2 * sizeof(long long), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
++    cudaStreamSynchronize(stream);
++    r.max_abs = hf;
++    r.nonfinite = hl[0];
++    r.first_big = hl[1] == 0x7FFFFFFFFFFFFFFFll ? -1 : hl[1];
++    return r;
++}
++
++/// Y[T, N] = X[T, K] . W[N, K]^T through fp16 tensor cores, converting both operands into the
++/// dequantization scratch `native()` also uses.  Returns false when the scratch cannot hold the
++/// weights plus one activation row, in which case the caller keeps the BF16 SIMT path.
++bool bf16_via_f16(Gemm& gm, const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K,
++                  int64_t ldy, float beta) {
++    uint16_t* scratch = gm.scratch();
++    const int64_t cap = gm.scratch_elems();
++    if (scratch == nullptr || cap <= 0 || N <= 0 || K <= 0 || T < kFp16MinRows) return false;
++    const int64_t w_elems = N * K;
++    const int64_t w_rounded = (w_elems + 7) & ~(int64_t) 7;   // keep the activation 16-byte aligned
++    if (w_rounded + K > cap) return false;
++    int64_t rows = (cap - w_rounded) / K;
++    if (rows <= 0) return false;
++    if (rows > T) rows = T;
++    cudaStream_t cs = (cudaStream_t) gm.stream();
++    uint16_t* w16 = scratch;
++    uint16_t* x16 = scratch + w_rounded;
++    const bool dbg = gemm_debug_on();
++    if (dbg) {
++        const Scan sx = debug_scan(X, T * K, 1, cs);
++        const Scan sw = debug_scan(W, w_elems, 1, cs);
++        std::fprintf(stderr,
++                     "prefill gemm fp16: T=%lld N=%lld K=%lld ldy=%lld rows=%lld | X max=%g nf=%lld big@%lld | W max=%g "
++                     "nf=%lld big@%lld\n",
++                     (long long) T, (long long) N, (long long) K, (long long) ldy, (long long) rows,
++                     (double) sx.max_abs, sx.nonfinite, sx.first_big, (double) sw.max_abs, sw.nonfinite, sw.first_big);
++    }
++    bf16_to_f16(W, w16, w_elems, cs);
++    for (int64_t r0 = 0; r0 < T; r0 += rows) {
++        const int64_t n = (T - r0 < rows) ? (T - r0) : rows;
++        bf16_to_f16(X + r0 * K, x16, n * K, cs);
++        // Every tile writes its own Y rows, so the caller's beta applies to each of them: `beta` is a
++        // per-row scale (0.0 = overwrite), never an accumulate-into-the-previous-tile.
++        gm.f16(x16, w16, Y + r0 * ldy, n, N, K, ldy, beta);
++        if (dbg) {
++            const Scan sy = debug_scan_f32(Y + r0 * ldy, n * ldy, cs);
++            std::fprintf(stderr, "prefill gemm fp16:   Y rows[%lld..%lld) max=%g nonfinite=%lld\n", (long long) r0,
++                         (long long) (r0 + n), (double) sy.max_abs, sy.nonfinite);
++        }
++    }
++    return true;
++}
++
++#else  // __HIPCC__: the dense-FP16 path is CUDA-only (the HIP build keeps the BF16 GEMM).
++
++bool bf16_via_f16(Gemm&, const uint16_t*, const uint16_t*, float*, int64_t, int64_t, int64_t, int64_t, float) {
++    return false;
++}
++
++#endif
++
+ #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
+ struct HipLtCallKey {
+     strata::prefill::hipblaslt::InputType type;
+@@ -341,7 +579,20 @@
+                 float beta) {
+     if (T <= 0 || N <= 0) return;
+     if (ldy <= 0) ldy = N;
++    // STRATA_DENSE_FP16=1: the same product on the fp16 tensor cores (see the block above).
++    if (dense_fp16_on() && bf16_via_f16(*this, X, W, Y, T, N, K, ldy, beta)) return;
+     const float alpha = 1.0f;
++#if !defined(__HIPCC__)
++    if (gemm_debug_on()) {   // the same operands the fp16 path would see, on the bf16 path
++        const cudaStream_t cs = (cudaStream_t) stream_;
++        const Scan sx = debug_scan(X, T * K, 1, cs);
++        const Scan sw = debug_scan(W, N * K, 1, cs);
++        std::fprintf(stderr, "prefill gemm bf16: T=%lld N=%lld K=%lld ldy=%lld | X max=%g nf=%lld big@%lld | W max=%g "
++                             "nf=%lld big@%lld\n",
++                     (long long) T, (long long) N, (long long) K, (long long) ldy, (double) sx.max_abs, sx.nonfinite,
++                     sx.first_big, (double) sw.max_abs, sw.nonfinite, sw.first_big);
++    }
++#endif
+ #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
+     if (try_hipblaslt(hipblaslt_state_, strata::prefill::hipblaslt::InputType::bf16, X, W, Y, T, N, K, ldy,
+                       beta, stream_)) {

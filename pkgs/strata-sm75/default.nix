@@ -88,6 +88,10 @@ stdenv.mkDerivation {
       echo "tiberius.patch did not introduce the STRATA_REGISTER_DAX sliding window" >&2
       exit 1
     }
+    grep -q 'STRATA_DENSE_FP16' src/prefill/gemm.cu || {
+      echo "tiberius.patch did not introduce the STRATA_DENSE_FP16 dense GEMM path" >&2
+      exit 1
+    }
   '';
 
   nativeBuildInputs = [

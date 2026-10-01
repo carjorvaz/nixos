@@ -128,6 +128,20 @@ let
         # 5.2K-token document: 18,451 -> 14,939 blobs streamed, 13.7 -> 12.5 s.
         # Never slower; 19% fewer bytes on a long document.
         STRATA_PREFILL_RING = "8";
+        # tiberius: the dense GEMMs on the FP16 tensor cores.  Turing has FP16
+        # tensor cores and no BF16 ones, so cuBLAS served the dense (non-expert)
+        # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT
+        # fallback (magma_sgemmEx_kernel).  The flag converts the operand pairs to
+        # FP16 (exact for bf16 values in range; measured max|X| 103.5 / max|W|
+        # 11.56 against fp16's 65504) and keeps FP32 accumulation, so the
+        # prompt-path state hash moves with the accumulation order - hence opt-in,
+        # with the engine keeping the BF16 path below 32 rows.  Measured
+        # 2026-10-01 on the real corpus, 3 runs/arm, same binary, on vs off:
+        # 4292-token prompt 10,350 -> 9,845 ms (-4.9% mean, -5.8% median),
+        # 3514-token 9,782 -> 9,179 (-6.2%); total kernel time 1564 -> 1302 ms
+        # (-16.8%).  Decode untouched (its only Gemm::bf16 caller runs below the
+        # row threshold).
+        STRATA_DENSE_FP16 = "1";
         # tiberius: the sliding DAX window.  The kernel opt-in
         # (fsdax_longterm_pin=1, pkgs/kernel-patches/fsdax-longterm-pin.patch) is
         # what lets cudaHostRegister pin DAX pages at all; the driver then caps
