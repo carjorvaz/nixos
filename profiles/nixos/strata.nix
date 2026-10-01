@@ -158,18 +158,21 @@ let
       exit 0
     fi
 
-    # Fast path: the namespace already carries the XFS we mount.  This runs before
-    # the ndctl probe on purpose - the probe is only needed for the destructive
-    # path, and `ndctl list -n ... -j` does not exist on ndctl 83 (it prints JSON
-    # by default), which made this script fail on EVERY boot until optane.mount
-    # was made to require it (caught by the 2026-10-01 boot test).
+    # The mode probe must come BEFORE trusting an existing filesystem: with
+    # formatOptane=true a non-fsdx namespace has to be recreated even when it
+    # happens to carry an xfs.  `ndctl list -n <ns>` prints JSON by default on
+    # ndctl 83 (there is no -j flag - using it made this unit fail on EVERY boot
+    # until the mount was made to require it; caught by the 2026-10-01 boot
+    # test).  /sys/bus/nd/devices/namespace0.0/mode is NOT a substitute: it reads
+    # "memory" for an fsdax namespace.
+    mode="$(ndctl list -n namespace0.0 2>/dev/null | ${pkgs.jq}/bin/jq -r 'if type == "array" then (.[0].mode // "") else (.mode // "") end' 2>/dev/null || true)"
     fstype="$(blkid -o value -s TYPE /dev/pmem0 || true)"
-    if [ "$fstype" = "xfs" ]; then
-      echo "/dev/pmem0 already carries xfs: nothing to do"
+
+    if [ "$mode" = "fsdax" ] && [ "$fstype" = "xfs" ]; then
+      echo "/dev/pmem0 already carries fsdax+xfs: nothing to do"
       exit 0
     fi
 
-    mode="$(ndctl list -n namespace0.0 2>/dev/null | ${pkgs.jq}/bin/jq -r 'if type == "array" then (.[0].mode // "") else (.mode // "") end' 2>/dev/null || true)"
     if [ "$mode" != "fsdax" ]; then
       if [ "${lib.boolToString cfg.formatOptane}" != "true" ]; then
         echo "namespace0.0 mode is '$mode', not fsdax, and formatOptane is off." >&2
@@ -310,11 +313,13 @@ in
         "noatime"
         # nofail: a bad namespace/fs must not fail local-fs.target and risk the
         # boot; the strata service then simply does not start (sshd still does).
-        # x-systemd.requires: the mount only runs after a *successful* prepare
-        # (the prepare unit's own Wants link cannot block the mount).
+        # The prepare unit is pulled in by Wants+Before only, NOT
+        # x-systemd.requires: a bug in that script must not turn into "no
+        # /optane, no service" (exactly what happened on the 2026-10-01 boot) -
+        # the mount is harmless to attempt, and the prepare's destructive path
+        # stays gated by formatOptane.
         "nofail"
         "x-systemd.device-timeout=30"
-        "x-systemd.requires=strata-optane-prepare.service"
       ];
       noCheck = true;
     };
