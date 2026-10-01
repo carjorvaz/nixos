@@ -88,6 +88,9 @@ in
     "${self}/profiles/nixos/zramSwap.nix"
     # STATE: sudo tailscale up (first auth is manual)
     "${self}/profiles/nixos/tailscale.nix"
+    # Strata (IQ3_S) on the Optane PMEM: engine from pkgs/strata-sm75, the
+    # fsdax/XFS mount, and the server unit; conflicts with the vLLM lanes.
+    "${self}/profiles/nixos/strata.nix"
   ];
 
   boot = {
@@ -108,11 +111,36 @@ in
       "sd_mod"
     ];
     zfs.extraPools = [ "zdata" ];
+    # DMA-from-pmem experiment: allow FSDAX long-term pins (device DMA straight
+    # out of the Optane pmem, no bounce copy) for this kernel only.  The patch
+    # adds an opt-in flag that defaults OFF; the param below turns it on.
+    # UNSAFE on general filesystems (fsdax pages cannot be migrated, truncated
+    # or hot-unplugged while pinned); fine here because the engine only ever
+    # pins a read-only, never-truncated experts.bin on a permanently attached
+    # /dev/pmem0.  Revert: drop this block and the fsdax_longterm_pin param.
+    kernelPatches = [
+      {
+        name = "fsdax-longterm-pin";
+        patch = ../pkgs/kernel-patches/fsdax-longterm-pin.patch;
+      }
+    ];
     # 7.5 GB of RAM, a ZFS root, and an 18.5 GB mmapped GGUF: the default ARC
     # target (50% of RAM, measured 4.4 GB here) competes directly with the page
     # cache that keeps the model mapped and with llama.cpp's host-side buffers.
     # Cap it at 1.5 GB — the same lever trajanus uses via kernelParams.
-    kernelParams = [ "zfs.zfs_arc_max=1610612736" ];
+    # fsdax_longterm_pin=1 is the companion of the kernel patch above; without
+    # it the kernel behaves exactly like stock (pins of fsdax VMAs are still
+    # rejected with -EOPNOTSUPP).
+    kernelParams = [
+      "zfs.zfs_arc_max=1610612736"
+      "fsdax_longterm_pin=1"
+      # The BMC's SOL was blind during the 2026-10-01 lockout (no console= at
+      # all, so only firmware output would ever appear).  A serial console makes
+      # SOL a real console: kernel/systemd logs plus a serial getty for login.
+      "console=tty0"
+      "console=ttyS0,115200n8"
+      "console=ttyS1,115200n8"
+    ];
     # The model loader streams 18.5 GB through the page cache; at the kernel
     # defaults the reclaim watermark is too small for that scan and the box goes
     # OOM. Keep a 512 MB reserve and reclaim earlier (watermark_scale_factor).
@@ -218,7 +246,7 @@ in
             prev=$now
             if [ "$delta" -gt 100 ]; then
               ${pkgs.util-linux}/bin/logger -t tiberius-xid-watch "Xid storm: +$delta lines; stopping inference engines"
-              ${config.systemd.package}/bin/systemctl stop tiberius-qwen38.service tiberius-qwen38-uncensored.service tiberius-ninfer.service 2>/dev/null || true
+              ${config.systemd.package}/bin/systemctl stop tiberius-strata.service tiberius-qwen38.service tiberius-qwen38-uncensored.service tiberius-ninfer.service 2>/dev/null || true
               sleep 60
               after=$(${pkgs.util-linux}/bin/dmesg 2>/dev/null | ${pkgs.gnugrep}/bin/grep -c Xid || true)
               if [ "$after" -gt "$((now + 100))" ]; then
@@ -428,7 +456,10 @@ in
 
     tiberius-qwen38 = {
       description = "Qwen3.8-27B on the RTX 2080 Ti (vLLM)";
-      wantedBy = [ "multi-user.target" ];
+      # Strata is the boot engine on this host (services.tiberius-strata); the
+      # lane stays installed for A/B and fallback.  To flip back: make this
+      # [ "multi-user.target" ] and set services.tiberius-strata.enable = false.
+      wantedBy = lib.mkForce [ ];
       # Symmetric with the uncensored lane: either start takes the other down,
       # so toggling in either direction cannot leave two engines on one 22 GB
       # card (which fails the second one with a memory error).
@@ -653,6 +684,26 @@ in
       "tiberius-builder-pius:Q6Ykvkqf0OoLCFqNMwjCns04A8OK+sOaZK0Tmy7ZMRE="
       "tiberius-builder-trajanus:njMvtYYB/ZQbSrjzquwrsuaclPHvIVxLmtJ1bPdyJOU="
     ];
+  };
+
+  # Strata (Qwen3.8-Flash-Next IQ3_S) is the default engine on this host: the
+  # experts are mmapped from the Optane PMEM (126 GiB fsdax, dax=always) and the
+  # 262K-context K8V4 configuration measures ~20 tok/s decode / ~150 tok/s
+  # prefill.  The vLLM lanes below stay installed for A/B and fallback; flip
+  # their wantedBy back to [ "multi-user.target" ] to make one the boot engine
+  # (both sides conflict, so only one ever holds the GPU).
+  services.tiberius-strata = {
+    enable = true;
+    package = pkgs.strata-sm75;
+    # IQ3_S is the served model (the original, 24,576 experts).  The Coder lane
+    # stays one option away (model = "coder": ~2.3x the prefill, ~35 tok/s
+    # decode) for coding-agent work where its quality trade is acceptable.
+    model = "iq3-s";
+    # The tuned/verified runtime is 131K with k8v4 (262K is one option away;
+    # it costs a few percent of decode and the cache budget changes with it).
+    context = 131072;
+    # The namespace is already fsdax and formatted; the prepare unit is a no-op.
+    formatOptane = false;
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

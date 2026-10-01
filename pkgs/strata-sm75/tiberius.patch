@@ -1,0 +1,805 @@
+# tiberius: the engine's local patches, against upstream d6708a4aae15b4860000d54c8af9e84d684bce09.
+#
+# These two changes are one patch because they interleave in the same regions: the
+# host expert tier and the DAX window both edit expert_source.{hpp,cpp} (the
+# `pin_cache_complement` guard, and the `pinned()`/`device_alias()` path) and the
+# same resident-tier block in generate.cpp, so they cannot be applied separately
+# in either order without conflicting.
+#
+# 1. The host expert tier, the reason the service passes --resident-cpu-mib: a
+#    rank-ordered, size-capped DRAM complement of the VRAM expert cache, plus the
+#    relaxed --resident-cpu-experts requirement that let it coexist with the
+#    adaptive cache (it no longer demands --adapt-every 0).
+#
+# 2. STRATA_REGISTER_DAX, the sliding DAX window: cudaHostRegister cannot pin the
+#    46.84 GiB pack at once - the driver caps TOTAL registered host memory at 6144
+#    MiB on this box, measured and independent of free RAM - so the engine
+#    registers a window of whole, page-aligned layers, follows the layer-ordered
+#    prefill walk, and rotates the window (draining the copy stream first) once
+#    per budget.  Every layer the window holds is DMA-able by the device, so the
+#    prompt path stops staging those experts through the copy threads.  It needs
+#    the fsdax_longterm_pin=1 kernel opt-in (pkgs/kernel-patches/fsdax-longterm-pin.patch);
+#    without it cudaHostRegister is refused, the engine reports it once and keeps
+#    the pageable path.  Measured on the real corpus: prefill 13,136 -> 10,223 ms
+#    for a 4292-token prompt (327 -> 420 tok/s), decode unchanged.
+#
+# Merged by hand 2026-10-01 from the former pkgs/strata-sm75/hosttier.patch
+# (applied to d6708a4) and the tiberius-dma worktree's window change (whose base
+# was d6708a4 + that same host tier).  The worktree's unrelated stager
+# instrumentation and self-issuing-streamer commits are deliberately NOT part of
+# this patch.
+diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
+index 0b357a1..f1f09d4 100644
+--- a/include/strata/core/expert_source.hpp
++++ b/include/strata/core/expert_source.hpp
+@@ -93,9 +93,28 @@ public:
+     /// asynchronous host-to-device copy can DMA it directly (no staging copy on the CPU).
+     virtual bool pinned(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return false; }
+ 
++    /// Plan v0.3 P7: whether the blob will be DMA-able **at the moment the prompt path issues its copy**, which is
++    /// not the same question as `pinned()` when a source registers its DMA window lazily.
++    ///
++    /// The sliding DAX window (`STRATA_REGISTER_DAX`) covers `STRATA_REGISTER_DAX_MIB` of the 50 GB pack and moves
++    /// as the prefill streams it, so `pinned()` - a snapshot of what is registered RIGHT NOW - is false for the
++    /// layers the stream has not reached yet.  The streamed ring, though, builds its whole chunk's job list (and
++    /// therefore decides direct-DMA vs host-copy-stager) before it issues a single copy, and it issues the layers
++    /// in order: it must ask this, and it must call `prepare_layer` to make the answer true.  Every source that
++    /// does not move a window answers exactly as `pinned()` does, so the distinction costs it nothing.
++    virtual bool dma_ready(int64_t layer, int64_t expert) const { return pinned(layer, expert); }
++
+     /// Called once before the first expert of a layer.  A source that reads from disk wants to start the read
+     /// here so it overlaps the quantisation, and a prefetching source in Phase 3 wants the ids.
+     virtual void begin_layer(int64_t layer, const int32_t* ids, int64_t k) { (void) layer; (void) ids; (void) k; }
++    /// Plan v0.3 P7: called by the prompt path's ISSUE step once per layer, immediately before the layer's first
++    /// copy is enqueued - never from the decode/verify path, which would rotate the window 48 times a token.
++    /// The sliding-window source registers the layer's range here, and returns whether the layer is DMA-able as a
++    /// result; every other source ignores it and returns false.
++    virtual bool prepare_layer(int64_t layer) { (void) layer; return false; }
++    /// The stream the direct-DMA copies are enqueued on.  A source that UNREGISTERS a range must not do so while
++    /// the copy engine is still reading it, and this is the stream to synchronise first.
++    virtual void set_dma_stream(void* stream) { (void) stream; }
+     /// Plan v0.3 P6: the DEVICE address of a pinned, mapped blob (the GPU can read it over PCIe), or null.
+     virtual const uint8_t* device_alias(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return nullptr; }
+ };
+@@ -315,9 +334,14 @@ public:
+     bool open(const std::string& pack_dir, int64_t n_layers, int64_t n_expert, std::string& err);
+     /// Pin a compact host mirror of experts absent from a fully filled static GPU cache. The mmap remains open
+     /// as a fallback for later cache reloads. This is opt-in because the complement may still be a large allocation.
++    ///
++    /// `ranked` + `budget`: take the hottest pairs the GPU cache does not hold, in the profile's rank order,
++    /// until `budget` bytes.  The blob bytes are copied verbatim, so the CPU pool and the prompt path read the
++    /// exact arena bytes; with `pin` the prompt path DMAs them straight out of host memory (no copy-thread hop).
+     bool pin_cache_complement(
+         const ExpertCache& cache, std::string& err, bool pin = true,
+-        const std::vector<std::pair<int32_t, int32_t>>& additional_gpu_pairs = {});
++        const std::vector<std::pair<int32_t, int32_t>>& additional_gpu_pairs = {},
++        const std::vector<std::pair<int32_t, int32_t>>* ranked = nullptr, uint64_t budget = 0);
+     void close();
+ 
+     bool mapped() const { return base_ != nullptr; }
+@@ -328,7 +352,10 @@ public:
+ 
+     const uint8_t* blob(int64_t layer, int64_t expert) override;
+     bool pinned(int64_t layer, int64_t expert) const override;
++    bool dma_ready(int64_t layer, int64_t expert) const override;
+     const uint8_t* device_alias(int64_t layer, int64_t expert) const override;
++    bool prepare_layer(int64_t layer) override;
++    void set_dma_stream(void* stream) override;
+ 
+     /// Blobs touched, for the driver to report.  With `h = 0` this is `48 * k` per token and the number is only
+     /// interesting once Phase 3 makes it not so.
+@@ -336,6 +363,49 @@ public:
+ 
+ private:
+     const uint8_t* mapped_blob(int64_t layer, int64_t expert) const;
++    /// The complement arena's own membership test.  `pinned()` and `device_alias()` both start from it, because
++    /// `blob()` reads the arena's copy for exactly these experts: with a second DMA-able source (the file
++    /// mapping registered by STRATA_REGISTER_DAX) the two must still name the same copy of an expert.
++    bool complement_holds(int64_t layer, int64_t expert) const;
++    /// ======================= STRATA_REGISTER_DAX: THE SLIDING WINDOW =======================
++    ///
++    /// `cudaHostRegister` on this box caps the TOTAL registered host memory at 6144 MiB (measured, independent of
++    /// free RAM), so the 46.84 GiB pack cannot be DMA-able all at once.  What it can be is DMA-able *where the
++    /// reader is*: the pack is layer-contiguous, a layer is ~1 GiB, and the prompt path walks the layers in order,
++    /// so a window of whole layers that keeps up with that walk makes every byte of the file directly DMA-able
++    /// while never holding more than the budget registered.
++    ///
++    /// A window is a PAGE-ALIGNED, contiguous subrange of `base_` covering the whole layers `first..last` - whole
++    /// layers because `pinned()` is a per-blob predicate and a blob that straddled a window edge would need a
++    /// second, different answer from `device_alias()`.  Windows are disjoint (page rounding can push one into its
++    /// neighbour's first page, so a registration evicts anything it overlaps) and their byte counts add up to at
++    /// most `dax_budget_`.
++    struct DaxWindow {
++        uint64_t off = 0;                 ///< first byte of `base_` the registration covers
++        uint64_t bytes = 0;               ///< its length (page-rounded)
++        int64_t first = 0, last = 0;      ///< the whole layers it covers
++        const uint8_t* device = nullptr;  ///< its CUDA alias, null when the device cannot map host memory
++    };
++    /// The window covering `layer`, or null.  `pinned()` and `device_alias()` both start here so an alias can only
++    /// exist for a blob the registration really covers.
++    const DaxWindow* dax_window_of(int64_t layer) const;
++    /// The last layer of the largest run starting at `first` whose page-aligned span fits the budget, i.e. how far
++    /// one registration can reach.  False when even `first` alone does not fit (a layer bigger than the budget).
++    bool dax_fit(int64_t first, int64_t& last) const;
++    /// Register the whole layers `first..last` if their aligned span fits the budget and the driver accepts it.
++    bool dax_register(int64_t first, int64_t last);
++    /// Unregister window `index`.  The caller has already synchronised the copy stream.
++    bool dax_unregister(size_t index);
++    /// Register the run starting at `first`, shrinking it layer by layer if the driver refuses (a failed
++    /// registration consumes its error here, so it cannot lie about the next kernel launch - `PinnedArena`'s rule).
++    bool dax_register_run(int64_t first);
++    /// Is (`layer`,`expert`)'s packed blob wholly inside the window that covers `layer`, and if so where does it
++    /// start?  `offset` is what turns the window's device alias into the blob's alias.
++    bool dax_holds(int64_t layer, int64_t expert, const DaxWindow*& window, uint64_t& offset) const;
++    uint64_t layer_begin(int64_t layer) const { return layer_offsets_[(size_t) layer]; }
++    uint64_t layer_end(int64_t layer) const {
++        return layer_offsets_[(size_t) layer] + (uint64_t) n_expert_ * layer_blob_bytes_[(size_t) layer];
++    }
+     static constexpr uint64_t kNoComplement = detail::kNoCacheComplement;
+     const uint8_t* base_ = nullptr;
+     int64_t blobs_ = 0;
+@@ -350,6 +420,20 @@ private:
+     std::vector<uint64_t> complement_offsets_;
+     bool complement_pinned_ = false;
+     bool complement_ready_ = false;
++    /// The registered windows, in rotation order (the stalest first).  Empty when STRATA_REGISTER_DAX is off or
++    /// the driver refused the first registration.
++    std::vector<DaxWindow> dax_windows_;
++    /// STRATA_REGISTER_DAX_MIB as a byte budget, 0 when the flag is off.  No rotation ever holds more registered
++    /// than this; `close()` unregisters whatever is left before the munmap.
++    uint64_t dax_budget_ = 0;
++    /// True once the startup registration succeeded.  A later refused rotation clears it, which drops every
++    /// remaining layer of the chunk onto the plain-copy path instead of retrying a failing driver call per layer.
++    bool dax_ok_ = false;
++    /// The copy stream the DMA reads run on (`Prefill` sets it).  `prepare_layer` synchronises it before the first
++    /// `cudaHostUnregister` of a rotation, so a range the copy engine could still be reading is never released.
++    void* dax_stream_ = nullptr;
++    /// Rotations so far, for the once-per-rotation log line.
++    int64_t dax_rotations_ = 0;
+     int64_t reads_ = 0;
+ #if defined(_WIN32)
+     void* file_ = nullptr;
+diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
+index d235b95..eb40c81 100644
+--- a/src/core/expert_source.cpp
++++ b/src/core/expert_source.cpp
+@@ -128,6 +128,38 @@ bool make_cache_complement_plan(
+     return true;
+ }
+ 
++/// The rank-ordered, size-capped host tier: same sentinel and offset table as the full complement, but the
++/// walk follows the profile's ranking and stops at the first blob that would exceed `budget`.
++bool make_ranked_complement_plan(int64_t n_layers, int64_t n_expert,
++                                 const std::vector<uint64_t>& layer_blob_bytes,
++                                 const std::vector<std::pair<int32_t, int32_t>>& primary_gpu_pairs,
++                                 const std::vector<std::pair<int32_t, int32_t>>& ranked, uint64_t budget,
++                                 std::vector<uint64_t>& offsets, uint64_t& bytes, std::string& err) {
++    if (n_layers <= 0 || n_expert <= 0 || layer_blob_bytes.size() != (size_t) n_layers) {
++        err = "FileExpertSource: invalid geometry for the ranked host tier";
++        return false;
++    }
++    const size_t count = (size_t) n_layers * (size_t) n_expert;
++    std::vector<uint8_t> in_gpu(count, 0);
++    for (const auto& p : primary_gpu_pairs) {
++        if (p.first < 0 || p.second < 0 || p.first >= n_layers || p.second >= n_expert) continue;
++        in_gpu[(size_t) p.first * (size_t) n_expert + (size_t) p.second] = 1;
++    }
++    offsets.assign(count, kNoCacheComplement);
++    bytes = 0;
++    for (const auto& p : ranked) {
++        if (p.first < 0 || p.second < 0 || p.first >= n_layers || p.second >= n_expert) continue;
++        const size_t index = (size_t) p.first * (size_t) n_expert + (size_t) p.second;
++        if (in_gpu[index] != 0 || offsets[index] != kNoCacheComplement) continue;
++        const uint64_t blob_bytes = layer_blob_bytes[(size_t) p.first];
++        if (blob_bytes == 0) continue;
++        if (bytes + blob_bytes > budget) break;   // rank order: stop at the first that does not fit
++        offsets[index] = bytes;
++        bytes += blob_bytes;
++    }
++    return true;
++}
++
+ const uint8_t* cache_complement_blob_or_fallback(
+     size_t index, const std::vector<uint64_t>& offsets, const uint8_t* complement_host,
+     const uint8_t* mapped_fallback) {
+@@ -405,6 +437,80 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
+     mapped_bytes_ = want;
+     layer_offsets_ = std::move(layer_offsets);
+     layer_blob_bytes_ = std::move(layer_blob_bytes);
++
++    // ======================= STRATA_REGISTER_DAX: THE SLIDING WINDOW (default OFF) =======================
++    //
++    // Registers a WINDOW of the mapping with CUDA so the DEVICE can read the pack file's own pages, and slides
++    // that window as the prompt path walks the file.  The prompt path's direct-DMA branches already exist in both
++    // prefill paths and `pinned()`/`dma_ready()` are their only gate, so making the bytes DMA-able is the whole
++    // change: the 50 GB expert file stops going through the stager's host copies.
++    //
++    // WHY A WINDOW AND NOT THE WHOLE MAPPING.  `cudaHostRegister` on this machine caps the TOTAL registered host
++    // memory at 6144 MiB - measured, independent of free RAM (`ulimit -l` does not move it) - and the pack is
++    // 46.84 GiB, so the whole-mapping registration that used to live here is refused.  What CAN be DMA-able is
++    // the part the reader is at: the pack is layer-contiguous, a layer is ~1 GiB, and the prompt path walks the
++    // layers in order, so a window of whole layers that keeps up with that walk makes every byte of the file
++    // directly DMA-able while never holding more than `STRATA_REGISTER_DAX_MIB` registered.  `prepare_layer`
++    // moves the window and carries the unregister-safety rule; the header describes the windows themselves.
++    //
++    // WHAT IT REQUIRES.  (1) A kernel whose fsdax GUP path accepts a LONGTERM pin - the `fsdax_longterm_pin=1`
++    // opt-in of the patched kernel; without it `cudaHostRegister` fails EINVAL (`dax-reg-bench` measured that for
++    // every flag combination, on this very mapping).  (2) A device with cudaDevAttrHostRegisterReadOnlySupported,
++    // which is why the call asks for cudaHostRegisterReadOnly: CUDA 13.2 documents that flag as the one that
++    // registers CPU-mapped memory read-only.  (3) `cudaHostRegister` pins what is resident NOW and faults in what
++    // is not - which is the prefetch this design wants - so registering a window just before its layer is read
++    // is the cheap order, and registering pages the GUP path already faulted piecemeal is the expensive one.
++    //
++    // FAILURE IS GRACEFUL AND LOUD: a refused registration prints one line to stderr and the engine continues on
++    // the existing pageable path (`dma_ready()` then answers false and the prompt path builds its stager jobs
++    // exactly as it always did).  Registration is an optimization, never a prerequisite, so the flag is safe to
++    // set on a machine without the kernel opt-in - it just reports and does nothing.
++    //
++    // SIDE EFFECTS, all of them downstream of `dma_ready()` turning true: the prompt path stops staging through
++    // the copy threads (prefill.cpp); the verify window's PCIe groups may be formed from mapped experts as well
++    // as from the complement arena (`pcie_ok` below) for whichever layers the window holds while a decode runs -
++    // the window is FROZEN during decode, because `begin_layer` is not a rotation point and rotating there would
++    // be 48 register/unregister pairs a token; and two tuned constants move, because their conservative arms
++    // exist for host copies: `g_pinned_share` becomes 1.0, which takes the streamed ring from 96 slots to 384,
++    // and the auto lend cap from 85% to 90% (`kAutoLendPct`, generate.cpp).  Both stay overridable -
++    // STRATA_PREFILL_RING and STRATA_PREFILL_LEND_PCT still win - so A/B here is a config change, not a rebuild.
++    // `pin_cache_complement` additionally SKIPS its MADV_DONTNEED/POSIX_FADV_DONTNEED release loop: those pages
++    // are pinned for the device and cannot be dropped, and that loop treats a refusal as fatal.
++    //
++    // THE RISK: a registered window is pinned while it is registered and nothing may truncate or hole-punch that
++    // file while the engine runs.  The window bounds what is charged to the process as unevictable at any one
++    // moment, and `close()` unregisters whatever is left before it unmaps.
++    const char* register_dax = std::getenv("STRATA_REGISTER_DAX");
++    if (register_dax != nullptr && register_dax[0] != '\0' && std::strcmp(register_dax, "0") != 0) {
++        // The budget bounds the WINDOW, not a prefix of the file.  0 / unset = the driver's own 6144 MiB cap.
++        const char* mib = std::getenv("STRATA_REGISTER_DAX_MIB");
++        const long long mib_value = mib != nullptr ? std::atoll(mib) : 0;
++        dax_budget_ = mib_value > 0 ? (uint64_t) mib_value << 20 : (6144ull << 20);
++        std::fprintf(stderr,
++                     "FileExpertSource: STRATA_REGISTER_DAX: sliding window of %.2f GiB over a %.2f GiB pack "
++                     "(%lld layers, %.2f GiB per layer)\n",
++                     (double) dax_budget_ / 1073741824.0, (double) mapped_bytes_ / 1073741824.0,
++                     (long long) n_layers_, (double) mapped_bytes_ / 1073741824.0 / (double) n_layers_);
++        // Open on the first run of layers that fits, so the first chunk of a prompt pays no rotation to start.
++        if (n_layers_ > 0 && !layer_blob_bytes_.empty() && layer_end(0) <= dax_budget_ && dax_register_run(0))
++            dax_ok_ = true;
++        if (dax_ok_) {
++            std::fprintf(stderr,
++                         "FileExpertSource: STRATA_REGISTER_DAX: window on layers %lld..%lld, %.2f GiB "
++                         "registered%s; the prompt path DMAs straight out of it\n",
++                         (long long) dax_windows_.front().first, (long long) dax_windows_.front().last,
++                         (double) dax_windows_.front().bytes / 1073741824.0,
++                         dax_windows_.front().device != nullptr ? " (device alias ok)" : " (NO device alias)");
++        } else {
++            std::fprintf(stderr,
++                         "FileExpertSource: STRATA_REGISTER_DAX ignored: cudaHostRegister of a %.2f GiB window "
++                         "failed - the mapping stays pageable and the prompt path keeps its host copies (the flag "
++                         "needs a kernel with fsdax_longterm_pin=1)\n",
++                         (double) dax_budget_ / 1073741824.0);
++        }
++        std::fflush(stderr);
++    }
++
+     return true;
+ }
+ 
+@@ -420,6 +526,17 @@ void FileExpertSource::close() {
+     complement_offsets_.clear();
+     complement_pinned_ = false;
+     complement_ready_ = false;
++    // STRATA_REGISTER_DAX: unregister every window BEFORE the unmap - the runtime holds the pins until that call,
++    // and a registration must not outlive the mapping it points at.  This is also the only release the pages get.
++    // The copy stream is drained first for the same reason `prepare_layer` drains it.
++    if (!dax_windows_.empty() && base_ != nullptr) {
++        if (dax_stream_ != nullptr) (void) cudaStreamSynchronize((cudaStream_t) dax_stream_);
++        while (!dax_windows_.empty()) (void) dax_unregister(dax_windows_.size() - 1);
++    }
++    dax_windows_.clear();
++    dax_budget_ = 0;
++    dax_ok_ = false;
++    dax_stream_ = nullptr;
+ #if defined(_WIN32)
+     if (base_ != nullptr) UnmapViewOfFile((LPCVOID) base_);
+     if (mapping_ != nullptr) CloseHandle((HANDLE) mapping_);
+@@ -457,7 +574,8 @@ const uint8_t* FileExpertSource::mapped_blob(int64_t layer, int64_t expert) cons
+ 
+ bool FileExpertSource::pin_cache_complement(
+     const ExpertCache& cache, std::string& err, bool pin,
+-    const std::vector<std::pair<int32_t, int32_t>>& additional_gpu_pairs) {
++    const std::vector<std::pair<int32_t, int32_t>>& additional_gpu_pairs,
++    const std::vector<std::pair<int32_t, int32_t>>* ranked, uint64_t budget) {
+     err.clear();
+     if (base_ == nullptr) { err = "FileExpertSource: open the mapped experts before pinning a complement"; return false; }
+     if (complement_ready_) { err = "FileExpertSource: the cache complement is already pinned"; return false; }
+@@ -483,10 +601,21 @@ bool FileExpertSource::pin_cache_complement(
+     }
+     std::vector<uint64_t> offsets;
+     uint64_t bytes = 0;
+-    if (!detail::make_cache_complement_plan(n_layers_, n_expert_, layer_blob_bytes_, primary_gpu_pairs,
+-                                            additional_gpu_pairs, offsets, bytes, err)) return false;
++    if (ranked != nullptr && budget > 0) {
++        if (!detail::make_ranked_complement_plan(n_layers_, n_expert_, layer_blob_bytes_, primary_gpu_pairs,
++                                                 *ranked, budget, offsets, bytes, err)) return false;
++        size_t admitted = 0;
++        for (uint64_t o : offsets)
++            if (o != detail::kNoCacheComplement) ++admitted;
++        std::fprintf(stderr, "FileExpertSource: ranked host tier: %zu pairs, %.2f GiB of the %.2f GiB budget\n",
++                     admitted, (double) bytes / 1073741824.0, (double) budget / 1073741824.0);
++        std::fflush(stderr);
++    } else if (!detail::make_cache_complement_plan(n_layers_, n_expert_, layer_blob_bytes_, primary_gpu_pairs,
++                                                   additional_gpu_pairs, offsets, bytes, err)) {
++        return false;
++    }
+ 
+-    if (bytes > 0) {
++    if (bytes > 0 && budget == 0) {
+         uint64_t physical = 0;
+         if (!available_memory_bytes(physical)) {
+             err = "FileExpertSource: cannot determine available RAM for the resident-memory safety check";
+@@ -580,23 +709,31 @@ bool FileExpertSource::pin_cache_complement(
+         const uint64_t end_remainder = layer_end % page;
+         const uint64_t extra = end_remainder == 0 ? 0 : page - end_remainder;
+         const uint64_t advice_end = extra > mapped_bytes_ - layer_end ? mapped_bytes_ : layer_end + extra;
+-        if (advice_end > advice_start &&
+-            madvise((void*) (base_ + (size_t) advice_start), (size_t) (advice_end - advice_start), MADV_DONTNEED) != 0) {
+-            err = "FileExpertSource: madvise could not release mapped expert layer " + std::to_string(layer);
+-            if (arena != nullptr) {
+-                if (pin) (void) cudaFreeHost(arena);
+-                else std::free(arena);
++        // STRATA_REGISTER_DAX: a page inside a registered window is pinned for the device while the window holds
++        // it, so MADV_DONTNEED cannot drop it and posix_fadvise is only advice - while the loop below treats
++        // either refusal as fatal.  A registered page would fail the entire pin for doing nothing wrong, and it
++        // must not be dropped anyway: the device may read it through the registered alias.  The pin itself is
++        // unaffected - `blob()` still returns the complement copy for every expert this loop copied.
++        if (dax_window_of((int64_t) layer) == nullptr) {
++            if (advice_end > advice_start &&
++                madvise((void*) (base_ + (size_t) advice_start), (size_t) (advice_end - advice_start),
++                        MADV_DONTNEED) != 0) {
++                err = "FileExpertSource: madvise could not release mapped expert layer " + std::to_string(layer);
++                if (arena != nullptr) {
++                    if (pin) (void) cudaFreeHost(arena);
++                    else std::free(arena);
++                }
++                return false;
+             }
+-            return false;
+-        }
+-        const int advice = posix_fadvise(fd_, (off_t) layer_offset, (off_t) layer_bytes, POSIX_FADV_DONTNEED);
+-        if (advice != 0) {
+-            err = "FileExpertSource: posix_fadvise could not release expert layer " + std::to_string(layer);
+-            if (arena != nullptr) {
+-                if (pin) (void) cudaFreeHost(arena);
+-                else std::free(arena);
++            const int advice = posix_fadvise(fd_, (off_t) layer_offset, (off_t) layer_bytes, POSIX_FADV_DONTNEED);
++            if (advice != 0) {
++                err = "FileExpertSource: posix_fadvise could not release expert layer " + std::to_string(layer);
++                if (arena != nullptr) {
++                    if (pin) (void) cudaFreeHost(arena);
++                    else std::free(arena);
++                }
++                return false;
+             }
+-            return false;
+         }
+ #endif
+         if ((layer + 1) % 8 == 0 || layer + 1 == n_layers_) {
+@@ -635,17 +772,261 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+     return result;
+ }
+ 
+-bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
++// The complement arena's membership test: `pinned()` and `device_alias()` both start from it, so the two always
++// name the same copy of an expert - the one `blob()` returns.
++bool FileExpertSource::complement_holds(int64_t layer, int64_t expert) const {
+     if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
+         layer >= n_layers_ || expert >= n_expert_) return false;
+     const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
+     return index < complement_offsets_.size() && complement_offsets_[index] != kNoComplement;
+ }
+ 
++namespace {
++/// `cudaHostRegister` takes PAGE-ALIGNED addresses only, and a layer's byte span is the pack's own arithmetic
++/// (`512 x blob_bytes`) rather than a multiple of the page size, so every window bound is rounded outwards.  The
++/// rounding can make two adjacent windows share a page, which is why a registration evicts anything it overlaps.
++uint64_t host_page_size() {
++#if defined(_WIN32)
++    SYSTEM_INFO si{};
++    GetSystemInfo(&si);
++    return si.dwPageSize != 0 ? (uint64_t) si.dwPageSize : 4096u;
++#else
++    const long p = ::sysconf(_SC_PAGESIZE);
++    return p > 0 ? (uint64_t) p : 4096u;
++#endif
++}
++uint64_t page_down(uint64_t v) {
++    const uint64_t p = host_page_size();
++    return v / p * p;
++}
++uint64_t page_up(uint64_t v) {
++    const uint64_t p = host_page_size();
++    return (v + p - 1) / p * p;
++}
++}  // namespace
++
++// ================================ STRATA_REGISTER_DAX: THE WINDOWS ================================
++//
++// The window covering `layer`, or null.  Windows are disjoint and few - the budget holds a handful of ~1 GiB
++// layers - so a linear scan is the whole lookup, and it is what `pinned()` and `device_alias()` do per blob.
++const FileExpertSource::DaxWindow* FileExpertSource::dax_window_of(int64_t layer) const {
++    if (layer < 0 || layer >= n_layers_) return nullptr;
++    for (const DaxWindow& w : dax_windows_)
++        if (layer >= w.first && layer <= w.last) return &w;
++    return nullptr;
++}
++
++// Is the blob wholly inside the window that covers `layer`, and at what offset from the window's start?  The
++// test is containment, not overlap: a blob that is only partly inside stays on the pageable path.  `mapped_blob`
++// does the layer/expert and blob-bounds validation against the mapping itself.
++bool FileExpertSource::dax_holds(int64_t layer, int64_t expert, const DaxWindow*& window, uint64_t& offset) const {
++    window = nullptr;
++    const DaxWindow* w = dax_window_of(layer);
++    if (w == nullptr) return false;
++    const uint8_t* mapped = mapped_blob(layer, expert);
++    if (mapped == nullptr) return false;
++    const uint64_t off = (uint64_t) (mapped - base_);   // >= 0: mapped_blob returns an address inside the mapping
++    if (off < w->off) return false;
++    const uint64_t rel = off - w->off;
++    if (rel > w->bytes || layer_blob_bytes_[(size_t) layer] > w->bytes - rel) return false;
++    window = w;
++    offset = rel;
++    return true;
++}
++
++// How far one registration can reach from `first`: the largest run of whole layers whose PAGE-ALIGNED span fits
++// the budget.  False when even `first` alone does not fit, i.e. a layer bigger than the whole budget - a layer
++// that can never be DMA-able, which is why `dma_ready` answers false for it and the prefill stages it as before.
++bool FileExpertSource::dax_fit(int64_t first, int64_t& last) const {
++    if (first < 0 || first >= n_layers_ || (size_t) first >= layer_blob_bytes_.size()) return false;
++    const uint64_t begin = page_down(layer_begin(first));
++    if (page_up(layer_end(first)) - begin > dax_budget_) return false;
++    int64_t b = first;
++    while (b + 1 < n_layers_ && page_up(layer_end(b + 1)) - begin <= dax_budget_) ++b;
++    last = b;
++    return true;
++}
++
++bool FileExpertSource::dax_register(int64_t first, int64_t last) {
++    const uint64_t off = page_down(layer_begin(first));
++    const uint64_t end = page_up(layer_end(last));
++    if (end <= off || end - off > dax_budget_) return false;
++    // ReadOnly: the engine only ever reads the pack through this alias, and the device must not write it.
++    // Mapped: the device needs an alias to read through.  Portable: the alias is valid in every context.
++    const cudaError_t reg = cudaHostRegister((void*) (base_ + off), (size_t) (end - off),
++                                             cudaHostRegisterReadOnly | cudaHostRegisterMapped |
++                                                 cudaHostRegisterPortable);
++    if (reg != cudaSuccess) {
++        std::fprintf(stderr,
++                     "FileExpertSource: STRATA_REGISTER_DAX: cudaHostRegister of layers %lld..%lld (%.2f GiB at "
++                     "offset %llu) failed: %s\n",
++                     (long long) first, (long long) last, (double) (end - off) / 1073741824.0,
++                     (unsigned long long) off, cudaGetErrorString(reg));
++        // **CONSUME THE ERROR, OR IT LIES ABOUT SOMETHING ELSE LATER** - the trap `PinnedArena` documents at
++        // length: until cudaGetLastError() reads it the failure is sticky, and the next reader is `gr_read`'s
++        // launch check, which would then report an out-of-memory for kernels that allocate nothing.  The failure
++        // is handled right here (the window stays where it was), so the state must not outlive that decision.
++        (void) cudaGetLastError();
++        return false;
++    }
++    void* alias = nullptr;
++    // `Mapped` only ASKS for the mapping: for a device that cannot do it the failure is deferred to this call
++    // (the runtime's own note on cudaHostRegisterMapped), so the alias is the real test.  A missing alias keeps
++    // the registration - the CPU reads it for free either way - and makes `device_alias()` report null for it.
++    const cudaError_t dev = cudaHostGetDevicePointer(&alias, (void*) (base_ + off), 0);
++    if (dev != cudaSuccess || alias == nullptr) {
++        (void) cudaGetLastError();
++        alias = nullptr;
++    }
++    DaxWindow w;
++    w.off = off;
++    w.bytes = end - off;
++    w.first = first;
++    w.last = last;
++    w.device = (const uint8_t*) alias;
++    dax_windows_.push_back(w);
++    return true;
++}
++
++bool FileExpertSource::dax_unregister(size_t index) {
++    const DaxWindow w = dax_windows_[index];
++    dax_windows_.erase(dax_windows_.begin() + (std::ptrdiff_t) index);
++    const cudaError_t unreg = cudaHostUnregister((void*) (base_ + w.off));
++    if (unreg != cudaSuccess) {
++        std::fprintf(stderr, "FileExpertSource: STRATA_REGISTER_DAX: cudaHostUnregister of layers %lld..%lld failed: %s\n",
++                     (long long) w.first, (long long) w.last, cudaGetErrorString(unreg));
++        (void) cudaGetLastError();
++        return false;
++    }
++    return true;
++}
++
++bool FileExpertSource::dax_register_run(int64_t first) {
++    if (first < 0 || first >= n_layers_ || (size_t) first >= layer_blob_bytes_.size()) return false;
++    int64_t last = first;
++    if (!dax_fit(first, last)) {
++        std::fprintf(stderr,
++                     "FileExpertSource: STRATA_REGISTER_DAX: layer %lld (%.2f GiB) does not fit the %.2f GiB "
++                     "window; it stays on the pageable path\n",
++                     (long long) first, (double) (layer_end(first) - layer_begin(first)) / 1073741824.0,
++                     (double) dax_budget_ / 1073741824.0);
++        return false;
++    }
++    // The driver caps total registered host memory BELOW any budget we could ask for, and where it caps is the
++    // driver's business, not ours: if the full run is refused, give back one layer at a time rather than leave
++    // the cursor with no window at all.
++    for (; last >= first; --last) {
++        if (dax_register(first, last)) return true;
++        if (last == first) break;
++    }
++    return false;
++}
++
++void FileExpertSource::set_dma_stream(void* stream) { dax_stream_ = stream; }
++
++// The sliding window's only moving part, and the reason `pinned()` cannot be its driver.
++//
++// The prompt path's ISSUE step calls this once per layer, immediately before the layer's first copy is enqueued
++// (`dma_ready` told it, at job-build time, that every layer of the chunk is DMA-able, and this is what makes that
++// true layer by layer).  When the window already covers the layer - the common case, ~6 layers out of every
++// rotation - this is a linear scan of a handful of windows and no driver calls at all.
++//
++// ROTATION, AND THE RULE THAT MAKES THE UNREGISTER SAFE.  A window is released only after the copy stream has
++// been synchronised, because the copy engine reads the released bytes directly out of host memory: a
++// `cudaHostUnregister` that lands while a `cudaMemcpyAsync` from that range is still in flight is a
++// use-after-unmap, and the driver does not defend against it.  On top of that barrier the stalest window goes
++// first (the one whose `last` layer is lowest, i.e. the one the stream has moved past the furthest, always at
++// least one layer behind the layer being registered), so the synchronise is waiting on as little as possible.
++// Both, not either: the sync is what makes the release provably safe on a delay path this code does not control,
++// and the order is what keeps it cheap.
++//
++// NOT CALLED FROM DECODE.  `begin_layer` is the decode path's per-layer hook and it must never rotate: a decode
++// visits all 48 layers per token, so rotating there would be 48 unregister/register pairs a token, against 48
++// for an entire prompt here.  The consequence is that the window is FROZEN at whatever the last prompt chunk
++// left it, which is why `pinned()` is not the prompt path's gate: it would report those few layers and stage
++// every other one through the copy threads.
++bool FileExpertSource::prepare_layer(int64_t layer) {
++    if (!dax_ok_ || base_ == nullptr) return false;
++    if (layer < 0 || layer >= n_layers_) return false;
++    if (dax_window_of(layer) != nullptr) return true;
++    int64_t last = 0;
++    if (!dax_fit(layer, last)) return false;   // bigger than the whole budget: never DMA-able, never retried
++    if (!dax_windows_.empty()) {
++        const uint64_t need = page_up(layer_end(last)) - page_down(layer_begin(layer));
++        if (dax_stream_ != nullptr) {
++            const cudaError_t sync = cudaStreamSynchronize((cudaStream_t) dax_stream_);
++            if (sync != cudaSuccess) {
++                std::fprintf(stderr,
++                             "FileExpertSource: STRATA_REGISTER_DAX: the copy stream did not drain before a "
++                             "rotation (%s); layer %lld stays on the pageable path\n",
++                             cudaGetErrorString(sync), (long long) layer);
++                (void) cudaGetLastError();
++                return false;   // **NO ROTATION WITHOUT THE BARRIER** - a released range must never be in flight
++            }
++        }
++        uint64_t held = 0;
++        for (const DaxWindow& w : dax_windows_) held += w.bytes;
++        while (!dax_windows_.empty() && held + need > dax_budget_) {
++            size_t victim = 0;
++            for (size_t i = 1; i < dax_windows_.size(); ++i)
++                if (dax_windows_[i].last < dax_windows_[victim].last) victim = i;
++            held -= dax_windows_[victim].bytes;
++            (void) dax_unregister(victim);
++        }
++    }
++    if (!dax_register_run(layer)) {
++        // One refused rotation disables the window for the rest of the run: every later layer then answers
++        // `dma_ready` false and is staged exactly as the baseline stages it, instead of paying a failing driver
++        // call per layer.  Loud, because it is the difference between the two arms of the A/B.
++        std::fprintf(stderr,
++                     "FileExpertSource: STRATA_REGISTER_DAX: rotation to layer %lld failed; the sliding window is "
++                     "disabled and the rest of the run keeps its host copies\n",
++                     (long long) layer);
++        dax_ok_ = false;
++        return false;
++    }
++    ++dax_rotations_;
++    // Once per rotation, never per blob: the layer range moved and how many bytes that cost.
++    std::fprintf(stderr, "FileExpertSource: STRATA_REGISTER_DAX: rotation %lld: window now layers %lld..%lld, %.2f GiB\n",
++                 (long long) dax_rotations_, (long long) dax_windows_.back().first,
++                 (long long) dax_windows_.back().last, (double) dax_windows_.back().bytes / 1073741824.0);
++    std::fflush(stderr);
++    return true;
++}
++
++bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
++    // STRATA_REGISTER_DAX: memory inside a registered window IS pinned memory as far as the prompt path is
++    // concerned - the device reads the blob straight out of host memory - so every expert the window covers
++    // counts.  That is the CURRENT window: see `dma_ready` for what the stream should actually ask.
++    const DaxWindow* w = nullptr;
++    uint64_t offset = 0;
++    if (dax_holds(layer, expert, w, offset)) return true;
++    return complement_holds(layer, expert);
++}
++
++bool FileExpertSource::dma_ready(int64_t layer, int64_t expert) const {
++    // `pinned()` for a source that does not move a window, and the only question the streamed ring can ask: it
++    // builds the chunk's whole job list before it issues anything, so it cannot use a snapshot of the window.
++    if (pinned(layer, expert)) return true;
++    if (!dax_ok_ || dax_budget_ == 0) return false;
++    if (mapped_blob(layer, expert) == nullptr) return false;
++    // `prepare_layer` will register this layer when the issue step reaches it if the window can hold it alone.
++    return (uint64_t) n_expert_ * layer_blob_bytes_[(size_t) layer] <= dax_budget_;
++}
++
+ const uint8_t* FileExpertSource::device_alias(int64_t layer, int64_t expert) const {
+-    if (!pinned(layer, expert) || complement_device_ == nullptr) return nullptr;
+-    const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
+-    return complement_device_ + (size_t) complement_offsets_[index];
++    // The arena's copy comes first when it holds the expert: `blob()` returns THAT pointer, so the device pointer
++    // has to be the arena's too, or the two would disagree about which copy of the expert is being read.
++    if (complement_holds(layer, expert) && complement_device_ != nullptr)
++        return complement_device_ + (size_t) complement_offsets_[(size_t) layer * (size_t) n_expert_ + (size_t) expert];
++    // STRATA_REGISTER_DAX: a window is mapped into the CUDA address space one-to-one, so the blob's alias is its
++    // offset from the window's start applied to the window's alias.  Empty unless that registration was Mapped
++    // AND `cudaHostGetDevicePointer` gave a pointer - `w.device` is set only then, and a device that cannot map
++    // host memory fails there rather than here.
++    const DaxWindow* w = nullptr;
++    uint64_t offset = 0;
++    if (dax_holds(layer, expert, w, offset) && w->device != nullptr) return w->device + (size_t) offset;
++    return nullptr;
+ }
+ 
+ // ================================ THE ADAPTER ================================
+@@ -830,6 +1211,14 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
+                 if (e >= 0 && e < d.n_expert && d.host_res[(size_t) d.layers * (size_t) d.n_expert + (size_t) e] < 0) ++nmiss;
+             }
+         }
++        // STRATA_REGISTER_DAX: `pcie_ok` stays a chain of "is there a DMA-able source at all", and it must, because
++        // a PCIe group is only formed for an expert that is ALSO `pinned()` (below) - the two agree by construction:
++        // `device_alias()` is non-empty exactly for an expert `pinned()` reports, from the arena or from the
++        // registered range.  With the flag ON this branch therefore reaches mapped file pages as well, which is
++        // safe by the same argument the complement arena was: `cudaHostRegisterMapped` is what makes those pages
++        // readable from the device through this alias, the registration is ReadOnly so nothing writes them, and
++        // `ptr2` is consumed the same way (a copy kernel or the group kernel reading the mapped alias, never a
++        // write).  No change is needed here - and with the flag OFF nothing about this line moves.
+         const bool pcie_ok = d.pcie_num > 0 && d.src->device_alias(d.layers, 0) != nullptr;
+         const int m = pcie_ok ? (nmiss * d.pcie_num) >> 8 : 0;
+         int miss_rank = 0, groups = 0, entries = 0, fetches = 0;
+diff --git a/src/prefill/prefill.cpp b/src/prefill/prefill.cpp
+index bdfd9e7..1222e0c 100644
+--- a/src/prefill/prefill.cpp
++++ b/src/prefill/prefill.cpp
+@@ -1077,6 +1077,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+         // `used` event recorded), so the copy stream never waits on an event that is not queued yet
+         const strata::kernels::cpu::ExpertLayout& lay0 = strata::kernels::cpu::expert_layout();
+         const bool stream_all = m.ring > STAGE && T >= STREAM_ALL_MIN && m.src != nullptr;
++        // Plan v0.3 P7: the sliding DAX window may only unregister a range after this stream has drained - a
++        // `cudaMemcpyAsync` out of it may still be in the copy engine - and this is the only place that knows
++        // which stream the direct-DMA copies run on.
++        if (m.src != nullptr) m.src->set_dma_stream(m.copy);
+         struct StreamEntry { int32_t l, e; const uint8_t* blob; int job; };
+         std::vector<StreamEntry> seq;
+         std::vector<size_t> seq_start;
+@@ -1090,8 +1094,13 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                     if (m.host_res && m.cache && m.host_res[(size_t) l * m.g->n_expert + e] >= 0) continue;
+                     const uint8_t* b = m.src->blob(l, e);
+                     if (!b) { err = "prefill: expert source has no blob"; return false; }
++                    // **`dma_ready`, NOT `pinned`.**  This loop builds the job list for the WHOLE chunk, but the
++                    // sliding DAX window registers a layer only when the ISSUE step reaches it, so `pinned()` -
++                    // a snapshot of what is registered right now - would report the handful of layers around the
++                    // start and stage every other one through the copy threads.  `dma_ready` asks what the answer
++                    // will be when the layer's first copy is issued; `prepare_layer` at issue time makes it true.
+                     int job = -1;
+-                    if (!m.src->pinned(l, e)) {
++                    if (!m.src->dma_ready(l, e)) {
+                         job = (int) js.size();
+                         js.push_back({b, (size_t) lay0.blob_bytes(l)});
+                     }
+@@ -1114,6 +1123,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                 const size_t bytes = (size_t) lay0.blob_bytes(en.l);
+                 if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[sl], 0);
+                 if (en.job < 0) {
++                    // the sliding window's rotation point: register this layer before its first copy (a no-op
++                    // for every layer the window already covers).  `dma_ready` promised this at job-build time.
++                    (void) m.src->prepare_layer(en.l);
+                     cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
+                     ++stats_.experts_dma;
+                 } else {
+@@ -1161,6 +1173,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                     const size_t bytes = (size_t) lay0.blob_bytes(en.l);
+                     if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[sl], 0);
+                     if (en.job < 0) {
++                        // the sliding window's rotation point: register this layer before its first copy (a no-op
++                        // for every layer the window already covers).  `dma_ready` promised this at job-build time.
++                        (void) m.src->prepare_layer(en.l);
+                         cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
+                         ++iss_dma;
+                     } else {
+@@ -1573,6 +1588,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                     // the unpinned ones are copied to pinned buffers by the stager's threads, in this order
+                     std::vector<int> job_of(order.size(), -1);
+                     if (!stream_all) {
++                        // the sliding window's rotation point for the short-chunk path: move the window to this
++                        // layer BEFORE the jobs below - and `stage_one` - ask `pinned` about it.
++                        (void) m.src->prepare_layer(l);
+                         std::vector<Stager::Job> js;
+                         for (size_t j = 0; j < order.size(); ++j) {
+                             const int32_t e = order[j];
+diff --git a/src/program/generate.cpp b/src/program/generate.cpp
+index 6070087..66d7e38 100644
+--- a/src/program/generate.cpp
++++ b/src/program/generate.cpp
+@@ -183,6 +183,8 @@ struct Options {
+     bool no_host_worker = false;
+     bool mmap_experts = false;    ///< R2.1: opt OUT of the resident arena, back to MapViewOfFile
+     bool resident_cpu_experts = false; ///< mmap-backed static-cache misses copied into ordinary RAM
++    uint64_t resident_cpu_bytes = 0;   ///< cap the host tier at this many bytes (0 = every miss, layout order)
++    bool resident_cpu_pinned = false;  ///< pin the host tier so the prompt path DMAs from it directly
+     /// R4: slots of VRAM-resident experts.  **0 = off, and off is the default.**
+     /// **THE COMMENT THAT USED TO BE HERE WAS FALSE AND ROUND 328 MEASURED IT.**  It said "the cache has no
+     /// consumer yet - `moe_hit_grouped_s2` does not exist - so switching it on costs the fill traffic and
+@@ -437,7 +439,11 @@ void usage() {
+                  "                       The A/B arm: the mmap's rate depends on the OS page cache holding\n"
+                  "                       34 GB, and measured 71.97 vs 34.78 ms/token cold vs warm.\n"
+                  "  --resident-cpu-experts  with mmap and a static profile, keep CPU misses resident in ordinary RAM.\n"
+-                 "                       Borrowed GPU-cache entries may read from mmap during prompt prefill.\n");
++                 "                       Borrowed GPU-cache entries may read from mmap during prompt prefill.\n"
++                 "  --resident-cpu-mib N  cap the host tier at N MiB, taking the hottest profile-ranked pairs the\n"
++                 "                       GPU cache does not hold (default: every miss, layout order).\n"
++                 "  --resident-cpu-pinned  pin the host tier (cudaHostAlloc) so the prompt path DMAs it directly\n"
++                 "                       instead of staging it through the copy threads.\n");
+ }
+ 
+ /// All shards of a split GGUF, from shard 1's path ("...-00001-of-00002.gguf"); just the path when it is not split.
+@@ -1072,6 +1078,8 @@ int main(int argc, char** argv) {
+         else if (a == "--gpu-stages") o.gpu_stages = true;
+         else if (a == "--mmap-experts") o.mmap_experts = true;
+         else if (a == "--resident-cpu-experts") o.resident_cpu_experts = true;
++        else if (a == "--resident-cpu-mib") o.resident_cpu_bytes = (uint64_t) std::atoll(next("--resident-cpu-mib")) << 20;
++        else if (a == "--resident-cpu-pinned") o.resident_cpu_pinned = true;
+         else if (a == "--stats") o.stats = true;
+         else if (a == "--shared-late") o.shared_late = true;
+         else if (a == "--keep-canonical") o.keep_canonical = true;
+@@ -1140,8 +1148,8 @@ int main(int argc, char** argv) {
+         }
+     }
+     const bool multi_gpu = !split_devs.empty() && !split_same;
+-    if (o.resident_cpu_experts && (!o.mmap_experts || o.expert_profile.empty() || o.adapt_every != 0)) {
+-        std::fprintf(stderr, "strata generate: --resident-cpu-experts requires --mmap-experts, a static --expert-profile and --adapt-every 0\n");
++    if (o.resident_cpu_experts && (!o.mmap_experts || o.expert_profile.empty())) {
++        std::fprintf(stderr, "strata generate: --resident-cpu-experts requires --mmap-experts and --expert-profile\n");
+         return 2;
+     }
+     if (o.resident_cpu_experts &&
+@@ -2225,11 +2233,17 @@ int main(int argc, char** argv) {
+     }
+ 
+     if (o.resident_cpu_experts) {
+-        if (!src.pin_cache_complement(xcache, err, /*pin=*/false)) {
++        const std::vector<std::pair<int32_t, int32_t>>* ranked =
++            (o.resident_cpu_bytes > 0 && !profile.empty()) ? &profile : nullptr;
++        if (!src.pin_cache_complement(xcache, err, /*pin=*/o.resident_cpu_pinned, {}, ranked, o.resident_cpu_bytes)) {
+             std::fprintf(stderr, "strata generate: CPU expert residency: %s\n", err.c_str());
+             return 1;
+         }
+-        std::fprintf(stderr, "strata generate: steady-state CPU cache misses are resident in ordinary RAM; borrowed cache entries may use mmap during prompt prefill\n");
++        if (ranked != nullptr)
++            std::fprintf(stderr, "strata generate: host expert tier: %s, capped at %.0f MiB from the profile ranking\n",
++                         o.resident_cpu_pinned ? "pinned" : "pageable", (double) o.resident_cpu_bytes / 1048576.0);
++        else
++            std::fprintf(stderr, "strata generate: steady-state CPU cache misses are resident in ordinary RAM; borrowed cache entries may use mmap during prompt prefill\n");
+     }
+ 
+     for (auto& stp : stages) {
+@@ -3027,7 +3041,11 @@ int main(int argc, char** argv) {
+             for (int64_t e = 0; e < g.n_expert; ++e) {
+                 const uint64_t b = lay.blob_bytes(l);
+                 total += b;
+-                if (srcp->pinned(l, e)) pinned += b;
++                // `dma_ready`, not `pinned`: the sliding DAX window holds only a few layers at a time, and a
++                // snapshot would size the streamed ring for the host-copy path (96 slots) on a run where every
++                // streamed expert is in fact DMA'd straight out of the registered window (384).  For every other
++                // source the two are the same call.
++                if (srcp->dma_ready(l, e)) pinned += b;
+             }
+         strata::prefill::Prefill::set_pinned_share(total ? (double) pinned / (double) total : 1.0);
+     }

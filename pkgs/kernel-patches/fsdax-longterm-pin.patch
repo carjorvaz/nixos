@@ -1,0 +1,124 @@
+#
+# fsdax-longterm-pin.patch
+#
+# Opt-in escape hatch for the "DMA straight out of persistent memory"
+# experiment on the tiberius box: allow FOLL_LONGTERM (i.e. device DMA) pins
+# of FSDAX VMAs, so a device can DMA the expert-weight blobs directly out of
+# /optane (XFS on /dev/pmem0, dax=always) instead of bouncing them through a
+# copy in RAM.
+#
+# WHY THIS IS UNSAFE IN GENERAL (and must stay off by default):
+#
+#   - FSDAX pages cannot be migrated.  They have no RAM backing to move to, so
+#     __gup_longterm_locked()'s check_and_migrate_movable_pages() can never
+#     satisfy itself: collect_longterm_unpinnable_folios() flags the folio,
+#     folio_isolate_lru() refuses it, and the retry loop ends in -EAGAIN /
+#     failure.  That is exactly why folio_is_longterm_pinnable() has always
+#     answered "no" for folio_is_fsdax(), and why check_vma_flags() rejects
+#     FOLL_LONGTERM for vma_is_fsdax() VMAs up front.
+#   - FSDAX pages cannot be truncated, hole-punched, freed or hot-unplugged
+#     while a long term pin is held.  Truncate/hole-punch only promises to
+#     wait for *transient* delays, and dax hot-unplug (dax/kmem, device-dax)
+#     has no way to wait for an out-of-tree driver to drop its pin.  A
+#     permanent pin on such a page is therefore an unrecoverable pin.
+#
+# WHY IT IS ACCEPTABLE ON THIS BOX:
+#
+#   - The pinned object is a read-only, never-truncated mmap of
+#     /optane/strata-data/packs/iq3_s/experts.bin; the file is created once and
+#     never resized, punched or deleted.
+#   - /dev/pmem0 is statically partitioned Optane persistent memory that this
+#     machine never hot-unplugs; the DAX pgmap is permanent for the life of
+#     the boot.
+#   - The pin is held for the lifetime of the serving process and is never
+#     released into a truncate race.
+#
+# The flag defaults to OFF, so a kernel carrying this patch behaves exactly
+# like upstream unless "fsdax_longterm_pin=1" is on the command line.  Revert
+# by removing the boot.kernelPatches entry and the kernel param.
+#
+--- a/mm/gup.c
++++ b/mm/gup.c
+@@ -2,6 +2,8 @@
+ #include <linux/kernel.h>
+ #include <linux/errno.h>
+ #include <linux/err.h>
++#include <linux/init.h>
++#include <linux/kstrtox.h>
+ #include <linux/spinlock.h>
+ 
+ #include <linux/mm.h>
+@@ -28,6 +30,38 @@
+ #include "internal.h"
+ #include "swap.h"
+ 
++/*
++ * Opt-in escape hatch: allow FOLL_LONGTERM (device DMA) pins of FSDAX VMAs,
++ * so that a device can DMA directly out of persistent memory instead of
++ * bouncing the data through a copy in RAM.
++ *
++ * This is UNSAFE in general, and must only ever be enabled on a system whose
++ * pmem mapping is known to be permanent:
++ *
++ *  - FSDAX pages can never be migrated (there is no backing RAM for them), so
++ *    once pinned they are pinned where they are.  check_and_migrate_movable_
++ *    pages() would otherwise try forever to move them out of the way and give
++ *    up with -EAGAIN.
++ *  - FSDAX pages can never be truncated/hole-punched while a long term pin is
++ *    held, and the page can never be freed or hot-unplugged.  A filesystem
++ *    truncate or a dax hot-unplug racing with the pin has no way to wait for
++ *    the pinned driver to release it, hence the general prohibition.
++ *
++ * It is acceptable for the intended user: a read-only, never-truncated mmap of
++ * a file on an fsdax mount backed by persistent memory that is never
++ * hot-unplugged, pinned for the lifetime of the process.
++ *
++ * Off by default.  Enabled with "fsdax_longterm_pin=1" on the kernel command
++ * line.
++ */
++bool fsdax_longterm_pin __read_mostly;
++
++static int __init fsdax_longterm_pin_setup(char *str)
++{
++	return kstrtobool(str, &fsdax_longterm_pin);
++}
++early_param("fsdax_longterm_pin", fsdax_longterm_pin_setup);
++
+ static inline void sanity_check_pinned_pages(struct page **pages,
+ 					     unsigned long npages)
+ {
+@@ -1210,7 +1244,8 @@
+ 	if ((gup_flags & FOLL_ANON) && !vma_anon)
+ 		return -EFAULT;
+ 
+-	if ((gup_flags & FOLL_LONGTERM) && vma_is_fsdax(vma))
++	if ((gup_flags & FOLL_LONGTERM) && vma_is_fsdax(vma) &&
++	    !fsdax_longterm_pin)
+ 		return -EOPNOTSUPP;
+ 
+ 	if ((gup_flags & FOLL_SPLIT_PMD) && is_vm_hugetlb_page(vma))
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -2107,6 +2107,13 @@
+ 	return is_zero_page(&folio->page);
+ }
+ 
++/*
++ * Opt-in escape hatch allowing GUP long term pins of FSDAX pages; defined in
++ * mm/gup.c, off by default, enabled with the fsdax_longterm_pin=1 cmdline
++ * option. See the long comment there for why this is unsafe in general.
++ */
++extern bool fsdax_longterm_pin;
++
+ /* MIGRATE_CMA and ZONE_MOVABLE do not allow pin folios */
+ #ifdef CONFIG_MIGRATION
+ static inline bool folio_is_longterm_pinnable(struct folio *folio)
+@@ -2129,7 +2136,7 @@
+ 	 * Filesystems can only tolerate transient delays to truncate and
+ 	 * hole-punch operations
+ 	 */
+-	if (folio_is_fsdax(folio))
++	if (folio_is_fsdax(folio) && !fsdax_longterm_pin)
+ 		return false;
+ 
+ 	/* Otherwise, non-movable zone folios can be pinned. */

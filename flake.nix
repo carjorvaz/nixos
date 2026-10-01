@@ -90,13 +90,17 @@
   outputs =
     { self, ... }@inputs:
     let
-      # Auto-discover all packages in pkgs/
+      # Auto-discover all packages in pkgs/.  A directory only counts as a
+      # package when it actually has a default.nix to import, so data-only
+      # directories (e.g. pkgs/kernel-patches with just patch files) are
+      # skipped instead of breaking evaluation.
       pkgsDir = ./pkgs;
       packageEntries =
         let
           isPackage =
             name: type:
-            (type == "directory") || (type == "regular" && inputs.nixpkgs.lib.hasSuffix ".nix" name);
+            (type == "directory" && builtins.pathExists (pkgsDir + "/${name}/default.nix"))
+            || (type == "regular" && inputs.nixpkgs.lib.hasSuffix ".nix" name);
         in
         inputs.nixpkgs.lib.filterAttrs isPackage (builtins.readDir pkgsDir);
 
