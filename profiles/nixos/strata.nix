@@ -116,6 +116,15 @@ let
         # warm-up transient, not steady state.  The refill itself is load-bearing:
         # the same measurements put the static profile alone (no eviction, no
         # refill) at 68.3% hit versus 80.1% shipped.
+        # tiberius: the engine's conversation cache is left at its defaults
+        # (--prompt-cache 6, --prompt-cache-every 16384, --prompt-cache-root
+        # 2048).  Measured 2026-10-02: resume is pure token-prefix matching, an
+        # append-only conversation pays ~4.2 s of prefill per turn flat in
+        # conversation length (the previous reply is reused for free), an exact
+        # repeat pays 154 ms against 6,239 ms, and a shared system block smaller
+        # than the 2048-token root gets 0% reuse (1K: 0/4 requests; 2K: 91-95%).
+        # The chat template puts the tools JSON and any reasoning instruction at
+        # the FRONT of the prefix, so changing either invalidates every cache.
         "--stats"
       ];
       cwd = "${cfg.package}/share/strata";
