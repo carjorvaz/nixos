@@ -92,6 +92,10 @@ stdenv.mkDerivation {
       echo "tiberius.patch did not introduce the STRATA_DENSE_FP16 dense GEMM path" >&2
       exit 1
     }
+    grep -q 'STRATA_REFILL_PIN_SRC' src/program/generate.cpp || {
+      echo "tiberius.patch did not introduce the STRATA_REFILL_PIN_SRC refill path" >&2
+      exit 1
+    }
   '';
 
   nativeBuildInputs = [

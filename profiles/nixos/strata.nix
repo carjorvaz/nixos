@@ -122,7 +122,18 @@ let
         # append-only conversation pays ~4.2 s of prefill per turn flat in
         # conversation length (the previous reply is reused for free), an exact
         # repeat pays 154 ms against 6,239 ms, and a shared system block smaller
-        # than the 2048-token root gets 0% reuse (1K: 0/4 requests; 2K: 91-95%).
+        # than the 2048-token root gets no root checkpoint at all (1K block:
+        # 0/4 requests reused; 2K/4K: 91-95%).
+        #
+        # The 2048 default sits at the measured break-even: creating a root costs
+        # one extra batched pass (+3.4 s on the first request of a chat, and
+        # ~118 MB of host RAM per pinned checkpoint, independent of its length),
+        # while each reuse saves ~1.6 ms per root token - break-even after
+        # F/(m*r) = 2063/r reuses (2048 -> 1, 1024 -> 2, 512 -> 4).  Lowering the
+        # root to 512 wins ~6-10% of prompt-read time only for traffic with a
+        # stable sub-2K system block reused >=4x, and changes nothing for a >=2K
+        # block; 1024 is only better if 512-1K blocks should NOT be rooted.
+        #
         # The chat template puts the tools JSON and any reasoning instruction at
         # the FRONT of the prefix, so changing either invalidates every cache.
         "--stats"
@@ -163,6 +174,25 @@ let
         # (-16.8%).  Decode untouched (its only Gemm::bf16 caller runs below the
         # row threshold).
         STRATA_DENSE_FP16 = "1";
+        # tiberius: the decode-time VRAM refill reads from registered (pinned)
+        # sources instead of the pageable bounce path.  98% of its 2 MiB copies
+        # were pageable at ~0.87 ms/copy (2.3 GB/s) and sat on the decode loop's
+        # critical path (issue 19.9 + join 18.0 ms of a 122 ms window; the
+        # adaptive tier is what keeps the cache hit rate at 80% instead of the
+        # static profile's 68%).  The flag registers each batch's pageable source
+        # spans just before its copy, MERGING them into disjoint runs first (an
+        # H2D copy whose source begins inside a registration and ends outside it
+        # is refused by the driver - that is the "adaptive refill failed" 400 an
+        # unmerged version produced on every second request), and releases them
+        # only once the batch's event has completed.  Measured 2026-10-02 on the
+        # real corpus, counterbalanced, 8 runs/arm, fresh engine per run: decode
+        # 19.61 -> 22.00 tok/s on a 4292-token prompt (+12.2%), 26.73 -> 28.61 on
+        # 3514 (+7.1%), 21.82 -> 23.11 on 3456 (+5.9%); refill join 18.04 ->
+        # 1.46 ms/window, issue 19.88 -> 3.12, pageable copy 0.866 -> 0.003 ms;
+        # expert-cache hit rate and prefill unchanged, warm-up state hash
+        # bit-identical, peak registered ~6292 MiB against the driver's ~7 GiB
+        # process cap with 0 refusals in 64 measured requests.
+        STRATA_REFILL_PIN_SRC = "1";
         # tiberius: the sliding DAX window.  The kernel opt-in
         # (fsdax_longterm_pin=1, pkgs/kernel-patches/fsdax-longterm-pin.patch) is
         # what lets cudaHostRegister pin DAX pages at all; the driver then caps a
