@@ -18,9 +18,9 @@
 #                 bounded by the non-resident expert bytes per chunk.
 #
 # The engine is built for sm_75 by pkgs/strata-sm75 (with the local engine patch:
-# the host expert tier and the sliding DAX window); the model itself is NOT in the
-# store -- it was prepared once on the host (the setup flow's iq_pack step) and
-# lives on the DAX-mounted Optane.  This module wires up:
+# the sliding DAX window, the FP16 dense GEMMs and the registered decode refill);
+# the model itself is NOT in the store -- it was prepared once on the host by the
+# setup flow's iq_pack step and lives on the DAX-mounted Optane.  This module wires up:
 #
 #   * the fsdax namespace + XFS(dax=always) mount (idempotent prepare unit),
 #   * the OpenAI/Anthropic server over serve/server.py with the measured flags
@@ -40,10 +40,13 @@ let
     ps.numpy
     ps.requests
     # serve/ imports these directly: jinja2.sandbox (chat templates), PIL (vision),
-    # psutil (the engine-supervision/telemetry path).
+    # psutil (the engine-supervision/telemetry path), and jsonschema lazily for
+    # response_format json_schema (serve/structured.py -- without it the server
+    # only checks that the answer is one JSON object and says so once).
     ps.jinja2
     ps.pillow
     ps.psutil
+    ps.jsonschema
   ]);
 
   lanes = {
@@ -66,6 +69,22 @@ let
   };
   lane = lanes.${cfg.model};
 
+  # v0.1.35's gguf_split_paths() THROWS when a "--native ...-0000N-of-0000M.gguf"
+  # has a missing sibling shard (0.1.29's model_shards() silently skipped absent
+  # shards), and the GGUF reader additionally validates the file's own split
+  # metadata - a shard-1 file handed over as a whole model is refused with "is
+  # shard 1 of 2, but it was opened as a whole model".  The deployed lanes
+  # deliberately keep shard 1 only under modelsRoot (shard 2 lives under
+  # dataDir/ple), so the service assembles a per-lane directory holding BOTH
+  # shards as symlinks under their real split names and points --native and
+  # --ple-gguf INSIDE that one directory: naming the same derived string twice is
+  # what keeps the engine from appending the PLE shard a second time
+  # (native_dense.cpp rejects a repeated split number, and a different spelling of
+  # the same file is exactly that bug).  ExecStartPre remakes the links on every
+  # start; stateDir survives reboots, and ln -sfn is idempotent.
+  nativeDir = "${cfg.stateDir}/native/${lane.pack}";
+  pleShard = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+
   strataJson = pkgs.writeText "strata-${cfg.model}.json" (
     builtins.toJSON {
       exe = "${cfg.package}/bin/strata";
@@ -73,15 +92,17 @@ let
         "--pack"
         "${cfg.dataDir}/packs/${lane.pack}"
         "--native"
-        "${cfg.modelsRoot}/${lane.models}/${lane.shard1}"
+        "${nativeDir}/${lane.shard1}"
         "--ple-gguf"
         # Shared by both lanes on purpose: the PLE table (shard 2) is common to
         # the IQ3_S and Coder releases, and the coder has no shard 2 of its own
         # (verified 2026-09-30 on the box: /optane/strata-data/ple/ holds only
         # this file and the coder's models dir holds only its shard 1).  The
         # engine appends this shard to the dense tensors, which is exactly what
-        # the manually-measured coder lane at 410 tok/s prefill used.
-        "${cfg.dataDir}/ple/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf"
+        # the manually-measured coder lane at 410 tok/s prefill used.  It is fed
+        # from nativeDir so the path string equals the one the engine derives
+        # from --native's split name (see nativeDir above).
+        "${nativeDir}/${pleShard}"
         "--ple-io"
         "mmap"
         "--expert-profile"
@@ -100,10 +121,23 @@ let
         (toString cfg.context)
         "--kv"
         cfg.kv
+      ]
+      # v0.1.35 has the resident host tier natively: --resident-budget-gib N keeps
+      # the N GiB of the GPU cache's complement that the expert profile ranks
+      # hottest, and implies --mmap-experts + --resident-cpu-experts (the parser
+      # treats them as one mode).  The unit is GiB, so the old --resident-cpu-mib
+      # 1024 is exactly 1.0 here; 0 keeps the plain mmap path instead, because the
+      # flag itself requires N > 0.  The old --resident-cpu-mib and its relaxed
+      # --adapt-every requirement are gone: upstream admits the tier beside the
+      # adaptive cache (reserve_exchanges) by itself.
+      ++ lib.optionals (cfg.hostTierGib > 0) [
+        "--resident-budget-gib"
+        (toString cfg.hostTierGib)
+      ]
+      ++ lib.optionals (cfg.hostTierGib <= 0) [
         "--mmap-experts"
-        "--resident-cpu-experts"
-        "--resident-cpu-mib"
-        (toString cfg.hostTierMib)
+      ]
+      ++ [
         # tiberius: no --adapt-swaps here on purpose.  The adaptive VRAM refill
         # runs on the decode loop's critical path (`adapt_thr.join()`, 15.8-16.0%
         # of every decode window at the engine's default 96 swaps, 0.76-0.85 ms
@@ -145,6 +179,20 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
+        # v0.1.35's --resident-budget-gib page-locks its copy by default
+        # (cudaHostAlloc / cudaHostRegister, reported as "mapped pinned").  The
+        # measured tier on this box is the PAGEABLE one (the deployed log reads
+        # "resident 1.00 GiB, pinned 0.00 GiB"), and 1 GiB of pinned host memory
+        # would also sit on the ~7 GiB per-process cudaHostRegister cap that the
+        # sliding DAX window already probes at ~6.2 GiB.  STRATA_RESIDENT_PIN=0 is
+        # upstream's own "the --resident-cpu-experts form" arm.
+        STRATA_RESIDENT_PIN = "0";
+        # The budget path clamps to (available RAM - this headroom - 256 MiB).
+        # The default headroom is 4 GiB, which exceeds what this 7.4 GiB box has
+        # available at engine start (~2 GiB) and would silently zero the tier;
+        # the old --resident-cpu-mib path had no clamp at all.  0 keeps 1 GiB
+        # (only the 256 MiB margin applies).
+        STRATA_RESIDENT_HEADROOM_GIB = "0";
         # tiberius: a small pinned staging ring is ~16% faster on prefill than
         # the default 16 (the copies follow layer order, so a deep ring only
         # adds DMA/cache contention); measured 2026-09-30.
@@ -303,9 +351,12 @@ in
       default = "/data/strata-models";
       description = ''
         Root of the raw shard directories.  Each lane's directory holds shard 1
-        ONLY: the engine collects every `*-0000N-of-0000M.gguf` beside --native
-        and would reject shard 2 as a duplicate split once the PLE shard is
-        added.
+        ONLY, under its own `-00001-of-00002.gguf` name; the service symlinks it
+        (and the shared PLE shard) into stateDir/native/<lane>/ on every start,
+        because v0.1.35's gguf_split_paths() makes a missing sibling shard fatal
+        and refuses a shard file opened as a whole model.  Shard 2 is fed in
+        through --ple-gguf from that same directory, so the engine's shard list
+        names it exactly once.
       '';
     };
 
@@ -334,13 +385,14 @@ in
       description = "KV cache format.  K8V4 gives the 262K window at ~5.2 GB of VRAM.";
     };
 
-    hostTierMib = lib.mkOption {
-      type = lib.types.int;
-      default = 1024;
+    hostTierGib = lib.mkOption {
+      type = lib.types.float;
+      default = 1.0;
       description = ''
-        MiB of the hottest profile-ranked experts the GPU cache does not hold
-        kept in ordinary RAM (the host expert tier).  Measured ~8% off the CPU
-        pool at 1024; 0 disables it and restores the pure mmap path.
+        GiB of the hottest profile-ranked experts the GPU cache does not hold kept
+        in ordinary RAM (upstream v0.1.35's --resident-budget-gib, a float so a lane
+        can ask for e.g. 0.5).  1.0 is the measured setting (the old
+        --resident-cpu-mib 1024, ~8% off the CPU pool); 0 keeps the pure mmap path.
       '';
     };
 
@@ -464,7 +516,18 @@ in
         RestartSec = "10s";
         StartLimitIntervalSec = 300;
         StartLimitBurst = 3;
-        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}";
+        ExecStartPre = [
+          "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
+          # v0.1.35's gguf_split_paths() demands every shard named by --native's
+          # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
+          # metadata too, so shard 1 cannot be passed alone or under a made-up
+          # name.  nativeDir is therefore assembled here with BOTH shards as
+          # symlinks under their real split names; --native and --ple-gguf then
+          # point inside it.  ln -sfn is idempotent and replaces a stale link.
+          "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
+          "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
+          "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleShard} ${nativeDir}/${pleShard}"
+        ];
         ExecStart = lib.escapeShellArgs [
           "${python}/bin/python3"
           "${cfg.package}/share/strata/serve/server.py"

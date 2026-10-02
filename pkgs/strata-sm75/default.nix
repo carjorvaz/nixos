@@ -23,7 +23,7 @@
 let
   c = cudaPackages;
 
-  revision = "d6708a4aae15b4860000d54c8af9e84d684bce09";
+  revision = "d9ab8435f654c368c586340d490915f6addf56a3";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -55,33 +55,35 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.29";
+  version = "0.1.35";
 
   src = fetchFromGitHub {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-Unkpm1Wj7qtvZA/uKvm4tJFOUPYOPhCdvoVn9u17xXc=";
+    hash = "sha256-cklOp4RjPN8B0lWei681rzE7a0JlEKLRhqb4PuTO6vg=";
   };
 
-  # tiberius's two local engine changes, in one patch because they edit the same
-  # regions of expert_source.{hpp,cpp} and generate.cpp:
-  #   * the host expert tier -- a rank-ordered, size-capped DRAM complement
-  #     (--resident-cpu-experts --resident-cpu-mib N) plus the relaxed requirement
-  #     that let it coexist with the adaptive VRAM cache;
-  #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill
-  #     is reading DMA-able by the device without registering the whole 46.84 GiB pack.
+  # tiberius's local engine changes, in one patch because they interleave in the
+  # same regions of expert_source.{hpp,cpp}, prefill.cpp and generate.cpp:
+  #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill is
+  #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
+  #   * STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores;
+  #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources.
+  # The host expert tier is NOT here any more: v0.1.35 has it natively
+  # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # Same source revision as the pin above, so `patch -p1` applies cleanly.
   patches = [ ./tiberius.patch ];
 
-  # The service passes --resident-cpu-mib and sets STRATA_REGISTER_DAX, and both
-  # exist only because the patch above adds them.  Upstream treats an unknown flag
-  # as fatal, so a patch that silently failed to apply would turn the whole service
-  # into a crash-loop -- and a silently missing window would drop the measured
-  # prefill win without saying so.  Fail the build here instead.
+  # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX,
+  # STRATA_DENSE_FP16 and STRATA_REFILL_PIN_SRC.  The first is upstream's; the other
+  # three exist only because the patch above adds them, and upstream treats an unknown
+  # flag as fatal: a patch that silently failed to apply would turn the whole service
+  # into a crash-loop, and a silently missing window would drop the measured prefill
+  # win without saying so.  Fail the build here instead.
   postPatch = ''
-    grep -q 'resident-cpu-mib' src/program/generate.cpp || {
-      echo "tiberius.patch did not introduce --resident-cpu-mib" >&2
+    grep -q 'resident-budget-gib' src/program/generate.cpp || {
+      echo "the engine source has no --resident-budget-gib (upstream's resident tier)" >&2
       exit 1
     }
     grep -q 'STRATA_REGISTER_DAX' src/core/expert_source.cpp || {
