@@ -104,6 +104,18 @@ let
         "--resident-cpu-experts"
         "--resident-cpu-mib"
         (toString cfg.hostTierMib)
+        # tiberius: no --adapt-swaps here on purpose.  The adaptive VRAM refill
+        # runs on the decode loop's critical path (`adapt_thr.join()`, 15.8-16.0%
+        # of every decode window at the engine's default 96 swaps, 0.76-0.85 ms
+        # per swapped expert), but cutting it to 48 does not pay: the cheaper join
+        # costs 3.8/3.2 points of decode expert-cache hit rate, i.e. +15.8/+8.3 ms
+        # of CPU pool per window against the -9.1/-6.5 ms the join saves.  Measured
+        # 2026-10-02 on the deployed engine, counterbalanced medians over 7 runs an
+        # arm: wall +6.0%/+1.4% and tok/s -4.2%/-6.4% at 48, a wash at 64.  The
+        # apparent win at 48 in an earlier, shorter A/B was the four-window cold
+        # warm-up transient, not steady state.  The refill itself is load-bearing:
+        # the same measurements put the static profile alone (no eviction, no
+        # refill) at 68.3% hit versus 80.1% shipped.
         "--stats"
       ];
       cwd = "${cfg.package}/share/strata";
@@ -144,14 +156,25 @@ let
         STRATA_DENSE_FP16 = "1";
         # tiberius: the sliding DAX window.  The kernel opt-in
         # (fsdax_longterm_pin=1, pkgs/kernel-patches/fsdax-longterm-pin.patch) is
-        # what lets cudaHostRegister pin DAX pages at all; the driver then caps
-        # TOTAL registered host memory at 6144 MiB on this box (~85% of its 7.6 GB
-        # RAM, measured and independent of free RAM), so the engine registers the
-        # pack 6144 MiB at a time and slides the window layer by layer as prefill
-        # walks the file.  Measured 2026-10-01 on the real corpus: prefill
-        # 13,136 -> 10,223 ms for a 4292-token prompt (327 -> 420 tok/s) with 8
-        # rotations over the 48-layer pack, decode unchanged.  The cap scales with
-        # RAM: a bigger box registers a bigger window.
+        # what lets cudaHostRegister pin DAX pages at all; the driver then caps a
+        # PROCESS's total registered host memory, so the engine registers the pack
+        # 6144 MiB at a time and slides the window layer by layer as prefill walks
+        # the file.  Measured 2026-10-01 on the real corpus: prefill 13,136 ->
+        # 10,223 ms for a 4292-token prompt (327 -> 420 tok/s) with 8 rotations
+        # over the 48-layer pack, decode unchanged.
+        #
+        # The cap was probed on 2026-10-02 (/data/regcap*.log): a single 6912 MiB
+        # registration succeeds and 7168 MiB is refused with
+        # cudaErrorMemoryAllocation, so the limit is ~7 GiB per process - and it is
+        # a *total*: disjoint registrations do not escape it, dropping
+        # cudaHostRegisterMapped changes nothing, RLIMIT_MEMLOCK is unlimited, and
+        # holding anonymous memory does not move it.  The 46.84 GiB pack therefore
+        # cannot be pinned in one window and the 8 rotations per prompt are
+        # irreducible.  Raising the MIB to 6912 would save at most one rotation
+        # (~0.9%) while eating the headroom the engine's own pinned buffers need -
+        # and a refused registration makes the engine fall back to the pageable
+        # path (13 s prefill) - so 6144 stays.  Nothing here scales with free RAM;
+        # the ~7 GiB total looks like the box's lockable-memory budget.
         STRATA_REGISTER_DAX = "1";
         STRATA_REGISTER_DAX_MIB = "6144";
       };
