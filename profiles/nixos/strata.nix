@@ -110,7 +110,23 @@ let
         "--expert-cache"
         "auto"
         "--prefill"
-        "auto"
+        # v0.1.35's prompt path streams, per chunk, the union of the experts that
+        # chunk's tokens route to - and above ~2K tokens that union is nearly the
+        # whole 46.84 GiB pack - so the DMA per token falls as the chunk grows.
+        # Measured 2026-10-03 on this box (deployed 262144/k8v4, 6657-slot cache,
+        # fresh engine per cell, 128-token replies): a 110K-token prompt reads
+        # 177.0 s (622 tok/s) at the old auto/8192 and 118.6 s (928 tok/s) at 28672
+        # (-33%); 27.5K goes 43.8 -> 27.8 s (992 tok/s, -37%); a 4.3K prompt is
+        # unchanged (9.5 s) and the decode right after is equal or better (hit
+        # 78.7 -> 79.0%).  The startup borrow rises from 1861 to 6223 of 6657 slots
+        # (11.79 GiB) and is refilled after the prompt.
+        # 28672 and not a power of two on purpose: the engine accepts a fixed chunk
+        # by halving it (`for (c = chunk; c >= 256; c /= 2)`), so 32768+ collapses
+        # to 16384 (135 s) and skips the fitting 16K-30K range.  The real cap here
+        # is ~30.1K (borrow ~ 125 + 0.213*c slots); an over-ask halves to 16384,
+        # still ~1.3x the old auto.  The cap moves with the expert cache, so if the
+        # context or KV changes, re-measure rather than scaling this by hand.
+        "28672"
         "--spec"
         "4"
         "--spec-min-p"
