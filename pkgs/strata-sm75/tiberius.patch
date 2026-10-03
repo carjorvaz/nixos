@@ -1,3 +1,81 @@
+# tiberius: the strata engine's local patch, against upstream 99f3dbd (v0.1.38).
+#
+# Four changes, in one patch because they interleave in the same regions of
+# expert_source.{hpp,cpp}, prefill.cpp, generate.cpp and gemm.cu.  Each is
+# opt-in through its own env var; with every var unset the tree behaves like
+# upstream.
+#
+# 1. STRATA_REGISTER_DAX, the sliding DAX window.  cudaHostRegister cannot pin
+#    the 46.84 GiB pack (the driver caps a process's total registered host memory
+#    at ~7 GiB, measured: one 6912 MiB registration succeeds, 7168 MiB is refused,
+#    disjoint registrations do not escape it, >ReadOnly-only does not help), so
+#    the engine registers a 6 GiB window of whole page-aligned layers over the
+#    mmap'd pack and slides it as the prefill walk advances; every layer the
+#    window holds is DMA-able straight out of DAX, which removes the CPU staging
+#    path.  Measured 2026-10-02 on the real corpus: prefill 12,325 -> 9,527 ms
+#    (-22.7%) for a 4292-token prompt with the window alone, and 13,136 -> 10,223
+#    ms (327 -> 420 tok/s) for the original 0.1.29 version of the change.
+#    Needs the fsdax_longterm_pin=1 kernel opt-in
+#    (pkgs/kernel-patches/fsdax-longterm-pin.patch).
+#
+# 2. STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores.
+#    Turing has FP16 tensor cores and no BF16 ones, so cuBLAS served the dense
+#    GEMMs (482 calls per 4292-token prompt, 335.7 ms) with its FP32 SIMT fallback
+#    (magma_sgemmEx_kernel).  The flag converts each operand pair to FP16 in the
+#    existing 64 MiB dequantization scratch and calls the same tensor-core path
+#    the FP16 projections already use, with FP32 accumulation.  bf16 -> fp16 is
+#    exact inside fp16's finite range and the operands measure max|X| 103.5 /
+#    max|W| 11.56 against 65504, but the accumulation order changes, so the
+#    prompt-path state hash moves and the flag stays opt-in.  Measured: total
+#    kernel time 1564 -> 1302 ms (-16.8%), prefill 10,350 -> 9,845 ms (-4.9% mean,
+#    -5.8% median) at 4292 tokens and -6.2% at 3514; deployed (same-binary A/B,
+#    counterbalanced, 8 runs/arm): +7.23% / +5.89%.
+#
+# 3. STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered
+#    sources.  The adaptive tier's 2 MiB H2D copies came from pageable memory
+#    (98% of them) at ~0.87 ms/copy (2.3 GB/s) because the source blobs sit
+#    outside the DAX window and the pinned tier, and that cost sat entirely on the
+#    decode loop: issue 19.9 + join 18.0 ms of a 122 ms window.  The flag registers
+#    each batch's pageable source spans immediately before the copy, MERGING them
+#    into disjoint runs first (the driver refuses an H2D copy whose source begins
+#    inside a registration and ends outside it - that is the failure an unmerged
+#    version produced on every second request), and releases them only once the
+#    batch's event has completed.  Measured: refill join 18.04 -> 1.46 ms/window,
+#    pageable copy 0.866 -> 0.003 ms, decode 19.61 -> 22.00 tok/s (+12.2%) at 4292
+#    tokens and +7.1% at 3514; hit rate, prefill and the warm-up state hash
+#    unchanged.
+#
+# 4. The refill pin's straddle guard (same flag).  An instrumented probe using the
+#    engine's exact flags showed the driver refuses any copy whose source begins
+#    inside a host registration and ends outside it, with 210 bytes of overflow
+#    enough, and both the DAX window's page-rounded edges and the exchange staging
+#    can present such blobs.  Each batch's merged spans are now checked against
+#    every range the source and the pin path hold: a span that only partly
+#    overlaps one is dropped, a blob that still partly overlaps is staged through
+#    pinned scratch, a swap whose staging is refused is dropped (a swap is an
+#    optimization, the request is not), and a tripwire re-checks after a
+#    successful register; a request's pins can no longer outlive it.
+#    STRATA_PIN_TRACE=1 logs every decision, STRATA_PIN_FIX=0 restores the old
+#    behaviour for diagnostics.  Measured: `--spec-min-p 0.75` aborted every
+#    request on a 4344-token decode cell before the fix (7/7, HTTP 400 "an
+#    adaptive refill failed", dying in the first adapt round) and passes 10/10
+#    after it, while the deployed 0.5 arm is bit-identical (content sha,
+#    STATE_HASH, refill counters) and the guard is idle (0 spans dropped, 0 blobs
+#    staged).
+#
+# The host expert tier is NOT here: upstream has it natively since 0.1.35 as
+# --resident-budget-gib N (which implies --mmap-experts + --resident-cpu-experts),
+# used by profiles/nixos/strata.nix together with STRATA_RESIDENT_PIN=0 and
+# STRATA_RESIDENT_HEADROOM_GIB=0 to keep the tier pageable and unclamped on this
+# 7.4 GiB box.
+#
+# History: hand-merged 2026-10-01 against 0.1.29 (host tier + window), rebased to
+# v0.1.35 on 2026-10-02 (the host tier dropped as upstream-native, dense FP16 and
+# the refill pin ported onto the new class surface) and to v0.1.38 on 2026-10-03
+# (the --peer-device and adaptive-wait seams; the straddle guard added).  Every
+# number above is measured on tiberius; the raw logs live under /data and the
+# commit messages carry the A/B designs.
+#
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
 index 4c4d12f..9de871d 100644
 --- a/include/strata/core/expert_source.hpp
