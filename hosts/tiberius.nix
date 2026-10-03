@@ -720,6 +720,15 @@ in
     context = 262144;
     # The namespace is already fsdax and formatted; the prepare unit is a no-op.
     formatOptane = false;
+    # KV cache: int8 (K and V both INT8 with FP16 scales) is the highest precision
+    # available at this context - k8v4 stores V as Hadamard-rotated Q4_0 - and it
+    # fits the full 262144.  Measured 2026-10-03 on this stack (fresh engines, 256
+    # gen): int8 costs 369 expert slots (-5.5%, 6288 vs 6657), 1.7 pts of hit, and
+    # -5.1% / -7.6% decode at 4344 / 27575 tokens; its larger per-cell KV also
+    # makes the prompt buffers shrink the chunk from 28672 to 14336, which is the
+    # -0.9% / -9.6% prefill.  k8v4 is the speed alternative (and the module
+    # default); q4_0 only helps under VRAM pressure and is the least precise V.
+    kv = "int8";
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

@@ -448,11 +448,15 @@ in
       ];
       default = "k8v4";
       description = ''
-        KV cache format.  K8V4 (the measured default) costs ~12.5 KiB of VRAM per
-        token once the draft and indexer are counted, i.e. ~0.78 GiB per 64K of
-        context; q4_0 saves ~0.82 GiB at 262K (+437 cache slots) but is
-        decode-neutral and costs 12-15% of prefill, and only matters at contexts
-        the model was never trained for.
+        KV cache format.  Measured 2026-10-03 (source + engine envelopes, same
+        config otherwise): int8 = 1056 B/cell, K and V both INT8 with FP16
+        scales (kv_q8.hpp) - the highest precision, fits 262144 at a cost of 369
+        expert slots and ~5-8% decode; k8v4 = 816 B/cell, K INT8 + V rotated
+        Q4_0 - the balanced default; q4_0 = 576 B/cell, both rotated Q4_0 - the
+        least precise V, worth it only under VRAM pressure; fp16 = 2048 B/cell
+        (needs ~3.9 GiB more VRAM at 262144, unmeasured).  Each +64K of context
+        costs ~0.78 GiB with k8v4, and the prompt chunk the engine can borrow
+        for shrinks with a bigger KV (int8 halves 28672 to 14336).
       '';
     };
 
