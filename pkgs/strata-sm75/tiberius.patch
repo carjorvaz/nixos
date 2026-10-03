@@ -1346,3 +1346,650 @@ index a7c77d0..2337fb0 100644
          if (src.complement_ready())
              std::printf("%-24s %.2f GiB of experts in RAM, %lld exchanged with the VRAM tier, %lld blob reads from "
                          "the file\n", "resident RAM", (double) src.resident_bytes() / 1073741824.0,
+
+diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
+index 9de871d..eee4bf9 100644
+--- a/include/strata/core/expert_source.hpp
++++ b/include/strata/core/expert_source.hpp
+@@ -143,6 +143,12 @@ public:
+         (void) expert;
+         return BlobClass::Pageable;
+     }
++    /// Every host range this source currently holds REGISTERED with CUDA, as [address, length).  The refill's
++    /// pin path needs it: a copy whose source only PARTLY overlaps a registration - a blob cut by the DAX
++    /// window's page-rounded edge, for instance - is refused by the driver with cudaErrorInvalidValue, so the
++    /// planner has to know every range that is registered right now.  A source that registers nothing leaves
++    /// `out` empty.  See the guard in `program/generate.cpp` (STRATA_REFILL_PIN_SRC).
++    virtual void registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const { (void) out; }
+ 
+     /// Called once before the first expert of a layer.  A source that reads from disk wants to start the read
+     /// here so it overlaps the quantisation, and a prefetching source in Phase 3 wants the ids.
+@@ -525,6 +531,7 @@ public:
+     bool pinned(int64_t layer, int64_t expert) const override;
+     bool dma_ready(int64_t layer, int64_t expert) const override;
+     BlobClass blob_class(int64_t layer, int64_t expert) const override;
++    void registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const override;
+     const uint8_t* device_alias(int64_t layer, int64_t expert) const override;
+     bool pcie_layer(int64_t layer) const override;
+     /// tiberius (STRATA_REGISTER_DAX): the sliding DAX window's rotation point; returns whether `layer` is
+@@ -739,6 +746,7 @@ public:
+     int64_t reads() const { return reads_; }
+     bool pinned(int64_t layer, int64_t expert) const override;
+     BlobClass blob_class(int64_t layer, int64_t expert) const override;
++    void registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const override;
+     const uint8_t* device_alias(int64_t layer, int64_t expert) const override;
+ 
+     /// What backing was obtained and why, for the startup print.  "The engine adapts to the machine it is on" is
+diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
+index 81049fb..a982ba1 100644
+--- a/src/core/expert_source.cpp
++++ b/src/core/expert_source.cpp
+@@ -1730,13 +1730,38 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q) const {
+ }
+ 
+ bool FileExpertSource::stage_exchange(int64_t layer, int64_t in, int64_t out, int64_t q) {
+-    if (!has_resident(layer, in) || has_resident(layer, out) || exchange_buffer(q) == nullptr) return false;
++    // tiberius: every refusal here aborts the whole request upstream ("an adaptive refill failed"), so each one
++    // names itself - they are reachable from the residency state and the reader had no way to tell them apart.
++    if (!has_resident(layer, in)) {
++        std::fprintf(stderr, "strata: exchange not armed: layer %lld expert %lld is not in the RAM complement\n",
++                     (long long) layer, (long long) in);
++        return false;
++    }
++    if (has_resident(layer, out)) {
++        std::fprintf(stderr, "strata: exchange not armed: layer %lld expert %lld (the victim) is already in the RAM "
++                             "complement\n", (long long) layer, (long long) out);
++        return false;
++    }
++    if (exchange_buffer(q) == nullptr) {
++        std::fprintf(stderr, "strata: exchange not armed: no buffer %lld (capacity %lld)\n", (long long) q,
++                     (long long) xstage_cap_);
++        return false;
++    }
+     const size_t i_in = (size_t) layer * (size_t) n_expert_ + (size_t) in;
+     const size_t i_out = (size_t) layer * (size_t) n_expert_ + (size_t) out;
+     if (override_.empty()) override_.assign((size_t) blobs_, nullptr);
+-    if (override_[i_out] != nullptr) return false;
++    if (override_[i_out] != nullptr) {
++        std::fprintf(stderr, "strata: exchange not armed: layer %lld expert %lld (the victim) is already staged from "
++                             "an earlier round (staged %zu)\n", (long long) layer, (long long) out, staged_.size());
++        return false;
++    }
+     for (const Exchange& x : staged_)
+-        if (x.in == i_in || x.q == q) return false;
++        if (x.in == i_in || x.q == q) {
++            std::fprintf(stderr, "strata: exchange not armed: %s already staged (layer %lld expert %lld, buf %lld, "
++                                 "staged %zu)\n", x.in == i_in ? "that incoming expert" : "that buffer",
++                         (long long) layer, (long long) in, (long long) q, staged_.size());
++            return false;
++        }
+     override_[i_out] = exchange_buffer(q);
+     staged_.push_back({i_in, i_out, q, layer_blob_bytes_[(size_t) layer]});
+     return true;
+@@ -2053,6 +2078,18 @@ ExpertSource::BlobClass FileExpertSource::blob_class(int64_t layer, int64_t expe
+     if (complement_holds(layer, expert)) return BlobClass::PinnedTier;
+     return BlobClass::Pageable;
+ }
++// tiberius (STRATA_REFILL_PIN_SRC): every host range this source holds REGISTERED with CUDA.  The DAX windows
++// register PAGE-ROUNDED ranges - `dax_register` uses page_down(layer_begin(first)) .. page_up(layer_end(last)) -
++// so a blob of the layer BEFORE the window's first layer, or AFTER its last one, can lie only PARTLY inside a
++// window.  `dax_holds` is containment-only, so such a blob reports `Pageable`, the refill registers its span
++// itself (refused: "already mapped") and would then copy it from its own pointer - which the driver refuses with
++// cudaErrorInvalidValue ("an adaptive refill failed").  This is what lets the pin path see those edges.
++void FileExpertSource::registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const {
++    for (const DaxWindow& w : dax_windows_)
++        if (base_ != nullptr && w.bytes > 0) out.emplace_back((uintptr_t) (base_ + w.off), (size_t) w.bytes);
++    if (complement_pinned_ && complement_arena_ != nullptr && complement_pin_limit_ > 0)
++        out.emplace_back((uintptr_t) complement_arena_, (size_t) complement_pin_limit_);
++}
+ 
+ const uint8_t* FileExpertSource::device_alias(int64_t layer, int64_t expert) const {
+     // The arena's copy comes first when it holds the expert: `blob()` returns THAT pointer, so the device pointer
+@@ -3044,6 +3081,19 @@ ExpertSource::BlobClass ArenaExpertSource::blob_class(int64_t layer, int64_t exp
+     // but pageable, which is a different class from the mmap: the cost is the copy engine's bounce, not a fault.
+     return pinned(layer, expert) ? BlobClass::PinnedTier : BlobClass::Arena;
+ }
++// tiberius (STRATA_REFILL_PIN_SRC): the arena registers a prefix in SLICES (one cudaHostRegister per slice, one
++// per layer for a native pack), and a blob that only PARTLY overlaps one slice is refused by the driver exactly
++// like one cut by a DAX window's page-rounded edge.  Report each slice separately: merging them into one range
++// would hide precisely the boundary that matters.
++void ArenaExpertSource::registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const {
++    const PinnedArena* a = (const PinnedArena*) arena_;
++    if (a == nullptr || base_ == nullptr) return;
++    for (size_t i = 0; i < a->slice_starts.size(); ++i) {
++        const uint64_t s = a->slice_starts[i];
++        const uint64_t e = (i + 1 < a->slice_starts.size()) ? a->slice_starts[i + 1] : a->registered_bytes;
++        if (e > s) out.emplace_back((uintptr_t) (base_ + s), (size_t) (e - s));
++    }
++}
+ 
+ const uint8_t* ArenaExpertSource::device_alias(int64_t layer, int64_t expert) const {
+     if (dev_slice_.empty() || !pinned(layer, expert)) return nullptr;
+diff --git a/src/program/generate.cpp b/src/program/generate.cpp
+index 2337fb0..7074176 100644
+--- a/src/program/generate.cpp
++++ b/src/program/generate.cpp
+@@ -163,6 +163,142 @@ uint64_t host_page_bytes() {
+ #endif
+ }
+ 
++// ==================== STRATA_REFILL_PIN_SRC: THE HOST-REGISTRATION STRADDLE RULE ====================
++//
++// A blob's source may be handed to `cudaMemcpyAsync` only if it is EITHER wholly inside ONE host registration
++// OR wholly outside every one of them.  A source that BEGINS inside a registration and ends outside it is taken
++// as page-locked and the driver refuses the copy (cudaErrorInvalidValue; probe /data/refill-straddle.cu P2/P3),
++// which aborts the request with "an adaptive refill failed".  `FileExpertSource`'s arena partial pin already
++// cuts itself "at an expert boundary" for exactly this reason.  Three things can cut a blob:
++//   1. two adjacent blobs of ONE batch sharing a rounded page - fixed by the merge in the pin path;
++//   2. a span still held from an EARLIER batch (or from an earlier request, when a pin outlived its request);
++//   3. the DAX window's own page-rounded edges: `dax_register` registers
++//      [page_down(layer_begin(first)), page_up(layer_end(last))), so it can cut a blob of the layer BEFORE
++//      `first` or AFTER `last` in half.  Such a blob reports `Pageable` (dax_holds is containment-only), so the
++//      refill registers the blob's span itself - refused, "already mapped" - and then copies it from its own
++//      pointer: the fatal geometry, in a request that looks completely ordinary.
++// This guard keeps a registry of every range the pin path and the source hold registered and, per batch:
++//   * refuses to register a candidate span that only PARTLY overlaps one of them (drop), and
++//   * stages a blob that still only partly overlaps one through a pinned scratch buffer instead of copying it
++//     from its own pointer (bounce),
++// so no copy can straddle a registration again.  Nothing here runs when STRATA_REFILL_PIN_SRC is unset.
++// STRATA_PIN_FIX=0 restores the pre-fix behaviour (a diagnostic escape hatch, NOT a supported configuration);
++// STRATA_PIN_TRACE=1 prints the registry and every decision.
++namespace {
++struct HostReg {
++    uintptr_t a = 0, e = 0;
++    int64_t batch = 0;
++    const char* kind = "?";
++};
++std::mutex g_pin_mu;
++std::vector<HostReg> g_pin_live;      // registered by the refill pin path and still registered
++std::vector<HostReg> g_pin_foreign;   // registered by the expert source itself (the DAX window, a pinned arena)
++int64_t g_pin_batch = 0;
++int64_t g_pin_violations = 0;
++
++bool pin_trace_on() {
++    static const bool v = std::getenv("STRATA_PIN_TRACE") != nullptr;
++    return v;
++}
++/// The fix is on whenever the pin path is (STRATA_PIN_FIX=0 restores the pre-fix behaviour, diagnostics only).
++bool pin_fix_on() {
++    static const bool v = [] {
++        const char* e = std::getenv("STRATA_PIN_FIX");
++        return e == nullptr || std::atoi(e) != 0;
++    }();
++    return v;
++}
++/// Any intersection with a registered range that is NOT containment - exactly the geometry the driver refuses.
++bool pin_overlap_partial(uintptr_t a, uintptr_t e, HostReg* hit) {
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    for (const std::vector<HostReg>* v : {&g_pin_live, &g_pin_foreign}) {
++        for (const HostReg& r : *v) {
++            if (a < r.e && r.a < e && !(a >= r.a && e <= r.e)) {
++                if (hit != nullptr) *hit = r;
++                return true;
++            }
++        }
++    }
++    return false;
++}
++size_t pin_live_count() {
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    return g_pin_live.size();
++}
++void pin_note_register(uintptr_t a, uintptr_t e, int64_t batch, const char* kind) {
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    g_pin_live.push_back(HostReg{a, e, batch, kind});
++}
++void pin_note_unregister(uintptr_t a) {
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    for (size_t i = 0; i < g_pin_live.size(); ++i)
++        if (g_pin_live[i].a == a) {
++            g_pin_live.erase(g_pin_live.begin() + (ptrdiff_t) i);
++            return;
++        }
++}
++/// The ranges the expert source itself holds registered (the DAX windows, a pinned complement).  Asked for once
++/// per batch: a window rotates only in the prompt path's issue step, never inside the decode.
++void pin_note_source(const strata::core::ExpertSource* src) {
++    std::vector<std::pair<uintptr_t, size_t>> got;
++    if (src != nullptr) src->registered_ranges(got);
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    g_pin_foreign.clear();
++    for (const auto& r : got) g_pin_foreign.push_back(HostReg{r.first, r.first + r.second, 0, "source"});
++}
++void pin_trace_registry(const char* what) {
++    if (!pin_trace_on()) return;
++    std::lock_guard<std::mutex> lk(g_pin_mu);
++    std::fprintf(stderr, "PINTRACE %s: batch %lld, %zu live pin spans, %zu source ranges\n", what,
++                 (long long) g_pin_batch, g_pin_live.size(), g_pin_foreign.size());
++    for (const HostReg& r : g_pin_live)
++        std::fprintf(stderr, "PINTRACE   held [%zx,+%llu) batch %lld age %lld (%s)\n", (size_t) r.a,
++                     (unsigned long long) (r.e - r.a), (long long) r.batch,
++                     (long long) (g_pin_batch - r.batch), r.kind);
++    for (const HostReg& r : g_pin_foreign)
++        std::fprintf(stderr, "PINTRACE   source [%zx,+%llu)\n", (size_t) r.a, (unsigned long long) (r.e - r.a));
++}
++/// The pinned scratch a straddling blob is staged through: one host memcpy plus the same H2D copy, so the driver
++/// never sees the mapping.  Reused, so a staged copy waits for the previous one to be read.
++struct PinBounce {
++    uint8_t* buf = nullptr;
++    size_t cap = 0;
++    cudaEvent_t done = nullptr;
++    bool in_flight = false;
++
++    bool ensure(size_t need) {
++        if (cap >= need) return true;
++        if (buf != nullptr) {
++            if (in_flight && cudaEventSynchronize(done) != cudaSuccess) return false;
++            in_flight = false;
++            (void) cudaFreeHost(buf);
++            buf = nullptr;
++            cap = 0;
++        }
++        if (cudaHostAlloc((void**) &buf, need, cudaHostAllocDefault) != cudaSuccess) {
++            (void) cudaGetLastError();
++            buf = nullptr;
++            return false;
++        }
++        if (done == nullptr) (void) cudaEventCreateWithFlags(&done, cudaEventDisableTiming);
++        cap = need;
++        return true;
++    }
++    bool stage(const uint8_t* src, uint8_t* dest, size_t bytes, cudaStream_t st) {
++        if (!ensure(bytes)) return false;
++        if (in_flight) {
++            if (cudaEventSynchronize(done) != cudaSuccess) return false;
++            in_flight = false;
++        }
++        std::memcpy(buf, src, bytes);
++        if (cudaMemcpyAsync(dest, buf, bytes, cudaMemcpyHostToDevice, st) != cudaSuccess) return false;
++        (void) cudaEventRecord(done, st);
++        in_flight = true;
++        return true;
++    }
++};
++}  // namespace
++
+ /// STRATA_REFILL_TIMING=1: where the adaptive refill's sources live and what they cost.  `enq_ms` is the wall
+ /// time spent INSIDE the copy call, which is where the driver's pageable staging lands (the blob classes are
+ /// `ExpertSource::BlobClass`, 0..3).
+@@ -172,6 +308,7 @@ struct RefillAcc {
+     double issue_ms = 0, join_ms = 0;
+     int64_t rounds = 0, swaps = 0, pins = 0, inflight_at_window = 0, windows = 0;
+     int64_t pin_peak = 0, pin_refused = 0, pin_round_bytes = 0;   // STRATA_REFILL_PIN_SRC accounting
++    int64_t pin_skipped = 0, bounce_copies = 0, bounce_bytes = 0; // the straddle guard: dropped spans, staged blobs
+ };
+ 
+ /// The one line STRATA_REFILL_TIMING=1 prints per request.  `windows` is what the per-window figures divide by.
+@@ -192,11 +329,14 @@ void print_refill_timing(const char* who, const RefillAcc& racc, int64_t windows
+                   racc.copies[3] ? racc.enq_ms[3] / (double) racc.copies[3] : 0.0);
+     std::fprintf(stderr,
+                  "strata refill timing (%s): %lld swaps in %lld rounds (%.1f/window), %lld src spans registered "
+-                 "(%.1f MiB peak, %lld refused); "
++                 "(%.1f MiB peak, %lld refused, %lld straddle spans dropped, %lld blobs staged/%.1f MiB, "
++                 "%lld guard violations); "
+                  "issue %.2f ms/window, join-wait %.2f ms/window, in flight at a window start %lld/%lld; "
+                  "sources: %s\n",
+                  who, (long long) racc.swaps, (long long) racc.rounds, (double) racc.swaps / w, (long long) racc.pins,
+-                 (double) racc.pin_peak / 1048576.0, (long long) racc.pin_refused,
++                 (double) racc.pin_peak / 1048576.0, (long long) racc.pin_refused, (long long) racc.pin_skipped,
++                 (long long) racc.bounce_copies, (double) racc.bounce_bytes / 1048576.0,
++                 (long long) g_pin_violations,
+                  racc.issue_ms / w, racc.join_ms / w, (long long) racc.inflight_at_window, (long long) racc.windows,
+                  cc);
+ }
+@@ -217,6 +357,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, strata::core::Exp
+     std::vector<Staged> staged;
+     std::vector<Swap> kept;
+     kept.reserve(swaps.size());
++    int64_t dropped = 0;
+     for (const Swap& s : swaps) {
+         if (!src.has_resident(s.layer, s.in) || src.has_resident(s.layer, s.out)) { kept.push_back(s); continue; }
+         const int64_t q = (int64_t) staged.size();
+@@ -225,15 +366,48 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, strata::core::Exp
+         if (slot < 0) continue;
+         if (cudaMemcpyAsync(src.exchange_buffer(q), cache.device_slot(slot),
+                             (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), cudaMemcpyDeviceToHost,
+-                            stream) != cudaSuccess)
++                            stream) != cudaSuccess) {
++            // Distinct message: this path aborts the whole request ("an adaptive refill failed") exactly like the
++            // refill's own copy failure, so it must say which one it was.
++            const cudaError_t ce = cudaGetLastError();
++            std::fprintf(stderr,
++                         "strata: the exchange staging D2H copy failed (layer %lld expert %lld -> slot %d, buf %lld, "
++                         "%zu bytes): %s\n",
++                         (long long) s.layer, (long long) s.out, (int) slot, (long long) q,
++                         (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
++                         cudaGetErrorString(ce));
+             return false;
++        }
+         staged.push_back({s.layer, s.in, s.out, q});
+         kept.push_back(s);
+     }
+     if (!staged.empty()) {
+-        if (cudaStreamSynchronize(stream) != cudaSuccess) return false;
++        if (cudaStreamSynchronize(stream) != cudaSuccess) {
++            const cudaError_t ce = cudaGetLastError();
++            std::fprintf(stderr, "strata: the exchange staging stream did not drain: %s\n", cudaGetErrorString(ce));
++            return false;
++        }
+         for (const Staged& x : staged)
+-            if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) return false;
++            if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) {
++                // A REFUSAL HERE MUST NOT KILL THE REQUEST.  The swap the staging could not arm is dropped: the
++                // slot keeps its expert and `in` stays where it is, i.e. exactly the state before the swap, so the
++                // residency table, `pending` and the plans never see it.  (The D2H copy that was already enqueued
++                // for it wrote a buffer nothing reads now.)  Only a CUDA error above stays fatal, because there the
++                // stream and the error state are suspect.
++                std::fprintf(stderr,
++                             "strata: the exchange staging refused a swap (layer %lld in %lld out %lld buf %lld); "
++                             "dropping that swap, the request continues\n",
++                             (long long) x.layer, (long long) x.in, (long long) x.out, (long long) x.q);
++                for (size_t i = 0; i < kept.size(); ++i)
++                    if (kept[i].layer == x.layer && kept[i].in == x.in && kept[i].out == x.out) {
++                        kept.erase(kept.begin() + (ptrdiff_t) i);
++                        break;
++                    }
++                ++dropped;
++            }
++        if (dropped != 0)
++            std::fprintf(stderr, "strata: %lld of %zu exchanges this round were dropped\n", (long long) dropped,
++                         staged.size());
+     }
+     swaps.swap(kept);
+     return true;
+@@ -4854,10 +5028,14 @@ int main(int argc, char** argv) {
+         // reading them - never while a copy can still be in flight.
+         std::vector<void*> held_pins;
+         auto release_pins = [&]() {
+-            for (void* p : held_pins) cudaHostUnregister(p);
++            for (void* p : held_pins) {
++                pin_note_unregister((uintptr_t) p);   // the straddle guard's registry follows every release
++                cudaHostUnregister(p);
++            }
+             held_pins.clear();
+         };
+         const bool pin_src = refill_pin_src_enabled();
++        PinBounce bounce;   // staged copies for blobs that straddle a registration (unused otherwise)
+         // STRATA_REFILL_TIMING=1: where the refill's sources live and what they cost, as sums over a request.
+         // `enq_ms` is the wall time INSIDE the copy call, which is where the driver's pageable staging lands.
+         RefillAcc racc;
+@@ -4940,7 +5118,15 @@ int main(int argc, char** argv) {
+                 const uint8_t* b = srcp->blob(s.layer, s.in);
+                 const int stn = multi_gpu ? stage_of(s.layer) : 0;   // the swap stays in the layer's own cache
+                 GpuStage* gs = stn > 0 ? stages[(size_t) stn - 1].get() : nullptr;
+-                if (slot < 0 || b == nullptr) return false;
++                if (slot < 0 || b == nullptr) {
++                    // Distinguishable from a failed copy in the log: this is the OTHER way an adaptive refill
++                    // can fail (the victim's slot went non-resident, or the source has no blob there).
++                    std::fprintf(stderr,
++                                 "strata serve: an adaptive refill could not resolve a source (layer %lld expert "
++                                 "%lld, victim slot %d, blob %p)\n",
++                                 (long long) s.layer, (long long) s.in, (int) slot, (const void*) b);
++                    return false;
++                }
+                 plans.push_back({(int32_t) in, slot, b,
+                                  gs ? gs->cache.device_slot(slot) : xcache.device_slot(slot),
+                                  (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), gs,
+@@ -4984,19 +5170,56 @@ int main(int argc, char** argv) {
+                     else
+                         merged.push_back(s);
+                 }
++                // THE STRADDLE RULE (see the guard at the top of this file): never register a span that only
++                // PARTLY overlaps a range that is already registered - one of ours from an earlier batch, or one
++                // of the source's own (the DAX window's page-rounded edges).  The driver would refuse the
++                // registration anyway ("already mapped"), and a blob inside such a span must never be copied from
++                // its own pointer: the copy loop stages it instead.
++                const int64_t batch_id = ++g_pin_batch;
++                if (pin_fix_on() || pin_trace_on()) pin_note_source(srcp);
++                pin_trace_registry("batch");
+                 batch_pins.reserve(merged.size());
+                 racc.pin_round_bytes = 0;
+                 for (const auto& s : merged) {
+-                    if (cudaHostRegister((void*) s.first, (size_t) (s.second - s.first),
+-                                         cudaHostRegisterReadOnly) == cudaSuccess) {
++                    const uintptr_t sbeg = (uintptr_t) s.first, send = (uintptr_t) s.second;
++                    HostReg clash;
++                    if (pin_fix_on() && pin_overlap_partial(sbeg, send, &clash)) {
++                        ++racc.pin_skipped;
++                        if (pin_trace_on())
++                            std::fprintf(stderr,
++                                         "PINTRACE drop span [%zx,+%llu): partly overlaps [%zx,+%llu) (%s)\n",
++                                         (size_t) sbeg, (unsigned long long) (send - sbeg), (size_t) clash.a,
++                                         (unsigned long long) (clash.e - clash.a), clash.kind);
++                        continue;
++                    }
++                    if (cudaHostRegister((void*) s.first, (size_t) (send - sbeg), cudaHostRegisterReadOnly) ==
++                        cudaSuccess) {
++                        HostReg post;
++                        if (pin_fix_on() && pin_overlap_partial(sbeg, send, &post)) {   // must be unreachable
++                            ++g_pin_violations;
++                            std::fprintf(stderr,
++                                         "strata: PIN GUARD VIOLATION: [%zx,+%llu) partly overlaps the registered "
++                                         "[%zx,+%llu) (%s); unregistering it and staging its blobs\n",
++                                         (size_t) sbeg, (unsigned long long) (send - sbeg), (size_t) post.a,
++                                         (unsigned long long) (post.e - post.a), post.kind);
++                            (void) cudaHostUnregister((void*) s.first);
++                            continue;
++                        }
+                         batch_pins.push_back((void*) s.first);
+-                        racc.pin_round_bytes += (int64_t) (s.second - s.first);
++                        pin_note_register(sbeg, send, batch_id, "pin");
++                        if (pin_trace_on())
++                            std::fprintf(stderr, "PINTRACE register [%zx,+%llu) batch %lld\n", (size_t) sbeg,
++                                         (unsigned long long) (send - sbeg), (long long) batch_id);
++                        racc.pin_round_bytes += (int64_t) (send - sbeg);
+                         if (refill_timing) ++racc.pins;
+                     } else {
+-                        // out of the driver's registration budget, or the span overlaps the DAX window's own
+-                        // page-rounded edge: the pageable copy still produces the right bytes, just slower
++                        // out of the driver's registration budget, or an overlap this pass could not see: the copy
++                        // loop stages those blobs or copies them pageable, either way with the right bytes
+                         ++racc.pin_refused;
+-                        cudaGetLastError();
++                        const cudaError_t re = cudaGetLastError();   // MUST be read: the failure is sticky
++                        if (pin_trace_on())
++                            std::fprintf(stderr, "PINTRACE register refused for [%zx,+%llu): %s\n", (size_t) sbeg,
++                                         (unsigned long long) (send - sbeg), cudaGetErrorString(re));
+                     }
+                 }
+                 racc.pin_peak = std::max(racc.pin_peak, racc.pin_round_bytes);
+@@ -5004,12 +5227,45 @@ int main(int argc, char** argv) {
+             for (const Planned& p : plans) {
+                 const strata::core::OnDevice on(p.gs ? p.gs->dev : -1);
+                 const uint8_t* src = p.src;
++                cudaStream_t copy_stream = p.gs ? p.gs->adapt_stream : adapt_stream;
+                 const auto t0 = Clock::now();
+-                const cudaError_t ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice,
+-                                                       p.gs ? p.gs->adapt_stream : adapt_stream);
++                HostReg clash;
++                const bool straddles = pin_src && pin_overlap_partial((uintptr_t) src,
++                                                                     (uintptr_t) (src + p.bytes), &clash);
++                if (straddles && pin_trace_on())
++                    std::fprintf(stderr,
++                                 "PINTRACE %s blob [%zx,+%llu): partly inside the registered [%zx,+%llu) (%s)%s\n",
++                                 pin_fix_on() ? "staging" : "STRADDLE", (size_t) (uintptr_t) src,
++                                 (unsigned long long) p.bytes, (size_t) clash.a,
++                                 (unsigned long long) (clash.e - clash.a), clash.kind,
++                                 pin_fix_on() ? ""
++                                              : " - issued anyway (STRATA_PIN_FIX=0); the driver refuses it");
++                cudaError_t ce = cudaSuccess;
++                if (straddles && pin_fix_on()) {
++                    // THE GUARD: a source that only PARTLY overlaps a registration cannot be handed to the copy
++                    // engine at all.  Stage it through the pinned scratch (one host memcpy) and copy that.
++                    ce = bounce.stage(src, p.dest, p.bytes, copy_stream) ? cudaSuccess : cudaErrorInvalidValue;
++                    if (ce == cudaSuccess) {
++                        ++racc.bounce_copies;
++                        racc.bounce_bytes += (int64_t) p.bytes;
++                    } else {
++                        ++g_pin_violations;
++                        std::fprintf(stderr,
++                                     "strata: the refill's staging buffer could not be had for a straddling "
++                                     "source (%p, %zu bytes): refusing the request rather than issuing a copy the "
++                                     "driver will refuse\n",
++                                     (const void*) src, p.bytes);
++                    }
++                } else {
++                    ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice, copy_stream);
++                }
+                 if (refill_timing)
+                     racc.enq_ms[(int) p.cls] += std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+-                if (ce != cudaSuccess) return false;
++                if (ce != cudaSuccess) {
++                    std::fprintf(stderr, "strata: an adaptive refill copy failed (%s, src %p, %zu bytes, cls %d)\n",
++                                 cudaGetErrorString(ce), (const void*) src, p.bytes, (int) p.cls);
++                    return false;
++                }
+             }
+             if (pin_src) held_pins.swap(batch_pins);   // released by apply_pending, once this batch's event has completed
+             if (refill_timing) {
+@@ -5996,6 +6252,17 @@ int main(int argc, char** argv) {
+                 x = outv[(size_t) a];
+                 p += a + 1;
+             }
++            // STRATA_REFILL_PIN_SRC: no pin may outlive its request.  A span left registered here would be
++            // unreachable (`held_pins` dies with this scope), would eat the driver's registration budget, and -
++            // before the guard at the top of this file - would straddle a later request's copies.
++            if (pin_src) {
++                apply_pending(true);
++                release_pins();
++                const size_t stray = pin_live_count();
++                if (stray != 0)
++                    std::fprintf(stderr, "strata serve: WARNING: %zu refill pin span(s) outlived the request\n",
++                                 stray);
++            }
+             const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
+             // the last commit (set_commit_async): the session is complete before anything reads or copies it
+             if (!ver.wait_commit(err)) {
+@@ -6630,10 +6897,14 @@ int main(int argc, char** argv) {
+         // released when apply_pending sees that batch's event, never while a copy can still be in flight.
+         std::vector<void*> held_pins;
+         auto release_pins = [&]() {
+-            for (void* p : held_pins) cudaHostUnregister(p);
++            for (void* p : held_pins) {
++                pin_note_unregister((uintptr_t) p);   // the straddle guard's registry follows every release
++                cudaHostUnregister(p);
++            }
+             held_pins.clear();
+         };
+         const bool pin_src = refill_pin_src_enabled();
++        PinBounce bounce;   // staged copies for blobs that straddle a registration (unused otherwise)
+         RefillAcc racc;
+         const bool refill_timing = refill_timing_enabled();
+         auto apply_pending = [&](bool wait) {
+@@ -6719,7 +6990,10 @@ int main(int argc, char** argv) {
+                 const int32_t slot = host_res[out];
+                 const uint8_t* b = srcp->blob(s.layer, s.in);
+                 if (slot < 0 || b == nullptr) {
+-                    std::fprintf(stderr, "strata generate: an adaptive refill failed\n");
++                    std::fprintf(stderr,
++                                 "strata generate: an adaptive refill could not resolve a source (layer %lld "
++                                 "expert %lld, victim slot %d, blob %p)\n",
++                                 (long long) s.layer, (long long) s.in, (int) slot, (const void*) b);
+                     return false;
+                 }
+                 plans.push_back({(int32_t) in, slot, b, xcache.device_slot(slot),
+@@ -6736,7 +7010,9 @@ int main(int argc, char** argv) {
+             release_pins();   // the previous batch's copies landed when apply_pending admitted them
+             // The same page-rounded-span rule as the serve path above: merge before registering, or the second
+             // of two adjacent Pageable blobs is copied with a source that begins inside the first one's
+-            // registration and the driver answers cudaErrorInvalidValue.
++            // registration and the driver answers cudaErrorInvalidValue.  Merging is not enough on its own - a
++            // span must also not PARTLY overlap a registration that already exists (an earlier batch's pin, or
++            // the DAX window's page-rounded edge): see the guard at the top of this file.
+             std::vector<void*> batch_pins;
+             if (pin_src) {
+                 const uint64_t pg = host_page_bytes();
+@@ -6756,17 +7032,49 @@ int main(int argc, char** argv) {
+                     else
+                         merged.push_back(s);
+                 }
++                const int64_t batch_id = ++g_pin_batch;
++                if (pin_fix_on() || pin_trace_on()) pin_note_source(srcp);
++                pin_trace_registry("batch");
+                 batch_pins.reserve(merged.size());
+                 racc.pin_round_bytes = 0;
+                 for (const auto& s : merged) {
+-                    if (cudaHostRegister((void*) s.first, (size_t) (s.second - s.first),
+-                                         cudaHostRegisterReadOnly) == cudaSuccess) {
++                    const uintptr_t sbeg = (uintptr_t) s.first, send = (uintptr_t) s.second;
++                    HostReg clash;
++                    if (pin_fix_on() && pin_overlap_partial(sbeg, send, &clash)) {
++                        ++racc.pin_skipped;
++                        if (pin_trace_on())
++                            std::fprintf(stderr,
++                                         "PINTRACE drop span [%zx,+%llu): partly overlaps [%zx,+%llu) (%s)\n",
++                                         (size_t) sbeg, (unsigned long long) (send - sbeg), (size_t) clash.a,
++                                         (unsigned long long) (clash.e - clash.a), clash.kind);
++                        continue;
++                    }
++                    if (cudaHostRegister((void*) s.first, (size_t) (send - sbeg), cudaHostRegisterReadOnly) ==
++                        cudaSuccess) {
++                        HostReg post;
++                        if (pin_fix_on() && pin_overlap_partial(sbeg, send, &post)) {   // must be unreachable
++                            ++g_pin_violations;
++                            std::fprintf(stderr,
++                                         "strata: PIN GUARD VIOLATION: [%zx,+%llu) partly overlaps the registered "
++                                         "[%zx,+%llu) (%s); unregistering it and staging its blobs\n",
++                                         (size_t) sbeg, (unsigned long long) (send - sbeg), (size_t) post.a,
++                                         (unsigned long long) (post.e - post.a), post.kind);
++                            (void) cudaHostUnregister((void*) s.first);
++                            continue;
++                        }
+                         batch_pins.push_back((void*) s.first);
+-                        racc.pin_round_bytes += (int64_t) (s.second - s.first);
++                        pin_note_register(sbeg, send, batch_id, "pin");
++                        if (pin_trace_on())
++                            std::fprintf(stderr, "PINTRACE register [%zx,+%llu) batch %lld\n", (size_t) sbeg,
++                                         (unsigned long long) (send - sbeg), (long long) batch_id);
++                        racc.pin_round_bytes += (int64_t) (send - sbeg);
+                         if (refill_timing) ++racc.pins;
+                     } else {
+                         ++racc.pin_refused;
+-                        cudaGetLastError();   // budget or an overlap with the DAX window: copy it pageable
++                        const cudaError_t re = cudaGetLastError();   // MUST be read: the failure is sticky
++                        if (pin_trace_on())
++                            std::fprintf(stderr, "PINTRACE register refused for [%zx,+%llu): %s\n", (size_t) sbeg,
++                                         (unsigned long long) (send - sbeg), cudaGetErrorString(re));
+                     }
+                 }
+                 racc.pin_peak = std::max(racc.pin_peak, racc.pin_round_bytes);
+@@ -6774,11 +7082,37 @@ int main(int argc, char** argv) {
+             for (const Planned& p : plans) {
+                 const uint8_t* src = p.src;
+                 const auto t0 = Clock::now();
+-                const cudaError_t ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice, adapt_stream);
++                HostReg clash;
++                const bool straddles = pin_src && pin_overlap_partial((uintptr_t) src,
++                                                                     (uintptr_t) (src + p.bytes), &clash);
++                if (straddles && pin_trace_on())
++                    std::fprintf(stderr,
++                                 "PINTRACE %s blob [%zx,+%llu): partly inside the registered [%zx,+%llu) (%s)%s\n",
++                                 pin_fix_on() ? "staging" : "STRADDLE", (size_t) (uintptr_t) src,
++                                 (unsigned long long) p.bytes, (size_t) clash.a,
++                                 (unsigned long long) (clash.e - clash.a), clash.kind,
++                                 pin_fix_on() ? ""
++                                              : " - issued anyway (STRATA_PIN_FIX=0); the driver refuses it");
++                cudaError_t ce = cudaSuccess;
++                if (straddles && pin_fix_on()) {
++                    ce = bounce.stage(src, p.dest, p.bytes, adapt_stream) ? cudaSuccess : cudaErrorInvalidValue;
++                    if (ce == cudaSuccess) {
++                        ++racc.bounce_copies;
++                        racc.bounce_bytes += (int64_t) p.bytes;
++                    } else {
++                        ++g_pin_violations;
++                        std::fprintf(stderr,
++                                     "strata generate: the refill's staging buffer could not be had for a "
++                                     "straddling source (%p, %zu bytes)\n", (const void*) src, p.bytes);
++                    }
++                } else {
++                    ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice, adapt_stream);
++                }
+                 if (refill_timing)
+                     racc.enq_ms[(int) p.cls] += std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+                 if (ce != cudaSuccess) {
+-                    std::fprintf(stderr, "strata generate: an adaptive refill failed\n");
++                    std::fprintf(stderr, "strata generate: an adaptive refill copy failed (%s, src %p, %zu bytes)\n",
++                                 cudaGetErrorString(ce), (const void*) src, p.bytes);
+                     return false;
+                 }
+             }
