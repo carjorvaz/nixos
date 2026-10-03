@@ -213,6 +213,30 @@ let
         #
         # The chat template puts the tools JSON and any reasoning instruction at
         # the FRONT of the prefix, so changing either invalidates every cache.
+        #
+        # Re-measured 2026-10-03 on the served stack (int8/262144/28160, fresh
+        # private engines; /data/serving3): the pin condition is the prompt's
+        # FIRST TURN BOUNDARY at index >= 2048, not the block's own token count,
+        # so budget a shared block of >= ~2100 tokens AS RENDERED - a 2052-token
+        # standalone system message lands at 2045 and pins nothing (three chats:
+        # 0/0/0% reuse, and every zero-reuse request clears the whole chain);
+        # boundaries of 2053/2992 reuse 91.1%/93.7% for later chats.  Only the
+        # ROOT is pinned - the other 5 of --prompt-cache 6 rotate LRU, so a
+        # chat's own continuation falls back to the root (83.1% here) after
+        # other chats.  Exact repeats are 193-264 ms; append-only turns hold
+        # 4.9-6.4 s flat 8K -> 60K, fresh = the appended turn (~350) + the
+        # previous reply (128) when its re-tokenization does not byte-match,
+        # + ~9 turn-header tokens.  --short-read 64 applies to the engine's
+        # FRESH READ, so client text must be <= ~55 tokens for the verify path;
+        # the verify/batched cost cross-over is ~90-100 fresh tokens (~34-70
+        # ms/token against a ~3.2-3.7 s floor + ~5-8 ms/token).  The borrow is
+        # 6109 of 6288 slots now (97.2%) and costs the next request nothing
+        # measurable; cold start is 18-26 s (not ~50 s) and a restart still
+        # loses the chain (conversation-cache-mib stays 0: no parked caching).
+        # Client note: pi's and omp's byte-stable boundaries measure ~1.95-2.0k
+        # tokens as rendered, i.e. under the root - they pin nothing today;
+        # --prompt-cache-root 1024 would pin them at the documented 2-reuse
+        # break-even above (not taken).
         "--stats"
       ];
       cwd = "${cfg.package}/share/strata";
