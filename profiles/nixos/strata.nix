@@ -144,10 +144,11 @@ let
         # borrow <= ~6160, /data/chunkint8): asking 28672 is halved to 14336 and
         # reads a 27575-token prompt in 30.7 s (898 tok/s); asking 28160 is
         # accepted AS-IS and reads it in 26.8 s (1029 tok/s, +14.6%, -21.6% expert
-        # bytes) with 6109 slots borrowed (51 spare), while the 4.3K prompt and the
-        # decode after are unchanged.  The boundary is reproduced with second
-        # engines (28416 halves to 14208, -0.9%); 27648 is the same speed with 3x
-        # the headroom if another tenant ever shrinks the cache.
+        # bytes) with 6109 slots borrowed (51 spare; PR #547 makes that 5554
+        # borrowed and 734 spare, and takes 1.8-2.6% off this read), while the 4.3K
+        # prompt and the decode after are unchanged.  The boundary is reproduced
+        # with second engines (28416 halves to 14208, -0.9%); 27648 is the same
+        # speed with 3x the headroom if another tenant ever shrinks the cache.
         # History: on the older k8v4 config (6657 slots, borrow 6223) 28672 was the
         # largest accepted value, giving 992 tok/s at 27.5K and 928 at 110K where
         # the old auto/8192 gave 622.  The cap moves with the expert cache, so
@@ -231,9 +232,10 @@ let
         # FRESH READ, so client text must be <= ~55 tokens for the verify path;
         # the verify/batched cost cross-over is ~90-100 fresh tokens (~34-70
         # ms/token against a ~3.2-3.7 s floor + ~5-8 ms/token).  The borrow is
-        # 6109 of 6288 slots now (97.2%) and costs the next request nothing
-        # measurable; cold start is 18-26 s (not ~50 s) and a restart still
-        # loses the chain (conversation-cache-mib stays 0: no parked caching).
+        # 6109 of 6288 slots - 5554 (88.3%) with PR #547 carried - and costs the
+        # next request nothing measurable; cold start is 18-26 s (not ~50 s) and
+        # a restart still loses the chain (conversation-cache-mib stays 0: no
+        # parked caching).
         # Client note: pi's and omp's byte-stable boundaries measure ~1.95-2.0k
         # tokens as rendered, i.e. under the root - they pin nothing today;
         # --prompt-cache-root 1024 would pin them at the documented 2-reuse

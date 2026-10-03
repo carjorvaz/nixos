@@ -70,6 +70,9 @@ stdenv.mkDerivation {
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
   #   * STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores;
   #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources.
+  # Plus upstream PR #547's bytes_needed accounting, carried until it merges
+  # (borrow 6109 -> 5554 slots; -1.8/-2.6% prefill and -2.1/-1.8% pack bytes at
+  # the 27575 cell).
   # The host expert tier is NOT here any more: v0.1.38 has it natively
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # Same source revision as the pin above, so `patch -p1` applies cleanly.
