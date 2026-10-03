@@ -119,6 +119,18 @@ stdenv.mkDerivation {
     CPATH = "${cudaHome}/include";
     CPLUS_INCLUDE_PATH = "${cudaHome}/include";
     LIBRARY_PATH = "${cudaHome}/lib";
+    # ggml-cpu's x86 repack/quants translation units are built with
+    # -march=native; nixpkgs' cc-wrapper silently drops it (NIX_ENFORCE_NO_NATIVE,
+    # 15 "Skipping impure flag" warnings in the build log), which leaves __AVX2__ /
+    # __AVX512F__ undefined there and compiles llama.cpp's IQ/Q2_K/Q4_K AVX GEMMs
+    # to 5-byte stubs (nm: ggml_gemm_q2_K_8x8_q8_K 5 B vs 44695 B once kept).
+    # Measured 2026-10-03 on this box (/data/bldflags): the store binary decoded
+    # 6.10% (4292-token prompt) / 11.13% (27523) slower than the same source built
+    # locally, and clearing this flag recovers all of it; hardening, CUDA 12.9 vs
+    # 13.2, glibc and PIE each move <1%, and IPO/LTO costs 9.4%.  tiberius is a
+    # single known host (Xeon Gold 6246), so a native -march is what we want; if
+    # this package is ever built for another CPU, pass -DGGML_NATIVE=OFF instead.
+    NIX_ENFORCE_NO_NATIVE = "0";
   };
 
   cmakeFlags = [
