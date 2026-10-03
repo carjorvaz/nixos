@@ -721,13 +721,15 @@ in
     # The namespace is already fsdax and formatted; the prepare unit is a no-op.
     formatOptane = false;
     # KV cache: int8 (K and V both INT8 with FP16 scales) is the highest precision
-    # available at this context - k8v4 stores V as Hadamard-rotated Q4_0 - and it
-    # fits the full 262144.  Measured 2026-10-03 on this stack (fresh engines, 256
-    # gen): int8 costs 369 expert slots (-5.5%, 6288 vs 6657), 1.7 pts of hit, and
-    # -5.1% / -7.6% decode at 4344 / 27575 tokens; its larger per-cell KV also
-    # makes the prompt buffers shrink the chunk from 28672 to 14336, which is the
-    # -0.9% / -9.6% prefill.  k8v4 is the speed alternative (and the module
-    # default); q4_0 only helps under VRAM pressure and is the least precise V.
+    # that costs almost nothing at this context - k8v4 stores V as Hadamard-rotated
+    # Q4_0.  Measured 2026-10-03 (fresh engines, 256 gen): int8 costs 369 expert
+    # slots (-5.5%, 6288 vs 6657), 1.7 pts of hit, and -5.1% / -7.6% decode at
+    # 4344 / 27575 tokens; its larger cells also shrink the prompt chunk the
+    # engine can borrow for, which is why --prefill asks 28160 (the largest value
+    # accepted without halving; the old 28672 was silently halved to 14336 and
+    # cost 12.7% of the long-prompt read).  fp16 is the absolute ceiling and is
+    # priced too: 4607 slots and ~-23% decode at 262144, or - with no speed cost
+    # at all - 6464 slots and the full chunk at 131072; not taken here.
     kv = "int8";
   };
 

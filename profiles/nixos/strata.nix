@@ -119,10 +119,12 @@ let
         # the IQ3_S and Coder releases, and the coder has no shard 2 of its own
         # (verified 2026-09-30 on the box: /optane/strata-data/ple/ holds only
         # this file and the coder's models dir holds only its shard 1).  The
-        # engine appends this shard to the dense tensors, which is exactly what
-        # the manually-measured coder lane at 410 tok/s prefill used.  It is fed
+        # engine appends this shard to the dense tensors, which both lanes rely
+        # on.  It is fed
         # from nativeDir so the path string equals the one the engine derives
-        # from --native's split name (see nativeDir above).
+        # from --native's split name (see nativeDir above; the per-lane name is
+        # derived in pleShard, and the coder lane measured 1,129.9 tok/s prefill
+        # at 27575 tokens on 2026-10-03).
         "${nativeDir}/${pleShard}"
         "--ple-io"
         "mmap"
@@ -132,22 +134,26 @@ let
         "auto"
         "--prefill"
         # v0.1.38's prompt path streams, per chunk, the union of the experts that
-        # chunk's tokens route to - and above ~2K tokens that union is nearly the
-        # whole 46.84 GiB pack - so the DMA per token falls as the chunk grows.
-        # Measured 2026-10-03 on this box (deployed 262144/k8v4, 6657-slot cache,
-        # fresh engine per cell, 128-token replies): a 110K-token prompt reads
-        # 177.0 s (622 tok/s) at the old auto/8192 and 118.6 s (928 tok/s) at 28672
-        # (-33%); 27.5K goes 43.8 -> 27.8 s (992 tok/s, -37%); a 4.3K prompt is
-        # unchanged (9.5 s) and the decode right after is equal or better (hit
-        # 78.7 -> 79.0%).  The startup borrow rises from 1861 to 6223 of 6657 slots
-        # (11.79 GiB) and is refilled after the prompt.
-        # 28672 and not a power of two on purpose: the engine accepts a fixed chunk
-        # by halving it (`for (c = chunk; c >= 256; c /= 2)`), so 32768+ collapses
-        # to 16384 (135 s) and skips the fitting 16K-30K range.  The real cap here
-        # is ~30.1K (borrow ~ 125 + 0.213*c slots); an over-ask halves to 16384,
-        # still ~1.3x the old auto.  The cap moves with the expert cache, so if the
-        # context or KV changes, re-measure rather than scaling this by hand.
-        "28672"
+        # chunk's tokens route to, and above ~2K tokens that union is nearly the
+        # whole pack, so the DMA per token falls as the chunk grows.  The engine
+        # ACCEPTS a fixed chunk by halving it (`for (c = chunk; c >= 256; c /= 2)`
+        # in generate.cpp) and takes the first value that fits the prompt borrow,
+        # so a request only ever lands on a halving of what you ask for.
+        # Measured 2026-10-03 on the served config (262144, kv=int8, 6288 slots,
+        # borrow <= ~6160, /data/chunkint8): asking 28672 is halved to 14336 and
+        # reads a 27575-token prompt in 30.7 s (898 tok/s); asking 28160 is
+        # accepted AS-IS and reads it in 26.8 s (1029 tok/s, +14.6%, -21.6% expert
+        # bytes) with 6109 slots borrowed (51 spare), while the 4.3K prompt and the
+        # decode after are unchanged.  The boundary is reproduced with second
+        # engines (28416 halves to 14208, -0.9%); 27648 is the same speed with 3x
+        # the headroom if another tenant ever shrinks the cache.
+        # History: on the older k8v4 config (6657 slots, borrow 6223) 28672 was the
+        # largest accepted value, giving 992 tok/s at 27.5K and 928 at 110K where
+        # the old auto/8192 gave 622.  The cap moves with the expert cache, so
+        # re-measure it whenever the KV or context changes - and read the engine's
+        # own `prompt chunk X -> Y` line rather than assuming the value you asked
+        # for is the value in force.
+        "28160"
         "--spec"
         "4"
         "--spec-min-p"
@@ -442,21 +448,26 @@ in
 
     kv = lib.mkOption {
       type = lib.types.enum [
+        "fp16"
         "int8"
         "q4_0"
         "k8v4"
       ];
       default = "k8v4";
       description = ''
-        KV cache format.  Measured 2026-10-03 (source + engine envelopes, same
-        config otherwise): int8 = 1056 B/cell, K and V both INT8 with FP16
-        scales (kv_q8.hpp) - the highest precision, fits 262144 at a cost of 369
-        expert slots and ~5-8% decode; k8v4 = 816 B/cell, K INT8 + V rotated
-        Q4_0 - the balanced default; q4_0 = 576 B/cell, both rotated Q4_0 - the
-        least precise V, worth it only under VRAM pressure; fp16 = 2048 B/cell
-        (needs ~3.9 GiB more VRAM at 262144, unmeasured).  Each +64K of context
-        costs ~0.78 GiB with k8v4, and the prompt chunk the engine can borrow
-        for shrinks with a bigger KV (int8 halves 28672 to 14336).
+        KV cache format, cheapest precision to highest, all measured 2026-10-03
+        (source cell sizes in kv_q4.hpp / kv_q8.hpp / layer.cpp; envelopes and
+        perf on this box, 256 gen): q4_0 576 B/cell (both rotated Q4_0 - worth it
+        only under VRAM pressure); k8v4 816 B/cell (K INT8 + V rotated Q4_0, the
+        module default: 6657 slots at 262144, decode 21.4/22.4 tok/s at 4344/
+        27575 tokens); int8 1056 B/cell (K and V both INT8 with FP16 scales: 6288
+        slots, decode 20.3/20.7); fp16 2048 B/cell (the ceiling: 4607 slots at
+        262144, decode ~15.8-16.4 = -22..-24% vs int8, hit -9 pts, the loss being
+        purely the smaller expert cache - but at 131072 it keeps the full 28672
+        chunk with 6464 slots and costs nothing: 994 tok/s prefill, 18.4 tok/s
+        decode, 77% hit).  Every mode also shrinks the prompt chunk the engine can
+        borrow for: int8 and fp16 land on 14336 at 262144 (which is why --prefill
+        asks 28160, the largest value accepted without halving).
       '';
     };
 
