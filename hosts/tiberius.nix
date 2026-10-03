@@ -699,9 +699,19 @@ in
     # stays one option away (model = "coder": ~2.3x the prefill, ~35 tok/s
     # decode) for coding-agent work where its quality trade is acceptable.
     model = "iq3-s";
-    # The tuned/verified runtime is 131K with k8v4 (262K is one option away;
-    # it costs a few percent of decode and the cache budget changes with it).
-    context = 131072;
+    # 262K is the model's trained window (qwen4exp.context_length) and the engine
+    # runs --rope-scaling none, so nothing above it is valid.  Measured on this box
+    # 2026-10-03 (deployed v0.1.35 stack, fresh engine per cell, 128-token replies,
+    # k8v4): every +64K of context costs 0.78 GiB of VRAM and ~414 expert-cache
+    # slots (7487 -> 6657 at 262K), and buys -3.4 points of hit, -10..-15% of decode
+    # (21.5 -> 19.4 tok/s at a 14K prompt, 20.9 -> 17.8 at 110K) and -6% of prefill
+    # (~660 -> 622 tok/s, +11 s on a 110K prompt).  Prefill is ~flat in prompt
+    # length (644-706 tok/s from 14K to 110K, so a 110K prompt is ~2.8 min), which
+    # makes the decode delta ~1 s on a 128-token reply - invisible next to TTFT -
+    # while the extra 131K of window is exactly what agent traffic consumes.  Do not
+    # go further: at 524K the hit rate is 70% and decode 14.5 tok/s, at 786K 54% and
+    # 10.6; q4_0 only changes the far, unusable end (and costs 12-15% of prefill).
+    context = 262144;
     # The namespace is already fsdax and formatted; the prepare unit is a no-op.
     formatOptane = false;
   };

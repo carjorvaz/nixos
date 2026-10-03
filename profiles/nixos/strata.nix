@@ -372,6 +372,12 @@ in
       description = ''
         Maximum context in tokens.  Measured on the Coder: 131K gives ~35 tok/s
         decode / ~410 tok/s prefill at 94% hit; 262K gives ~29 / ~384 at 92%.
+        Measured on iq3-s (2026-10-03, k8v4, fresh engine per cell): prefill is
+        ~flat in prompt length (644-706 tok/s from 14K to 110K tokens), 131K
+        decodes ~21 tok/s at 81% hit and 262K ~18 tok/s at 78%, and each extra
+        131K of window costs ~830 expert-cache slots.  Above 262K the model is
+        past its trained window (the engine runs --rope-scaling none) and the
+        cache thrashes: 524K -> 14.5 tok/s / 70% hit, 786K -> 10.6 / 54%.
       '';
     };
 
@@ -382,7 +388,13 @@ in
         "k8v4"
       ];
       default = "k8v4";
-      description = "KV cache format.  K8V4 gives the 262K window at ~5.2 GB of VRAM.";
+      description = ''
+        KV cache format.  K8V4 (the measured default) costs ~12.5 KiB of VRAM per
+        token once the draft and indexer are counted, i.e. ~0.78 GiB per 64K of
+        context; q4_0 saves ~0.82 GiB at 262K (+437 cache slots) but is
+        decode-neutral and costs 12-15% of prefill, and only matters at contexts
+        the model was never trained for.
+      '';
     };
 
     hostTierGib = lib.mkOption {
