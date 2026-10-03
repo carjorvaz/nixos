@@ -384,15 +384,17 @@ in
         "coder"
         "iq3-s"
       ];
-      default = "coder";
+      default = "iq3-s";
       description = ''
-        Which lane to serve.  Measured 2026-10-03 at 131072 context (fresh
-        engines, cold cache): `coder` does 790.7 / 1129.9 tok/s prefill and
-        39.6 / 34.3 tok/s decode at 4344 / 27575 tokens (94.1 / 91.3% hit);
-        `iq3-s` does 456.6 / 1004.5 and 23.9 / 21.0 (82.6 / 81.8%).  The coder
-        is 1.73x / 1.12x the prefill and 1.66x / 1.63x the decode at the same
-        window, with a documented quality trade (half the experts, 91.3% of the
-        full model's SWE-bench Verified, weaker outside code/CJK).
+        Which lane to serve.  `iq3-s` is the quality lane and the default: the
+        original IQ3_S pack (24,576 experts, "matches the full model") and the
+        one the box serves.  `coder` is the low-footprint alternative (IQ1_M,
+        half the experts, 23.4 GiB pack); measured 2026-10-03 at 131072 context
+        it does 1.73x / 1.12x the prefill and 1.66x / 1.63x the decode of iq3-s
+        (790.7 / 1129.9 tok/s prefill, 39.6 / 34.3 tok/s decode at 4344 / 27575
+        tokens at 94.1 / 91.3% hit), at the cost of the documented quality trade
+        (91.3% of the full model's SWE-bench Verified, weaker outside code
+        including CJK).  Not taken here on purpose.
       '';
     };
 

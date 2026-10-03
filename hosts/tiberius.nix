@@ -695,9 +695,15 @@ in
   services.tiberius-strata = {
     enable = true;
     package = pkgs.strata-sm75;
-    # IQ3_S is the served model (the original, 24,576 experts).  The Coder lane
-    # stays one option away (model = "coder": ~2.3x the prefill, ~35 tok/s
-    # decode) for coding-agent work where its quality trade is acceptable.
+    # IQ3_S is the served lane, by choice: it is the quality pack (24,576
+    # experts, "matches the full model") and this box exists to run it.  The
+    # Coder lane (model = "coder") stays one option away and is faster - measured
+    # 2026-10-03 at 131072 context: 1.73x/1.12x its prefill and 1.66x/1.63x its
+    # decode of IQ3_S (790.7/1129.9 tok/s prefill, 39.6/34.3 tok/s decode at
+    # 4344/27575 tokens, 94.1/91.3% hit vs 456.6/1004.5 and 23.9/21.0 at
+    # 82.6/81.8%) - but it halves the expert count and trades quality (91.3% of
+    # the full model's SWE-bench Verified, weaker outside code including CJK).
+    # Not taken on purpose.
     model = "iq3-s";
     # 262K is the model's trained window (qwen4exp.context_length) and the engine
     # runs --rope-scaling none, so nothing above it is valid.  Measured on this box
