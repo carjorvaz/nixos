@@ -334,6 +334,19 @@ let
         # the ~7 GiB total looks like the box's lockable-memory budget.
         STRATA_REGISTER_DAX = "1";
         STRATA_REGISTER_DAX_MIB = "6144";
+      }
+      // lib.optionalAttrs (cfg.kv == "int8") {
+        # Rotated INT8 K/V (Hadamard) for the int8 lane.  layer.cpp:568 makes this
+        # `st.kv_rot = st.kv_q4 || (st.kv_int8 && g_kv_int8_rot)`, so it is a no-op
+        # for fp16/q4_0/k8v4.  Measured 2026-10-03 (/data/kvrot, post-#547 engine,
+        # fresh engine per cell, 2 counterbalanced passes; expert set pinned at
+        # 3896 slots for the fidelity cells): KL(ref=fp16 || int8) 5.24e-1 ->
+        # 7.98e-2, top-1 restored, the 8-token greedy output bit-exact fp16 where
+        # unrotated flips; capacity unchanged (6288 slots / 5554 borrow), prefill
+        # -0.24% aggregate, decode ~-1% (three FWHT-256 launches per layer per
+        # token).  The snapshot tag moves +16, so rotated and unrotated int8
+        # checkpoints never restore into each other - one cold re-prefill follows.
+        STRATA_KV_ROT = "1";
       };
       port = cfg.port;
       # v0.1.38's serve layer checks the Host header on every request (the
@@ -488,7 +501,10 @@ in
         only under VRAM pressure); k8v4 816 B/cell (K INT8 + V rotated Q4_0, the
         module default: 6657 slots at 262144, decode 21.4/22.4 tok/s at 4344/
         27575 tokens); int8 1056 B/cell (K and V both INT8 with FP16 scales: 6288
-        slots, decode 20.3/20.7); fp16 2048 B/cell (the ceiling: 4607 slots at
+        slots, decode 20.3/20.7; the module adds STRATA_KV_ROT=1, i.e. both
+        rotated: that cuts the near-tie KL against fp16 6.6x, 0.524 -> 0.0798, and
+        restores fp16's top-1 where unrotated flips, for ~1% decode); fp16 2048
+        B/cell (the ceiling: 4607 slots at
         262144, decode ~15.8-16.4 = -22..-24% vs int8, hit -9 pts, the loss being
         purely the smaller expert cache - but at 131072 it keeps the full 28672
         chunk with 6464 slots and costs nothing: 994 tok/s prefill, 18.4 tok/s

@@ -728,9 +728,13 @@ in
     # 4344 / 27575 tokens; its larger cells also shrink the prompt chunk the
     # engine can borrow for, which is why --prefill asks 28160 (the largest value
     # accepted without halving; the old 28672 was silently halved to 14336 and
-    # cost 12.7% of the long-prompt read).  fp16 is the absolute ceiling and is
-    # priced too: 4607 slots and ~-23% decode at 262144, or - with no speed cost
-    # at all - 6464 slots and the full chunk at 131072; not taken here.
+    # cost 12.7% of the long-prompt read).  The module sets STRATA_KV_ROT=1 for
+    # this lane: both K and V go through the Hadamard rotation, which with the
+    # expert set pinned cuts the near-tie KL against fp16 6.6x (0.524 -> 0.0798)
+    # and restores fp16's top-1 where unrotated int8 flips, for zero capacity and
+    # ~1% decode (measured 2026-10-03, /data/kvrot).  fp16 is the absolute ceiling
+    # and is priced too: 4607 slots and ~-23% decode at 262144, or - with no
+    # speed cost at all - 6464 slots and the full chunk at 131072; not taken here.
     kv = "int8";
   };
 
