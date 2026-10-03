@@ -23,7 +23,7 @@
 let
   c = cudaPackages;
 
-  revision = "d9ab8435f654c368c586340d490915f6addf56a3";
+  revision = "99f3dbd0b21d1401b3769e0c0d963913607f380b";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -55,13 +55,13 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.35";
+  version = "0.1.38";
 
   src = fetchFromGitHub {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-cklOp4RjPN8B0lWei681rzE7a0JlEKLRhqb4PuTO6vg=";
+    hash = "sha256-9tawklXlF98yolRTVgeonVcyrob8HiNG3xSQ7V5v+94=";
   };
 
   # tiberius's local engine changes, in one patch because they interleave in the
@@ -70,7 +70,7 @@ stdenv.mkDerivation {
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
   #   * STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores;
   #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources.
-  # The host expert tier is NOT here any more: v0.1.35 has it natively
+  # The host expert tier is NOT here any more: v0.1.38 has it natively
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # Same source revision as the pin above, so `patch -p1` applies cleanly.
   patches = [ ./tiberius.patch ];

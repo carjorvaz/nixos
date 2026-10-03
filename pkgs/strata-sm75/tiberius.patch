@@ -1,8 +1,8 @@
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
-index 307edd9..79ad6de 100644
+index 4c4d12f..9de871d 100644
 --- a/include/strata/core/expert_source.hpp
 +++ b/include/strata/core/expert_source.hpp
-@@ -116,9 +116,45 @@ public:
+@@ -117,9 +117,44 @@ public:
      /// asynchronous host-to-device copy can DMA it directly (no staging copy on the CPU).
      virtual bool pinned(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return false; }
  
@@ -16,7 +16,6 @@ index 307edd9..79ad6de 100644
 +    /// layers in order: it must ask this, and it must call `prepare_layer` to make the answer true.  Every source
 +    /// that does not move a window answers exactly as `pinned()` does, so the distinction costs it nothing.
 +    virtual bool dma_ready(int64_t layer, int64_t expert) const { return pinned(layer, expert); }
-+
 +    /// Which pool of host memory `blob(layer, expert)` names.  `pinned()` answers "can the copy engine read
 +    /// this directly"; this says *why*, which is what the refill needs both to report where its copies came
 +    /// from and to decide which of them need a CPU staging hop: the driver stages a DMA out of pageable host
@@ -48,7 +47,7 @@ index 307edd9..79ad6de 100644
      /// Plan v0.3 P6: the DEVICE address of a pinned, mapped blob (the GPU can read it over PCIe), or null.
      virtual const uint8_t* device_alias(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return nullptr; }
      /// Whether the verify window may give the GPU a PCIe share of this layer's misses at all (each expert is still
-@@ -474,8 +510,14 @@ public:
+@@ -488,8 +523,14 @@ public:
  
      const uint8_t* blob(int64_t layer, int64_t expert) override;
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -63,7 +62,7 @@ index 307edd9..79ad6de 100644
      bool transient(int64_t layer, int64_t expert) const override;
      bool copy_blob(int64_t layer, int64_t expert, uint8_t* dst) override;
      /// CS-T: advances the assembled blobs' age (see staged_blob).
-@@ -496,6 +538,49 @@ public:
+@@ -511,6 +552,49 @@ public:
  
  private:
      const uint8_t* mapped_blob(int64_t layer, int64_t expert) const;
@@ -113,7 +112,7 @@ index 307edd9..79ad6de 100644
      /// The blob's bytes from the mapped file(s) - experts.bin, or the three GGUF role slices - into `dst`.
      bool copy_from_files(int64_t layer, int64_t expert, uint8_t* dst) const;
      bool open_gguf(std::string& err);
-@@ -558,6 +643,20 @@ private:
+@@ -585,6 +669,20 @@ private:
      bool complement_ready_ = false;
      uint64_t complement_locked_ = 0;          ///< bytes held in the working set (pin refused)
      int64_t complement_lent_slots_ = 0;
@@ -134,7 +133,7 @@ index 307edd9..79ad6de 100644
      std::vector<const uint8_t*> override_;    ///< staged exchanges: an evicted expert read from its exchange buffer
      struct Exchange { size_t in, out; int64_t q; uint64_t bytes; };
      std::vector<Exchange> staged_;
-@@ -613,6 +712,7 @@ public:
+@@ -640,6 +738,7 @@ public:
      const uint8_t* blob(int64_t layer, int64_t expert) override;
      int64_t reads() const { return reads_; }
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -143,10 +142,10 @@ index 307edd9..79ad6de 100644
  
      /// What backing was obtained and why, for the startup print.  "The engine adapts to the machine it is on" is
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
-index 087854e..974304b 100644
+index c64909f..81049fb 100644
 --- a/src/core/expert_source.cpp
 +++ b/src/core/expert_source.cpp
-@@ -453,10 +453,94 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
+@@ -455,10 +455,94 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
      mapped_bytes_ = want;
      layer_offsets_ = std::move(layer_offsets);
      layer_blob_bytes_ = std::move(layer_blob_bytes);
@@ -241,8 +240,8 @@ index 087854e..974304b 100644
      if (complement_arena_ != nullptr) {
          if (complement_pinned_ && !complement_partial_) (void) cudaFreeHost(complement_arena_);
          else {
-@@ -1283,7 +1367,13 @@ bool FileExpertSource::pin_cache_complement(
-                 copied.fetch_add(blob_bytes);
+@@ -1524,7 +1608,13 @@ bool FileExpertSource::pin_cache_complement(
+                 return;
              }
  #if !defined(_WIN32)
 -            if (role_ptr_.empty()) {   // experts.bin; the GGUF in place leaves its pages to the OS
@@ -256,7 +255,7 @@ index 087854e..974304b 100644
              const uint64_t layer_offset = layer_offsets_[(size_t) layer];
              const uint64_t layer_bytes = blob_bytes * (uint64_t) n_expert_;
              const uint64_t layer_end = layer_offset + layer_bytes;
-@@ -1457,7 +1547,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+@@ -1698,7 +1788,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
      return result;
  }
  
@@ -267,7 +266,7 @@ index 087854e..974304b 100644
      if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
          layer >= n_layers_ || expert >= n_expert_) return false;
      const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
-@@ -1467,10 +1559,274 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -1708,10 +1800,273 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
             complement_offsets_[index] + layer_blob_bytes_[(size_t) layer] <= complement_pin_limit_;
  }
  
@@ -512,7 +511,6 @@ index 087854e..974304b 100644
 +    // `prepare_layer` will register this layer when the issue step reaches it if the window can hold it alone.
 +    return (uint64_t) n_expert_ * layer_blob_bytes_[(size_t) layer] <= dax_budget_;
 +}
-+
 +// INTEGRATED (F2 + F4): the refill's source classification.  A blob inside the sliding DAX window is
 +// `Registered` - the device DMAs it straight out of the registered mapping - which is NOT the same as
 +// `PinnedTier` even though F2's `pinned()` answers true for it: the refill must not try to register such a
@@ -545,7 +543,7 @@ index 087854e..974304b 100644
  }
  
  bool FileExpertSource::pcie_layer(int64_t layer) const {
-@@ -2302,6 +2658,12 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -2684,6 +3039,12 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
      return lay.blob_offset(layer, expert) + lay.blob_bytes(layer) <= pinned_bytes_;
  }
  
@@ -836,10 +834,10 @@ index bb6ef04..68ebd11 100644
      if (try_hipblaslt(hipblaslt_state_, strata::prefill::hipblaslt::InputType::bf16, X, W, Y, T, N, K, ldy,
                        beta, stream_)) {
 diff --git a/src/prefill/prefill.cpp b/src/prefill/prefill.cpp
-index ed47b97..1688dc7 100644
+index 5d46e4b..cee053a 100644
 --- a/src/prefill/prefill.cpp
 +++ b/src/prefill/prefill.cpp
-@@ -1142,6 +1142,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -1471,6 +1471,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
          // `used` event recorded), so the copy stream never waits on an event that is not queued yet
          const strata::kernels::cpu::ExpertLayout& lay0 = strata::kernels::cpu::expert_layout();
          const bool stream_all = m.ring > STAGE && T >= stream_all_min() && m.src != nullptr;
@@ -847,21 +845,21 @@ index ed47b97..1688dc7 100644
 +        // drained - a `cudaMemcpyAsync` out of it may still be in the copy engine - and this is the only place that
 +        // knows which stream the direct-DMA copies run on.
 +        if (m.src != nullptr) m.src->set_dma_stream(m.copy);
-         struct StreamEntry { int32_t l, e; const uint8_t* blob; int job; };
-         std::vector<StreamEntry> seq;
-         std::vector<size_t> seq_start;
-@@ -1161,7 +1165,7 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
-                     } else {
-                         b = m.src->blob(l, e);
-                         if (!b) { err = "prefill: expert source has no blob"; return false; }
+         const bool ps_on = stream_all && m.pp && m.pp->ps_frac > 0.0;
+         if (m.pp && !ps_on) m.pp->ps_flag.clear();
+         // multi-GPU: the peer's ring - issue its copies up to `limit` / give entries back (the peer device is current)
+@@ -1533,7 +1537,7 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                                 continue;
+                             }
+                         }
 -                        if (!m.src->pinned(l, e)) {
 +                        if (!m.src->dma_ready(l, e)) {   // tiberius: `dma_ready`, NOT `pinned` - see expert_source.hpp
                              job = (int) js.size();
                              js.push_back({b, (size_t) lay0.blob_bytes(l)});
                          }
-@@ -1185,6 +1189,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -1560,6 +1564,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
                  const size_t bytes = (size_t) lay0.blob_bytes(en.l);
-                 if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[sl], 0);
+                 if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[m.used_of[sl]], 0);
                  if (en.job < 0) {
 +                    // tiberius (STRATA_REGISTER_DAX): the sliding window's rotation point - register this layer
 +                    // before its first copy (a no-op for every layer the window already covers).  `dma_ready`
@@ -870,9 +868,9 @@ index ed47b97..1688dc7 100644
                      cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                      ++stats_.experts_dma;
                  } else {
-@@ -1232,6 +1240,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -1607,6 +1615,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
                      const size_t bytes = (size_t) lay0.blob_bytes(en.l);
-                     if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[sl], 0);
+                     if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[m.used_of[sl]], 0);
                      if (en.job < 0) {
 +                        // tiberius (STRATA_REGISTER_DAX): the sliding window's rotation point - register this layer
 +                        // before its first copy (a no-op for every layer the window already covers).
@@ -880,22 +878,22 @@ index ed47b97..1688dc7 100644
                          cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                          ++iss_dma;
                      } else {
-@@ -1653,6 +1664,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
-                     // the unpinned ones are copied to pinned buffers by the stager's threads, in this order
-                     std::vector<int> job_of(order.size(), -1);
-                     if (!stream_all) {
-+                        // tiberius (STRATA_REGISTER_DAX): the sliding window's rotation point for the short-chunk
-+                        // path - move the window to this layer BEFORE the jobs below - and `stage_one` - ask
-+                        // `pinned` about it.
-+                        (void) m.src->prepare_layer(l);
-                         std::vector<Stager::Job> js;
-                         for (size_t j = 0; j < order.size(); ++j) {
-                             const int32_t e = order[j];
+@@ -2323,6 +2334,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+                         // the unpinned ones are copied to pinned buffers by the stager's threads, in this order
+                         std::vector<int> job_of(order.size(), -1);
+                         if (!stream_all) {
++                            // tiberius (STRATA_REGISTER_DAX): the sliding window's rotation point for the short-chunk
++                            // path - move the window to this layer BEFORE the jobs below - and `stage_one` - ask
++                            // `pinned` about it.
++                            (void) m.src->prepare_layer(l);
+                             std::vector<Stager::Job> js;
+                             for (size_t j = 0; j < order.size(); ++j) {
+                                 const int32_t e = order[j];
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index 53c38a0..4bb9ae4 100644
+index a7c77d0..2337fb0 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -82,6 +82,7 @@
+@@ -84,6 +84,7 @@
  #include <condition_variable>
  #include <deque>
  #include <map>
@@ -903,7 +901,7 @@ index 53c38a0..4bb9ae4 100644
  #include <mutex>
  #include <optional>
  #include <new>
-@@ -119,6 +120,85 @@ bool refill_blocking() {
+@@ -121,6 +122,85 @@ bool refill_blocking() {
  
  using Clock = std::chrono::steady_clock;
  
@@ -989,7 +987,7 @@ index 53c38a0..4bb9ae4 100644
  // The resident RAM mode and the adaptive tier.  A swap copies `in` (held in RAM) into the slot of `out` (held only
  // by that slot).  Before the slot is overwritten, `out`'s bytes are copied back from it into an exchange buffer, so
  // the CPU computes `out` from RAM while the swap is in flight; when the swap has landed, `commit_exchanges` moves
-@@ -3715,7 +3795,11 @@ int main(int argc, char** argv) {
+@@ -3963,7 +4043,11 @@ int main(int argc, char** argv) {
              for (int64_t e = 0; e < g.n_expert; ++e) {
                  const uint64_t b = lay.blob_bytes(l);
                  total += b;
@@ -1002,7 +1000,7 @@ index 53c38a0..4bb9ae4 100644
              }
          strata::prefill::Prefill::set_pinned_share(total ? (double) pinned / (double) total : 1.0);
      }
-@@ -4495,6 +4579,19 @@ int main(int argc, char** argv) {
+@@ -4765,6 +4849,19 @@ int main(int argc, char** argv) {
          std::vector<std::pair<int32_t, int32_t>> pending;
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
@@ -1022,8 +1020,8 @@ index 53c38a0..4bb9ae4 100644
          // a layer split's later stages keep a copy of the residency table on their devices, and swap on their own
          auto res_upload = [&]() {
              if (d_res != nullptr)
-@@ -4507,13 +4604,17 @@ int main(int argc, char** argv) {
-         auto apply_pending = [&](bool wait) {
+@@ -4778,13 +4875,17 @@ int main(int argc, char** argv) {
+             if (peer.valid()) peer.apply_pending(wait);
              if (pending.empty()) return;
              if (wait) cudaEventSynchronize(adapt_ev);
 -            else if (cudaEventQuery(adapt_ev) != cudaSuccess) return;
@@ -1041,7 +1039,7 @@ index 53c38a0..4bb9ae4 100644
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
              for (const auto& [i, slot] : pending) host_res[(size_t) i] = slot;
              pending.clear();
-@@ -4548,22 +4649,106 @@ int main(int argc, char** argv) {
+@@ -4819,22 +4920,106 @@ int main(int argc, char** argv) {
              if ((int) swaps.size() > o.adapt_swaps) swaps.resize((size_t) o.adapt_swaps);
              if (!resident_stage_swaps(src, xcache, host_res, g.n_expert, swaps, adapt_stream)) return false;
              bool main_live = false;
@@ -1156,7 +1154,7 @@ index 53c38a0..4bb9ae4 100644
              }
              if (!swaps.empty()) cudaEventRecord(adapt_ev, adapt_stream);
              (void) main_live;
-@@ -5377,6 +5562,7 @@ int main(int argc, char** argv) {
+@@ -5691,6 +5876,7 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -1164,15 +1162,15 @@ index 53c38a0..4bb9ae4 100644
              double dt_run = 0, dt_commit = 0, dt_draft = 0;
              int64_t dec_windows = 0, dec_T = 0;
              const int64_t decode_hits0 = drive.d.cache_hits;
-@@ -5413,6 +5599,7 @@ int main(int argc, char** argv) {
-                 drive.d.experts = 0;
-                 drive.d.failed = false;
-                 apply_pending(false);
+@@ -5730,6 +5916,7 @@ int main(int argc, char** argv) {
+                 // expert ran on the GPU or the CPU (they round differently) depended on the copy's timing
+                 // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
+                 apply_pending(!adapt_nowait());
 +                if (refill_timing) ++racc.windows;
                  if (hist_n > 0) {
                      // the tails the penalties count over, ONE PER ROW: the tokens the state has consumed, the
                      // fed-back head `x` (it joins `consumed` only after this window commits), then the drafts
-@@ -5471,7 +5658,11 @@ int main(int argc, char** argv) {
+@@ -5788,7 +5975,11 @@ int main(int argc, char** argv) {
                      dt_run += msd(tw0, tw1); dt_commit += msd(tw1, tw2); dt_draft += msd(tw2, tw3);
                      ++dec_windows; dec_T += T;
                  }
@@ -1185,7 +1183,7 @@ index 53c38a0..4bb9ae4 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -5509,6 +5700,7 @@ int main(int argc, char** argv) {
+@@ -5826,6 +6017,7 @@ int main(int argc, char** argv) {
                  const std::string pr = ver.profile_report();
                  if (!pr.empty()) std::fprintf(stderr, "strata decode GPU stages (ms/window):%s\n", pr.c_str());
              }
@@ -1193,10 +1191,10 @@ index 53c38a0..4bb9ae4 100644
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -6098,10 +6290,24 @@ int main(int argc, char** argv) {
-         std::vector<std::pair<int32_t, int32_t>> pending;
+@@ -6434,17 +6626,29 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
+         int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
 +        // STRATA_REFILL_PIN_SRC: the registered spans of the LAST batch (see the refill's host copies above);
 +        // released when apply_pending sees that batch's event, never while a copy can still be in flight.
 +        std::vector<void*> held_pins;
@@ -1209,17 +1207,21 @@ index 53c38a0..4bb9ae4 100644
 +        const bool refill_timing = refill_timing_enabled();
          auto apply_pending = [&](bool wait) {
              if (pending.empty()) return;
+             // STRATA_TRACE_ADAPT=1: whether a round's copies had landed when the next window read the table
+             static const bool trace_pending = std::getenv("STRATA_TRACE_ADAPT") != nullptr;
              if (wait) cudaEventSynchronize(adapt_ev);
--            else if (cudaEventQuery(adapt_ev) != cudaSuccess) return;
-+            else if (cudaEventQuery(adapt_ev) != cudaSuccess) {
+             else if (cudaEventQuery(adapt_ev) != cudaSuccess) {
 +                if (refill_timing) ++racc.inflight_at_window;
-+                return;
-+            }
+                 if (trace_pending)
+                     std::fprintf(stderr, "strata: PENDING not landed, %zu stay non-resident this window\n",
+                                  pending.size());
+                 return;
+             }
 +            release_pins();
+             if (trace_pending)
+                 std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
-             for (const auto& [i, slot] : pending) host_res[(size_t) i] = slot;
-             pending.clear();
-@@ -6142,19 +6348,91 @@ int main(int argc, char** argv) {
+@@ -6498,19 +6702,91 @@ int main(int argc, char** argv) {
                  std::fprintf(stderr, "strata generate: an adaptive refill failed (copying evicted experts back)\n");
                  return false;
              }
@@ -1314,16 +1316,16 @@ index 53c38a0..4bb9ae4 100644
 +                ++racc.rounds;
              }
              if (!swaps.empty()) cudaEventRecord(adapt_ev, adapt_stream);
-             for (float& v : drive.d.usage) v *= 0.7f;
-@@ -6226,6 +6504,7 @@ int main(int argc, char** argv) {
-             drive.d.experts = 0;
-             drive.d.failed = false;
-             apply_pending(false);
+             if (trace_adapt)
+@@ -6588,6 +6864,7 @@ int main(int argc, char** argv) {
+             // expert ran on the GPU or the CPU (they round differently) depended on the copy's timing
+             // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
+             apply_pending(!adapt_nowait());
 +            if (refill_timing) ++racc.windows;
              if (!ver.run(T, window.data(), p, &drive_pool_multi, &drive, outv.data(), err)) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
                  return 1;
-@@ -6281,7 +6560,11 @@ int main(int argc, char** argv) {
+@@ -6643,7 +6920,11 @@ int main(int argc, char** argv) {
              }
              const bool drafted = !use_mtp || (int64_t) produced.size() >= o.max_new ||
                                   mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) o.spec_min_p);
@@ -1336,7 +1338,7 @@ index 53c38a0..4bb9ae4 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -6336,6 +6619,7 @@ int main(int argc, char** argv) {
+@@ -6698,6 +6979,7 @@ int main(int argc, char** argv) {
          if (rounds > 0 && !drive.d.usage.empty())
              std::printf("%-24s %lld experts swapped into the VRAM tier (every %d rounds, %.3f ms/round)\n", "adaptive tier",
                          (long long) swaps_total, o.adapt_every, ms_adapt / rounds);

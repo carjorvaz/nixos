@@ -69,7 +69,7 @@ let
   };
   lane = lanes.${cfg.model};
 
-  # v0.1.35's gguf_split_paths() THROWS when a "--native ...-0000N-of-0000M.gguf"
+  # v0.1.38's gguf_split_paths() THROWS when a "--native ...-0000N-of-0000M.gguf"
   # has a missing sibling shard (0.1.29's model_shards() silently skipped absent
   # shards), and the GGUF reader additionally validates the file's own split
   # metadata - a shard-1 file handed over as a whole model is refused with "is
@@ -110,7 +110,7 @@ let
         "--expert-cache"
         "auto"
         "--prefill"
-        # v0.1.35's prompt path streams, per chunk, the union of the experts that
+        # v0.1.38's prompt path streams, per chunk, the union of the experts that
         # chunk's tokens route to - and above ~2K tokens that union is nearly the
         # whole 46.84 GiB pack - so the DMA per token falls as the chunk grows.
         # Measured 2026-10-03 on this box (deployed 262144/k8v4, 6657-slot cache,
@@ -138,7 +138,7 @@ let
         "--kv"
         cfg.kv
       ]
-      # v0.1.35 has the resident host tier natively: --resident-budget-gib N keeps
+      # v0.1.38 has the resident host tier natively: --resident-budget-gib N keeps
       # the N GiB of the GPU cache's complement that the expert profile ranks
       # hottest, and implies --mmap-experts + --resident-cpu-experts (the parser
       # treats them as one mode).  The unit is GiB, so the old --resident-cpu-mib
@@ -195,7 +195,7 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
-        # v0.1.35's --resident-budget-gib page-locks its copy by default
+        # v0.1.38's --resident-budget-gib page-locks its copy by default
         # (cudaHostAlloc / cudaHostRegister, reported as "mapped pinned").  The
         # measured tier on this box is the PAGEABLE one (the deployed log reads
         # "resident 1.00 GiB, pinned 0.00 GiB"), and 1 GiB of pinned host memory
@@ -209,6 +209,17 @@ let
         # the old --resident-cpu-mib path had no clamp at all.  0 keeps 1 GiB
         # (only the 256 MiB margin applies).
         STRATA_RESIDENT_HEADROOM_GIB = "0";
+        # v0.1.38's serve layer checks the Host header on every request (the
+        # DNS-rebinding fix) and 403s any name outside its allow-list:
+        # localhost/*.localhost, IP literals, the bind address, the machine's own
+        # hostname and hostname.local (those last two only when the bind is not
+        # loopback, per host_names_for() - measured on a loopback-bound probe
+        # where `tiberius`, `tiberius.local` and the MagicDNS name all 403'd, so
+        # verify after any change to the bind), plus anything listed here.  The
+        # module documents `http://tiberius:8080/v1` as the client URL and the
+        # LAN/tailnet IPs are allowed as literals, but a client using the
+        # MagicDNS FQDN needs this entry.
+        STRATA_ALLOWED_HOSTS = "tiberius.tail01b8d.ts.net";
         # tiberius: a small pinned staging ring is ~16% faster on prefill than
         # the default 16 (the copies follow layer order, so a deep ring only
         # adds DMA/cache contention); measured 2026-09-30.
@@ -369,7 +380,7 @@ in
         Root of the raw shard directories.  Each lane's directory holds shard 1
         ONLY, under its own `-00001-of-00002.gguf` name; the service symlinks it
         (and the shared PLE shard) into stateDir/native/<lane>/ on every start,
-        because v0.1.35's gguf_split_paths() makes a missing sibling shard fatal
+        because v0.1.38's gguf_split_paths() makes a missing sibling shard fatal
         and refuses a shard file opened as a whole model.  Shard 2 is fed in
         through --ple-gguf from that same directory, so the engine's shard list
         names it exactly once.
@@ -418,7 +429,7 @@ in
       default = 1.0;
       description = ''
         GiB of the hottest profile-ranked experts the GPU cache does not hold kept
-        in ordinary RAM (upstream v0.1.35's --resident-budget-gib, a float so a lane
+        in ordinary RAM (upstream v0.1.38's --resident-budget-gib, a float so a lane
         can ask for e.g. 0.5).  1.0 is the measured setting (the old
         --resident-cpu-mib 1024, ~8% off the CPU pool); 0 keeps the pure mmap path.
       '';
@@ -546,7 +557,7 @@ in
         StartLimitBurst = 3;
         ExecStartPre = [
           "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
-          # v0.1.35's gguf_split_paths() demands every shard named by --native's
+          # v0.1.38's gguf_split_paths() demands every shard named by --native's
           # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
           # metadata too, so shard 1 cannot be passed alone or under a made-up
           # name.  nativeDir is therefore assembled here with BOTH shards as
