@@ -232,7 +232,7 @@ let
         # FRESH READ, so client text must be <= ~55 tokens for the verify path;
         # the verify/batched cost cross-over is ~90-100 fresh tokens (~34-70
         # ms/token against a ~3.2-3.7 s floor + ~5-8 ms/token).  The borrow is
-        # 6109 of 6288 slots - 5554 (88.3%) with PR #547 carried - and costs the
+        # 5554 of 6288 slots (88.3%; 6109 before PR #547) and costs the
         # next request nothing measurable; cold start is 18-26 s (not ~50 s) and
         # a restart still loses the chain (conversation-cache-mib stays 0: no
         # parked caching).
@@ -501,9 +501,10 @@ in
         only under VRAM pressure); k8v4 816 B/cell (K INT8 + V rotated Q4_0, the
         module default: 6657 slots at 262144, decode 21.4/22.4 tok/s at 4344/
         27575 tokens); int8 1056 B/cell (K and V both INT8 with FP16 scales: 6288
-        slots, decode 20.3/20.7; the module adds STRATA_KV_ROT=1, i.e. both
-        rotated: that cuts the near-tie KL against fp16 6.6x, 0.524 -> 0.0798, and
-        restores fp16's top-1 where unrotated flips, for ~1% decode); fp16 2048
+        slots; decode 20.3/20.7 pre-rotation; the module adds STRATA_KV_ROT=1,
+        i.e. both rotated, which cuts the near-tie KL against fp16 6.6x
+        (0.524 -> 0.0798), restores its top-1 where unrotated flips, and costs
+        -0.83%/-0.96% on identical streams); fp16 2048
         B/cell (the ceiling: 4607 slots at
         262144, decode ~15.8-16.4 = -22..-24% vs int8, hit -9 pts, the loss being
         purely the smaller expert cache - but at 131072 it keeps the full 28672
