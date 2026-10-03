@@ -209,17 +209,6 @@ let
         # the old --resident-cpu-mib path had no clamp at all.  0 keeps 1 GiB
         # (only the 256 MiB margin applies).
         STRATA_RESIDENT_HEADROOM_GIB = "0";
-        # v0.1.38's serve layer checks the Host header on every request (the
-        # DNS-rebinding fix) and 403s any name outside its allow-list:
-        # localhost/*.localhost, IP literals, the bind address, the machine's own
-        # hostname and hostname.local (those last two only when the bind is not
-        # loopback, per host_names_for() - measured on a loopback-bound probe
-        # where `tiberius`, `tiberius.local` and the MagicDNS name all 403'd, so
-        # verify after any change to the bind), plus anything listed here.  The
-        # module documents `http://tiberius:8080/v1` as the client URL and the
-        # LAN/tailnet IPs are allowed as literals, but a client using the
-        # MagicDNS FQDN needs this entry.
-        STRATA_ALLOWED_HOSTS = "tiberius.tail01b8d.ts.net";
         # tiberius: a small pinned staging ring is ~16% faster on prefill than
         # the default 16 (the copies follow layer order, so a deep ring only
         # adds DMA/cache contention); measured 2026-09-30.
@@ -293,6 +282,17 @@ let
         STRATA_REGISTER_DAX_MIB = "6144";
       };
       port = cfg.port;
+      # v0.1.38's serve layer checks the Host header on every request (the
+      # DNS-rebinding fix, server.py parse_request): it answers to localhost and
+      # *.localhost, IP literals, the bind address and - because it listens
+      # beyond loopback - this PC's own hostname and hostname.local, and 403s
+      # anything else.  Verified on the deployed service: 127.0.0.1, localhost,
+      # 192.168.1.3, the tailnet IP, `tiberius` and `tiberius.local` are 200;
+      # the MagicDNS FQDN needs this list.  NOTE this key is read by the SERVER
+      # from the config JSON - the env dict above only reaches the engine, so
+      # STRATA_ALLOWED_HOSTS there does nothing (measured: the server logged no
+      # "also answers to" line and 403'd the FQDN).
+      allowed_hosts = [ "tiberius.tail01b8d.ts.net" ];
       # The vLLM lane this replaced bound 0.0.0.0 (and the tailnet profile marks
       # tailscale0 trusted), so clients reach the API as http://tiberius:8080/v1.
       # server.py defaults to 127.0.0.1 when the key is absent, which silently
