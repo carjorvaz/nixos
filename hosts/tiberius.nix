@@ -688,8 +688,9 @@ in
 
   # Strata (Qwen3.8-Flash-Next IQ3_S) is the default engine on this host: the
   # experts are mmapped from the Optane PMEM (126 GiB fsdax, dax=always) and the
-  # 262K-context K8V4 configuration measures ~20 tok/s decode / ~150 tok/s
-  # prefill.  The vLLM lanes below stay installed for A/B and fallback; flip
+  # 262K-context int8-KV configuration measures 20-21 tok/s decode and 457-1034
+  # tok/s prefill (4.3K-27.5K tokens; the lane note below has the exact cells).
+  # The vLLM lanes below stay installed for A/B and fallback; flip
   # their wantedBy back to [ "multi-user.target" ] to make one the boot engine
   # (both sides conflict, so only one ever holds the GPU).
   services.tiberius-strata = {

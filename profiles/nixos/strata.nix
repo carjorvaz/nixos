@@ -35,7 +35,8 @@
 #
 #   * the fsdax namespace + XFS(dax=always) mount (idempotent prepare unit),
 #   * the OpenAI/Anthropic server over serve/server.py with the measured flags
-#     (mmap experts from the Optane, K8V4 KV, MTP4 + suffix drafts, the
+#     (mmap experts from the Optane, the KV the host selects - `k8v4` by
+#     default, `int8` on tiberius - MTP4 + suffix drafts, the
 #     layer-order staging ring at 4, the rank-capped host expert tier, and the
 #     6144 MiB sliding DAX window that DMA-copies the streaming layer),
 #   * the driver's libcuda.so.1 on the loader path and LimitMEMLOCK=infinity,
