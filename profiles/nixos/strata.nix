@@ -5,17 +5,28 @@
   ...
 }:
 
-# Strata (Qwen3.8-Flash-Next) on the Optane PMEM, two model lanes:
+# Strata (Qwen3.8-Flash-Next) on the Optane PMEM, two model lanes.  Measured
+# 2026-10-03 on the deployed v0.1.38 stack (same harness, 131072 context, fresh
+# engine per cell, cold cache, /data/coderlane):
 #
 #   * `coder`  -- the Coder IQ1_M release: half the experts (12,288), coding/
-#                 tool/vision-pruned.  The measured default on tiberius:
-#                 ~35 tok/s decode at 94% VRAM expert hit, ~410 tok/s prefill
-#                 for a fresh 2.2K prompt, 92% hit and ~29 tok/s at 262K.
-#   * `iq3-s`  -- the original IQ3_S (24,576 experts, "matches the full model"):
-#                 ~20-32 tok/s decode (cache-warmth dependent) and ~269 tok/s
-#                 prefill for a 2.3K prompt / 388 for 4.1K (131K context).
-#                 With the hosted Optane's copies as the pacer, prefill is
-#                 bounded by the non-resident expert bytes per chunk.
+#                 tool/vision-pruned, 23.4 GiB pack.  790.7 tok/s prefill at
+#                 4344 tokens and 1129.9 at 27575; 39.6 / 34.3 tok/s decode at
+#                 94.1 / 91.3% VRAM expert hit; the 6 GiB DAX window covers layers
+#                 0..12, so a prompt needs only 4 rotations.  That is 1.73x /
+#                 1.12x the prefill and 1.66x / 1.63x the decode of iq3-s at the
+#                 same window - the prefill lead collapses with length because
+#                 this lane stops being byte-bound (its read is attention/GDN/
+#                 dense GEMM).  The quality trade is documented upstream: 91.3%
+#                 of the full model's SWE-bench Verified, weaker outside code
+#                 including CJK (#438) - use iq3-s for prose.
+#   * `iq3-s`  -- the original IQ3_S (24,576 experts, "matches the full model"),
+#                 46.8 GiB pack.  456.6 tok/s prefill at 4344 tokens / 1004.5 at
+#                 27575 with 23.9 / 21.0 tok/s decode at 131072 (82.6 / 81.8%
+#                 hit); the deployed 262144 reads 457.0 / 996.8 tok/s and decodes
+#                 ~20 tok/s at 77% hit, each extra 64K of window costing ~414
+#                 cache slots.  Prefill is bounded by the non-resident expert
+#                 bytes per chunk, paced by the Optane's ~6.8 GB/s.
 #
 # The engine is built for sm_75 by pkgs/strata-sm75 (with the local engine patch:
 # the sliding DAX window, the FP16 dense GEMMs and the registered decode refill);
@@ -83,7 +94,17 @@ let
   # the same file is exactly that bug).  ExecStartPre remakes the links on every
   # start; stateDir survives reboots, and ln -sfn is idempotent.
   nativeDir = "${cfg.stateDir}/native/${lane.pack}";
-  pleShard = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+  # v0.1.38's gguf_split_paths() derives the sibling shard's name from --native's
+  # own "-00001-of-00002" suffix and demands it beside it, so the shared PLE table
+  # must be linked under THAT name.  A hardcoded IQ3_S name only satisfies the
+  # iq3-s lane: `model = "coder"` then dies at startup with "missing model shard
+  # ...IQ1_M-00002-of-00002.gguf (shard 2 of 2)" (reproduced 2026-10-03).  Bumping
+  # the split number in lane.shard1 reproduces the engine's derivation for every
+  # lane; for iq3-s it yields exactly the name this used to hardcode.
+  pleShard = lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1;
+  # The file on disk is one shared table (the Coder release ships no shard 2 of
+  # its own), linked per lane under the derived name above.
+  pleFile = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
 
   strataJson = pkgs.writeText "strata-${cfg.model}.json" (
     builtins.toJSON {
@@ -364,7 +385,15 @@ in
         "iq3-s"
       ];
       default = "coder";
-      description = "Which lane to serve.  `coder` is the measured default (2.3x the prefill, higher hits).";
+      description = ''
+        Which lane to serve.  Measured 2026-10-03 at 131072 context (fresh
+        engines, cold cache): `coder` does 790.7 / 1129.9 tok/s prefill and
+        39.6 / 34.3 tok/s decode at 4344 / 27575 tokens (94.1 / 91.3% hit);
+        `iq3-s` does 456.6 / 1004.5 and 23.9 / 21.0 (82.6 / 81.8%).  The coder
+        is 1.73x / 1.12x the prefill and 1.66x / 1.63x the decode at the same
+        window, with a documented quality trade (half the experts, 91.3% of the
+        full model's SWE-bench Verified, weaker outside code/CJK).
+      '';
     };
 
     dataDir = lib.mkOption {
@@ -397,9 +426,10 @@ in
       type = lib.types.int;
       default = lane.defaultContext;
       description = ''
-        Maximum context in tokens.  Measured on the Coder: 131K gives ~35 tok/s
-        decode / ~410 tok/s prefill at 94% hit; 262K gives ~29 / ~384 at 92%.
-        Measured on iq3-s (2026-10-03, k8v4, fresh engine per cell): prefill is
+        Maximum context in tokens.  Measured on the Coder (2026-10-03, 131072,
+        fresh engine, cold cache): 790.7 / 1129.9 tok/s prefill and 39.6 / 34.3
+        tok/s decode at 4344 / 27575 tokens (94.1 / 91.3% hit).  On iq3-s
+        (2026-10-03, k8v4, fresh engine per cell): prefill is
         ~flat in prompt length (644-706 tok/s from 14K to 110K tokens), 131K
         decodes ~21 tok/s at 81% hit and 262K ~18 tok/s at 78%, and each extra
         131K of window costs ~830 expert-cache slots.  Above 262K the model is
@@ -565,7 +595,7 @@ in
           # point inside it.  ln -sfn is idempotent and replaces a stale link.
           "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
           "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
-          "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleShard} ${nativeDir}/${pleShard}"
+          "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
         ];
         ExecStart = lib.escapeShellArgs [
           "${python}/bin/python3"
