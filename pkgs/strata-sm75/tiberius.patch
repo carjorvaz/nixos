@@ -2,9 +2,12 @@
 #
 # Five changes, in one patch because they interleave in the same regions of
 # expert_source.{hpp,cpp}, prefill.{hpp,cpp}, generate.cpp and gemm.cu.  The
-# first four are local and opt-in through their own env var (with every var
-# unset the tree behaves like upstream); the fifth is an upstream PR carried
-# here until it lands.
+# first three are local and opt-in through their own env var; change 4 is the
+# refill pin's straddle guard (same flag) plus one unconditional hardening - a
+# refused exchange staging drops that swap instead of failing the request, where
+# upstream aborts.  The fifth is an upstream PR carried here until it lands,
+# also unconditional (pure accounting).  With every var unset the tree behaves
+# like upstream except those two deliberate divergences.
 #
 # 1. STRATA_REGISTER_DAX, the sliding DAX window.  cudaHostRegister cannot pin
 #    the 46.84 GiB pack (the driver caps a process's total registered host memory
@@ -27,7 +30,9 @@
 #    the FP16 projections already use, with FP32 accumulation.  bf16 -> fp16 is
 #    exact inside fp16's finite range and the operands measure max|X| 103.5 /
 #    max|W| 11.56 against 65504, but the accumulation order changes, so the
-#    prompt-path state hash moves and the flag stays opt-in.  Measured: total
+#    prompt-path state hash moves and the flag stays opt-in; there is no runtime
+#    range guard, so an operand past fp16's range would go inf silently (only
+#    STRATA_GEMM_DEBUG=1 exposes it).  Measured: total
 #    kernel time 1564 -> 1302 ms (-16.8%), prefill 10,350 -> 9,845 ms (-4.9% mean,
 #    -5.8% median) at 4292 tokens and -6.2% at 3514; deployed (same-binary A/B,
 #    counterbalanced, 8 runs/arm): +7.23% / +5.89%.
@@ -53,8 +58,9 @@
 #    can present such blobs.  Each batch's merged spans are now checked against
 #    every range the source and the pin path hold: a span that only partly
 #    overlaps one is dropped, a blob that still partly overlaps is staged through
-#    pinned scratch, a swap whose staging is refused is dropped (a swap is an
-#    optimization, the request is not), and a tripwire re-checks after a
+#    pinned scratch, a swap whose staging is refused is dropped unconditionally
+#    (not gated by the flag; a swap is an optimization, the request is not) -
+#    and a tripwire re-checks after a
 #    successful register; a request's pins can no longer outlive it.
 #    STRATA_PIN_TRACE=1 logs every decision, STRATA_PIN_FIX=0 restores the old
 #    behaviour for diagnostics.  Measured: `--spec-min-p 0.75` aborted every
@@ -778,8 +784,8 @@ index bb6ef04..68ebd11 100644
 +// the BF16 SIMT kernel is no worse.
 +//
 +// PRECONDITION: |value| <= 65504 in both operands (fp16's finite range; above it the conversion
-+// saturates to inf and the run is loud).  STRATA_GEMM_DEBUG=1 prints the true maximum of every
-+// call's operands; /data/gemm-maxabs.log holds one full prompt's worth of those lines.
++// saturates to inf SILENTLY - the only detector is STRATA_GEMM_DEBUG=1, which prints the true
++// maximum of every call's operands; /data/gemm-maxabs.log holds one full prompt's worth of them.
 +constexpr int64_t kFp16MinRows = 32;
 +
 +bool dense_fp16_on() {

@@ -182,66 +182,68 @@ let
       ++ lib.optionals (cfg.hostTierGib <= 0) [
         "--mmap-experts"
       ]
-      ++ [
-        # tiberius: no --adapt-swaps here on purpose.  The adaptive VRAM refill
-        # runs on the decode loop's critical path (`adapt_thr.join()`, 15.8-16.0%
-        # of every decode window at the engine's default 96 swaps, 0.76-0.85 ms
-        # per swapped expert), but cutting it to 48 does not pay: the cheaper join
-        # costs 3.8/3.2 points of decode expert-cache hit rate, i.e. +15.8/+8.3 ms
-        # of CPU pool per window against the -9.1/-6.5 ms the join saves.  Measured
-        # 2026-10-02 on the deployed engine, counterbalanced medians over 7 runs an
-        # arm: wall +6.0%/+1.4% and tok/s -4.2%/-6.4% at 48, a wash at 64.  The
-        # apparent win at 48 in an earlier, shorter A/B was the four-window cold
-        # warm-up transient, not steady state.  The refill itself is load-bearing:
-        # the same measurements put the static profile alone (no eviction, no
-        # refill) at 68.3% hit versus 80.1% shipped.
-        # tiberius: the engine's conversation cache is left at its defaults
-        # (--prompt-cache 6, --prompt-cache-every 16384, --prompt-cache-root
-        # 2048).  Measured 2026-10-02: resume is pure token-prefix matching, an
-        # append-only conversation pays ~4.2 s of prefill per turn flat in
-        # conversation length (the previous reply is reused for free), an exact
-        # repeat pays 154 ms against 6,239 ms, and a shared system block smaller
-        # than the 2048-token root gets no root checkpoint at all (1K block:
-        # 0/4 requests reused; 2K/4K: 91-95%).
-        #
-        # The 2048 default sits at the measured break-even: creating a root costs
-        # one extra batched pass (+3.4 s on the first request of a chat, and
-        # ~118 MB of host RAM per pinned checkpoint, independent of its length),
-        # while each reuse saves ~1.6 ms per root token - break-even after
-        # F/(m*r) = 2063/r reuses (2048 -> 1, 1024 -> 2, 512 -> 4).  Lowering the
-        # root to 512 wins ~6-10% of prompt-read time only for traffic with a
-        # stable sub-2K system block reused >=4x, and changes nothing for a >=2K
-        # block; 1024 is only better if 512-1K blocks should NOT be rooted.
-        #
-        # The chat template puts the tools JSON and any reasoning instruction at
-        # the FRONT of the prefix, so changing either invalidates every cache.
-        #
-        # Re-measured 2026-10-03 on the served stack (int8/262144/28160, fresh
-        # private engines; /data/serving3): the pin condition is the prompt's
-        # FIRST TURN BOUNDARY at index >= 2048, not the block's own token count,
-        # so budget a shared block of >= ~2100 tokens AS RENDERED - a 2052-token
-        # standalone system message lands at 2045 and pins nothing (three chats:
-        # 0/0/0% reuse, and every zero-reuse request clears the whole chain);
-        # boundaries of 2053/2992 reuse 91.1%/93.7% for later chats.  Only the
-        # ROOT is pinned - the other 5 of --prompt-cache 6 rotate LRU, so a
-        # chat's own continuation falls back to the root (83.1% here) after
-        # other chats.  Exact repeats are 193-264 ms; append-only turns hold
-        # 4.9-6.4 s flat 8K -> 60K, fresh = the appended turn (~350) + the
-        # previous reply (128) when its re-tokenization does not byte-match,
-        # + ~9 turn-header tokens.  --short-read 64 applies to the engine's
-        # FRESH READ, so client text must be <= ~55 tokens for the verify path;
-        # the verify/batched cost cross-over is ~90-100 fresh tokens (~34-70
-        # ms/token against a ~3.2-3.7 s floor + ~5-8 ms/token).  The borrow is
-        # 5554 of 6288 slots (88.3%; 6109 before PR #547) and costs the
-        # next request nothing measurable; cold start is 18-26 s (not ~50 s) and
-        # a restart still loses the chain (conversation-cache-mib stays 0: no
-        # parked caching).
-        # Client note: pi's and omp's byte-stable boundaries measure ~1.95-2.0k
-        # tokens as rendered, i.e. under the root - they pin nothing today;
-        # --prompt-cache-root 1024 would pin them at the documented 2-reuse
-        # break-even above (not taken).
-        "--stats"
-      ];
+      # tiberius: no --adapt-swaps here on purpose.  The adaptive VRAM refill
+      # runs on the decode loop's critical path (`adapt_thr.join()`, 15.8-16.0%
+      # of every decode window at the engine's default 96 swaps, 0.76-0.85 ms
+      # per swapped expert), but cutting it to 48 does not pay: the cheaper join
+      # costs 3.8/3.2 points of decode expert-cache hit rate, i.e. +15.8/+8.3 ms
+      # of CPU pool per window against the -9.1/-6.5 ms the join saves.  Measured
+      # 2026-10-02 on the deployed engine, counterbalanced medians over 7 runs an
+      # arm: wall +6.0%/+1.4% and tok/s -4.2%/-6.4% at 48, a wash at 64.  The
+      # apparent win at 48 in an earlier, shorter A/B was the four-window cold
+      # warm-up transient, not steady state.  The refill itself is load-bearing:
+      # the same measurements put the static profile alone (no eviction, no
+      # refill) at 68.3% hit versus 80.1% shipped.
+      # tiberius: the engine's conversation cache is left at its defaults
+      # (--prompt-cache 6, --prompt-cache-every 16384, --prompt-cache-root
+      # 2048).  Measured 2026-10-02: resume is pure token-prefix matching, an
+      # append-only conversation pays ~4.2 s of prefill per turn flat in
+      # conversation length (the previous reply is reused for free), an exact
+      # repeat pays 154 ms against 6,239 ms, and a shared system block smaller
+      # than the 2048-token root gets no root checkpoint at all (1K block:
+      # 0/4 requests reused; 2K/4K: 91-95%).
+      #
+      # The 2048 default sits at the measured break-even: creating a root costs
+      # one extra batched pass (+3.4 s on the first request of a chat, and
+      # ~118 MB of host RAM per pinned checkpoint, independent of its length),
+      # while each reuse saves ~1.6 ms per root token - break-even after
+      # F/(m*r) = 2063/r reuses (2048 -> 1, 1024 -> 2, 512 -> 4).  Lowering the
+      # root to 512 wins ~6-10% of prompt-read time only for traffic with a
+      # stable sub-2K system block reused >=4x, and changes nothing for a >=2K
+      # block; 1024 is only better if 512-1K blocks should NOT be rooted.
+      #
+      # The chat template puts the tools JSON and any reasoning instruction at
+      # the FRONT of the prefix, so changing either invalidates every cache.
+      #
+      # Re-measured 2026-10-03 on the served stack (int8/262144/28160, fresh
+      # private engines; /data/serving3): the pin condition is the prompt's
+      # FIRST TURN BOUNDARY at index >= 2048, not the block's own token count,
+      # so budget a shared block of >= ~2100 tokens AS RENDERED - a 2052-token
+      # standalone system message lands at 2045 and pins nothing (three chats:
+      # 0/0/0% reuse, and every zero-reuse request clears the whole chain);
+      # boundaries of 2053/2992 reuse 91.1%/93.7% for later chats.  Only the
+      # ROOT is pinned - the other 5 of --prompt-cache 6 rotate LRU, so a
+      # chat's own continuation falls back to the root (83.1% here) after
+      # other chats.  Exact repeats are 193-264 ms; append-only turns hold
+      # 4.9-6.4 s flat 8K -> 60K, fresh = the appended turn (~350) + the
+      # previous reply (128) when its re-tokenization does not byte-match,
+      # + ~9 turn-header tokens.  --short-read 64 applies to the engine's
+      # FRESH READ, so client text must be <= ~55 tokens for the verify path;
+      # the verify/batched cost cross-over is ~90-100 fresh tokens (~34-70
+      # ms/token against a ~3.2-3.7 s floor + ~5-8 ms/token).  The borrow is
+      # 5554 of 6288 slots (88.3%; 6109 before PR #547) and costs the
+      # next request nothing measurable; cold start is 18-26 s (not ~50 s) and
+      # a restart still loses the chain (conversation-cache-mib stays 0: no
+      # parked caching).
+      # Client note: pi's and omp's byte-stable boundaries measure ~1.95-2.0k
+      # tokens as rendered, i.e. under the root - they pin nothing today;
+      # --prompt-cache-root 1024 would pin them at the documented 2-reuse
+      # break-even above (not taken).
+      #
+      # No --stats here: in --serve mode the engine returns before its stats
+      # printer runs, so the flag is dead in this config; the per-request
+      # figures come from serve's own stderr lines and STRATA_SPLIT_TIMING=1.
+      ;
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
       model_name = lane.modelName;
@@ -283,7 +285,9 @@ let
         # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT
         # fallback (magma_sgemmEx_kernel).  The flag converts the operand pairs to
         # FP16 (exact for bf16 values in range; measured max|X| 103.5 / max|W|
-        # 11.56 against fp16's 65504) and keeps FP32 accumulation, so the
+        # 11.56 against fp16's 65504 - there is no runtime range guard, so an
+        # operand past the range would go inf silently; it is visible only under
+        # STRATA_GEMM_DEBUG=1) and keeps FP32 accumulation, so the
         # prompt-path state hash moves with the accumulation order - hence opt-in,
         # with the engine keeping the BF16 path below 32 rows.  Measured
         # 2026-10-01 on the real corpus, 3 runs/arm, same binary, on vs off:
@@ -410,8 +414,12 @@ let
       fi
       mkfs.xfs -f -K -m reflink=0 -d su=2m,sw=1 /dev/pmem0
     elif [ "$fstype" != "xfs" ]; then
-      echo "/dev/pmem0 carries a '$fstype' filesystem, not xfs: refusing to format it." >&2
-      exit 1
+      if [ "${lib.boolToString cfg.formatOptane}" != "true" ]; then
+        echo "/dev/pmem0 carries a '$fstype' filesystem, not xfs: refusing to format it." >&2
+        echo "Set services.tiberius-strata.formatOptane = true to wipe it." >&2
+        exit 1
+      fi
+      mkfs.xfs -f -K -m reflink=0 -d su=2m,sw=1 /dev/pmem0
     fi
   '';
 in
@@ -481,8 +489,9 @@ in
         ~flat in prompt length (644-706 tok/s from 14K to 110K tokens), 131K
         decodes ~21 tok/s at 81% hit and 262K ~18 tok/s at 78%, and each extra
         131K of window costs ~830 expert-cache slots.  Above 262K the model is
-        past its trained window (the engine runs --rope-scaling none) and the
-        cache thrashes: 524K -> 14.5 tok/s / 70% hit, 786K -> 10.6 / 54%.
+        past its trained window (no --rope-scaling flag is passed, so the engine
+        follows the model file's rope keys) and the cache thrashes: 524K -> 14.5
+        tok/s / 70% hit, 786K -> 10.6 / 54%.
       '';
     };
 
@@ -594,9 +603,15 @@ in
         description = "Strata ${cfg.model} (Qwen3.8-Flash-Next) on the RTX 2080 Ti / Optane";
         wantedBy = [ "multi-user.target" ];
         wants = [ "network-online.target" ];
+        # Conflicts= stops the peer without ordering the shutdown, so the peer
+        # must also be in this list: without it a manual flip can initialize
+        # CUDA on the next engine while this one still holds the 22 GB card.
         after = [
           "network-online.target"
           "nvidia-persistenced.service"
+          "tiberius-qwen38.service"
+          "tiberius-qwen38-uncensored.service"
+          "tiberius-ninfer.service"
         ];
         # One GPU: never resident beside the vLLM lanes.
         conflicts = [
@@ -608,18 +623,28 @@ in
           cfg.dataDir
           cfg.modelsRoot
         ];
-        environment.LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
+        # Restart=on-failure + 10s backoff alone defeats systemd's default start
+        # limit, so a permanently broken start (missing pack, empty /optane, bad
+        # profile) loops forever in "activating (auto-restart)" and never shows
+        # in systemctl --failed.  Bound it so the failure is visible.  These are
+        # [Unit] directives: in serviceConfig systemd accepts only the legacy
+        # StartLimitBurst spelling and silently drops StartLimitIntervalSec, so
+        # both live at the unit level, not in the [Service] block below.
+        startLimitIntervalSec = 300;
+        startLimitBurst = 3;
+        environment = {
+          LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
+          # The bundled web app is off: serve/server.py 404s its pages, assets
+          # and /settings when this is set.  The API is unaffected, and the
+          # /settings sidecar (which would sit next to the read-only store
+          # config) is never written.
+          STRATA_NO_WEB = "1";
+        };
         serviceConfig = {
           Type = "exec";
           LimitMEMLOCK = "infinity";
-          # Restart=on-failure + 10s backoff alone defeats systemd's default start
-          # limit, so a permanently broken start (missing pack, empty /optane, bad
-          # profile) loops forever in "activating (auto-restart)" and never shows
-          # in systemctl --failed.  Bound it so the failure is visible.
           Restart = "on-failure";
           RestartSec = "10s";
-          StartLimitIntervalSec = 300;
-          StartLimitBurst = 3;
           ExecStartPre = [
             "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
             # v0.1.38's gguf_split_paths() demands every shard named by --native's

@@ -253,6 +253,7 @@ in
                 # The storm outlived the engine: the driver is wedged, and the
                 # normal shutdown path is known to hang here. Force a reboot.
                 ${pkgs.util-linux}/bin/logger -t tiberius-xid-watch "Xid storm continues after engine stop; forcing reboot"
+                echo s > /proc/sysrq-trigger   # emergency sync: keep the journal record of the storm
                 echo b > /proc/sysrq-trigger
               fi
               prev=$after
@@ -328,7 +329,9 @@ in
       after = [
         "tiberius-qwen38-uncensored-prepare.service"
         "nvidia-persistenced.service"
+        # Conflicts alone does not order shutdown before GPU acquisition.
         "tiberius-ninfer.service"
+        "tiberius-strata.service"
       ];
       unitConfig.RequiresMountsFor = [ "/data" ];
       environment = {
@@ -473,6 +476,7 @@ in
         "nvidia-persistenced.service"
         # Conflicts alone does not order shutdown before GPU acquisition.
         "tiberius-ninfer.service"
+        "tiberius-strata.service"
       ];
       unitConfig.RequiresMountsFor = qwenRuntimeRoot;
       environment = {
@@ -663,21 +667,6 @@ in
           "kvm"
         ];
       }
-      {
-        hostName = "pius";
-        sshUser = "nix-ssh";
-        sshKey = "/persist/etc/ssh/builder@tiberius";
-        systems = [ "x86_64-linux" ];
-        protocol = "ssh-ng";
-        maxJobs = 6;
-        speedFactor = 2;
-        supportedFeatures = [
-          "nixos-test"
-          "benchmark"
-          "big-parallel"
-          "kvm"
-        ];
-      }
     ];
     settings.trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
@@ -706,8 +695,9 @@ in
     # the full model's SWE-bench Verified, weaker outside code including CJK).
     # Not taken on purpose.
     model = "iq3-s";
-    # 262K is the model's trained window (qwen4exp.context_length) and the engine
-    # runs --rope-scaling none, so nothing above it is valid.  Measured on this box
+    # 262K is the model's trained window (qwen4exp.context_length) and no
+    # --rope-scaling flag is passed, so the engine follows the model file's rope
+    # keys; nothing above the trained window is valid.  Measured on this box
     # 2026-10-03 (deployed v0.1.35 stack, fresh engine per cell, 128-token replies,
     # k8v4): every +64K of context costs 0.78 GiB of VRAM and ~414 expert-cache
     # slots (7487 -> 6657 at 262K), and buys -3.4 points of hit, -10..-15% of decode

@@ -1,0 +1,37 @@
+diff --git a/serve/server.py b/serve/server.py
+index 46e3fc3..9567c8c 100644
+--- a/serve/server.py
++++ b/serve/server.py
+@@ -2106,6 +2106,10 @@ def make_handler(svc: Service):
+ 
+         def do_GET(self):
+             path = self.path.split("?")[0].rstrip("/")
++            if web_disabled() and (path == "" or path == "/api-monitor" or path == "/settings" or
++                                   path.startswith(("/web/", "/fonts/"))):
++                self._json(404, {"error": {"message": "not found"}})
++                return
+             if path.startswith("/fonts/"):
+                 # the web app's font (Outfit, OFL: serve/web/fonts); the page falls back to the system font
+                 name = path[len("/fonts/"):]
+@@ -2221,6 +2225,9 @@ def make_handler(svc: Service):
+             if not self._authorized():
+                 return
+             path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
++            if web_disabled() and path == "/settings":
++                self._json(404, {"error": {"message": "not found"}})
++                return
+             if path.startswith("/v1/") and self._foreign_page():
+                 return
+             if path == "/settings":
+@@ -2624,6 +2631,11 @@ def _name_in(name: str, names) -> bool:
+     return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
+ 
+ 
++def web_disabled() -> bool:
++    """The bundled web app (its pages, assets and /settings) is off when STRATA_NO_WEB is set; the API is unaffected."""
++    return os.environ.get("STRATA_NO_WEB", "") not in ("", "0")
++
++
+ def allowed_hosts_of(value, env: str = "") -> list[str]:
+     """The config's allowed_hosts (a name or a list) plus $STRATA_ALLOWED_HOSTS (comma-separated): host names, "*" or
+     ".example.com" (it and every name below it).  A scheme, port or path is dropped ("https://a.example.com:8443/"

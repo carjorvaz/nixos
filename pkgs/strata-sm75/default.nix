@@ -75,8 +75,13 @@ stdenv.mkDerivation {
   # the 27575 cell).
   # The host expert tier is NOT here any more: v0.1.38 has it natively
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
+  # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
+  # app's pages, assets and /settings into 404s and leaves the API untouched.
   # Same source revision as the pin above, so `patch -p1` applies cleanly.
-  patches = [ ./tiberius.patch ];
+  patches = [
+    ./tiberius.patch
+    ./no-web-ui.patch
+  ];
 
   # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX,
   # STRATA_DENSE_FP16 and STRATA_REFILL_PIN_SRC.  The first is upstream's; the other
@@ -85,6 +90,10 @@ stdenv.mkDerivation {
   # into a crash-loop, and a silently missing window would drop the measured prefill
   # win without saying so.  Fail the build here instead.
   postPatch = ''
+    grep -q 'STRATA_NO_WEB' serve/server.py || {
+      echo "no-web-ui.patch did not introduce the STRATA_NO_WEB gate" >&2
+      exit 1
+    }
     grep -q 'resident-budget-gib' src/program/generate.cpp || {
       echo "the engine source has no --resident-budget-gib (upstream's resident tier)" >&2
       exit 1
@@ -99,6 +108,37 @@ stdenv.mkDerivation {
     }
     grep -q 'STRATA_REFILL_PIN_SRC' src/program/generate.cpp || {
       echo "tiberius.patch did not introduce the STRATA_REFILL_PIN_SRC refill path" >&2
+      exit 1
+    }
+    # Every other env var the module sets must still be consumed at the pinned
+    # revision.  Upstream ignores unknown env vars silently, so a rebase that
+    # dropped one would change serving behaviour with no build failure.
+    grep -q 'STRATA_SPLIT_TIMING' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_SPLIT_TIMING (serve stage timing)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_KV_ROT' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_KV_ROT (the rotated int8 KV the module selects)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_RESIDENT_PIN' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_RESIDENT_PIN (the module keeps the host tier pageable)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_RESIDENT_HEADROOM_GIB' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_RESIDENT_HEADROOM_GIB" >&2
+      exit 1
+    }
+    grep -q 'STRATA_STAGER_RING' src/prefill/prefill.cpp || {
+      echo "the engine no longer reads STRATA_STAGER_RING (the measured staging ring)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_PREFILL_RING' src/prefill/prefill.cpp || {
+      echo "the engine no longer reads STRATA_PREFILL_RING (the routed-only staging opt-in)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
+      echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
       exit 1
     }
   '';
