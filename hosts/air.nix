@@ -105,17 +105,27 @@ let
     </fontconfig>
   '';
 
-  hermesTerminalSudoCommentLine = "    # Local hosts with sudoers NOPASSWD should not be forced through the";
+  # 0.21.5 split the sudo command rewrite into tools/terminal_tool_sudo.py
+  # (_transform_sudo_command) and moved the gateway callback wiring into
+  # tui_gateway/agent_callbacks.py, so both anchors are re-spelled: the early
+  # return still precedes any prompt or `sudo -S` rewrite, and the gateway
+  # prompt stays unwired under HERMES_DESKTOP_NATIVE_SUDO.
+  hermesTerminalSudoAnchor = "    has_configured_password = _configured_password is not None";
   hermesTerminalNativeSudoReplacement = lib.concatStringsSep "\n" [
+    hermesTerminalSudoAnchor
+    ""
     "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") == \"1\" and not has_configured_password:"
     "        return command, None"
-    ""
-    hermesTerminalSudoCommentLine
   ];
-  hermesGatewaySudoCallbackLine = "    set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))";
+  hermesGatewaySudoCallbackLine = lib.concatStringsSep "\n" [
+    "    set_sudo_password_callback(lambda: _ask("
+    "        \"sudo\", sid, {\"command\": _redact_approval_command(get_sudo_prompt_command())}, timeout=120))"
+  ];
   hermesGatewayNativeSudoReplacement = lib.concatStringsSep "\n" [
+    "    import os"
     "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") != \"1\":"
-    "        set_sudo_password_callback(lambda: _block(\"sudo.request\", sid, {}, timeout=120))"
+    "        set_sudo_password_callback(lambda: _ask("
+    "            \"sudo\", sid, {\"command\": _redact_approval_command(get_sudo_prompt_command())}, timeout=120))"
   ];
 
   # The Desktop sudo overlay cannot hand off to macOS Touch ID. Keep Desktop on
@@ -124,12 +134,12 @@ let
     name = "hermes-agent-native-sudo-source";
     src = inputs.hermes-agent;
     postPatch = ''
-      substituteInPlace tools/terminal_tool.py \
+      substituteInPlace tools/terminal_tool_sudo.py \
         --replace-fail \
-          ${lib.escapeShellArg hermesTerminalSudoCommentLine} \
+          ${lib.escapeShellArg hermesTerminalSudoAnchor} \
           ${lib.escapeShellArg hermesTerminalNativeSudoReplacement}
 
-      substituteInPlace tui_gateway/server.py \
+      substituteInPlace tui_gateway/agent_callbacks.py \
         --replace-fail \
           ${lib.escapeShellArg hermesGatewaySudoCallbackLine} \
           ${lib.escapeShellArg hermesGatewayNativeSudoReplacement}
@@ -184,11 +194,11 @@ let
   # Hindsight memory API client (the API itself runs on pius).
   hermesAgentHindsightClient = pkgs.python312Packages.buildPythonPackage rec {
     pname = "hindsight-client";
-    version = "0.8.6";
+    version = "0.10.2";
     pyproject = true;
     src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/c1/e0/5143e595d34b6c7bdaca8c3d317370fa55ee986715d53740ab17e41f715c/hindsight_client-${version}.tar.gz";
-      hash = "sha256-Mb4FHZqaynCOv4I8KvzhISSkpBp1B739EGoMkJv3c6A=";
+      url = "https://files.pythonhosted.org/packages/e4/e9/d2880efde91a89980a3ecaf70c0a59742cfcddf8282855b8f6d6636328dd/hindsight_client-${version}.tar.gz";
+      hash = "sha256-DRy4CkzAr/m0t0IZw5rzAutlr0fIqk8RMRSiK81Ba08=";
     };
     nativeBuildInputs = with pkgs.python312Packages; [
       hatchling
@@ -200,6 +210,7 @@ let
       python-dateutil
       typing-extensions
       urllib3
+      yarl
     ];
     doCheck = false;
   };
