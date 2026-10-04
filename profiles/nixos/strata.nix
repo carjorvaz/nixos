@@ -348,7 +348,7 @@ let
         # checkpoints never restore into each other - one cold re-prefill follows.
         STRATA_KV_ROT = "1";
       };
-      port = cfg.port;
+      inherit (cfg) port;
       # v0.1.38's serve layer checks the Host header on every request (the
       # DNS-rebinding fix, server.py parse_request): it answers to localhost and
       # *.localhost, IP literals, the bind address and - because it listens
@@ -559,9 +559,92 @@ in
     # /var/empty never appeared and sshd refused to start, so the box booted with
     # tailscaled alive and nothing else.  sshd now makes its own privilege
     # separation directory, so it starts even if tmpfiles is skipped.
-    systemd.services.sshd.serviceConfig.ExecStartPre = [
-      "+${pkgs.coreutils}/bin/mkdir -p /var/empty"
-    ];
+    systemd.services = {
+      sshd.serviceConfig.ExecStartPre = [
+        "+${pkgs.coreutils}/bin/mkdir -p /var/empty"
+      ];
+      strata-optane-prepare = lib.mkIf cfg.mountOptane {
+        description = "Prepare the Optane PMEM fsdax namespace and XFS (idempotent)";
+        # Pulled in by the mount and ordered before it.  DefaultDependencies=false
+        # is REQUIRED: the default implicit After=basic.target closes an ordering
+        # cycle (basic -> sysinit -> local-fs -> optane.mount -> this unit -> basic)
+        # and systemd breaks it by dropping the systemd-tmpfiles-setup job, leaving
+        # /var/empty missing and taking sshd down with it (measured on the gen-41
+        # boot, 2026-10-01).  The After on the device node keeps the prepare script
+        # from no-oping on a not-yet-created /dev/pmem0.
+        wantedBy = [ "optane.mount" ];
+        before = [ "optane.mount" ];
+        after = [ "dev-pmem0.device" ];
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        path = with pkgs; [
+          libndctl
+          xfsprogs
+          util-linux
+          jq
+          coreutils
+        ];
+        script = prepareScript;
+      };
+
+      tiberius-strata = {
+        description = "Strata ${cfg.model} (Qwen3.8-Flash-Next) on the RTX 2080 Ti / Optane";
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ];
+        after = [
+          "network-online.target"
+          "nvidia-persistenced.service"
+        ];
+        # One GPU: never resident beside the vLLM lanes.
+        conflicts = [
+          "tiberius-qwen38.service"
+          "tiberius-qwen38-uncensored.service"
+          "tiberius-ninfer.service"
+        ];
+        unitConfig.RequiresMountsFor = [
+          cfg.dataDir
+          cfg.modelsRoot
+        ];
+        environment.LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
+        serviceConfig = {
+          Type = "exec";
+          LimitMEMLOCK = "infinity";
+          # Restart=on-failure + 10s backoff alone defeats systemd's default start
+          # limit, so a permanently broken start (missing pack, empty /optane, bad
+          # profile) loops forever in "activating (auto-restart)" and never shows
+          # in systemctl --failed.  Bound it so the failure is visible.
+          Restart = "on-failure";
+          RestartSec = "10s";
+          StartLimitIntervalSec = 300;
+          StartLimitBurst = 3;
+          ExecStartPre = [
+            "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
+            # v0.1.38's gguf_split_paths() demands every shard named by --native's
+            # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
+            # metadata too, so shard 1 cannot be passed alone or under a made-up
+            # name.  nativeDir is therefore assembled here with BOTH shards as
+            # symlinks under their real split names; --native and --ple-gguf then
+            # point inside it.  ln -sfn is idempotent and replaces a stale link.
+            "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
+            "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
+            "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
+          ];
+          ExecStart = lib.escapeShellArgs [
+            "${python}/bin/python3"
+            "${cfg.package}/share/strata/serve/server.py"
+            "--engine"
+            "strata"
+            "--config"
+            (toString strataJson)
+            "--port"
+            (toString cfg.port)
+          ];
+        };
+      };
+    };
 
     fileSystems."/optane" = lib.mkIf cfg.mountOptane {
       device = "/dev/pmem0";
@@ -590,88 +673,6 @@ in
       rotate = 4;
       missingok = true;
       copytruncate = true;
-    };
-
-    systemd.services.strata-optane-prepare = lib.mkIf cfg.mountOptane {
-      description = "Prepare the Optane PMEM fsdax namespace and XFS (idempotent)";
-      # Pulled in by the mount and ordered before it.  DefaultDependencies=false
-      # is REQUIRED: the default implicit After=basic.target closes an ordering
-      # cycle (basic -> sysinit -> local-fs -> optane.mount -> this unit -> basic)
-      # and systemd breaks it by dropping the systemd-tmpfiles-setup job, leaving
-      # /var/empty missing and taking sshd down with it (measured on the gen-41
-      # boot, 2026-10-01).  The After on the device node keeps the prepare script
-      # from no-oping on a not-yet-created /dev/pmem0.
-      wantedBy = [ "optane.mount" ];
-      before = [ "optane.mount" ];
-      after = [ "dev-pmem0.device" ];
-      unitConfig.DefaultDependencies = false;
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      path = with pkgs; [
-        libndctl
-        xfsprogs
-        util-linux
-        jq
-        coreutils
-      ];
-      script = prepareScript;
-    };
-
-    systemd.services.tiberius-strata = {
-      description = "Strata ${cfg.model} (Qwen3.8-Flash-Next) on the RTX 2080 Ti / Optane";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "network-online.target" ];
-      after = [
-        "network-online.target"
-        "nvidia-persistenced.service"
-      ];
-      # One GPU: never resident beside the vLLM lanes.
-      conflicts = [
-        "tiberius-qwen38.service"
-        "tiberius-qwen38-uncensored.service"
-        "tiberius-ninfer.service"
-      ];
-      unitConfig.RequiresMountsFor = [
-        cfg.dataDir
-        cfg.modelsRoot
-      ];
-      environment.LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
-      serviceConfig = {
-        Type = "exec";
-        LimitMEMLOCK = "infinity";
-        # Restart=on-failure + 10s backoff alone defeats systemd's default start
-        # limit, so a permanently broken start (missing pack, empty /optane, bad
-        # profile) loops forever in "activating (auto-restart)" and never shows
-        # in systemctl --failed.  Bound it so the failure is visible.
-        Restart = "on-failure";
-        RestartSec = "10s";
-        StartLimitIntervalSec = 300;
-        StartLimitBurst = 3;
-        ExecStartPre = [
-          "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
-          # v0.1.38's gguf_split_paths() demands every shard named by --native's
-          # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
-          # metadata too, so shard 1 cannot be passed alone or under a made-up
-          # name.  nativeDir is therefore assembled here with BOTH shards as
-          # symlinks under their real split names; --native and --ple-gguf then
-          # point inside it.  ln -sfn is idempotent and replaces a stale link.
-          "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
-          "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
-          "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
-        ];
-        ExecStart = lib.escapeShellArgs [
-          "${python}/bin/python3"
-          "${cfg.package}/share/strata/serve/server.py"
-          "--engine"
-          "strata"
-          "--config"
-          (toString strataJson)
-          "--port"
-          (toString cfg.port)
-        ];
-      };
     };
   };
 }
