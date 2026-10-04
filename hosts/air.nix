@@ -184,11 +184,11 @@ let
   # Hindsight memory API client (the API itself runs on pius).
   hermesAgentHindsightClient = pkgs.python312Packages.buildPythonPackage rec {
     pname = "hindsight-client";
-    version = "0.6.1";
+    version = "0.8.6";
     pyproject = true;
     src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/33/26/8b8efa4be21fc3ba12ade3b1353d87f9837ec0d3ec2607e8adbf85bc9c63/hindsight_client-${version}.tar.gz";
-      hash = "sha256-MU0LueE2IuFVhroVhqeZcm1AWye8INeIckdLXW2WzVE=";
+      url = "https://files.pythonhosted.org/packages/c1/e0/5143e595d34b6c7bdaca8c3d317370fa55ee986715d53740ab17e41f715c/hindsight_client-${version}.tar.gz";
+      hash = "sha256-Mb4FHZqaynCOv4I8KvzhISSkpBp1B739EGoMkJv3c6A=";
     };
     nativeBuildInputs = with pkgs.python312Packages; [
       hatchling

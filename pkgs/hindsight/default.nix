@@ -32,6 +32,7 @@ let
       boto3
       claude-agent-sdk
       cohere
+      croniter
       cryptography
       dateparser
       fastapi
@@ -41,11 +42,13 @@ let
       google-genai
       greenlet
       httpx
+      json-repair
       langchain-core
       langchain-text-splitters
       langsmith
       litellm
       markitdown
+      numpy
       obstore
       openai
       opentelemetry-api
@@ -80,7 +83,6 @@ let
 
   localOnnxDeps = with ps; [
     huggingface-hub
-    numpy
     onnxruntime
     tokenizers
     transformers
@@ -101,7 +103,7 @@ in
 
 ps.buildPythonApplication rec {
   pname = "hindsight-api-slim";
-  version = "0.8.2";
+  version = "0.8.6";
   pyproject = true;
 
   disabled = ps.pythonOlder "3.11";
@@ -109,7 +111,7 @@ ps.buildPythonApplication rec {
   src = fetchPypi {
     pname = "hindsight_api_slim";
     inherit version;
-    hash = "sha256-zpF0iu91E16q2OPgqa8JGFmiqPZaT1hXPYhO0FLseYo=";
+    hash = "sha256-zxlACmLMCBnChbQRs83QBgJDAwt0WBt/PHuZeKx5G4s=";
   };
 
   postPatch = ''
@@ -169,7 +171,7 @@ ps.buildPythonApplication rec {
             '        config = _get_raw_config()\n',
         ),
         Path("hindsight_api/worker/main.py"): (
-            'from ..config import get_config\n',
+            'from ..config import get_config, load_dotenv_for_entrypoint\n',
             'from ..config import (\n'
             '    DEFAULT_LOG_LEVEL,\n'
             '    DEFAULT_WORKER_HTTP_PORT,\n'
@@ -182,6 +184,7 @@ ps.buildPythonApplication rec {
             '    ENV_WORKER_MAX_RETRIES,\n'
             '    ENV_WORKER_POLL_INTERVAL_MS,\n'
             '    get_config,\n'
+            '    load_dotenv_for_entrypoint,\n'
             ')\n',
             '    # Load configuration from environment\n'
             '    config = get_config()\n',
@@ -205,23 +208,6 @@ ps.buildPythonApplication rec {
             if old not in text:
                 raise RuntimeError(f"missing expected source text in {path}: {old!r}")
             text = text.replace(old, new, 1)
-        path.write_text(text)
-
-    alembic_configparser_sites = {
-        Path("hindsight_api/migrations.py"):
-            'alembic_cfg.set_main_option("sqlalchemy.url", database_url)',
-        Path("hindsight_api/alembic/env.py"):
-            'config.set_main_option("sqlalchemy.url", database_url)',
-    }
-    for path, old in alembic_configparser_sites.items():
-        text = path.read_text()
-        # Alembic stores options in ConfigParser, where literal percent signs
-        # from URL-encoded socket paths or credentials must be escaped. The
-        # value read back by Alembic remains the original single-percent URL.
-        new = old.replace("database_url", 'database_url.replace("%", "%%")')
-        if old not in text:
-            raise RuntimeError(f"missing expected Alembic URL assignment in {path}: {old!r}")
-        text = text.replace(old, new, 1)
         path.write_text(text)
 
     pyproject = Path("pyproject.toml")
@@ -250,15 +236,22 @@ ps.buildPythonApplication rec {
   dependencies = runtimeDeps ++ lib.optionals withLocalOnnx localOnnxDeps;
 
   pythonRelaxDeps = [
-    # cryptography: upstream caps <47 for ARM64 SIGILL. nixpkgs ships 48 and
-    # this package is scoped to x86_64-linux, so the bound is not needed here.
-    "cryptography"
-
-    # The following packages have upstream-declared lower bounds that are
-    # newer than what current nixpkgs provides. Hindsight's actual runtime
-    # usage does not rely on version-specific APIs from these packages at
-    # the moment, so accepting the nixpkgs versions is safe:
+    # The packages below carry upstream floors newer than the versions in the
+    # pinned nixpkgs python312 set (rev cf5e7650, 2026-09-27). Hindsight does
+    # not exercise the version-specific APIs the floors were raised for, so the
+    # nixpkgs versions are accepted. Each entry lists floor -> nixpkgs:
+    #
+    # boto3: >=1.42.74 -> 1.42.31
     "boto3"
+    # cryptography: >=48.0.1 (GHSA-537c-gmf6-5ccf) -> 48.0.0
+    "cryptography"
+    # langsmith: >=0.8.18 (GHSA-f4xh-w4cj-qxq8) -> 0.7.37
+    "langsmith"
+    # litellm: >=1.93.0 -> 1.86.0
+    "litellm"
+    # protobuf: >=7.35.1 -> 7.34.1
+    "protobuf"
+    # opentelemetry: >=1.44.0 / >=0.65b0 -> 1.34.0 / 0.55b0
     "opentelemetry-api"
     "opentelemetry-exporter-otlp-proto-http"
     "opentelemetry-exporter-prometheus"
@@ -288,6 +281,10 @@ ps.buildPythonApplication rec {
 
   installCheckPhase = ''
     runHook preInstallCheck
+
+    # Makes the derivation depend on the seeded tiktoken cache and lets the
+    # offline tokenizer assertion below resolve cl100k_base without network.
+    export TIKTOKEN_CACHE_DIR=${tiktokenCacheDir}
 
     for program in hindsight-api hindsight-worker hindsight-admin; do
       test -x "$out/bin/$program"
@@ -331,14 +328,30 @@ ps.buildPythonApplication rec {
 
     from alembic.config import Config
     from hindsight_api.db_url import to_libpq_url
+    from hindsight_api.migrations import _set_alembic_main_option
 
     socket_url = "postgresql://hindsight@/hindsight?host=/run/postgresql"
     encoded_socket_url = "postgresql://hindsight@/hindsight?host=%2Frun%2Fpostgresql"
     assert to_libpq_url(socket_url) == encoded_socket_url
 
+    # Upstream 0.8.6 escapes '%' before handing the URL to Alembic's
+    # ConfigParser; exercise the shipped helper to guard against regression.
     alembic_config = Config()
-    alembic_config.set_main_option("sqlalchemy.url", encoded_socket_url.replace("%", "%%"))
+    _set_alembic_main_option(alembic_config, "sqlalchemy.url", encoded_socket_url)
     assert alembic_config.get_main_option("sqlalchemy.url") == encoded_socket_url
+
+    # opentelemetry-exporter-prometheus >=0.65b0 passes otel_component_type= to
+    # MetricReader.__init__, which only opentelemetry-sdk >=1.41.0 accepts;
+    # constructing the reader raises TypeError on a skewed exporter/sdk pair.
+    # (0.55b0 in the pinned nixpkgs takes no such kwarg.)
+    from opentelemetry.exporter.prometheus import PrometheusMetricReader
+
+    PrometheusMetricReader()
+
+    # tiktoken must resolve cl100k_base from the seeded offline cache.
+    from hindsight_api.engine.token_encoding import get_token_encoding
+
+    assert get_token_encoding().encode("hindsight offline tokenizer check")
 
     scripts = {
         "hindsight-api": "hindsight_api.main",
@@ -380,8 +393,8 @@ ps.buildPythonApplication rec {
       Hindsight is an agent memory service with temporal, semantic, and entity
       memory over PostgreSQL. This package builds the upstream hindsight-api-slim
       Python API service for deployments that provide an external PostgreSQL
-      database with pgvector. Embedded pg0 PostgreSQL and the local MCP wrapper
-      are intentionally not included in this Nix package.
+      database with pgvector. Embedded pg0 PostgreSQL is not supported, and the
+      hindsight-local-mcp console script is intentionally not installed.
     '';
     homepage = "https://hindsight.vectorize.io";
     changelog = "https://pypi.org/project/hindsight-api-slim/${version}/";
@@ -395,9 +408,10 @@ ps.buildPythonApplication rec {
       }
     ];
     mainProgram = "hindsight-api";
-    # Restricted to x86_64-linux: the cryptography version cap (see
-    # pythonRelaxDeps) is unsafe on ARM64 Linux where upstream observed
-    # SIGILL below version 47. nixpkgs ships 48 here.
+    # Restricted to x86_64-linux, the deployment target. Upstream 0.8.6 lifted
+    # the cryptography <47 ARM64 SIGILL cap; nixpkgs ships 48.0.0, below the
+    # upstream >=48.0.1 floor relaxed in pythonRelaxDeps, so the other
+    # platforms are untested here.
     platforms = [ "x86_64-linux" ];
     sourceProvenance = with lib.sourceTypes; [ fromSource ];
   };
