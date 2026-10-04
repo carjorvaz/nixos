@@ -111,6 +111,10 @@ let
     ''
     + lib.concatMapStringsSep "\n" (secret: ''
       value=$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${credentialsDirectory}/${secret.key}")
+      if [ -z "$value" ]; then
+        echo "${secret.key} is empty; refusing to start with an empty credential" >&2
+        exit 1
+      fi
       export ${secret.key}="$value"
       unset value
     '') runtimeSecretEnvFiles
@@ -157,10 +161,12 @@ in
 
     logLevel = lib.mkOption {
       type = lib.types.enum [
+        "critical"
         "debug"
-        "info"
-        "warning"
         "error"
+        "info"
+        "trace"
+        "warning"
       ];
       default = "info";
       description = "Hindsight API log level.";

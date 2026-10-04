@@ -833,6 +833,14 @@ in
       echo "configured service start script must load HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY from systemd credentials." >&2
       exit 1
     fi
+    if ! grep -qF '$CREDENTIALS_DIRECTORY/HINDSIGHT_API_LLM_API_KEY' ${configuredService.serviceConfig.ExecStart}; then
+      echo "configured service start script must load HINDSIGHT_API_LLM_API_KEY from systemd credentials." >&2
+      exit 1
+    fi
+    if ! grep -qF '$CREDENTIALS_DIRECTORY/HINDSIGHT_API_TENANT_API_KEY' ${configuredService.serviceConfig.ExecStart}; then
+      echo "configured service start script must load HINDSIGHT_API_TENANT_API_KEY from systemd credentials." >&2
+      exit 1
+    fi
     if [ "${
       lib.boolToString (configuredService.environment ? HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY)
     }" = true ]; then
