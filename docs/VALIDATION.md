@@ -21,7 +21,7 @@ The default validation is intentionally public-safe and non-mutating. It does no
 - `git diff --check HEAD --` for whitespace errors across staged and unstaged changes.
 - `deadnix .` to prevent unused lambda parameters and dead declarations from accumulating.
 - `nixfmt --check` to enforce consistent formatting across all tracked `.nix` files.
-- `statix check .` for 13 Nix anti-pattern checks (bool comparisons, empty lets, deprecated syntax, unquoted URIs, etc.). Four noisy checks are disabled via `statix.toml` for repo-specific conventions.
+- `statix check .` for 13 Nix anti-pattern checks (bool comparisons, empty lets, deprecated syntax, unquoted URIs, etc.). The repository carries no `statix.toml`; the check passes with its default configuration.
 - `nix flake show --allow-import-from-derivation --no-write-lock-file` for flake shape.
 - `nix eval` of each NixOS host's `config.system.build.toplevel.drvPath`.
 - `nix eval` of the nix-darwin `air` system output.
@@ -143,6 +143,61 @@ are ordered, so only one owns the GPU/API port. Temporary fallback: stop
 `tiberius-qwen38.service` and start `tiberius-ninfer.service`; to return, stop
 NInfer and start Qwen. For a durable backend change, update the host's `wantedBy`
 selection and the client's context/reasoning mapping together.
+
+## Tiberius Strata runtime
+
+`strata-sm75` is the boot engine on Tiberius. It builds upstream Strata at pin
+`99f3dbd` (v0.1.38) with two local patches: `tiberius.patch` (a sliding DAX
+register window, FP16 dense GEMMs, decode-time refill pinning, and the upstream
+PR #547 carried until it merges) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns
+off the bundled web app, its pages/assets and `/settings`; the OpenAI-compatible
+API is untouched). Build-time greps fail the derivation if a flag or environment
+variable the module sets disappears on a rebase.
+
+The optional `pkgs/kernel-patches/fsdax-longterm-pin.patch` plus the
+`fsdax_longterm_pin=1` parameter pin FSDAX pages on Tiberius only. This is
+**unsafe in general**: pinned FSDAX pages cannot be migrated, truncated,
+hole-punched or hot-unplugged. It is acceptable here only because the pinned
+object is a read-only, never-truncated `experts.bin` on permanently attached
+pmem. The parameter defaults off; without it the kernel behaves like stock.
+
+Model data is prepared on the host, not in the store, under
+`/optane/strata-data` (`packs/`, `ple/`, `mtp/`).
+`strata-optane-prepare.service` reconciles the fsdax namespace and the
+XFS (`dax=always`) mount; it is idempotent. `formatOptane = true` is the
+destructive opt-in: it runs `mkfs` and will reformat a foreign filesystem on the
+namespace.
+
+`tiberius-strata.service` conflicts with the vLLM lanes and is ordered so the
+peer releases the GPU before it starts. It binds `0.0.0.0:8080` with a
+Host-header allowlist and no API key -- tailnet-only in practice, since the
+firewall opens nothing and `tailscale0` is trusted. It serves one request at a
+time (extra requests queue), and its conversation cache is RAM-only, so a
+restart loses it.
+
+Validation for the engine, module and its wiring:
+
+```sh
+nix eval --raw .#packages.x86_64-linux.strata-sm75.drvPath
+scripts/validate --host tiberius
+nix eval .#checks.x86_64-linux --apply builtins.attrNames
+```
+
+The current-system check names include `tiberius-strata-module-eval`, which
+asserts the rendered unit's `[Unit]` start-limit keys, its `After=` ordering,
+the prepare unit's ordering, and the kernel patch/parameter wiring.
+
+Live checks are explicitly opt-in and must not run in public CI. During a
+maintenance window, use a loopback SSH tunnel to port 8080 and confirm:
+
+- `/health` returns status `ok` with the served model name.
+- A chat completion with `chat_template_kwargs.enable_thinking=false` returns no
+  think block.
+- The tailnet FQDN `Host` passes the allowlist while an unknown `Host` gets 403.
+
+Cold prefill can take minutes and decode runs at roughly 20 tok/s, so budget
+timeouts accordingly. Confirm the serving unit and PID identity before and after
+the checks: another service can answer the same port and model name.
 
 ## Tiberius vLLM runtime and memory checks
 

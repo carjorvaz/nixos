@@ -459,6 +459,11 @@
             // (import ./checks/hindsight.nix {
               inherit pkgs;
               lib = inputs.nixpkgs.lib;
+            })
+            // (import ./checks/strata.nix {
+              inherit pkgs;
+              lib = inputs.nixpkgs.lib;
+              tiberius = self.nixosConfigurations.tiberius;
             });
         };
 
