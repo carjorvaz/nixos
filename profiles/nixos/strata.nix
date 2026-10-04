@@ -633,7 +633,10 @@ in
         "tiberius-qwen38-uncensored.service"
         "tiberius-ninfer.service"
       ];
-      unitConfig.RequiresMountsFor = [ cfg.dataDir cfg.modelsRoot ];
+      unitConfig.RequiresMountsFor = [
+        cfg.dataDir
+        cfg.modelsRoot
+      ];
       environment.LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
       serviceConfig = {
         Type = "exec";
