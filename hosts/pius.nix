@@ -68,6 +68,7 @@ in
     "${self}/profiles/nixos/terreno.nix"
     "${self}/profiles/nixos/telegram-mirror.nix"
     "${self}/profiles/nixos/firecrawl.nix"
+    "${self}/profiles/nixos/hindsight.nix"
     "${self}/profiles/nixos/pdf-translator.nix"
     "${self}/profiles/nixos/calibre.nix"
     "${self}/profiles/nixos/docker.nix"

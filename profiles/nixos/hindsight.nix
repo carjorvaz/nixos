@@ -40,8 +40,17 @@ in
       inherit port;
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
-      llmProvider = "openai-codex";
-      llmModel = "gpt-5.4-mini";
+      # Strata (Qwen3.8-Flash-Next) on tiberius, OpenAI-compatible on the
+      # tailnet. The endpoint needs no key (the module's placeholder is what it
+      # gets); thinking is disabled for every call because the served template
+      # defaults to it; the engine generates one request at a time, so client
+      # concurrency is pinned to 1 and the read timeout is raised above the
+      # 120 s default for cold prefills and ~20 tok/s decode.
+      # NOTE: the tailnet policy must allow pius outbound TCP to tiberius:8080
+      # (source-side tagging currently blocks it).
+      llmProvider = "openai";
+      llmModel = "qwen3.8-flash-next-iq3_s";
+      llmBaseUrl = "http://tiberius:8080/v1";
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
       tenantExtension = "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension";
@@ -52,8 +61,11 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID = "intfloat/multilingual-e5-small";
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
-        HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai-codex";
-        HINDSIGHT_API_REFLECT_LLM_MODEL = "gpt-5.4-mini";
+        HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai";
+        HINDSIGHT_API_REFLECT_LLM_MODEL = "qwen3.8-flash-next-iq3_s";
+        HINDSIGHT_API_LLM_EXTRA_BODY = ''{"chat_template_kwargs":{"enable_thinking":false}}'';
+        HINDSIGHT_API_LLM_TIMEOUT = "600";
+        HINDSIGHT_API_LLM_MAX_CONCURRENT = "1";
       };
       user = "hindsight";
       group = "hindsight";

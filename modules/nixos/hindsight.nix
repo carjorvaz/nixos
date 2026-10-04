@@ -21,6 +21,13 @@ let
   hasOpenAIEmbeddingsSecret = cfg.embeddingsOpenAIApiKeyFile != null;
   hasLLMApiKeySecret = cfg.llmApiKeyFile != null;
   isLoopbackBind = lib.elem cfg.bindAddress loopbackBindAddresses;
+  # Upstream requires a non-empty API key for the openai provider even when the
+  # endpoint is a keyless local server (ollama/lmstudio receive a placeholder
+  # there, openai raises before the client is built). When an openai provider is
+  # pointed at a base URL without an explicit key file, supply the same kind of
+  # placeholder so the advertised keyless local-endpoint setup can start.
+  syntheticLocalLLMApiKey =
+    cfg.llmBaseUrl != null && cfg.llmProvider == "openai" && cfg.llmApiKeyFile == null;
 
   runtimeDirectory = "hindsight";
   credentialsDirectory = "$CREDENTIALS_DIRECTORY";
@@ -49,7 +56,10 @@ let
     HINDSIGHT_API_TENANT_EXTENSION = cfg.tenantExtension;
   }
   // lib.optionalAttrs (cfg.llmBaseUrl != null) {
-    OPENAI_BASE_URL = cfg.llmBaseUrl;
+    HINDSIGHT_API_LLM_BASE_URL = cfg.llmBaseUrl;
+  }
+  // lib.optionalAttrs syntheticLocalLLMApiKey {
+    HINDSIGHT_API_LLM_API_KEY = "local";
   };
 
   moduleOwnedEnvironmentKeys = lib.unique (
@@ -62,7 +72,7 @@ let
     ]
     ++ [
       "HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY"
-      "OPENAI_BASE_URL"
+      "HINDSIGHT_API_LLM_BASE_URL"
     ]
   );
   overriddenModuleEnvironmentKeys = lib.intersectLists moduleOwnedEnvironmentKeys (
@@ -201,7 +211,14 @@ in
     llmBaseUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Base URL for the LLM API endpoint. When set, overrides the default provider URL. Use this to point Hindsight at a local llama-server instance or any OpenAI-compatible endpoint.";
+      description = ''
+        Base URL for the LLM API endpoint (sets HINDSIGHT_API_LLM_BASE_URL, the
+        upstream base-URL variable that the main LLM and the
+        retain/reflect/consolidation roles inherit). Use this to point Hindsight
+        at a local OpenAI-compatible server. With llmProvider = "openai" and no
+        llmApiKeyFile, a non-secret placeholder key is supplied because upstream
+        insists on a non-empty key even for keyless local endpoints.
+      '';
     };
 
     embeddingsProvider = lib.mkOption {
@@ -364,6 +381,10 @@ in
           "AF_UNIX"
           "AF_INET"
           "AF_INET6"
+          # glibc's getaddrinfo interface enumeration/RFC 3484 sorting uses
+          # netlink; without it, resolving multi-address hostnames (e.g. a
+          # tailnet name for a local LLM endpoint) can fail intermittently.
+          "AF_NETLINK"
         ];
         LockPersonality = true;
         MemoryDenyWriteExecute = true;

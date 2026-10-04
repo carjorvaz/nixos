@@ -265,14 +265,6 @@ ps.buildPythonApplication rec {
     "opentelemetry-instrumentation-fastapi"
     "opentelemetry-sdk"
     "opentelemetry-semantic-conventions"
-
-    # SECURITY RISK ACCEPTED (local package only): Hindsight 0.8.2 declares
-    # tornado>=6.5.5 and urllib3>=2.7.0 security floors, but pinned nixpkgs
-    # currently provides tornado 6.5.4 and urllib3 2.6.3. Keep this relaxation
-    # local to pkgs.hindsight and remove the corresponding entries once nixpkgs
-    # catches up.
-    "tornado"
-    "urllib3"
   ];
 
   # Upstream declares psycopg2-binary, but nixpkgs correctly provides psycopg2

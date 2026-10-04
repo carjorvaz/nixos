@@ -7,6 +7,7 @@ let
   hindsightModule = ../modules/nixos/hindsight.nix;
   tenantExtension = "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension";
   expectedLocalDatabaseUrl = "postgresql://hindsight@127.0.0.1:5432/hindsight";
+  expectedLocalLLMBaseUrl = "http://127.0.0.1:8080/v1";
   expectedTiktokenCacheDir = pkgs.hindsight.tiktokenCacheDir or null;
   expectedRuntimeDefaults = {
     requiresDatabaseUrl = true;
@@ -25,8 +26,6 @@ let
   localOnnxPackageSupportsLocalOnnx = localOnnxHindsightPackage.passthru.supportsLocalOnnx or null;
   defaultPackageSupportsLocalMl = pkgs.hindsight.passthru.supportsLocalMl or null;
   localOnnxPackageSupportsLocalMl = localOnnxHindsightPackage.passthru.supportsLocalMl or null;
-  tornadoRelaxationCanBeRemoved = lib.versionAtLeast pkgs.python3Packages.tornado.version "6.5.5";
-  urllib3RelaxationCanBeRemoved = lib.versionAtLeast pkgs.python3Packages.urllib3.version "2.7.0";
 
   mkHindsightConfig =
     hindsightConfig:
@@ -141,6 +140,12 @@ let
     inherit tenantExtension;
   };
 
+  # llmBaseUrl-only openai config: upstream still insists on a non-empty key,
+  # so the module supplies a placeholder and must not emit OPENAI_BASE_URL.
+  baseUrlConfig = mkHindsightConfig {
+    llmBaseUrl = expectedLocalLLMBaseUrl;
+  };
+
   hindsightAssertion =
     expectedMessage: missingMessage: hindsightConfig:
     let
@@ -160,6 +165,7 @@ let
           (mkHindsightAssertionConfig {
             environment = {
               HINDSIGHT_API_HOST = "0.0.0.0";
+              HINDSIGHT_API_LLM_BASE_URL = "http://override.invalid/v1";
               HINDSIGHT_API_DATABASE_URL = "postgresql://override.invalid/hindsight";
               HINDSIGHT_API_TENANT_API_KEY = "unsafe-bypass";
               HINDSIGHT_API_TENANT_EXTENSION = "unsafe.extension:Tenant";
@@ -265,14 +271,33 @@ let
     databaseUrl = expectedLocalDatabaseUrl;
   });
 
-  hindsightLLMApiKeyAssertion = hindsightAssertion "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai." "Hindsight LLM API key assertion was not registered.";
+  hindsightLLMApiKeyAssertion = hindsightAssertion "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is openai (unless services.hindsight.llmBaseUrl is set for a local/compatible endpoint)." "Hindsight LLM API key assertion was not registered.";
   openaiLLMWithoutSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion { });
   openaiLLMWithSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion {
     llmApiKeyFile = "/run/keys/hindsight-llm";
   });
+  # The module synthesizes a placeholder key for an openai provider with a base
+  # URL and no key file (upstream raises without a non-empty key even for
+  # keyless local endpoints), so the baseUrl escape clause must accept it.
+  openaiLLMWithBaseUrlNoSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion {
+    llmBaseUrl = expectedLocalLLMBaseUrl;
+  });
   nonOpenaiLLMWithoutSecretEval = builtins.tryEval (hindsightLLMApiKeyAssertion {
     llmProvider = "anthropic";
   });
+
+  hindsightProviderKeyListAssertion =
+    provider:
+    hindsightAssertion "services.hindsight requires services.hindsight.llmApiKeyFile when services.hindsight.llmProvider is ${provider}." "Hindsight provider-list LLM API key assertion was not registered.";
+  providerListLLMWithoutSecretEval = builtins.tryEval (
+    (hindsightProviderKeyListAssertion "anthropic") { llmProvider = "anthropic"; }
+  );
+  providerListLLMWithSecretEval = builtins.tryEval (
+    (hindsightProviderKeyListAssertion "anthropic") {
+      llmProvider = "anthropic";
+      llmApiKeyFile = "/run/keys/hindsight-llm";
+    }
+  );
 
   loopbackTenantApiKeyWithoutExtensionEval = builtins.tryEval (hindsightTenantPairAssertion {
     tenantApiKeyFile = "/run/keys/hindsight-tenant";
@@ -314,6 +339,7 @@ let
   minimalService = minimalConfig.config.systemd.services.hindsight;
   databaseUrlFileService = databaseUrlFileConfig.config.systemd.services.hindsight;
   configuredService = configuredConfig.config.systemd.services.hindsight;
+  baseUrlService = baseUrlConfig.config.systemd.services.hindsight;
   configuredPostgresql = configuredConfig.config.services.postgresql;
 
   minimalEnvironmentFile = minimalService.serviceConfig.EnvironmentFile or [ ];
@@ -354,22 +380,6 @@ in
 
     touch $out
   '';
-
-  hindsight-python-relaxdeps-security-floors =
-    pkgs.runCommand "hindsight-python-relaxdeps-security-floors" { }
-      ''
-        if [ "${lib.boolToString tornadoRelaxationCanBeRemoved}" = true ]; then
-          echo "pkgs.python3Packages.tornado is ${pkgs.python3Packages.tornado.version}, satisfying Hindsight's tornado>=6.5.5 security floor; remove tornado from pkgs.hindsight.pythonRelaxDeps." >&2
-          exit 1
-        fi
-
-        if [ "${lib.boolToString urllib3RelaxationCanBeRemoved}" = true ]; then
-          echo "pkgs.python3Packages.urllib3 is ${pkgs.python3Packages.urllib3.version}, satisfying Hindsight's urllib3>=2.7.0 security floor; remove urllib3 from pkgs.hindsight.pythonRelaxDeps." >&2
-          exit 1
-        fi
-
-        touch $out
-      '';
 
   hindsight-unsafe-bind-rejected = pkgs.runCommand "hindsight-unsafe-bind-rejected" { } ''
     if [ "${lib.boolToString unsafeBindWithoutTenantApiKeyEval.success}" != true ]; then
@@ -703,6 +713,16 @@ in
       exit 1
     fi
 
+    if [ "${lib.boolToString openaiLLMWithBaseUrlNoSecretEval.success}" != true ]; then
+      echo "Could not evaluate Hindsight LLM API key assertion with llmBaseUrl and no llmApiKeyFile." >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString openaiLLMWithBaseUrlNoSecretEval.value}" != true ]; then
+      echo "Hindsight must accept an OpenAI LLM provider without llmApiKeyFile when llmBaseUrl is set." >&2
+      exit 1
+    fi
+
     if [ "${lib.boolToString nonOpenaiLLMWithoutSecretEval.success}" != true ]; then
       echo "Could not evaluate Hindsight LLM API key assertion with non-OpenAI provider." >&2
       exit 1
@@ -715,6 +735,32 @@ in
 
     touch $out
   '';
+
+  hindsight-llm-provider-list-secret-rejected =
+    pkgs.runCommand "hindsight-llm-provider-list-secret-rejected" { }
+      ''
+        if [ "${lib.boolToString providerListLLMWithoutSecretEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight provider-list LLM API key assertion without llmApiKeyFile." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString providerListLLMWithoutSecretEval.value}" != false ]; then
+          echo "Hindsight must reject keyed cloud LLM providers without llmApiKeyFile." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString providerListLLMWithSecretEval.success}" != true ]; then
+          echo "Could not evaluate Hindsight provider-list LLM API key assertion with llmApiKeyFile." >&2
+          exit 1
+        fi
+
+        if [ "${lib.boolToString providerListLLMWithSecretEval.value}" != true ]; then
+          echo "Hindsight must accept keyed cloud LLM providers when llmApiKeyFile is set." >&2
+          exit 1
+        fi
+
+        touch $out
+      '';
 
   hindsight-module-eval = pkgs.runCommand "hindsight-module-eval" { } ''
     check_value() {
@@ -766,6 +812,13 @@ in
     check_value minimalDatabaseUrl ${lib.escapeShellArg minimalService.environment.HINDSIGHT_API_DATABASE_URL} ${lib.escapeShellArg expectedLocalDatabaseUrl}
     check_value configuredEnvironmentFile ${lib.escapeShellArg (toString configuredEnvironmentFile)} ""
     check_value configuredLoadCredential ${lib.escapeShellArg (toString configuredService.serviceConfig.LoadCredential)} ${lib.escapeShellArg (toString expectedConfiguredLoadCredential)}
+    check_value llmBaseUrl ${lib.escapeShellArg baseUrlService.environment.HINDSIGHT_API_LLM_BASE_URL} ${lib.escapeShellArg expectedLocalLLMBaseUrl}
+    check_value llmBaseUrlSyntheticKey ${lib.escapeShellArg baseUrlService.environment.HINDSIGHT_API_LLM_API_KEY} local
+    check_value llmBaseUrlLoadCredential ${lib.escapeShellArg (toString baseUrlService.serviceConfig.LoadCredential)} ${lib.escapeShellArg (toString expectedMinimalLoadCredential)}
+    if [ "${lib.boolToString (baseUrlService.environment ? OPENAI_BASE_URL)}" = true ]; then
+      echo "llmBaseUrl must not set OPENAI_BASE_URL (it would leak into the OpenAI embeddings client)." >&2
+      exit 1
+    fi
     check_value configuredPostgresqlServiceEnable ${lib.escapeShellArg (lib.boolToString configuredPostgresql.enable)} false
     check_value host ${lib.escapeShellArg configuredService.environment.HINDSIGHT_API_HOST} 127.0.0.1
     check_value port ${lib.escapeShellArg configuredService.environment.HINDSIGHT_API_PORT} 8890
