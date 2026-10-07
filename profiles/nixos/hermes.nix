@@ -20,28 +20,32 @@ let
   simplexFilesDir = "${simplexStateDir}/files";
   simplexTempDir = "${simplexStateDir}/tmp";
   # Hermes 0.17.0-0.19.x rejected numeric contact IDs on SimpleX DM send
-  # paths; we patched the adapter locally. Upstream 0.20.6 ships the
-  # structured `/_send … json` form itself, so only the attachment-path
-  # fixes remain below.
+  # paths; we patched the adapter locally. Upstream ships the structured
+  # `/_send … json` form itself now, so only the attachment-path fixes remain
+  # below.  0.21.5 rewrote the receive block (it defers audio-only until
+  # rcvFileComplete and dropped the SIMPLEX_FILES_FOLDER relative-path
+  # resolution entirely), so both anchors are re-spelled against the new code:
+  # the pending-file patch keeps deferring every attachment, and the
+  # resolve-file patch keeps resolving relative filePath values from the
+  # SimpleX daemon against SIMPLEX_FILES_FOLDER.
   simplexPendingFileOld = lib.concatStringsSep "\n" [
-    "            # Voice notes typically arrive before the file finishes"
-    "            # downloading. Defer the message until rcvFileComplete fires."
+    "            # Voice notes typically arrive before the file finishes downloading; defer until"
+    "            # rcvFileComplete. /freceive gets no corrId reply, so awaiting one would block the loop."
     "            if not file_path and _is_audio_ext(ext) and file_id is not None:"
-    "                logger.info("
-    "                    \"SimpleX: voice file %d not yet received, accepting transfer\","
+    "                logger.info(\"SimpleX: voice file %d not yet received, accepting transfer\", file_id)"
   ];
   simplexPendingFileNew = lib.concatStringsSep "\n" [
     "            # Attachments can arrive before the file finishes downloading."
     "            # Defer the message until rcvFileComplete supplies its path."
     "            if not file_path and file_id is not None:"
-    "                logger.info("
-    "                    \"SimpleX: file %d not yet received, accepting transfer\","
+    "                logger.info(\"SimpleX: file %d not yet received, accepting transfer\", file_id)"
   ];
   simplexResolveFileOld = lib.concatStringsSep "\n" [
-    "            if file_path:"
-    "                ext = Path(file_path).suffix.lower() or ("
+    "            file_id = file_info.get(\"fileId\")"
+    "            ext = Path(file_path).suffix.lower() if file_path else \"\""
   ];
   simplexResolveFileNew = lib.concatStringsSep "\n" [
+    "            file_id = file_info.get(\"fileId\")"
     "            if file_path:"
     "                path = Path(file_path)"
     "                if not path.is_absolute():"
@@ -49,7 +53,7 @@ let
     "                    if files_folder:"
     "                        path = Path(files_folder) / path"
     "                file_path = str(path)"
-    "                ext = Path(file_path).suffix.lower() or ("
+    "            ext = Path(file_path).suffix.lower() if file_path else \"\""
   ];
 
   hermesMutableConfigHook = pkgs.writeTextDir "${pkgs.python312.sitePackages}/sitecustomize.py" ''
@@ -320,9 +324,80 @@ in
     workingDirectory = hermesWorkspace;
     extraPackages = hermesBrowserPackages;
     settings = {
+      # The default model is Strata (Qwen3.8-Flash-Next IQ3_S) on tiberius,
+      # reached over the tailnet (MagicDNS) as an OpenAI-compatible endpoint.
+      # A named provider entry owns the endpoint, so no model.base_url here.
       model = {
-        default = "gpt-5.6-sol";
-        provider = "openai-codex";
+        default = "qwen3.8-flash-next-iq3_s";
+        provider = "tiberius-strata";
+        # Displaces the stale codex URL the live config carried before the
+        # switch; the named provider above owns the real endpoint.
+        base_url = "http://tiberius:8080/v1";
+      };
+      providers."tiberius-strata" = {
+        api = "http://tiberius:8080/v1";
+        transport = "chat_completions";
+        default_model = "qwen3.8-flash-next-iq3_s";
+        # The server refuses, rather than truncates, a request whose prompt
+        # plus max_tokens exceeds the window it advertises in /v1/models. Its
+        # own fit_max_tokens escape hatch is a server-config key (strata-*.json)
+        # and is ignored in a request body, but Hermes never crosses the bound:
+        # compaction fires at 0.75 of the window (196608 of 262144), which is
+        # exactly window - the 65536 output cap Hermes sends for this endpoint.
+        context_length = 262144;
+        # Thinking is deliberately left ON (the served template's default
+        # xhigh effort) for the main turn, chosen 2026-10-07 for reasoning
+        # quality even at ~20 tok/s decode. It must be set EXPLICITLY: the
+        # module's deep merge preserves keys already in config.yaml, so simply
+        # omitting it would leave the earlier `enable_thinking: false` in
+        # place. The auxiliary rails below keep `enable_thinking: false`:
+        # their deadlines are 8-30 s and a thinking call would blow them on
+        # the single-request engine.
+        extra_body = {
+          chat_template_kwargs = {
+            enable_thinking = true;
+          };
+        };
+      };
+      auxiliary = {
+        # Local-only by design: every auxiliary rail follows the main model
+        # (Strata), so nothing here depends on a cloud credential. Each rail
+        # must opt out of thinking itself — plain aux calls forward
+        # auxiliary.<task>.extra_body, never the provider entry's — and
+        # compression needs a deadline that survives a long replay on the
+        # single-request engine. Strata is text-only, so image attachments
+        # stay unsupported until a vision-capable provider is pinned to
+        # `auxiliary.vision` (or the main model changes).
+        title_generation.extra_body.chat_template_kwargs.enable_thinking = false;
+        approval.extra_body.chat_template_kwargs.enable_thinking = false;
+        skills_hub.extra_body.chat_template_kwargs.enable_thinking = false;
+        mcp.extra_body.chat_template_kwargs.enable_thinking = false;
+        memory_query_rewrite.extra_body.chat_template_kwargs.enable_thinking = false;
+        # The merge preserves existing keys, so the vision/compression/review
+        # rails the switch to Strata first pinned to openai-codex must be
+        # explicitly reset to `auto` (= main model) or the stale codex pins
+        # survive in config.yaml.
+        vision = {
+          provider = "auto";
+          model = "";
+          extra_body.chat_template_kwargs.enable_thinking = false;
+        };
+        background_review = {
+          provider = "auto";
+          model = "";
+          # Full-agent rails inherit the provider entry's extra_body, and the
+          # module's merge keeps any key already in config.yaml — so thinking
+          # must be pinned explicitly (`true`) or the earlier `false` survives.
+          # 600 s gives the replay room on the ~20 tok/s engine.
+          timeout = 600;
+          extra_body.chat_template_kwargs.enable_thinking = true;
+        };
+        compression = {
+          provider = "auto";
+          model = "";
+          timeout = 900;
+          extra_body.chat_template_kwargs.enable_thinking = false;
+        };
       };
       agent = {
         max_turns = 150;
@@ -433,7 +508,10 @@ in
           nixosMirror
         ];
         UnsetEnvironment = [ "MESSAGING_CWD" ];
-        TimeoutStopSec = 30;
+        # The gateway drains cron work and in-flight turns on stop; with the
+        # default 30 s systemd SIGKILLs it mid-drain (hermes warns that it
+        # expects >=70 s). 90 s leaves the drain + grace room.
+        TimeoutStopSec = 90;
       };
       unitConfig.ConditionPathExists = [
         "${hermesHome}/auth.json"
