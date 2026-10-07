@@ -414,6 +414,28 @@ in
     lidEventCommands = "${lidManager}/bin/trajanus-lid";
   };
 
+  # The Nix store lives on the spare 1 TB Crucial NVMe (`zdata/nix`) since
+  # 2026-10-05: 54.9 GiB moved off the cramped zroot (which now has ~82 GiB
+  # free and keeps /home and its snapshot history). zdata is unencrypted while
+  # zroot is not, and the store is not all public — private flake inputs
+  # (git+ssh sources are copied in whole) and their build outputs live in it —
+  # so this is a deliberate space-over-confidentiality tradeoff, accepted
+  # 2026-10-05. `/nix` is in NixOS's pathsNeededForBoot, so this entry also
+  # imports zdata during stage 1. The migration is complete and boot-validated
+  # (the old `zroot/local/nix` dataset is destroyed); a reinstall must create
+  # `zdata/nix` by hand, like `zdata/models`, since zdata is not disko-managed.
+  # Both /nix datasets must stay `mountpoint=none` + `canmount=noauto`: with
+  # both `canmount=on`, stage 2's `zfs mount -a` stacks the unwanted one on top
+  # and the boot loses the store (bitten 2026-10-05).
+  fileSystems."/nix" = {
+    device = "zdata/nix";
+    fsType = "zfs";
+    options = [
+      "defaults"
+      "zfsutil"
+    ];
+  };
+
   # Local model store on the spare 1 TB Crucial NVMe.
   # `zdata` can later grow backup/syncoid datasets when trajanus becomes the
   # home server; keep huge GGUF/HF artifacts off the cramped zroot datasets.
