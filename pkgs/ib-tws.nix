@@ -47,11 +47,11 @@
 
 let
   pname = "ib-tws";
-  version = "10.37";
+  version = "10.50";
 
   src = fetchurl {
     url = "https://download2.interactivebrokers.com/installers/tws/stable-standalone/tws-stable-standalone-linux-x64.sh";
-    hash = "sha256-GkTIMbhr4bEeX2oImsxkBXc2ZT9pdhL88pEfNPIm2vE=";
+    hash = "sha256-/jBs3ElVjDwveqYQneO1IsaWWwr3mxVPprhPE35tztU=";
   };
 
   installerFhs = buildFHSEnv {
@@ -80,7 +80,9 @@ let
       cp $TMPDIR/tws/tws.vmoptions $out/lib/${pname}/
       cp -r $TMPDIR/tws/.install4j $out/lib/${pname}/
 
-      jre_java=$(find "$NIX_BUILD_TOP" -path "*/i4j_jres/*/bin/java" -print -quit)
+      # 10.37 unpacked the runtime at i4j_jres/<name>/bin/java; the 10.50
+      # installer (same floating "stable" URL) unpacks it at jre/bin/java.
+      jre_java=$(find "$NIX_BUILD_TOP" \( -path "*/i4j_jres/*/bin/java" -o -path "*/jre/bin/java" \) -print -quit)
       if [[ -z "$jre_java" ]]; then
         echo "error: could not find bundled JRE" >&2
         exit 1
