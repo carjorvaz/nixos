@@ -1,15 +1,24 @@
 {
   lib,
+  pkgs,
+  inputs,
   fetchPypi,
   fetchurl,
   nix-update-script,
   runCommand,
-  python3Packages,
   withLocalOnnx ? false,
 }:
 
 let
-  ps = python3Packages;
+  # mkLocalPackages hands every local package that declares `inputs` the
+  # flake's input set. hindsight 0.10.2's dependency floors need the pinned
+  # nixpkgs-unstable python312 packages instead of the system (nixos-26.05)
+  # ones; the local overrides live in python-env.nix.
+  unstablePkgs = import inputs.nixpkgs-unstable.outPath {
+    system = pkgs.stdenv.hostPlatform.system;
+  };
+
+  ps = import ./python-env.nix { inherit unstablePkgs; };
 
   markitdownDocumentDeps = with ps; [
     lxml
@@ -21,6 +30,11 @@ let
     xlrd
   ];
 
+  # The complete 0.10.2 core `Requires-Dist` set, resolved from the private
+  # python312 set above. Compared to 0.8.6 upstream dropped langchain-core,
+  # langchain-text-splitters, langsmith and (in favour of toktok) tiktoken,
+  # and added github-copilot-sdk, regex and toktok-rs. psycopg2-binary is
+  # removed below; pg0-embedded is only an `embedded-db` extra, not core.
   runtimeDeps =
     with ps;
     [
@@ -38,14 +52,12 @@ let
       fastapi
       fastmcp
       filelock
+      github-copilot-sdk
       google-auth
       google-genai
       greenlet
       httpx
       json-repair
-      langchain-core
-      langchain-text-splitters
-      langsmith
       litellm
       markitdown
       numpy
@@ -69,10 +81,15 @@ let
       python-dateutil
       python-dotenv
       python-multipart
+      regex
       rich
       sqlalchemy
+      # Not a 0.10.2 core dependency (toktok replaced it for Hindsight's own
+      # token counting), but litellm still uses it for token/cost accounting,
+      # and the seeded offline cache wrapped in via TIKTOKEN_CACHE_DIR below is
+      # what lets that path run without network I/O.
       tiktoken
-      tornado
+      toktok-rs
       typer
       urllib3
       uvicorn
@@ -94,7 +111,9 @@ let
   };
 
   # tiktoken caches encoding downloads by SHA-1 of the source URL. Seed the
-  # cache with cl100k_base so Hindsight can start without runtime network I/O.
+  # cache with cl100k_base so litellm's token/cost accounting can run without
+  # network I/O. (Hindsight's own tokenizer is toktok, whose vocabularies are
+  # compiled into its extension module and need no cache.)
   tiktokenCacheDir = runCommand "hindsight-tiktoken-cache" { } ''
     install -Dm444 ${cl100kBaseTiktoken} \
       "$out/9b5ad71b2ce5302211f9c61530b329a4922fc6a4"
@@ -103,7 +122,7 @@ in
 
 ps.buildPythonApplication rec {
   pname = "hindsight-api-slim";
-  version = "0.8.6";
+  version = "0.10.2";
   pyproject = true;
 
   disabled = ps.pythonOlder "3.11";
@@ -111,7 +130,7 @@ ps.buildPythonApplication rec {
   src = fetchPypi {
     pname = "hindsight_api_slim";
     inherit version;
-    hash = "sha256-zxlACmLMCBnChbQRs83QBgJDAwt0WBt/PHuZeKx5G4s=";
+    hash = "sha256-9mYWfxyDFEoSngZDH0a4buJ8jgKMm4Lq3Jhgp6a0N9Q=";
   };
 
   postPatch = ''
@@ -139,9 +158,9 @@ ps.buildPythonApplication rec {
     entrypoints = {
         Path("hindsight_api/main.py"): (
             '    DEFAULT_ACCESS_LOG,\n'
+            '    DEFAULT_HOST,\n'
             '    DEFAULT_WORKERS,\n'
             '    ENV_ACCESS_LOG,\n'
-            '    ENV_HOST,\n'
             '    ENV_WORKERS,\n'
             '    HindsightConfig,\n'
             '    _get_raw_config,\n',
@@ -165,6 +184,8 @@ ps.buildPythonApplication rec {
             '            host=os.getenv(ENV_HOST, DEFAULT_HOST),\n'
             '            port=int(os.getenv(ENV_PORT, DEFAULT_PORT)),\n'
             '            log_level=os.getenv(ENV_LOG_LEVEL, DEFAULT_LOG_LEVEL),\n'
+            '            workers=int(os.getenv(ENV_WORKERS, DEFAULT_WORKERS)),\n'
+            '            access_log=DEFAULT_ACCESS_LOG,\n'
             '        )\n'
             '    else:\n'
             '        # Load configuration from environment (for CLI args defaults)\n'
@@ -237,27 +258,12 @@ ps.buildPythonApplication rec {
 
   pythonRelaxDeps = [
     # The packages below carry upstream floors newer than the versions in the
-    # pinned nixpkgs python312 set (rev cf5e7650, 2026-09-27). Hindsight does
-    # not exercise the version-specific APIs the floors were raised for, so the
-    # nixpkgs versions are accepted. Each entry lists floor -> nixpkgs:
+    # pinned nixpkgs-unstable python312 set. Hindsight does not exercise the
+    # version-specific APIs the floors were raised for, so the set's versions
+    # are accepted:
     #
-    # boto3: >=1.42.74 -> 1.42.31
+    # boto3: >=1.42.74 -> 1.42.31 (optional AWS/S3 paths only)
     "boto3"
-    # cryptography: >=48.0.1 (GHSA-537c-gmf6-5ccf) -> 48.0.0
-    "cryptography"
-    # langsmith: >=0.8.18 (GHSA-f4xh-w4cj-qxq8) -> 0.7.37
-    "langsmith"
-    # litellm: >=1.93.0 -> 1.86.0
-    "litellm"
-    # protobuf: >=7.35.1 -> 7.34.1
-    "protobuf"
-    # opentelemetry: >=1.44.0 / >=0.65b0 -> 1.34.0 / 0.55b0
-    "opentelemetry-api"
-    "opentelemetry-exporter-otlp-proto-http"
-    "opentelemetry-exporter-prometheus"
-    "opentelemetry-instrumentation-fastapi"
-    "opentelemetry-sdk"
-    "opentelemetry-semantic-conventions"
   ];
 
   # Upstream declares psycopg2-binary, but nixpkgs correctly provides psycopg2
@@ -270,6 +276,13 @@ ps.buildPythonApplication rec {
   doCheck = false;
 
   strictDeps = true;
+
+  # `hindsight_api.main` loads the config at import time, and the config
+  # requires an external database URL; the import check below imports main and
+  # worker.main, so give it a placeholder. The installCheck smoke clears all
+  # HINDSIGHT_API_* variables first, so it is unaffected, and the NixOS module
+  # sets the real value at run time.
+  HINDSIGHT_API_DATABASE_URL = "postgresql://hindsight@127.0.0.1:5432/hindsight";
 
   pythonImportsCheck = [
     "hindsight_api"
@@ -334,24 +347,32 @@ ps.buildPythonApplication rec {
     encoded_socket_url = "postgresql://hindsight@/hindsight?host=%2Frun%2Fpostgresql"
     assert to_libpq_url(socket_url) == encoded_socket_url
 
-    # Upstream 0.8.6 escapes '%' before handing the URL to Alembic's
+    # Upstream 0.10.2 escapes '%' before handing the URL to Alembic's
     # ConfigParser; exercise the shipped helper to guard against regression.
     alembic_config = Config()
     _set_alembic_main_option(alembic_config, "sqlalchemy.url", encoded_socket_url)
     assert alembic_config.get_main_option("sqlalchemy.url") == encoded_socket_url
 
-    # opentelemetry-exporter-prometheus >=0.65b0 passes otel_component_type= to
-    # MetricReader.__init__, which only opentelemetry-sdk >=1.41.0 accepts;
-    # constructing the reader raises TypeError on a skewed exporter/sdk pair.
-    # (0.55b0 in the pinned nixpkgs takes no such kwarg.)
+    # opentelemetry-exporter-prometheus is overridden to 0.66b0 alongside the
+    # matching 1.45.0 sdk (see python-env.nix); constructing the reader with
+    # the exporter/sdk pair skewed would raise TypeError on the
+    # otel_component_type kwarg.
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
     PrometheusMetricReader()
 
-    # tiktoken must resolve cl100k_base from the seeded offline cache.
-    from hindsight_api.engine.token_encoding import get_token_encoding
+    # tiktoken must still resolve cl100k_base from the seeded offline cache;
+    # litellm uses tiktoken for token/cost accounting even though Hindsight's
+    # own token counting moved to toktok.
+    import tiktoken
 
-    assert get_token_encoding().encode("hindsight offline tokenizer check")
+    assert tiktoken.get_encoding("cl100k_base").encode("hindsight offline tokenizer check")
+
+    # Hindsight 0.10.2 counts tokens with toktok, whose vocabularies are
+    # compiled into the extension module (no cache or network at runtime).
+    from hindsight_api.engine.token_encoding import count_tokens
+
+    assert count_tokens("hindsight offline tokenizer check") > 0
 
     scripts = {
         "hindsight-api": "hindsight_api.main",
@@ -408,10 +429,9 @@ ps.buildPythonApplication rec {
       }
     ];
     mainProgram = "hindsight-api";
-    # Restricted to x86_64-linux, the deployment target. Upstream 0.8.6 lifted
-    # the cryptography <47 ARM64 SIGILL cap; nixpkgs ships 48.0.0, below the
-    # upstream >=48.0.1 floor relaxed in pythonRelaxDeps, so the other
-    # platforms are untested here.
+    # Restricted to x86_64-linux, the deployment target. Upstream 0.10.2's
+    # `cryptography>=50.0.0` floor is satisfied by the pinned nixpkgs-unstable
+    # set (50.0.0); the other platforms are untested here.
     platforms = [ "x86_64-linux" ];
     sourceProvenance = with lib.sourceTypes; [ fromSource ];
   };
