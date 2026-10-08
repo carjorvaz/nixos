@@ -23,7 +23,9 @@
 let
   c = cudaPackages;
 
-  revision = "99f3dbd0b21d1401b3769e0c0d963913607f380b";
+  # e8ca9afd: v0.1.40.2 (2026-10-07).  Note: upstream rewrote its history on 2026-10-06
+  # (the v0.1.40.1 notes say so), so the previous pin is not an ancestor of this one.
+  revision = "e8ca9afd03d839d4f8dbbe82dffce7f8a3bafd7a";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -55,40 +57,49 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.38";
+  version = "0.1.40.2";
 
   src = fetchFromGitHub {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-9tawklXlF98yolRTVgeonVcyrob8HiNG3xSQ7V5v+94=";
+    hash = "sha256-NCOHJF8L32g67h8S4XY9uOABAKEoqapGqYLUEoiVHME=";
   };
 
-  # tiberius's local engine changes, in one patch because they interleave in the
-  # same regions of expert_source.{hpp,cpp}, prefill.cpp and generate.cpp:
+  # carry-1283.patch is upstream PR #1283 (sergqwer), carried until it merges: the
+  # prompt borrow's MoE-buffer accounting now takes the `src` its callers pass to
+  # init.  v0.1.39 took the PR's first half (the xn / grs count, STRATA_RING_BYTES).
+  # Pure accounting, no numerics or configuration; separate file so dropping it when
+  # it lands is one line.  tiberius.patch was generated on top of it, hence the order.
+  #
+  # tiberius.patch is tiberius's local engine changes, in one patch because they
+  # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
+  # and generate.cpp:
   #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill is
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
-  #   * STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores;
-  #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources.
-  # Plus upstream PR #547's bytes_needed accounting, carried until it merges
-  # (borrow 6109 -> 5554 slots; -1.8/-2.6% prefill and -2.1/-1.8% pack bytes at
-  # the 27575 cell).
-  # The host expert tier is NOT here any more: v0.1.38 has it natively
+  #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources,
+  #     with its straddle guard.
+  # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
+  # this bump: upstream 0.1.39+ has the same path natively (bf16_path() in gemm.cu,
+  # #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
+  # The 0.1.40.x refill rework (the resolve/plans pass, STRATA_DMA_BATCH,
+  # adapt_copy_h2d, the AMD pin_blobs) is upstream's and is kept by the patch.
+  # The host expert tier is NOT here any more: upstream has it natively
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
-  # Same source revision as the pin above, so `patch -p1` applies cleanly.
+  # All three were regenerated against the pin above, so `patch -p1` applies cleanly.
   patches = [
+    ./carry-1283.patch
     ./tiberius.patch
     ./no-web-ui.patch
   ];
 
-  # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX,
-  # STRATA_DENSE_FP16 and STRATA_REFILL_PIN_SRC.  The first is upstream's; the other
-  # three exist only because the patch above adds them, and upstream treats an unknown
-  # flag as fatal: a patch that silently failed to apply would turn the whole service
-  # into a crash-loop, and a silently missing window would drop the measured prefill
-  # win without saying so.  Fail the build here instead.
+  # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX and
+  # STRATA_REFILL_PIN_SRC (both the patch's; STRATA_BF16_TC is upstream's).  Upstream
+  # treats an unknown flag as fatal: a patch that silently failed to apply would turn
+  # the whole service into a crash-loop, and a silently missing window would drop the
+  # measured prefill win without saying so.  Fail the build here instead.
   postPatch = ''
     grep -q 'STRATA_NO_WEB' serve/server.py || {
       echo "no-web-ui.patch did not introduce the STRATA_NO_WEB gate" >&2
@@ -102,8 +113,8 @@ stdenv.mkDerivation {
       echo "tiberius.patch did not introduce the STRATA_REGISTER_DAX sliding window" >&2
       exit 1
     }
-    grep -q 'STRATA_DENSE_FP16' src/prefill/gemm.cu || {
-      echo "tiberius.patch did not introduce the STRATA_DENSE_FP16 dense GEMM path" >&2
+    grep -q 'STRATA_BF16_TC' src/prefill/gemm.cu || {
+      echo "the engine no longer reads STRATA_BF16_TC (the dense FP16 tensor-core path)" >&2
       exit 1
     }
     grep -q 'STRATA_REFILL_PIN_SRC' src/program/generate.cpp || {
@@ -129,16 +140,21 @@ stdenv.mkDerivation {
       echo "the engine no longer reads STRATA_RESIDENT_HEADROOM_GIB" >&2
       exit 1
     }
+    grep -q 'STRATA_UNBUFFERED_LOAD' src/core/expert_source.cpp || {
+      echo "the engine no longer reads STRATA_UNBUFFERED_LOAD (the file tier's page-cache arm)" >&2
+      exit 1
+    }
     grep -q 'STRATA_STAGER_RING' src/prefill/prefill.cpp || {
       echo "the engine no longer reads STRATA_STAGER_RING (the measured staging ring)" >&2
       exit 1
     }
-    grep -q 'STRATA_PREFILL_RING' src/prefill/prefill.cpp || {
-      echo "the engine no longer reads STRATA_PREFILL_RING (the routed-only staging opt-in)" >&2
-      exit 1
-    }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
       echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
+      exit 1
+    }
+    # The carried PR's own surface: the `src` argument the prompt-path sizing takes.
+    grep -q 'bool src' include/strata/prefill/prefill.hpp || {
+      echo "carry-1283.patch did not reach the bytes_needed signatures" >&2
       exit 1
     }
   '';

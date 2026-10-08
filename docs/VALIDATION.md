@@ -147,12 +147,32 @@ selection and the client's context/reasoning mapping together.
 ## Tiberius Strata runtime
 
 `strata-sm75` is the boot engine on Tiberius. It builds upstream Strata at pin
-`99f3dbd` (v0.1.38) with two local patches: `tiberius.patch` (a sliding DAX
-register window, FP16 dense GEMMs, decode-time refill pinning, and the upstream
-PR #547 carried until it merges) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns
-off the bundled web app, its pages/assets and `/settings`; the OpenAI-compatible
-API is untouched). Build-time greps fail the derivation if a flag or environment
-variable the module sets disappears on a rebase.
+`e8ca9af` (v0.1.40.2) with three patches: `carry-1283.patch` (upstream PR #1283's
+`bytes_needed` src accounting, rebased by its author; the PR lineage is #547 ->
+#1042 -> #1283), `tiberius.patch` (a sliding DAX register window, decode-time
+refill pinning with its straddle guard; generated on top of `carry-1283.patch`,
+hence the order) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
+web app, its pages/assets and `/settings`; the OpenAI-compatible API is
+untouched). The dense-FP16 tensor-core change that `tiberius.patch` used to carry
+was retired at this bump: upstream 0.1.39+ has the same path natively
+(`bf16_path()`, #540/#655) and the module selects it with upstream's
+`STRATA_BF16_TC=1` (opt-in on the RTX 20's compute capability 7.5). Build-time
+greps fail the derivation if a flag or environment variable the module sets
+disappears on a rebase.
+
+The module also forces `STRATA_UNBUFFERED_LOAD=0`: v0.1.40's #1194 makes the Linux
+file tier read unbuffered when the file cache cannot keep the returning experts,
+which is what this 7.4 GiB box is decided as, and that measured 2x slower here
+(52.1 s vs 26.3 s for the same 27575-token prompt; re-measure of the `--prefill`
+choice at the bump is `/data/chunkint8/summary-1402.txt`).
+
+The same campaign retired the `STRATA_PREFILL_RING=8` routed-only staging override:
+at v0.1.40.2 it cost 10.3% on the 27575-token cell (26,282 -> 23,823 ms,
+1049.5 -> 1157.9 tok/s, three runs each side of the change), so the engine's own
+#583 byte-budget ring is used.  `STRATA_STAGER_RING=4` and `--prefill 28160` were
+re-confirmed (+1% and the fastest chunk measured), `STRATA_RING_BYTES=0` and
+`STRATA_SH_FORK_LATE=0` measured worse or neutral, and the coder lane beat its
+v0.1.38 baseline by +6% read / +8.5% decode at a stricter KV.
 
 The optional `pkgs/kernel-patches/fsdax-longterm-pin.patch` plus the
 `fsdax_longterm_pin=1` parameter pin FSDAX pages on Tiberius only. This is

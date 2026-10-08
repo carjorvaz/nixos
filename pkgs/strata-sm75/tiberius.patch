@@ -1,13 +1,13 @@
-# tiberius: the strata engine's local patch, against upstream 99f3dbd (v0.1.38).
+# tiberius: the strata engine's local patch, against upstream e8ca9af (v0.1.40.2).
+# Applied AFTER carry-1283.patch: this diff was generated on top of that file's tree.
 #
-# Five changes, in one patch because they interleave in the same regions of
-# expert_source.{hpp,cpp}, prefill.{hpp,cpp}, generate.cpp and gemm.cu.  The
-# first three are local and opt-in through their own env var; change 4 is the
-# refill pin's straddle guard (same flag) plus one unconditional hardening - a
-# refused exchange staging drops that swap instead of failing the request, where
-# upstream aborts.  The fifth is an upstream PR carried here until it lands,
-# also unconditional (pure accounting).  With every var unset the tree behaves
-# like upstream except those two deliberate divergences.
+# Three changes, in one patch because they interleave in the same regions of
+# expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp.  The first two are
+# local and opt-in through their own env var; the third is the refill pin's
+# straddle guard (same flag) plus one unconditional hardening - a refused exchange
+# staging drops that swap instead of failing the request, where upstream aborts.
+# With every var unset the tree behaves like upstream except that one deliberate
+# divergence.
 #
 # 1. STRATA_REGISTER_DAX, the sliding DAX window.  cudaHostRegister cannot pin
 #    the 46.84 GiB pack (the driver caps a process's total registered host memory
@@ -22,22 +22,7 @@
 #    Needs the fsdax_longterm_pin=1 kernel opt-in
 #    (pkgs/kernel-patches/fsdax-longterm-pin.patch).
 #
-# 2. STRATA_DENSE_FP16, the dense (non-expert) GEMMs on the FP16 tensor cores.
-#    Turing has FP16 tensor cores and no BF16 ones, so cuBLAS served the dense
-#    GEMMs (482 calls per 4292-token prompt, 335.7 ms) with its FP32 SIMT fallback
-#    (magma_sgemmEx_kernel).  The flag converts each operand pair to FP16 in the
-#    existing 64 MiB dequantization scratch and calls the same tensor-core path
-#    the FP16 projections already use, with FP32 accumulation.  bf16 -> fp16 is
-#    exact inside fp16's finite range and the operands measure max|X| 103.5 /
-#    max|W| 11.56 against 65504, but the accumulation order changes, so the
-#    prompt-path state hash moves and the flag stays opt-in; there is no runtime
-#    range guard, so an operand past fp16's range would go inf silently (only
-#    STRATA_GEMM_DEBUG=1 exposes it).  Measured: total
-#    kernel time 1564 -> 1302 ms (-16.8%), prefill 10,350 -> 9,845 ms (-4.9% mean,
-#    -5.8% median) at 4292 tokens and -6.2% at 3514; deployed (same-binary A/B,
-#    counterbalanced, 8 runs/arm): +7.23% / +5.89%.
-#
-# 3. STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered
+# 2. STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered
 #    sources.  The adaptive tier's 2 MiB H2D copies came from pageable memory
 #    (98% of them) at ~0.87 ms/copy (2.3 GB/s) because the source blobs sit
 #    outside the DAX window and the pinned tier, and that cost sat entirely on the
@@ -51,7 +36,7 @@
 #    tokens and +7.1% at 3514; hit rate, prefill and the warm-up state hash
 #    unchanged.
 #
-# 4. The refill pin's straddle guard (same flag).  An instrumented probe using the
+# 3. The refill pin's straddle guard (same flag).  An instrumented probe using the
 #    engine's exact flags showed the driver refuses any copy whose source begins
 #    inside a host registration and ends outside it, with 210 bytes of overflow
 #    enough, and both the DAX window's page-rounded edges and the exchange staging
@@ -70,16 +55,16 @@
 #    STATE_HASH, refill counters) and the guard is idle (0 spans dropped, 0 blobs
 #    staged).
 #
-# 5. PR #547 (upstream, carried until it merges): `prefill: bytes_needed counts
-#    what carve allocates`.  The prompt path's borrow was computed with a
-#    conservative rule (xn counted even when GR-fused, grs always, and the MoE
-#    layout for the caller's source), so at chunk 28160 it lent the expert cache
-#    ~1.08 GiB (1.15 GB) more than it needed.  Measured 2026-10-03 on the ported
-#    tree: borrow
-#    6109 -> 5554 slots (11.59 -> 10.51 GiB), prefill -1.77%/-2.59% and pack
-#    bytes -2.14%/-1.79% at the 27575 cell (128/256 gen), flat at 4344, decode
-#    and the cache hit rate unchanged.  Pure accounting - no numerics, no
-#    configuration; upstream #583 carries the same bytes_needed half.
+# RETIRED at the v0.1.40.2 bump: STRATA_DENSE_FP16, the dense GEMMs on the FP16
+# tensor cores, was a local patch for several releases (measured then: total
+# kernel time 1564 -> 1302 ms, -16.8%; prompt 4292 tokens -4.9% mean / -5.8%
+# median, deployed same-binary A/B +7.23% / +5.89% over 8 counterbalanced runs an
+# arm).  Upstream 0.1.39+ ships the same path natively (bf16_path() in gemm.cu,
+# #540/#655: bf16 -> fp16 exact in range, FP32 accumulation, finite values past
+# fp16's range clamped to +-65504 instead of becoming Inf) and it is off by
+# default on compute capability 7.5, so the module selects it with upstream's
+# STRATA_BF16_TC=1.  Keeping our near-duplicate would have meant two
+# implementations of one optimization in the same function.
 #
 # The host expert tier is NOT here: upstream has it natively since 0.1.35 as
 # --resident-budget-gib N (which implies --mmap-experts + --resident-cpu-experts),
@@ -90,15 +75,20 @@
 # History: hand-merged 2026-10-01 against 0.1.29 (host tier + window), rebased to
 # v0.1.35 on 2026-10-02 (the host tier dropped as upstream-native, dense FP16 and
 # the refill pin ported onto the new class surface), to v0.1.38 on 2026-10-03
-# (the --peer-device and adaptive-wait seams; the straddle guard added), and
-# PR #547 carried the same day.  Every number above is measured on tiberius; the
-# raw logs live under /data and the commit messages carry the A/B designs.
+# (the --peer-device and adaptive-wait seams; the straddle guard added; upstream
+# PR #547 carried), and rebased to v0.1.40.2 on 2026-10-07 - upstream reworked the
+# same refill loop (the resolve/plans pass, STRATA_DMA_BATCH, adapt_copy_h2d,
+# blob_stable, the AMD pin_blobs), so this patch keeps those and drives the pin
+# guard from the resolved `plans`; the carried PR moved to carry-1283.patch and
+# the dense-FP16 change was retired in favour of upstream's bf16_path.  Every
+# number above is measured on tiberius; the raw logs live under /data and the
+# commit messages carry the A/B designs.
 #
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
-index 4c4d12f..eee4bf9 100644
+index 1bbdb41..3d6a6f5 100644
 --- a/include/strata/core/expert_source.hpp
 +++ b/include/strata/core/expert_source.hpp
-@@ -117,9 +117,50 @@ public:
+@@ -154,9 +154,50 @@ public:
      /// asynchronous host-to-device copy can DMA it directly (no staging copy on the CPU).
      virtual bool pinned(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return false; }
  
@@ -148,10 +138,10 @@ index 4c4d12f..eee4bf9 100644
 +    virtual void set_dma_stream(void* stream) { (void) stream; }
      /// Plan v0.3 P6: the DEVICE address of a pinned, mapped blob (the GPU can read it over PCIe), or null.
      virtual const uint8_t* device_alias(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return nullptr; }
-     /// Whether the verify window may give the GPU a PCIe share of this layer's misses at all (each expert is still
-@@ -488,8 +529,15 @@ public:
- 
-     const uint8_t* blob(int64_t layer, int64_t expert) override;
+     /// A file-backed source: start reading this expert's pages now (it will be needed by the CPU); no-op elsewhere.
+@@ -584,8 +625,15 @@ public:
+     /// VRAM. Never touches the resident complement or staging buffers. Disabled by default.
+     uint64_t release(int64_t layer, int64_t expert) override;
      bool pinned(int64_t layer, int64_t expert) const override;
 +    bool dma_ready(int64_t layer, int64_t expert) const override;
 +    BlobClass blob_class(int64_t layer, int64_t expert) const override;
@@ -165,9 +155,9 @@ index 4c4d12f..eee4bf9 100644
      bool transient(int64_t layer, int64_t expert) const override;
      bool copy_blob(int64_t layer, int64_t expert, uint8_t* dst) override;
      /// CS-T: advances the assembled blobs' age (see staged_blob).
-@@ -511,6 +559,49 @@ public:
- 
+@@ -637,6 +685,49 @@ public:
  private:
+     const uint8_t* resident_blob(size_t index) const;
      const uint8_t* mapped_blob(int64_t layer, int64_t expert) const;
 +    /// The complement arena's own membership test.  `pinned()` and `device_alias()` both start from it, because
 +    /// `blob()` reads the arena's copy for exactly these experts: with a second DMA-able source (the file mapping
@@ -215,7 +205,7 @@ index 4c4d12f..eee4bf9 100644
      /// The blob's bytes from the mapped file(s) - experts.bin, or the three GGUF role slices - into `dst`.
      bool copy_from_files(int64_t layer, int64_t expert, uint8_t* dst) const;
      bool open_gguf(std::string& err);
-@@ -585,6 +676,20 @@ private:
+@@ -741,6 +832,20 @@ private:
      bool complement_ready_ = false;
      uint64_t complement_locked_ = 0;          ///< bytes held in the working set (pin refused)
      int64_t complement_lent_slots_ = 0;
@@ -236,40 +226,23 @@ index 4c4d12f..eee4bf9 100644
      std::vector<const uint8_t*> override_;    ///< staged exchanges: an evicted expert read from its exchange buffer
      struct Exchange { size_t in, out; int64_t q; uint64_t bytes; };
      std::vector<Exchange> staged_;
-@@ -640,6 +745,8 @@ public:
+@@ -796,6 +901,8 @@ public:
      const uint8_t* blob(int64_t layer, int64_t expert) override;
      int64_t reads() const { return reads_; }
      bool pinned(int64_t layer, int64_t expert) const override;
 +    BlobClass blob_class(int64_t layer, int64_t expert) const override;
 +    void registered_ranges(std::vector<std::pair<uintptr_t, size_t>>& out) const override;
      const uint8_t* device_alias(int64_t layer, int64_t expert) const override;
- 
-     /// What backing was obtained and why, for the startup print.  "The engine adapts to the machine it is on" is
-diff --git a/include/strata/prefill/prefill.hpp b/include/strata/prefill/prefill.hpp
-index 038e0dd..95213f0 100644
---- a/include/strata/prefill/prefill.hpp
-+++ b/include/strata/prefill/prefill.hpp
-@@ -79,8 +79,10 @@ public:
-     /// (0 = that rule). Set before any `bytes_needed`/`init` (both count the ring); STRATA_PREFILL_RING still wins.
-     static void set_ring_override(int slots);
- 
--    /// Device bytes `init` needs for a chunk of `chunk` tokens (what a borrowed region must hold).
--    static uint64_t bytes_needed(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk);
-+    /// Device bytes `init` needs for a chunk of `chunk` tokens (what a borrowed region must hold). `src`: `init` gets an
-+    /// ExpertSource (only then can a chunk take the fused layout, whose MoE buffers are smaller).
-+    static uint64_t bytes_needed(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk,
-+                                 bool src = true);
- 
-     /// Positions [pos0, pos0 + n) holding `tokens`; `ss.ple_prev` must be the two tokens before pos0 (oldest
-     /// first, -1 for none) and is advanced to the last two of these.
+     void prefetch(int64_t layer, int64_t expert) override;
+     uint64_t release(int64_t layer, int64_t expert) override;
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
-index c64909f..a982ba1 100644
+index fcf8b71..5f85504 100644
 --- a/src/core/expert_source.cpp
 +++ b/src/core/expert_source.cpp
-@@ -455,10 +455,94 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
-     mapped_bytes_ = want;
+@@ -893,12 +893,96 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
      layer_offsets_ = std::move(layer_offsets);
      layer_blob_bytes_ = std::move(layer_blob_bytes);
+     record_inputs(path, gguf_, layout, false);
 +
 +    // ==================== tiberius (STRATA_REGISTER_DAX): THE SLIDING WINDOW (default OFF) ====================
 +    //
@@ -347,6 +320,8 @@ index c64909f..a982ba1 100644
  }
  
  void FileExpertSource::close() {
+     io_stop();
+     inputs_.clear();
 +    // tiberius (STRATA_REGISTER_DAX): unregister every window BEFORE the unmap - the runtime holds the pins until
 +    // that call, and a registration must not outlive the mapping it points at.  This is also the only release the
 +    // pages get.  The copy stream is drained first for the same reason `prepare_layer` drains it.
@@ -359,9 +334,9 @@ index c64909f..a982ba1 100644
 +    dax_ok_ = false;
 +    dax_stream_ = nullptr;
      if (complement_arena_ != nullptr) {
-         if (complement_pinned_ && !complement_partial_) (void) cudaFreeHost(complement_arena_);
+         if (complement_pinned_ && !complement_registered_) (void) cudaFreeHost(complement_arena_);
          else {
-@@ -1524,7 +1608,13 @@ bool FileExpertSource::pin_cache_complement(
+@@ -2497,7 +2581,13 @@ bool FileExpertSource::pin_cache_complement(
                  return;
              }
  #if !defined(_WIN32)
@@ -376,13 +351,15 @@ index c64909f..a982ba1 100644
              const uint64_t layer_offset = layer_offsets_[(size_t) layer];
              const uint64_t layer_bytes = blob_bytes * (uint64_t) n_expert_;
              const uint64_t layer_end = layer_offset + layer_bytes;
-@@ -1640,13 +1730,38 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q) const {
+@@ -2654,14 +2744,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q) const {
  }
  
  bool FileExpertSource::stage_exchange(int64_t layer, int64_t in, int64_t out, int64_t q) {
--    if (!has_resident(layer, in) || has_resident(layer, out) || exchange_buffer(q) == nullptr) return false;
+-    if (out < 0 || out >= n_expert_ || !has_resident(layer, in) || has_resident(layer, out) ||
+-        exchange_buffer(q) == nullptr) return false;
 +    // tiberius: every refusal here aborts the whole request upstream ("an adaptive refill failed"), so each one
 +    // names itself - they are reachable from the residency state and the reader had no way to tell them apart.
++    if (out < 0 || out >= n_expert_) return false;
 +    if (!has_resident(layer, in)) {
 +        std::fprintf(stderr, "strata: exchange not armed: layer %lld expert %lld is not in the RAM complement\n",
 +                     (long long) layer, (long long) in);
@@ -418,7 +395,7 @@ index c64909f..a982ba1 100644
      override_[i_out] = exchange_buffer(q);
      staged_.push_back({i_in, i_out, q, layer_blob_bytes_[(size_t) layer]});
      return true;
-@@ -1698,7 +1813,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+@@ -2791,7 +2906,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
      return result;
  }
  
@@ -429,7 +406,7 @@ index c64909f..a982ba1 100644
      if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
          layer >= n_layers_ || expert >= n_expert_) return false;
      const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
-@@ -1708,10 +1825,285 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -2802,11 +2919,288 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
             complement_offsets_[index] + layer_blob_bytes_[(size_t) layer] <= complement_pin_limit_;
  }
  
@@ -702,11 +679,15 @@ index c64909f..a982ba1 100644
  const uint8_t* FileExpertSource::device_alias(int64_t layer, int64_t expert) const {
 -    if (!pinned(layer, expert) || complement_device_ == nullptr) return nullptr;
 -    const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
+-    if (exchange_storage_.active()) return exchange_storage_.resident(index).device;
 -    return complement_device_ + (size_t) complement_offsets_[index];
 +    // The arena's copy comes first when it holds the expert: `blob()` returns THAT pointer, so the device pointer
 +    // has to be the arena's too, or the two would disagree about which copy of the expert is being read.
-+    if (complement_holds(layer, expert) && complement_device_ != nullptr)
-+        return complement_device_ + (size_t) complement_offsets_[(size_t) layer * (size_t) n_expert_ + (size_t) expert];
++    if (complement_holds(layer, expert) && complement_device_ != nullptr) {
++        const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
++        if (exchange_storage_.active()) return exchange_storage_.resident(index).device;
++        return complement_device_ + (size_t) complement_offsets_[index];
++    }
 +    // STRATA_REGISTER_DAX: a window is mapped into the CUDA address space one-to-one, so the blob's alias is its
 +    // offset from the window's start applied to the window's alias.  Empty unless that registration was Mapped
 +    // AND `cudaHostGetDevicePointer` gave a pointer - `w.device` is set only then, and a device that cannot map
@@ -718,7 +699,7 @@ index c64909f..a982ba1 100644
  }
  
  bool FileExpertSource::pcie_layer(int64_t layer) const {
-@@ -2684,6 +3076,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -3993,6 +4387,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
      return lay.blob_offset(layer, expert) + lay.blob_bytes(layer) <= pinned_bytes_;
  }
  
@@ -744,321 +725,11 @@ index c64909f..a982ba1 100644
  const uint8_t* ArenaExpertSource::device_alias(int64_t layer, int64_t expert) const {
      if (dev_slice_.empty() || !pinned(layer, expert)) return nullptr;
      const auto& lay = strata::kernels::cpu::expert_layout();
-diff --git a/src/prefill/gemm.cu b/src/prefill/gemm.cu
-index bb6ef04..68ebd11 100644
---- a/src/prefill/gemm.cu
-+++ b/src/prefill/gemm.cu
-@@ -5,6 +5,11 @@
- #include <cublas_v2.h>
- #include <cuda_runtime.h>
- 
-+#if !defined(__HIPCC__)
-+#include <cuda_bf16.h>
-+#include <cuda_fp16.h>
-+#endif
-+
- #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
- // The HIP compatibility shim maps CUDA shuffle spellings to Strata helpers.
- // hipBLASLt's public headers declare native HIP shuffle functions, so keep
-@@ -64,6 +69,239 @@ void note(cublasStatus_t s, const char* what) {
-     if (s != CUBLAS_STATUS_SUCCESS) std::fprintf(stderr, "prefill gemm: %s: cuBLAS status %d (continuing)\n", what, (int) s);
- }
- 
-+// ---------------------------------------------------------------------------------------------
-+// Dense GEMMs on FP16 tensor cores:  STRATA_DENSE_FP16=1.
-+//
-+// Turing has FP16 tensor cores and no BF16 ones, so a BF16 operand pair can only be served by
-+// cuBLAS' FP32 SIMT fallback (`magma_sgemmEx_kernel`).  Measured on this box (RTX 2080 Ti,
-+// cublas 13.3), over the exact dense shapes of the prompt path: 6.3-9.0 TFLOPS for BF16 against
-+// 32-60 TFLOPS for the same shape in FP16 (/data/gemm-probe.cu, /data/gemm-probe.out).
-+//
-+// bf16 -> fp16 is EXACT for every value in fp16's finite range: bf16 carries 8 mantissa bits and
-+// fp16 carries 10, both binary, so every bf16 value in [2^-14, 65504) converts with no rounding
-+// at all (and renormalises below that).  The operands that reach the tensor core are therefore
-+// the same numbers as before, and the accumulation stays FP32 (CUBLAS_COMPUTE_32F, which nvcc
-+// turns into the s1688 fp16 MMA with an fp32 accumulator - the same kernels the FP16 native
-+// projection path already uses).  The whole difference is the accumulation order inside cuBLAS.
-+//
-+// The cost is one extra read+write of the activation (and, once per call, of the weight), which
-+// is why the path is taken from `kFp16MinRows` rows up: below that the conversion dominates and
-+// the BF16 SIMT kernel is no worse.
-+//
-+// PRECONDITION: |value| <= 65504 in both operands (fp16's finite range; above it the conversion
-+// saturates to inf SILENTLY - the only detector is STRATA_GEMM_DEBUG=1, which prints the true
-+// maximum of every call's operands; /data/gemm-maxabs.log holds one full prompt's worth of them.
-+constexpr int64_t kFp16MinRows = 32;
-+
-+bool dense_fp16_on() {
-+    static const bool on = [] {
-+        const char* v = std::getenv("STRATA_DENSE_FP16");
-+        return v != nullptr && *v != '\0' && std::atoi(v) != 0;
-+    }();
-+    return on;
-+}
-+
-+bool gemm_debug_on() {
-+    static const bool on = [] {
-+        const char* v = std::getenv("STRATA_GEMM_DEBUG");
-+        return v != nullptr && *v != '\0' && std::atoi(v) != 0;
-+    }();
-+    return on;
-+}
-+
-+#if !defined(__HIPCC__)
-+
-+struct alignas(16) F16x8 {
-+    uint16_t v[8];
-+};
-+
-+/// bf16 -> fp16, 8 elements per thread, round-to-nearest.
-+__global__ void bf16_to_f16_kernel(const F16x8* __restrict__ src, F16x8* __restrict__ dst, long long n) {
-+    const long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x;
-+    if (i >= n) return;
-+    const F16x8 a = src[i];
-+    F16x8 b;
-+#pragma unroll
-+    for (int k = 0; k < 8; ++k)
-+        b.v[k] = __half_as_ushort(__float2half_rn(__bfloat162float(__ushort_as_bfloat16(a.v[k]))));
-+    dst[i] = b;
-+}
-+
-+/// The unaligned / tail form: one element per thread.
-+__global__ void bf16_to_f16_scalar_kernel(const uint16_t* __restrict__ src, uint16_t* __restrict__ dst,
-+                                          long long n) {
-+    const long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x;
-+    if (i >= n) return;
-+    dst[i] = __half_as_ushort(__float2half_rn(__bfloat162float(__ushort_as_bfloat16(src[i]))));
-+}
-+
-+inline bool aligned16(const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15u) == 0; }
-+
-+void bf16_to_f16(const uint16_t* src, uint16_t* dst, int64_t n, cudaStream_t stream) {
-+    if (n <= 0) return;
-+    int64_t done = 0;
-+    if (aligned16(src) && aligned16(dst)) {
-+        const int64_t n8 = n >> 3;
-+        if (n8 > 0) {
-+            bf16_to_f16_kernel<<<(unsigned) ((n8 + 255) / 256), 256, 0, stream>>>((const F16x8*) src,
-+                                                                                  (F16x8*) dst, (long long) n8);
-+            done = n8 << 3;
-+        }
-+    }
-+    if (done < n)
-+        bf16_to_f16_scalar_kernel<<<(unsigned) ((n - done + 255) / 256), 256, 0, stream>>>(src + done, dst + done,
-+                                                                                           (long long) (n - done));
-+}
-+
-+/// STRATA_GEMM_DEBUG=1 only: max|v|, the count of non-finite values and the first index outside
-+/// fp16's finite range, for a bf16 or fp16 buffer.  This is the evidence for the range
-+/// precondition, and it blocks on the stream, so it must never be on for a measurement.
-+struct Scan {
-+    float max_abs = -1.0f;
-+    long long nonfinite = -1;
-+    long long first_big = -1;   // first index with |v| > 65504, -1 when there is none
-+};
-+
-+__global__ void scan_kernel(const uint16_t* __restrict__ src, long long n, int as_bf16, float* __restrict__ fout,
-+                            long long* __restrict__ lout) {
-+    float m = 0.0f;
-+    long long nf = 0;
-+    for (long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x; i < n;
-+         i += (long long) gridDim.x * blockDim.x) {
-+        const uint16_t b = src[i];
-+        if (as_bf16) {
-+            if ((b & 0x7F80u) == 0x7F80u) ++nf;
-+            const float f = __bfloat162float(__ushort_as_bfloat16(b));
-+            const float a = fabsf(f);
-+            if (a > m) m = a;
-+            if (a > 65504.0f) atomicMin((long long*) &lout[1], (long long) i);
-+        } else {
-+            if ((b & 0x7C00u) == 0x7C00u) ++nf;
-+            const float f = __half2float(__ushort_as_half(b));
-+            const float a = fabsf(f);
-+            if (a > m) m = a;
-+            if (a > 65504.0f) atomicMin((long long*) &lout[1], (long long) i);
-+        }
-+    }
-+    if (m > 0.0f) atomicMax((int*) fout, __float_as_int(m));
-+    if (nf > 0) atomicAdd((unsigned long long*) &lout[0], (unsigned long long) nf);
-+}
-+
-+__global__ void scan_init_kernel(float* __restrict__ fout, long long* __restrict__ lout) {
-+    fout[0] = 0.0f;
-+    lout[0] = 0;
-+    lout[1] = 0x7FFFFFFFFFFFFFFFll;
-+}
-+
-+/// The fp32 (engine output) form: max|v| and the number of non-finite values.
-+__global__ void scan_f32_kernel(const float* __restrict__ src, long long n, float* __restrict__ fout,
-+                                long long* __restrict__ lout) {
-+    float m = 0.0f;
-+    long long nf = 0;
-+    for (long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x; i < n;
-+         i += (long long) gridDim.x * blockDim.x) {
-+        const float f = src[i];
-+        if (!isfinite(f)) ++nf;
-+        const float a = fabsf(f);
-+        if (a > m) m = a;
-+    }
-+    if (m > 0.0f) atomicMax((int*) fout, __float_as_int(m));
-+    if (nf > 0) atomicAdd((unsigned long long*) &lout[0], (unsigned long long) nf);
-+}
-+
-+Scan debug_scan_f32(const float* src, int64_t n, cudaStream_t stream) {
-+    static float* fbuf = nullptr;
-+    static long long* lbuf = nullptr;
-+    Scan r;
-+    if (src == nullptr || n <= 0) return r;
-+    if (fbuf == nullptr && (cudaMalloc(&fbuf, sizeof(float)) != cudaSuccess ||
-+                            cudaMalloc(&lbuf, 2 * sizeof(long long)) != cudaSuccess))
-+        return r;
-+    scan_init_kernel<<<1, 1, 0, stream>>>(fbuf, lbuf);
-+    scan_f32_kernel<<<128, 256, 0, stream>>>(src, (long long) n, fbuf, lbuf);
-+    float hf = 0.0f;
-+    long long hl[2] = {0, 0};
-+    if (cudaMemcpyAsync(&hf, fbuf, sizeof(float), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
-+    if (cudaMemcpyAsync(hl, lbuf, 2 * sizeof(long long), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
-+    cudaStreamSynchronize(stream);
-+    r.max_abs = hf;
-+    r.nonfinite = hl[0];
-+    r.first_big = -1;
-+    return r;
-+}
-+
-+Scan debug_scan(const uint16_t* src, int64_t n, int as_bf16, cudaStream_t stream) {
-+    static float* fbuf = nullptr;
-+    static long long* lbuf = nullptr;
-+    Scan r;
-+    if (src == nullptr || n <= 0) return r;
-+    if (fbuf == nullptr && (cudaMalloc(&fbuf, sizeof(float)) != cudaSuccess ||
-+                            cudaMalloc(&lbuf, 2 * sizeof(long long)) != cudaSuccess))
-+        return r;
-+    scan_init_kernel<<<1, 1, 0, stream>>>(fbuf, lbuf);
-+    scan_kernel<<<128, 256, 0, stream>>>(src, (long long) n, as_bf16, fbuf, lbuf);
-+    float hf = 0.0f;
-+    long long hl[2] = {0, 0};
-+    if (cudaMemcpyAsync(&hf, fbuf, sizeof(float), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
-+    if (cudaMemcpyAsync(hl, lbuf, 2 * sizeof(long long), cudaMemcpyDeviceToHost, stream) != cudaSuccess) return r;
-+    cudaStreamSynchronize(stream);
-+    r.max_abs = hf;
-+    r.nonfinite = hl[0];
-+    r.first_big = hl[1] == 0x7FFFFFFFFFFFFFFFll ? -1 : hl[1];
-+    return r;
-+}
-+
-+/// Y[T, N] = X[T, K] . W[N, K]^T through fp16 tensor cores, converting both operands into the
-+/// dequantization scratch `native()` also uses.  Returns false when the scratch cannot hold the
-+/// weights plus one activation row, in which case the caller keeps the BF16 SIMT path.
-+bool bf16_via_f16(Gemm& gm, const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K,
-+                  int64_t ldy, float beta) {
-+    uint16_t* scratch = gm.scratch();
-+    const int64_t cap = gm.scratch_elems();
-+    if (scratch == nullptr || cap <= 0 || N <= 0 || K <= 0 || T < kFp16MinRows) return false;
-+    const int64_t w_elems = N * K;
-+    const int64_t w_rounded = (w_elems + 7) & ~(int64_t) 7;   // keep the activation 16-byte aligned
-+    if (w_rounded + K > cap) return false;
-+    int64_t rows = (cap - w_rounded) / K;
-+    if (rows <= 0) return false;
-+    if (rows > T) rows = T;
-+    cudaStream_t cs = (cudaStream_t) gm.stream();
-+    uint16_t* w16 = scratch;
-+    uint16_t* x16 = scratch + w_rounded;
-+    const bool dbg = gemm_debug_on();
-+    if (dbg) {
-+        const Scan sx = debug_scan(X, T * K, 1, cs);
-+        const Scan sw = debug_scan(W, w_elems, 1, cs);
-+        std::fprintf(stderr,
-+                     "prefill gemm fp16: T=%lld N=%lld K=%lld ldy=%lld rows=%lld | X max=%g nf=%lld big@%lld | W max=%g "
-+                     "nf=%lld big@%lld\n",
-+                     (long long) T, (long long) N, (long long) K, (long long) ldy, (long long) rows,
-+                     (double) sx.max_abs, sx.nonfinite, sx.first_big, (double) sw.max_abs, sw.nonfinite, sw.first_big);
-+    }
-+    bf16_to_f16(W, w16, w_elems, cs);
-+    for (int64_t r0 = 0; r0 < T; r0 += rows) {
-+        const int64_t n = (T - r0 < rows) ? (T - r0) : rows;
-+        bf16_to_f16(X + r0 * K, x16, n * K, cs);
-+        // Every tile writes its own Y rows, so the caller's beta applies to each of them: `beta` is a
-+        // per-row scale (0.0 = overwrite), never an accumulate-into-the-previous-tile.
-+        gm.f16(x16, w16, Y + r0 * ldy, n, N, K, ldy, beta);
-+        if (dbg) {
-+            const Scan sy = debug_scan_f32(Y + r0 * ldy, n * ldy, cs);
-+            std::fprintf(stderr, "prefill gemm fp16:   Y rows[%lld..%lld) max=%g nonfinite=%lld\n", (long long) r0,
-+                         (long long) (r0 + n), (double) sy.max_abs, sy.nonfinite);
-+        }
-+    }
-+    return true;
-+}
-+
-+#else  // __HIPCC__: the dense-FP16 path is CUDA-only (the HIP build keeps the BF16 GEMM).
-+
-+bool bf16_via_f16(Gemm&, const uint16_t*, const uint16_t*, float*, int64_t, int64_t, int64_t, int64_t, float) {
-+    return false;
-+}
-+
-+#endif
-+
- #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
- struct HipLtCallKey {
-     strata::prefill::hipblaslt::InputType type;
-@@ -376,7 +614,20 @@ void Gemm::bf16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64
-                 float beta) {
-     if (T <= 0 || N <= 0) return;
-     if (ldy <= 0) ldy = N;
-+    // STRATA_DENSE_FP16=1: the same product on the fp16 tensor cores (see the block above).
-+    if (dense_fp16_on() && bf16_via_f16(*this, X, W, Y, T, N, K, ldy, beta)) return;
-     const float alpha = 1.0f;
-+#if !defined(__HIPCC__)
-+    if (gemm_debug_on()) {   // the same operands the fp16 path would see, on the bf16 path
-+        const cudaStream_t cs = (cudaStream_t) stream_;
-+        const Scan sx = debug_scan(X, T * K, 1, cs);
-+        const Scan sw = debug_scan(W, N * K, 1, cs);
-+        std::fprintf(stderr, "prefill gemm bf16: T=%lld N=%lld K=%lld ldy=%lld | X max=%g nf=%lld big@%lld | W max=%g "
-+                             "nf=%lld big@%lld\n",
-+                     (long long) T, (long long) N, (long long) K, (long long) ldy, (double) sx.max_abs, sx.nonfinite,
-+                     sx.first_big, (double) sw.max_abs, sw.nonfinite, sw.first_big);
-+    }
-+#endif
- #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
-     if (try_hipblaslt(hipblaslt_state_, strata::prefill::hipblaslt::InputType::bf16, X, W, Y, T, N, K, ldy,
-                       beta, stream_)) {
 diff --git a/src/prefill/prefill.cpp b/src/prefill/prefill.cpp
-index 5d46e4b..c94ae91 100644
+index 8d0261f..5d7959b 100644
 --- a/src/prefill/prefill.cpp
 +++ b/src/prefill/prefill.cpp
-@@ -1153,8 +1153,9 @@ void Prefill::set_pinned_share(double share) { g_pinned_share = share; }
- void Prefill::set_ring_override(int slots) { g_ring_override = slots > 0 ? slots : 0; }
- double Prefill::pinned_share() { return g_pinned_share; }
- 
--uint64_t Prefill::bytes_needed(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk) {
--    // the same allocation sequence as `init`, counted
-+uint64_t Prefill::bytes_needed(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk, bool src) {
-+    // the same allocation sequence as `init` (`carve`), counted: `xn` only for the unfused hyper-connection read, `grs`
-+    // always, and the MoE layout `carve` picks for the same source
-     const size_t T = (size_t) chunk;
-     bool ok = true;
-     Alloc o;
-@@ -1162,7 +1163,10 @@ uint64_t Prefill::bytes_needed(const core::ModelGeometry& g, const core::Session
-     o.take<uint16_t>((size_t) GEMM_SCRATCH, ok);
-     o.take<uint8_t>(GEMM_WS, ok);
-     auto f = [&](size_t n) { o.take<float>(n, ok); };
--    f(T * N); f(T * D); f(T * D); o.take<uint16_t>(T * D, ok); f(T * LR); o.take<uint16_t>(T * LR, ok);
-+    f(T * N); f(T * D);
-+    if (gr_unfused()) f(T * D);
-+    f(T * HC);
-+    o.take<uint16_t>(T * D, ok); f(T * LR); o.take<uint16_t>(T * LR, ok);
-     f(T * D); f(T * HC); f(T * N); o.take<uint16_t>(T * N, ok); o.take<uint16_t>(T * N, ok); f(T * N);
-     if (bf16x2_hc()) { o.take<uint16_t>(T * D, ok); o.take<uint16_t>(T * LR, ok); }
-     if (bf16x2()) o.take<uint16_t>(T * N, ok);
-@@ -1173,7 +1177,7 @@ uint64_t Prefill::bytes_needed(const core::ModelGeometry& g, const core::Session
-     const int64_t cap = strata::kernels::qsa_selection_width(strata::kernels::kTopkMaxCells, s);
-     const int64_t max_blocks = ss.qsa_states[ss.qsa_primary()].max_cells / s.idx_block + 2;
-     o.take<uint8_t>((size_t) std::max({gdn_set_bytes(T), qsa_set_bytes(T, cap, max_blocks, 256, 32, s),
--                                       moe_set_bytes(T, g.n_expert, fused_layout(T, true))}), ok);
-+                                       moe_set_bytes(T, g.n_expert, fused_layout(T, src))}), ok);
-     for (int i = 0; i < DQ; ++i) { o.take<uint16_t>(1280 * 2560, ok); o.take<uint16_t>(2560 * 640, ok); }
-     if (mmq_plan().any) {
-         const MmqPlan& mp = mmq_plan();
-@@ -1471,6 +1475,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -1990,6 +1990,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
          // `used` event recorded), so the copy stream never waits on an event that is not queued yet
          const strata::kernels::cpu::ExpertLayout& lay0 = strata::kernels::cpu::expert_layout();
          const bool stream_all = m.ring > STAGE && T >= stream_all_min() && m.src != nullptr;
@@ -1069,7 +740,7 @@ index 5d46e4b..c94ae91 100644
          const bool ps_on = stream_all && m.pp && m.pp->ps_frac > 0.0;
          if (m.pp && !ps_on) m.pp->ps_flag.clear();
          // multi-GPU: the peer's ring - issue its copies up to `limit` / give entries back (the peer device is current)
-@@ -1533,7 +1541,7 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -2052,7 +2056,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                  continue;
                              }
                          }
@@ -1078,7 +749,7 @@ index 5d46e4b..c94ae91 100644
                              job = (int) js.size();
                              js.push_back({b, (size_t) lay0.blob_bytes(l)});
                          }
-@@ -1560,6 +1568,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -2079,6 +2083,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                  const size_t bytes = (size_t) lay0.blob_bytes(en.l);
                  if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[m.used_of[sl]], 0);
                  if (en.job < 0) {
@@ -1089,7 +760,7 @@ index 5d46e4b..c94ae91 100644
                      cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                      ++stats_.experts_dma;
                  } else {
-@@ -1607,6 +1619,9 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -2126,6 +2134,9 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                      const size_t bytes = (size_t) lay0.blob_bytes(en.l);
                      if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[m.used_of[sl]], 0);
                      if (en.job < 0) {
@@ -1099,7 +770,7 @@ index 5d46e4b..c94ae91 100644
                          cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                          ++iss_dma;
                      } else {
-@@ -2323,6 +2338,10 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -3133,6 +3144,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                          // the unpinned ones are copied to pinned buffers by the stager's threads, in this order
                          std::vector<int> job_of(order.size(), -1);
                          if (!stream_all) {
@@ -1111,10 +782,10 @@ index 5d46e4b..c94ae91 100644
                              for (size_t j = 0; j < order.size(); ++j) {
                                  const int32_t e = order[j];
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index a7c77d0..f18e2d1 100644
+index d0c1d01..2222325 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -84,6 +84,7 @@
+@@ -96,6 +96,7 @@
  #include <condition_variable>
  #include <deque>
  #include <map>
@@ -1122,9 +793,9 @@ index a7c77d0..f18e2d1 100644
  #include <mutex>
  #include <optional>
  #include <new>
-@@ -121,6 +122,225 @@ bool refill_blocking() {
- 
- using Clock = std::chrono::steady_clock;
+@@ -242,6 +243,225 @@ static const char* pipe_dbg_env(const char* name) {
+     return on ? std::getenv(name) : nullptr;
+ }
  
 +/// Where the adaptive refill's copies come from and what they cost: STRATA_REFILL_TIMING=1.
 +bool refill_timing_enabled() {
@@ -1348,44 +1019,35 @@ index a7c77d0..f18e2d1 100644
  // The resident RAM mode and the adaptive tier.  A swap copies `in` (held in RAM) into the slot of `out` (held only
  // by that slot).  Before the slot is overwritten, `out`'s bytes are copied back from it into an exchange buffer, so
  // the CPU computes `out` from RAM while the swap is in flight; when the swap has landed, `commit_exchanges` moves
-@@ -137,6 +357,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, strata::core::Exp
-     std::vector<Staged> staged;
+@@ -268,6 +488,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+     std::vector<SwapHome> used;
      std::vector<Swap> kept;
      kept.reserve(swaps.size());
 +    int64_t dropped = 0;
      for (const Swap& s : swaps) {
          if (!src.has_resident(s.layer, s.in) || src.has_resident(s.layer, s.out)) { kept.push_back(s); continue; }
          const int64_t q = (int64_t) staged.size();
-@@ -145,15 +366,48 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, strata::core::Exp
-         if (slot < 0) continue;
-         if (cudaMemcpyAsync(src.exchange_buffer(q), cache.device_slot(slot),
+@@ -279,8 +500,11 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+         if (const cudaError_t e = cudaMemcpyAsync(src.exchange_buffer(q), home.cache->device_slot(slot),
                              (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), cudaMemcpyDeviceToHost,
--                            stream) != cudaSuccess)
-+                            stream) != cudaSuccess) {
-+            // Distinct message: this path aborts the whole request ("an adaptive refill failed") exactly like the
-+            // refill's own copy failure, so it must say which one it was.
-+            const cudaError_t ce = cudaGetLastError();
+                             home.stream); e != cudaSuccess) {
+-            std::fprintf(stderr, "strata: copy back of layer %d slot %d (device %d) failed: %s\n", (int) s.layer,
+-                         (int) slot, home.dev, cudaGetErrorString(e));
 +            std::fprintf(stderr,
 +                         "strata: the exchange staging D2H copy failed (layer %lld expert %lld -> slot %d, buf %lld, "
-+                         "%zu bytes): %s\n",
-+                         (long long) s.layer, (long long) s.out, (int) slot, (long long) q,
-+                         (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
-+                         cudaGetErrorString(ce));
++                         "device %d): %s\n",
++                         (long long) s.layer, (long long) s.out, (int) slot, (long long) q, home.dev,
++                         cudaGetErrorString(e));
              return false;
-+        }
-         staged.push_back({s.layer, s.in, s.out, q});
-         kept.push_back(s);
-     }
-     if (!staged.empty()) {
--        if (cudaStreamSynchronize(stream) != cudaSuccess) return false;
-+        if (cudaStreamSynchronize(stream) != cudaSuccess) {
-+            const cudaError_t ce = cudaGetLastError();
-+            std::fprintf(stderr, "strata: the exchange staging stream did not drain: %s\n", cudaGetErrorString(ce));
-+            return false;
-+        }
+         }
+         bool seen = false;
+@@ -299,10 +523,25 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+         }
          for (const Staged& x : staged)
--            if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) return false;
-+            if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) {
+             if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) {
+-                std::fprintf(stderr, "strata: stage_exchange refused layer %d in %d out %d\n", (int) x.layer,
+-                             (int) x.in, (int) x.out);
+-                return false;
 +                // A REFUSAL HERE MUST NOT KILL THE REQUEST.  The swap the staging could not arm is dropped: the
 +                // slot keeps its expert and `in` stays where it is, i.e. exactly the state before the swap, so the
 +                // residency table, `pending` and the plans never see it.  (The D2H copy that was already enqueued
@@ -1401,14 +1063,14 @@ index a7c77d0..f18e2d1 100644
 +                        break;
 +                    }
 +                ++dropped;
-+            }
+             }
 +        if (dropped != 0)
 +            std::fprintf(stderr, "strata: %lld of %zu exchanges this round were dropped\n", (long long) dropped,
 +                         staged.size());
      }
      swaps.swap(kept);
      return true;
-@@ -3963,12 +4217,16 @@ int main(int argc, char** argv) {
+@@ -5522,7 +5761,11 @@ int main(int argc, char** argv) {
              for (int64_t e = 0; e < g.n_expert; ++e) {
                  const uint64_t b = lay.blob_bytes(l);
                  total += b;
@@ -1421,41 +1083,8 @@ index a7c77d0..f18e2d1 100644
              }
          strata::prefill::Prefill::set_pinned_share(total ? (double) pinned / (double) total : 1.0);
      }
-     auto lend_slots = [&](int64_t c) -> int64_t {
--        const uint64_t need = strata::prefill::Prefill::bytes_needed(g, ss, c);
-+        const uint64_t need = strata::prefill::Prefill::bytes_needed(g, ss, c, srcp != nullptr);
-         const int64_t blob = (int64_t) strata::kernels::cpu::expert_layout().max_blob;
-         int64_t k = (int64_t) ((need + (uint64_t) blob - 1) / (uint64_t) blob);
-         if (xcache.slot_offsets() != nullptr) {   // sized slots: take slots from the end until they hold `need`
-@@ -4116,7 +4374,7 @@ int main(int argc, char** argv) {
-             std::vector<std::pair<int32_t, int32_t>> lent;
-         };
-         auto part_slots = [&](const PfPart& p, int64_t c) -> int64_t {
--            const uint64_t need = strata::prefill::Prefill::bytes_needed(g, *p.ses, c);
-+            const uint64_t need = strata::prefill::Prefill::bytes_needed(g, *p.ses, c, srcp != nullptr);
-             strata::core::ExpertCache& xc = *p.cache;
-             if (xc.slot_offsets() != nullptr) {   // sized slots: from the end until they hold `need`
-                 int64_t k = 0;
-@@ -4244,7 +4502,7 @@ int main(int argc, char** argv) {
-                         const strata::core::OnDevice on(p.dev);
-                         size_t fb = 0, tb = 0;
-                         if (cudaMemGetInfo(&fb, &tb) != cudaSuccess) { (void) cudaGetLastError(); continue; }
--                        const uint64_t need = strata::prefill::Prefill::bytes_needed(g, *p.ses, chunk);
-+                        const uint64_t need = strata::prefill::Prefill::bytes_needed(g, *p.ses, chunk, srcp != nullptr);
-                         if ((uint64_t) fb >= need + (3ull << 29)) {
-                             std::fprintf(stderr, "strata serve:   CUDA%d keeps its own prompt buffers (%.2f GiB of "
-                                                  "%.2f GiB free): no loan\n", p.dev < 0 ? 0 : p.dev,
-@@ -4331,7 +4589,7 @@ int main(int argc, char** argv) {
-                     const strata::core::OnDevice on(dev);
-                     size_t fb = 0, tb = 0;
-                     cudaMemGetInfo(&fb, &tb);
--                    const int64_t need = (int64_t) strata::prefill::Prefill::bytes_needed(g, i == 0 ? ss : stages[i - 1]->ss, c);
-+                    const int64_t need = (int64_t) strata::prefill::Prefill::bytes_needed(g, i == 0 ? ss : stages[i - 1]->ss, c, srcp != nullptr);
-                     if (need + kHeadroom > (int64_t) fb) {
-                         dev_out = dev < 0 ? 0 : dev; need_out = need; free_out = (int64_t) fb;
-                         return false;
-@@ -4765,6 +5023,23 @@ int main(int argc, char** argv) {
-         std::vector<std::pair<int32_t, int32_t>> pending;
+@@ -7188,6 +7431,23 @@ int main(int argc, char** argv) {
+         std::vector<void*> pin_live;   // the swaps' locked arena pages (pin_blob), unlocked once they have landed
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
 +        // STRATA_REFILL_PIN_SRC: the registered spans of the LAST batch (see the refill's host copies above).
@@ -1478,7 +1107,7 @@ index a7c77d0..f18e2d1 100644
          // a layer split's later stages keep a copy of the residency table on their devices, and swap on their own
          auto res_upload = [&]() {
              if (d_res != nullptr)
-@@ -4778,13 +5053,17 @@ int main(int argc, char** argv) {
+@@ -7201,7 +7461,10 @@ int main(int argc, char** argv) {
              if (peer.valid()) peer.apply_pending(wait);
              if (pending.empty()) return;
              if (wait) cudaEventSynchronize(adapt_ev);
@@ -1490,19 +1119,25 @@ index a7c77d0..f18e2d1 100644
              for (auto& st : stages)
                  if (st->adapt_live) {
                      if (wait) cudaEventSynchronize(st->adapt_ev);
-                     else if (cudaEventQuery(st->adapt_ev) != cudaSuccess) return;
+@@ -7209,6 +7472,7 @@ int main(int argc, char** argv) {
                  }
              for (auto& st : stages) st->adapt_live = false;
+             unpin_blobs(pin_live);
 +            release_pins();   // this batch's copies have landed: the copy engine is done with those spans
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
-             for (const auto& [i, slot] : pending) host_res[(size_t) i] = slot;
-             pending.clear();
-@@ -4819,22 +5098,184 @@ int main(int argc, char** argv) {
-             if ((int) swaps.size() > o.adapt_swaps) swaps.resize((size_t) o.adapt_swaps);
-             if (!resident_stage_swaps(src, xcache, host_res, g.n_expert, swaps, adapt_stream)) return false;
+             for (const auto& [i, slot] : pending) {
+                 host_res[(size_t) i] = slot;
+@@ -7281,11 +7545,25 @@ int main(int argc, char** argv) {
+                 adapt_fence();
+             }
              bool main_live = false;
 +            const auto t_issue = Clock::now();
 +            release_pins();   // the previous batch's copies landed when apply_pending admitted them
+             // STRATA_DMA_BATCH (F12): the main device's copies as one cudaMemcpyBatchAsync (mode 0: one each)
+             const int dma_mode = multi_gpu ? 0 : strata::core::dma_batch_mode();
+             std::vector<void*> cp_dst;
+             std::vector<const void*> cp_src;
+             std::vector<size_t> cp_bytes;
 +            // Resolve every swap's source and destination first: the source class (whether the copy engine can
 +            // read the blob itself) decides which copies need their span registered before they can be issued.
 +            struct Planned {
@@ -1515,17 +1150,30 @@ index a7c77d0..f18e2d1 100644
 +            };
 +            std::vector<Planned> plans;
 +            plans.reserve(swaps.size());
-             for (const Swap& s : swaps) {
+             for (size_t si = 0; si < swaps.size(); ++si) {
+                 const Swap& s = swaps[si];
                  const size_t in = (size_t) s.layer * g.n_expert + s.in, out = (size_t) s.layer * g.n_expert + s.out;
-                 const int32_t slot = host_res[out];
-                 const uint8_t* b = srcp->blob(s.layer, s.in);
+@@ -7293,30 +7571,171 @@ int main(int argc, char** argv) {
+                 const uint8_t* b = srcp->blob_stable(s.layer, s.in);
                  const int stn = multi_gpu ? stage_of(s.layer) : 0;   // the swap stays in the layer's own cache
                  GpuStage* gs = stn > 0 ? stages[(size_t) stn - 1].get() : nullptr;
 -                const strata::core::OnDevice on(gs ? gs->dev : -1);
+-                if (dma_mode != 0 && slot >= 0 && b != nullptr) {
+-                    cp_dst.push_back(xcache.device_slot(slot));
+-                    cp_src.push_back(b);
+-                    cp_bytes.push_back((size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer));
+-                    main_live = true;
+-                    host_res[out] = strata::core::kNotResident;
+-                    srcp->prefetch(s.layer, s.out);
+-                    pending.emplace_back((int32_t) in, slot);
+-                    continue;
+-                }
 -                if (slot < 0 || b == nullptr ||
--                    cudaMemcpyAsync(gs ? gs->cache.device_slot(slot) : xcache.device_slot(slot), b,
--                                    (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
--                                    cudaMemcpyHostToDevice, gs ? gs->adapt_stream : adapt_stream) != cudaSuccess)
+-                    adapt_copy_h2d(gs ? gs->cache.device_slot(slot) : xcache.device_slot(slot), b,
+-                                   (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
+-                                   gs ? gs->adapt_stream : adapt_stream) != cudaSuccess) {
+-                    std::fprintf(stderr, "strata serve: adaptive swap copy failed (layer %d, slot %d, pinned %d): %s\n",
+-                                 (int) s.layer, (int) slot, pin_live.empty() ? 0 : 1, cudaGetErrorString(cudaGetLastError()));
 +                if (slot < 0 || b == nullptr) {
 +                    // Distinguishable from a failed copy in the log: this is the OTHER way an adaptive refill
 +                    // can fail (the victim's slot went non-resident, or the source has no blob there).
@@ -1534,14 +1182,15 @@ index a7c77d0..f18e2d1 100644
 +                                 "%lld, victim slot %d, blob %p)\n",
 +                                 (long long) s.layer, (long long) s.in, (int) slot, (const void*) b);
                      return false;
+                 }
 -                if (gs) gs->adapt_live = true;
 -                else main_live = true;
-+                }
 +                plans.push_back({(int32_t) in, slot, b,
 +                                 gs ? gs->cache.device_slot(slot) : xcache.device_slot(slot),
 +                                 (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), gs,
 +                                 srcp->blob_class(s.layer, s.in)});
                  host_res[out] = strata::core::kNotResident;   // evicted now: the CPU computes it meanwhile
+                 srcp->prefetch(s.layer, s.out);   // a file-backed arena released its pages: read them back ahead
                  pending.emplace_back((int32_t) in, slot);      // resident once the copy has landed
 +                if (refill_timing) {
 +                    ++racc.copies[(int) plans.back().cls];
@@ -1666,8 +1315,14 @@ index a7c77d0..f18e2d1 100644
 +                                     "driver will refuse\n",
 +                                     (const void*) src, p.bytes);
 +                    }
++                } else if (dma_mode != 0 && !p.gs) {
++                    // upstream's STRATA_DMA_BATCH (F12): the main device's copies go out as one cudaMemcpyBatchAsync
++                    cp_dst.push_back(p.dest);
++                    cp_src.push_back(src);
++                    cp_bytes.push_back(p.bytes);
++                    main_live = true;
 +                } else {
-+                    ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice, copy_stream);
++                    ce = adapt_copy_h2d(p.dest, src, p.bytes, copy_stream);
 +                }
 +                if (refill_timing)
 +                    racc.enq_ms[(int) p.cls] += std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
@@ -1687,9 +1342,9 @@ index a7c77d0..f18e2d1 100644
 +                if (p.gs) p.gs->adapt_live = true;
 +                else main_live = true;
              }
-             if (!swaps.empty()) cudaEventRecord(adapt_ev, adapt_stream);
-             (void) main_live;
-@@ -5691,6 +6132,7 @@ int main(int argc, char** argv) {
+             if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
+                                                             adapt_stream, dma_mode) != cudaSuccess) {
+@@ -9734,6 +10153,7 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -1697,15 +1352,15 @@ index a7c77d0..f18e2d1 100644
              double dt_run = 0, dt_commit = 0, dt_draft = 0;
              int64_t dec_windows = 0, dec_T = 0;
              const int64_t decode_hits0 = drive.d.cache_hits;
-@@ -5730,6 +6172,7 @@ int main(int argc, char** argv) {
-                 // expert ran on the GPU or the CPU (they round differently) depended on the copy's timing
+@@ -10409,6 +10829,7 @@ int main(int argc, char** argv) {
                  // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
-                 apply_pending(!adapt_nowait());
+                 if (adapt_nowait()) apply_pending(false);
+                 else if (pending.empty() || ++pending_age >= adapt_lag()) apply_pending(true);
 +                if (refill_timing) ++racc.windows;
-                 if (hist_n > 0) {
-                     // the tails the penalties count over, ONE PER ROW: the tokens the state has consumed, the
-                     // fed-back head `x` (it joins `consumed` only after this window commits), then the drafts
-@@ -5788,7 +6231,11 @@ int main(int argc, char** argv) {
+                 if (!adapt_tick(false)) {   // --adapt-async: the round in flight moves on a step when it can
+                     std::printf("ERR an adaptive refill failed\n");
+                     return 1;
+@@ -10489,7 +10910,11 @@ int main(int argc, char** argv) {
                      dt_run += msd(tw0, tw1); dt_commit += msd(tw1, tw2); dt_draft += msd(tw2, tw3);
                      ++dec_windows; dec_T += T;
                  }
@@ -1718,7 +1373,7 @@ index a7c77d0..f18e2d1 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -5805,6 +6252,17 @@ int main(int argc, char** argv) {
+@@ -10509,6 +10934,17 @@ int main(int argc, char** argv) {
                  x = outv[(size_t) a];
                  p += a + 1;
              }
@@ -1736,15 +1391,15 @@ index a7c77d0..f18e2d1 100644
              const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
              // the last commit (set_commit_async): the session is complete before anything reads or copies it
              if (!ver.wait_commit(err)) {
-@@ -5826,6 +6284,7 @@ int main(int argc, char** argv) {
-                 const std::string pr = ver.profile_report();
-                 if (!pr.empty()) std::fprintf(stderr, "strata decode GPU stages (ms/window):%s\n", pr.c_str());
+@@ -10534,6 +10970,7 @@ int main(int argc, char** argv) {
+                     else std::fprintf(stderr, "strata decode GPU stages, stage %d (ms/window):%s\n", st, pr.c_str());
+                 }
              }
 +            if (refill_timing && racc.rounds > 0) print_refill_timing("serve", racc, dec_windows);
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -6434,17 +6893,33 @@ int main(int argc, char** argv) {
+@@ -11293,17 +11730,33 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
          int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
@@ -1777,11 +1432,11 @@ index a7c77d0..f18e2d1 100644
 +            release_pins();
              if (trace_pending)
                  std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
-             src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
-@@ -6498,19 +6973,154 @@ int main(int argc, char** argv) {
-                 std::fprintf(stderr, "strata generate: an adaptive refill failed (copying evicted experts back)\n");
-                 return false;
-             }
+             unpin_blobs(pin_live);
+@@ -11377,27 +11830,162 @@ int main(int argc, char** argv) {
+             std::vector<void*> cp_dst;
+             std::vector<const void*> cp_src;
+             std::vector<size_t> cp_bytes;
 +            const auto t_issue = Clock::now();
 +            // resolve every swap's source and destination first, so the copies can go as one batch (see the
 +            // serve path: the source class decides whether the copy engine can read the blob itself)
@@ -1797,13 +1452,21 @@ index a7c77d0..f18e2d1 100644
              for (const Swap& s : swaps) {
                  const size_t in = (size_t) s.layer * g.n_expert + s.in, out = (size_t) s.layer * g.n_expert + s.out;
                  const int32_t slot = host_res[out];
-                 const uint8_t* b = srcp->blob(s.layer, s.in);
+                 const uint8_t* b = srcp->blob_stable(s.layer, s.in);
+-                const size_t blob_n = (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer);
 -                // asynchronous: the copies run while the MTP drafts; the next window waits for them
--                if (slot < 0 || b == nullptr ||
--                    cudaMemcpyAsync(xcache.device_slot(slot), b, (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
--                                    cudaMemcpyHostToDevice, adapt_stream) != cudaSuccess) {
+                 if (slot < 0 || b == nullptr) {
 -                    std::fprintf(stderr, "strata generate: an adaptive refill failed\n");
-+                if (slot < 0 || b == nullptr) {
+-                    return false;
+-                }
+-                if (dma_mode != 0) {
+-                    cp_dst.push_back(xcache.device_slot(slot));
+-                    cp_src.push_back(b);
+-                    cp_bytes.push_back(blob_n);
+-                } else if (adapt_copy_h2d(xcache.device_slot(slot), b, blob_n, adapt_stream) != cudaSuccess) {
+-                    std::fprintf(stderr, "strata generate: an adaptive refill failed\n");
++                    // Distinguishable from a failed copy in the log: this is the OTHER way an adaptive refill
++                    // can fail (the victim's slot went non-resident, or the source has no blob there).
 +                    std::fprintf(stderr,
 +                                 "strata generate: an adaptive refill could not resolve a source (layer %lld "
 +                                 "expert %lld, victim slot %d, blob %p)\n",
@@ -1814,6 +1477,7 @@ index a7c77d0..f18e2d1 100644
 +                                 (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer),
 +                                 srcp->blob_class(s.layer, s.in)});
                  host_res[out] = strata::core::kNotResident;   // evicted now: the CPU computes it meanwhile
+                 srcp->prefetch(s.layer, s.out);   // a file-backed arena released its pages: read them back ahead
                  pending.emplace_back((int32_t) in, slot);      // resident once the copy has landed
 +                if (refill_timing) {
 +                    ++racc.copies[(int) plans.back().cls];
@@ -1919,8 +1583,13 @@ index a7c77d0..f18e2d1 100644
 +                                     "strata generate: the refill's staging buffer could not be had for a "
 +                                     "straddling source (%p, %zu bytes)\n", (const void*) src, p.bytes);
 +                    }
++                } else if (dma_mode != 0) {
++                    // upstream's STRATA_DMA_BATCH (F12): the round's copies go out as one cudaMemcpyBatchAsync
++                    cp_dst.push_back(p.dest);
++                    cp_src.push_back(src);
++                    cp_bytes.push_back(p.bytes);
 +                } else {
-+                    ce = cudaMemcpyAsync(p.dest, src, p.bytes, cudaMemcpyHostToDevice, adapt_stream);
++                    ce = adapt_copy_h2d(p.dest, src, p.bytes, adapt_stream);
 +                }
 +                if (refill_timing)
 +                    racc.enq_ms[(int) p.cls] += std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
@@ -1936,19 +1605,19 @@ index a7c77d0..f18e2d1 100644
 +                racc.swaps += (int64_t) plans.size();
 +                ++racc.rounds;
              }
-             if (!swaps.empty()) cudaEventRecord(adapt_ev, adapt_stream);
-             if (trace_adapt)
-@@ -6588,6 +7198,7 @@ int main(int argc, char** argv) {
-             // expert ran on the GPU or the CPU (they round differently) depended on the copy's timing
+             if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
+                                                             adapt_stream, dma_mode) != cudaSuccess) {
+@@ -11514,6 +12102,7 @@ int main(int argc, char** argv) {
              // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
-             apply_pending(!adapt_nowait());
+             if (adapt_nowait()) apply_pending(false);
+                 else if (pending.empty() || ++pending_age >= adapt_lag()) apply_pending(true);
 +            if (refill_timing) ++racc.windows;
+             if (use_mtp && mtp.prob() && !from_sfx && T_mtp > 1 && o.spec_corrupt <= 0) ver.set_spec_q(mtp.spec_q(), T_mtp - 1);
              if (!ver.run(T, window.data(), p, &drive_pool_multi, &drive, outv.data(), err)) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-                 return 1;
-@@ -6643,7 +7254,11 @@ int main(int argc, char** argv) {
+@@ -11591,7 +12180,11 @@ int main(int argc, char** argv) {
              }
-             const bool drafted = !use_mtp || (int64_t) produced.size() >= o.max_new ||
+             const bool drafted = !use_mtp || (int64_t) produced.size() >= max_new ||
                                   mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) o.spec_min_p);
 -            if (adapt_thr.joinable()) adapt_thr.join();
 +            if (adapt_thr.joinable()) {
@@ -1959,7 +1628,7 @@ index a7c77d0..f18e2d1 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -6698,6 +7313,7 @@ int main(int argc, char** argv) {
+@@ -11654,6 +12247,7 @@ int main(int argc, char** argv) {
          if (rounds > 0 && !drive.d.usage.empty())
              std::printf("%-24s %lld experts swapped into the VRAM tier (every %d rounds, %.3f ms/round)\n", "adaptive tier",
                          (long long) swaps_total, o.adapt_every, ms_adapt / rounds);

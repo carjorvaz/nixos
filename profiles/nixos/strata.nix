@@ -29,8 +29,9 @@
 #                 bytes per chunk, paced by the Optane's ~6.8 GB/s.
 #
 # The engine is built for sm_75 by pkgs/strata-sm75 (with the local engine patch:
-# the sliding DAX window, the FP16 dense GEMMs and the registered decode refill);
-# the model itself is NOT in the store -- it was prepared once on the host by the
+# the sliding DAX window and the registered decode refill).  The dense FP16
+# tensor-core GEMMs are upstream's own bf16_path() now (STRATA_BF16_TC=1).
+# The model itself is NOT in the store -- it was prepared once on the host by the
 # setup flow's iq_pack step and lives on the DAX-mounted Optane.  This module wires up:
 #
 #   * the fsdax namespace + XFS(dax=always) mount (idempotent prepare unit),
@@ -81,7 +82,7 @@ let
   };
   lane = lanes.${cfg.model};
 
-  # v0.1.38's gguf_split_paths() THROWS when a "--native ...-0000N-of-0000M.gguf"
+  # upstream's gguf_split_paths() THROWS when a "--native ...-0000N-of-0000M.gguf"
   # has a missing sibling shard (0.1.29's model_shards() silently skipped absent
   # shards), and the GGUF reader additionally validates the file's own split
   # metadata - a shard-1 file handed over as a whole model is refused with "is
@@ -95,7 +96,7 @@ let
   # the same file is exactly that bug).  ExecStartPre remakes the links on every
   # start; stateDir survives reboots, and ln -sfn is idempotent.
   nativeDir = "${cfg.stateDir}/native/${lane.pack}";
-  # v0.1.38's gguf_split_paths() derives the sibling shard's name from --native's
+  # upstream's gguf_split_paths() derives the sibling shard's name from --native's
   # own "-00001-of-00002" suffix and demands it beside it, so the shared PLE table
   # must be linked under THAT name.  A hardcoded IQ3_S name only satisfies the
   # iq3-s lane: `model = "coder"` then dies at startup with "missing model shard
@@ -134,27 +135,36 @@ let
         "--expert-cache"
         "auto"
         "--prefill"
-        # v0.1.38's prompt path streams, per chunk, the union of the experts that
+        # Upstream's prompt path streams, per chunk, the union of the experts that
         # chunk's tokens route to, and above ~2K tokens that union is nearly the
         # whole pack, so the DMA per token falls as the chunk grows.  The engine
         # ACCEPTS a fixed chunk by halving it (`for (c = chunk; c >= 256; c /= 2)`
         # in generate.cpp) and takes the first value that fits the prompt borrow,
         # so a request only ever lands on a halving of what you ask for.
-        # Measured 2026-10-03 on the served config (262144, kv=int8, 6288 slots,
-        # borrow <= ~6160, /data/chunkint8): asking 28672 is halved to 14336 and
-        # reads a 27575-token prompt in 30.7 s (898 tok/s); asking 28160 is
-        # accepted AS-IS and reads it in 26.8 s (1029 tok/s, +14.6%, -21.6% expert
-        # bytes) with 6109 slots borrowed (51 spare; PR #547 makes that 5554
-        # borrowed and 734 spare, and takes 1.8-2.6% off this read), while the 4.3K
-        # prompt and the decode after are unchanged.  The boundary is reproduced
-        # with second engines (28416 halves to 14208, -0.9%); 27648 is the same
-        # speed with 3x the headroom if another tenant ever shrinks the cache.
-        # History: on the older k8v4 config (6657 slots, borrow 6223) 28672 was the
-        # largest accepted value, giving 992 tok/s at 27.5K and 928 at 110K where
-        # the old auto/8192 gave 622.  The cap moves with the expert cache, so
-        # re-measure it whenever the KV or context changes - and read the engine's
-        # own `prompt chunk X -> Y` line rather than assuming the value you asked
-        # for is the value in force.
+        # v0.1.39 rewrote the streamed ring's sizing (#583, STRATA_RING_BYTES) and
+        # the carried #1283 accounting moved the boundary: re-measured 2026-10-08
+        # at v0.1.40.2 (same 262144/int8/6288-slot config, /data/chunkint8
+        # summary-1402.txt, STRATA_UNBUFFERED_LOAD=0 in force - without it, see the
+        # file-tier note above, every cell reads 2x slower):
+        #   * 28160 is accepted AS-IS and reads the 27575-token prompt in 23823 ms
+        #     (1157.9 tok/s, 3 runs 23684/23894/23823) with the routed-only staging
+        #     override retired; that override (STRATA_PREFILL_RING=8) cost 10.3%:
+        #     26282 ms (1049.5 tok/s, 5 runs) with it in force, and the borrow rises
+        #     5553 -> 6036 slots without it (6109 at v0.1.38).  Re-measured
+        #     2026-10-08 on this config (262144, int8, page-cache tier, fresh engine
+        #     per cell, /data/chunkint8/summary-1402.txt).
+        #   * 28672 NO LONGER halves (borrow 5649, 10.70 GiB) - it is no longer the
+        #     slower arm it was at 0.1.38, but it was only measured unbuffered, so
+        #     it has no page-cache number yet.
+        #   * auto stays the #669 arm and is worse: 8192-token chunks, a 8-slot
+        #     ring, 42.9 s (642.6 tok/s) with the page cache.
+        #   * the context trade (128 gen): 131072 decodes 21.6 tok/s at a 80.9% hit
+        #     against 18.0 tok/s at 76.6% for the deployed 262144 window (26228 vs
+        #     26616 ms read).
+        # The boundary moves with the expert cache and the borrow accounting, so
+        # re-measure it whenever the KV, context or engine changes - and read the
+        # engine's own `prompt chunk X -> Y` line rather than assuming the value you
+        # asked for is the value in force.
         "28160"
         "--spec"
         "4"
@@ -167,7 +177,7 @@ let
         "--kv"
         cfg.kv
       ]
-      # v0.1.38 has the resident host tier natively: --resident-budget-gib N keeps
+      # upstream has the resident host tier natively (0.1.35+): --resident-budget-gib N keeps
       # the N GiB of the GPU cache's complement that the expert profile ranks
       # hottest, and implies --mmap-experts + --resident-cpu-experts (the parser
       # treats them as one mode).  The unit is GiB, so the old --resident-cpu-mib
@@ -251,7 +261,7 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
-        # v0.1.38's --resident-budget-gib page-locks its copy by default
+        # upstream's --resident-budget-gib page-locks its copy by default
         # (cudaHostAlloc / cudaHostRegister, reported as "mapped pinned").  The
         # measured tier on this box is the PAGEABLE one (the deployed log reads
         # "resident 1.00 GiB, pinned 0.00 GiB"), and 1 GiB of pinned host memory
@@ -265,37 +275,46 @@ let
         # the old --resident-cpu-mib path had no clamp at all.  0 keeps 1 GiB
         # (only the 256 MiB margin applies).
         STRATA_RESIDENT_HEADROOM_GIB = "0";
-        # tiberius: a small pinned staging ring is ~16% faster on prefill than
-        # the default 16 (the copies follow layer order, so a deep ring only
-        # adds DMA/cache contention); measured 2026-09-30.
+        # v0.1.40 changed the file tier's default: on Linux the reads go unbuffered
+        # when the file cache cannot keep the returning experts (#1194), and this box
+        # (7.4 GiB RAM with a 1 GiB RAM tier taken) is decided that way.  Unbuffered
+        # is 2x slower here: the same cell (28160 chunk, 27575-token prompt, 256 gen)
+        # reads in 52,095 ms (529.5 tok/s) unbuffered against 26,282 ms (1049.5
+        # tok/s, and 26,919 ms on the deployed 0.1.38 stack) with the page cache -
+        # the file tier's reads and the DAX window's registered pages want the file
+        # cache, which is what 0.1.38's default was.  Upstream's force arm.
+        STRATA_UNBUFFERED_LOAD = "0";
+        # tiberius: a small pinned staging ring (4) still wins, but by ~1% at
+        # v0.1.40.2 rather than the 16% of the 2026-09-30 measurement: the default
+        # for a file/mmap source is now 4*threads (128), and unsetting the variable
+        # measured 26564 ms (1038.4 tok/s) against 26282 ms (1049.5) with 4
+        # (2026-10-08, 2 runs/arm).  Kept at 4.
         STRATA_STAGER_RING = "4";
-        # tiberius: 8 == the engine's STAGE constant, its opt-in to *routed-only*
-        # staging for every chunk size.  The default "stream every non-resident
-        # expert of every layer in a fixed order" path (chunks >= 2048 tokens)
-        # stages experts the chunk's routing never touches; routed-only stages
-        # each layer's routed set just in time.  Measured on real prose
-        # (2026-09-30, server path, same nested prefixes): 2409 tok 12.56 ->
-        # 10.57 s (192 -> 228 tok/s), 3601 13.05 -> 12.24, 4282 13.51 -> 12.91,
-        # 6037 parity (by then both stream ~every expert).  Profiler on the same
-        # 5.2K-token document: 18,451 -> 14,939 blobs streamed, 13.7 -> 12.5 s.
-        # Never slower; 19% fewer bytes on a long document.
-        STRATA_PREFILL_RING = "8";
+        # tiberius: the routed-only staging override is RETIRED as of the v0.1.40.2
+        # bump.  It pinned the streamed ring to 8 slots (STAGE) for every chunk
+        # size, which won 19% fewer streamed bytes at v0.1.38 (2026-09-30: 2409 tok
+        # 12.56 -> 10.57 s).  Re-measured 2026-10-08 on the deployed shape (28160
+        # chunk, 27575-token prompt, 256 gen, page-cache tier, 3 runs) the override
+        # now COSTS 10.3% - see the --prefill comment; unset, the engine uses
+        # v0.1.39's byte-budget ring (#583, default on), and STRATA_RING_BYTES=0
+        # measured worse (27066 ms / 1019.2 tok/s).
         # tiberius: the dense GEMMs on the FP16 tensor cores.  Turing has FP16
         # tensor cores and no BF16 ones, so cuBLAS served the dense (non-expert)
         # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT
-        # fallback (magma_sgemmEx_kernel).  The flag converts the operand pairs to
-        # FP16 (exact for bf16 values in range; measured max|X| 103.5 / max|W|
-        # 11.56 against fp16's 65504 - there is no runtime range guard, so an
-        # operand past the range would go inf silently; it is visible only under
-        # STRATA_GEMM_DEBUG=1) and keeps FP32 accumulation, so the
-        # prompt-path state hash moves with the accumulation order - hence opt-in,
-        # with the engine keeping the BF16 path below 32 rows.  Measured
-        # 2026-10-01 on the real corpus, 3 runs/arm, same binary, on vs off:
-        # 4292-token prompt 10,350 -> 9,845 ms (-4.9% mean, -5.8% median),
-        # 3514-token 9,782 -> 9,179 (-6.2%); total kernel time 1564 -> 1302 ms
-        # (-16.8%).  Decode untouched (its only Gemm::bf16 caller runs below the
-        # row threshold).
-        STRATA_DENSE_FP16 = "1";
+        # fallback (magma_sgemmEx_kernel).  Through v0.1.38 this was a local
+        # patch (STRATA_DENSE_FP16, now retired); v0.1.39+ ships the same path
+        # natively (bf16_path() in gemm.cu, #540/#655) and this flag selects it:
+        # bf16 -> fp16 is exact for operands inside fp16's range, the
+        # accumulation stays FP32, finite values past the range are clamped to
+        # +-65504 rather than going Inf, and it is OFF by default on compute
+        # capability 7.5 (the ready-made engine's RTX 20 policy) so an explicit
+        # =1 is needed here.  It rounds differently from the BF16 SIMT fallback,
+        # so the prompt-path state hash moves - hence opt-in.  Measured
+        # 2026-10-01 on the real corpus, 3 runs/arm, same binary, on vs off (the
+        # retired local implementation, same design): 4292-token prompt
+        # 10,350 -> 9,845 ms (-4.9% mean, -5.8% median), 3514-token
+        # 9,782 -> 9,179 (-6.2%); total kernel time 1564 -> 1302 ms (-16.8%).
+        STRATA_BF16_TC = "1";
         # tiberius: the decode-time VRAM refill reads from registered (pinned)
         # sources instead of the pageable bounce path.  98% of its 2 MiB copies
         # were pageable at ~0.87 ms/copy (2.3 GB/s) and sat on the decode loop's
@@ -353,7 +372,7 @@ let
         STRATA_KV_ROT = "1";
       };
       inherit (cfg) port;
-      # v0.1.38's serve layer checks the Host header on every request (the
+      # upstream's serve layer checks the Host header on every request (the
       # DNS-rebinding fix, server.py parse_request): it answers to localhost and
       # *.localhost, IP literals, the bind address and - because it listens
       # beyond loopback - this PC's own hostname and hostname.local, and 403s
@@ -465,7 +484,7 @@ in
         Root of the raw shard directories.  Each lane's directory holds shard 1
         ONLY, under its own `-00001-of-00002.gguf` name; the service symlinks it
         (and the shared PLE shard) into stateDir/native/<lane>/ on every start,
-        because v0.1.38's gguf_split_paths() makes a missing sibling shard fatal
+        because upstream's gguf_split_paths() makes a missing sibling shard fatal
         and refuses a shard file opened as a whole model.  Shard 2 is fed in
         through --ple-gguf from that same directory, so the engine's shard list
         names it exactly once.
@@ -529,7 +548,7 @@ in
       default = 1.0;
       description = ''
         GiB of the hottest profile-ranked experts the GPU cache does not hold kept
-        in ordinary RAM (upstream v0.1.38's --resident-budget-gib, a float so a lane
+        in ordinary RAM (upstream's --resident-budget-gib, a float so a lane
         can ask for e.g. 0.5).  1.0 is the measured setting (the old
         --resident-cpu-mib 1024, ~8% off the CPU pool); 0 keeps the pure mmap path.
       '';
@@ -647,7 +666,7 @@ in
           RestartSec = "10s";
           ExecStartPre = [
             "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
-            # v0.1.38's gguf_split_paths() demands every shard named by --native's
+            # upstream's gguf_split_paths() demands every shard named by --native's
             # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
             # metadata too, so shard 1 cannot be passed alone or under a made-up
             # name.  nativeDir is therefore assembled here with BOTH shards as
