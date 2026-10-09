@@ -7,7 +7,10 @@
   hardware.graphics = {
     enable = true;
     extraPackages = with pkgs; [
-      intel-ocl
+      # intel-ocl's upstream download has returned 403 since 2024 and the
+      # package is not in any binary cache; the maintained NEO runtime covers
+      # this host's Gen9.5 iGPU (UHD 630).
+      intel-compute-runtime-legacy1
       intel-media-driver # Enable Hardware Acceleration
     ];
   };

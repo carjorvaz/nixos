@@ -27,7 +27,6 @@ in
 {
   # OpenCL for OpenVINO
   hardware.graphics.extraPackages = with pkgs; [
-    intel-ocl
     intel-compute-runtime-legacy1
   ];
 

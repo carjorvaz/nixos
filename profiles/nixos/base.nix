@@ -28,7 +28,6 @@ let
     "discord-unwrapped"
     "ib-tws"
     "ib-tws-unwrapped"
-    "intel-ocl"
     "libcublas"
     "libcurand"
     "libnvjitlink"
