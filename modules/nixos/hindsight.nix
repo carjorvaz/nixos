@@ -370,6 +370,10 @@ in
         WorkingDirectory = cfg.stateDir;
         Restart = "on-failure";
         RestartSec = "5s";
+        # The service runs database migrations at start; on a large database
+        # that exceeds the 15s system-wide DefaultTimeoutStartSec, which would
+        # kill and rerun the migration in a loop.
+        TimeoutStartSec = "15min";
         NoNewPrivileges = true;
         PrivateTmp = true;
         PrivateDevices = true;
