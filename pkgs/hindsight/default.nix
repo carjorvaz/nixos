@@ -42,6 +42,8 @@ let
     import transformers
     import huggingface_hub
     import hindsight_api.engine.embeddings
+
+    print("hindsight installCheck: ONNX embeddings stack imported")
     ONNXPY
   '';
 
@@ -286,9 +288,14 @@ ps.buildPythonApplication rec {
   pythonRemoveDeps = [ "psycopg2-binary" ];
 
   # The sdist does not ship an isolated test suite suitable for nix builds.
-  # Install checks below cover imports, entrypoints, and packaged Alembic assets
-  # without requiring a running PostgreSQL/LLM service.
-  doCheck = false;
+  # doCheck must stay true because mk-python-derivation derives
+  # doInstallCheck from it (doInstallCheck = attrs.doCheck or true), and the
+  # install check below is this package's smoke: imports, entrypoints and the
+  # packaged Alembic assets, without requiring a running PostgreSQL/LLM
+  # service. No checkPhase is defined on purpose: mk-python-derivation sets
+  # installCheckPhase from attrs.checkPhase, so declaring one would replace
+  # the smoke instead of adding a phase.
+  doCheck = true;
 
   strictDeps = true;
 
@@ -308,105 +315,106 @@ ps.buildPythonApplication rec {
   doInstallCheck = true;
 
   installCheckPhase = ''
-        runHook preInstallCheck
+    runHook preInstallCheck
 
-        # Makes the derivation depend on the seeded tiktoken cache and lets the
-        # offline tokenizer assertion below resolve cl100k_base without network.
-        export TIKTOKEN_CACHE_DIR=${tiktokenCacheDir}
+    # Makes the derivation depend on the seeded tiktoken cache and lets the
+    # offline tokenizer assertion below resolve cl100k_base without network.
+    export TIKTOKEN_CACHE_DIR=${tiktokenCacheDir}
 
-        for program in hindsight-api hindsight-worker hindsight-admin; do
-          test -x "$out/bin/$program"
-          "$out/bin/$program" --help >/dev/null
-        done
-        test ! -e "$out/bin/hindsight-local-mcp"
+    for program in hindsight-api hindsight-worker hindsight-admin; do
+      test -x "$out/bin/$program"
+      "$out/bin/$program" --help >/dev/null
+    done
+    test ! -e "$out/bin/hindsight-local-mcp"
 
-        ${ps.python.interpreter} - <<'PY'
-        import importlib.resources as resources
-        import os
+    ${ps.python.interpreter} - <<'PY'
+    import importlib.resources as resources
+    import os
 
-        for key in list(os.environ):
-            if key.startswith("HINDSIGHT_API_"):
-                del os.environ[key]
+    for key in list(os.environ):
+        if key.startswith("HINDSIGHT_API_"):
+            del os.environ[key]
 
-        from hindsight_api.config import (
-            DEFAULT_DATABASE_URL,
-            DEFAULT_EMBEDDINGS_OPENAI_MODEL,
-            DEFAULT_EMBEDDINGS_PROVIDER,
-            DEFAULT_RERANKER_PROVIDER,
-            HindsightConfig,
-        )
+    from hindsight_api.config import (
+        DEFAULT_DATABASE_URL,
+        DEFAULT_EMBEDDINGS_OPENAI_MODEL,
+        DEFAULT_EMBEDDINGS_PROVIDER,
+        DEFAULT_RERANKER_PROVIDER,
+        HindsightConfig,
+    )
 
-        assert DEFAULT_DATABASE_URL is None
-        assert DEFAULT_EMBEDDINGS_PROVIDER == "openai"
-        assert DEFAULT_EMBEDDINGS_OPENAI_MODEL == "text-embedding-3-small"
-        assert DEFAULT_RERANKER_PROVIDER == "rrf"
+    assert DEFAULT_DATABASE_URL is None
+    assert DEFAULT_EMBEDDINGS_PROVIDER == "openai"
+    assert DEFAULT_EMBEDDINGS_OPENAI_MODEL == "text-embedding-3-small"
+    assert DEFAULT_RERANKER_PROVIDER == "rrf"
 
-        try:
-            HindsightConfig.from_env()
-        except ValueError as exc:
-            assert "HINDSIGHT_API_DATABASE_URL" in str(exc)
-        else:
-            raise AssertionError("HindsightConfig.from_env() accepted a missing database URL")
+    try:
+        HindsightConfig.from_env()
+    except ValueError as exc:
+        assert "HINDSIGHT_API_DATABASE_URL" in str(exc)
+    else:
+        raise AssertionError("HindsightConfig.from_env() accepted a missing database URL")
 
-        os.environ["HINDSIGHT_API_DATABASE_URL"] = "postgresql://hindsight@127.0.0.1:5432/hindsight"
-        config = HindsightConfig.from_env()
-        assert config.database_url == "postgresql://hindsight@127.0.0.1:5432/hindsight"
-        assert config.embeddings_provider == "openai"
-        assert config.reranker_provider == "rrf"
+    os.environ["HINDSIGHT_API_DATABASE_URL"] = "postgresql://hindsight@127.0.0.1:5432/hindsight"
+    config = HindsightConfig.from_env()
+    assert config.database_url == "postgresql://hindsight@127.0.0.1:5432/hindsight"
+    assert config.embeddings_provider == "openai"
+    assert config.reranker_provider == "rrf"
 
-        from alembic.config import Config
-        from hindsight_api.db_url import to_libpq_url
-        from hindsight_api.migrations import _set_alembic_main_option
+    from alembic.config import Config
+    from hindsight_api.db_url import to_libpq_url
+    from hindsight_api.migrations import _set_alembic_main_option
 
-        socket_url = "postgresql://hindsight@/hindsight?host=/run/postgresql"
-        encoded_socket_url = "postgresql://hindsight@/hindsight?host=%2Frun%2Fpostgresql"
-        assert to_libpq_url(socket_url) == encoded_socket_url
+    socket_url = "postgresql://hindsight@/hindsight?host=/run/postgresql"
+    encoded_socket_url = "postgresql://hindsight@/hindsight?host=%2Frun%2Fpostgresql"
+    assert to_libpq_url(socket_url) == encoded_socket_url
 
-        # Upstream 0.10.2 escapes '%' before handing the URL to Alembic's
-        # ConfigParser; exercise the shipped helper to guard against regression.
-        alembic_config = Config()
-        _set_alembic_main_option(alembic_config, "sqlalchemy.url", encoded_socket_url)
-        assert alembic_config.get_main_option("sqlalchemy.url") == encoded_socket_url
+    # Upstream 0.10.2 escapes '%' before handing the URL to Alembic's
+    # ConfigParser; exercise the shipped helper to guard against regression.
+    alembic_config = Config()
+    _set_alembic_main_option(alembic_config, "sqlalchemy.url", encoded_socket_url)
+    assert alembic_config.get_main_option("sqlalchemy.url") == encoded_socket_url
 
-        # opentelemetry-exporter-prometheus is overridden to 0.66b0 alongside the
-        # matching 1.45.0 sdk (see python-env.nix); constructing the reader with
-        # the exporter/sdk pair skewed would raise TypeError on the
-        # otel_component_type kwarg.
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    # opentelemetry-exporter-prometheus is overridden to 0.66b0 alongside the
+    # matching 1.45.0 sdk (see python-env.nix); constructing the reader with
+    # the exporter/sdk pair skewed would raise TypeError on the
+    # otel_component_type kwarg.
+    from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
-        PrometheusMetricReader()
+    PrometheusMetricReader()
 
-        # tiktoken must still resolve cl100k_base from the seeded offline cache;
-        # litellm uses tiktoken for token/cost accounting even though Hindsight's
-        # own token counting moved to toktok.
-        import tiktoken
+    # tiktoken must still resolve cl100k_base from the seeded offline cache;
+    # litellm uses tiktoken for token/cost accounting even though Hindsight's
+    # own token counting moved to toktok.
+    import tiktoken
 
-        assert tiktoken.get_encoding("cl100k_base").encode("hindsight offline tokenizer check")
+    assert tiktoken.get_encoding("cl100k_base").encode("hindsight offline tokenizer check")
 
-        # Hindsight 0.10.2 counts tokens with toktok, whose vocabularies are
-        # compiled into the extension module (no cache or network at runtime).
-        from hindsight_api.engine.token_encoding import count_tokens
+    # Hindsight 0.10.2 counts tokens with toktok, whose vocabularies are
+    # compiled into the extension module (no cache or network at runtime).
+    from hindsight_api.engine.token_encoding import count_tokens
 
-        assert count_tokens("hindsight offline tokenizer check") > 0
+    assert count_tokens("hindsight offline tokenizer check") > 0
 
-        scripts = {
-            "hindsight-api": "hindsight_api.main",
-            "hindsight-worker": "hindsight_api.worker.main",
-            "hindsight-admin": "hindsight_api.admin.cli",
-        }
-        for module in scripts.values():
-            __import__(module)
+    scripts = {
+        "hindsight-api": "hindsight_api.main",
+        "hindsight-worker": "hindsight_api.worker.main",
+        "hindsight-admin": "hindsight_api.admin.cli",
+    }
+    for module in scripts.values():
+        __import__(module)
 
-        alembic = resources.files("hindsight_api") / "alembic"
-        versions = alembic / "versions"
-        assert alembic.is_dir(), "missing alembic directory"
-        assert (alembic / "env.py").is_file(), "missing alembic env.py"
-        assert versions.is_dir(), "missing alembic versions directory"
-        assert any(version.name.endswith(".py") and version.is_file() for version in versions.iterdir()), "missing alembic version files"
-        PY
+    alembic = resources.files("hindsight_api") / "alembic"
+    versions = alembic / "versions"
+    assert alembic.is_dir(), "missing alembic directory"
+    assert (alembic / "env.py").is_file(), "missing alembic env.py"
+    assert versions.is_dir(), "missing alembic versions directory"
+    assert any(version.name.endswith(".py") and version.is_file() for version in versions.iterdir()), "missing alembic version files"
+    print("hindsight installCheck: python assertions passed")
+    PY
 
     ${localOnnxInstallCheck}
-        runHook postInstallCheck
+    runHook postInstallCheck
   '';
 
   passthru = {
