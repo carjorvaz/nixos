@@ -88,12 +88,23 @@ in
       ];
     };
 
-    nginx.virtualHosts.${domain} = {
-      forceSSL = true;
-      useACMEHost = "vaz.ovh";
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString port}";
-        proxyWebsockets = true;
+    nginx = {
+      # Everything behind this vhost -- the API, but also /metrics, /docs,
+      # /openapi.json and /mcp -- must be reachable only from the tailnet: the
+      # host firewall opens 80/443 on every interface, so this nginx gate
+      # (tailscale.nginx-auth) is what keeps non-tailnet clients out.
+      tailscaleAuth = {
+        enable = true;
+        virtualHosts = [ domain ];
+      };
+
+      virtualHosts.${domain} = {
+        forceSSL = true;
+        useACMEHost = "vaz.ovh";
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString port}";
+          proxyWebsockets = true;
+        };
       };
     };
 
