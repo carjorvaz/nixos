@@ -191,32 +191,8 @@ let
     };
     sourceRoot = null;
   });
-  # Hindsight memory API client (the API itself runs on pius).
-  hermesAgentHindsightClient = pkgs.python312Packages.buildPythonPackage rec {
-    pname = "hindsight-client";
-    version = "0.10.2";
-    pyproject = true;
-    src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/e4/e9/d2880efde91a89980a3ecaf70c0a59742cfcddf8282855b8f6d6636328dd/hindsight_client-${version}.tar.gz";
-      hash = "sha256-DRy4CkzAr/m0t0IZw5rzAutlr0fIqk8RMRSiK81Ba08=";
-    };
-    nativeBuildInputs = with pkgs.python312Packages; [
-      hatchling
-    ];
-    propagatedBuildInputs = with pkgs.python312Packages; [
-      aiohttp
-      aiohttp-retry
-      pydantic
-      python-dateutil
-      typing-extensions
-      urllib3
-      yarl
-    ];
-    doCheck = false;
-  };
   hermesAgentPythonPath = pkgs.python312Packages.makePythonPath [
     pkgs.python312Packages.ddgs
-    hermesAgentHindsightClient
     hermesAgentFirecrawlPy
   ];
   hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
