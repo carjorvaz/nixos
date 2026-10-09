@@ -147,18 +147,32 @@ selection and the client's context/reasoning mapping together.
 ## Tiberius Strata runtime
 
 `strata-sm75` is the boot engine on Tiberius. It builds upstream Strata at pin
-`e8ca9af` (v0.1.40.2) with three patches: `carry-1283.patch` (upstream PR #1283's
+`fb58e0d` (v0.1.41) with three patches: `carry-1283.patch` (upstream PR #1283's
 `bytes_needed` src accounting, rebased by its author; the PR lineage is #547 ->
 #1042 -> #1283), `tiberius.patch` (a sliding DAX register window, decode-time
 refill pinning with its straddle guard; generated on top of `carry-1283.patch`,
 hence the order) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
 web app, its pages/assets and `/settings`; the OpenAI-compatible API is
-untouched). The dense-FP16 tensor-core change that `tiberius.patch` used to carry
-was retired at this bump: upstream 0.1.39+ has the same path natively
+untouched). All three were regenerated against this pin at the v0.1.41 bump
+(the changed lines are byte-identical to the v0.1.40.2 generation; two hunks
+were re-homed around upstream's new CPU-share block and serve report line).
+The dense-FP16 tensor-core change that `tiberius.patch` used to carry
+was retired at the v0.1.40.2 bump: upstream 0.1.39+ has the same path natively
 (`bf16_path()`, #540/#655) and the module selects it with upstream's
 `STRATA_BF16_TC=1` (opt-in on the RTX 20's compute capability 7.5). Build-time
 greps fail the derivation if a flag or environment variable the module sets
 disappears on a rebase.
+
+The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
+default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
+bits of an answer (upstream's mean first-token KL against the share off is
+~0.004). Measured on the deployed engine, 2026-10-09 (`/data/ab9*`, production
+config, 3 counterbalanced pairs, fresh engine per run): the share-eligible cells
+(723 and 579 tokens) read in 5,836 / 5,433 ms with the share against
+5,812 / 5,382 ms with it off -- no win, slightly slower -- and a 9,491-token
+control above the window is unchanged. The prompt path is bounded by the Optane
+read of the pack, not by the PCIe stream the share relieves, so the pin stays;
+unsetting the variable adopts upstream's default.
 
 The module also forces `STRATA_UNBUFFERED_LOAD=0`: v0.1.40's #1194 makes the Linux
 file tier read unbuffered when the file cache cannot keep the returning experts,

@@ -23,9 +23,11 @@
 let
   c = cudaPackages;
 
-  # e8ca9afd: v0.1.40.2 (2026-10-07).  Note: upstream rewrote its history on 2026-10-06
-  # (the v0.1.40.1 notes say so), so the previous pin is not an ancestor of this one.
-  revision = "e8ca9afd03d839d4f8dbbe82dffce7f8a3bafd7a";
+  # fb58e0db: v0.1.41 (2026-10-08), the 0.1.40.3/.4 hotfixes (Arc, Windows AMD, Pascal
+  # sm_61) folded in and no-ops for this sm_75 build.  Upstream rewrote its history on
+  # 2026-10-06 (the v0.1.40.1 notes say so), so pins older than that line are not
+  # ancestors of this one.
+  revision = "fb58e0dbc8399662c0e47c76578c6e878b14f6cf";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -57,13 +59,13 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.40.2";
+  version = "0.1.41";
 
   src = fetchFromGitHub {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-NCOHJF8L32g67h8S4XY9uOABAKEoqapGqYLUEoiVHME=";
+    hash = "sha256-WhoIwg8GgeG3jAXYLSjNoZyN3RZ3T3JhgJX57fM80eE=";
   };
 
   # carry-1283.patch is upstream PR #1283 (sergqwer), carried until it merges: the
@@ -146,6 +148,10 @@ stdenv.mkDerivation {
     }
     grep -q 'STRATA_STAGER_RING' src/prefill/prefill.cpp || {
       echo "the engine no longer reads STRATA_STAGER_RING (the measured staging ring)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_PREFILL_CPU_SHARE' src/prefill/prefill.cpp || {
+      echo "the engine no longer reads STRATA_PREFILL_CPU_SHARE (the module pins the CPU share off)" >&2
       exit 1
     }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {

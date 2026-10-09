@@ -298,6 +298,27 @@ let
         # now COSTS 10.3% - see the --prefill comment; unset, the engine uses
         # v0.1.39's byte-budget ring (#583, default on), and STRATA_RING_BYTES=0
         # measured worse (27066 ms / 1019.2 tok/s).
+        # v0.1.41 turned the CPU share ON by default where it measured it (CUDA
+        # builds, one GPU, no batch slots - this box qualifies): chunks below
+        # 1,024 tokens hand the decode CPU pool the non-resident experts few of
+        # their tokens route to instead of streaming them over PCIe (upstream's
+        # default reads as `auto` with STRATA_PREFILL_CPU_SHARE_MAX clamped to
+        # 1024; the release notes measure -20..-35% on 512/1000-token prompts on
+        # a 3060, a P100 and a 5070, 8/8 pairs each).  That win does not
+        # transfer here: measured 2026-10-09 on the deployed 0.1.41 (/data/ab9*,
+        # production config, 3 counterbalanced pairs, fresh engine per run), the
+        # share-eligible cells read 723 and 579 tokens in 5,836 / 5,433 ms with
+        # the share against 5,812 / 5,382 ms with it off (+0.4% / +0.9% - no
+        # win, slightly slower), and a 9,491-token control above the window is
+        # unchanged.  The prompt path here is bounded by the Optane read of the
+        # pack (a sub-1K chunk reads ~26-31 GB of it), not by the PCIe stream
+        # the share relieves, so splitting the read between CPU and GPU buys
+        # nothing.  It also rounds differently (upstream's mean first-token KL
+        # against the share off is ~0.004), so with no win there is nothing to
+        # pay that for.  Unset the variable to adopt the new default; "0" is
+        # upstream's documented escape hatch ("the output is then the 0.1.40.3
+        # bytes").
+        STRATA_PREFILL_CPU_SHARE = "0";
         # tiberius: the dense GEMMs on the FP16 tensor cores.  Turing has FP16
         # tensor cores and no BF16 ones, so cuBLAS served the dense (non-expert)
         # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT

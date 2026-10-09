@@ -13,12 +13,14 @@
 # (11.59 -> 10.51 GiB), prefill -1.77%/-2.59% and pack bytes -2.14%/-1.79% at the 27575 cell
 # (128/256 gen), flat at 4344, decode and the cache hit rate unchanged.  Pure accounting: no
 # numerics and no configuration.  PR trajectory: #547 -> #1042 (fork mishap) -> #1283 (the
-# history rewrite); v0.1.40.2 still does not have it.
+# history rewrite); v0.1.41 still does not have it.
 #
-# Commit e7635b6 (PR #1283's head, rebased onto v0.1.40 by its author), unmodified:
+# Commit e7635b6 (PR #1283's head, rebased onto v0.1.40 by its author): the diff
+# content is unmodified, regenerated against the pin below so `patch -p1` applies
+# without offsets:
 #
 diff --git a/include/strata/prefill/prefill.hpp b/include/strata/prefill/prefill.hpp
-index 03c4374..a9038f5 100644
+index c1b0a91..5be63ac 100644
 --- a/include/strata/prefill/prefill.hpp
 +++ b/include/strata/prefill/prefill.hpp
 @@ -88,15 +88,19 @@ public:
@@ -45,7 +47,7 @@ index 03c4374..a9038f5 100644
  
      /// The streamed ring's byte budget as a slot count for this pack (the measured slot count x Q2_0's blob, over
      /// max_blob, never past ring_cap()):
-@@ -175,7 +179,7 @@ public:
+@@ -183,7 +187,7 @@ public:
  
  private:
      static uint64_t bytes_needed_impl(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk,
@@ -55,10 +57,10 @@ index 03c4374..a9038f5 100644
      // Stage-1 pipeline: intermediate stages return after handing their chunk to
      // the direct successor. The public run() drains the chain once at prompt end.
 diff --git a/src/prefill/prefill.cpp b/src/prefill/prefill.cpp
-index 23eaf1d..8d0261f 100644
+index 4e03dc8..89e0b1f 100644
 --- a/src/prefill/prefill.cpp
 +++ b/src/prefill/prefill.cpp
-@@ -1549,19 +1549,20 @@ void Prefill::set_ring_budget(int slots, int64_t small_max) {
+@@ -1743,19 +1743,20 @@ void Prefill::set_ring_budget(int slots, int64_t small_max) {
  double Prefill::pinned_share() { return g_pinned_share; }
  int64_t Prefill::stream_all_min_tokens() { return stream_all_min(); }
  
@@ -85,7 +87,7 @@ index 23eaf1d..8d0261f 100644
      const size_t T = (size_t) chunk;
      bool ok = true;
      Alloc o;
-@@ -1594,7 +1595,7 @@ uint64_t Prefill::bytes_needed_impl(const core::ModelGeometry& g, const core::Se
+@@ -1789,7 +1790,7 @@ uint64_t Prefill::bytes_needed_impl(const core::ModelGeometry& g, const core::Se
      const int64_t cap = strata::kernels::qsa_selection_width(strata::kernels::kTopkMaxCells, s);
      const int64_t max_blocks = ss.qsa_states[ss.qsa_primary()].max_cells / s.idx_block + 2;
      o.take<uint8_t>((size_t) std::max({gdn_set_bytes(T), qsa_set_bytes(T, cap, max_blocks, 256, 32, s),
@@ -94,7 +96,7 @@ index 23eaf1d..8d0261f 100644
      for (int i = 0; i < DQ; ++i) { o.take<uint16_t>(1280 * 2560, ok); o.take<uint16_t>(2560 * 640, ok); }
      if (mmq_plan().any) {
          const MmqPlan& mp = mmq_plan();
-@@ -1615,8 +1616,9 @@ uint64_t Prefill::bytes_needed_impl(const core::ModelGeometry& g, const core::Se
+@@ -1810,8 +1811,9 @@ uint64_t Prefill::bytes_needed_impl(const core::ModelGeometry& g, const core::Se
      return o.used + (8u << 20);   // alignment slack
  }
  
@@ -107,10 +109,10 @@ index 23eaf1d..8d0261f 100644
  
  int64_t Prefill::ring_default_slots() {
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index a78d088..d0c1d01 100644
+index 433d395..39d5a60 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -4162,7 +4162,7 @@ int main(int argc, char** argv) {
+@@ -4297,7 +4297,7 @@ int main(int argc, char** argv) {
          if (!(o.prefill_chunk > 0 && !pf_borrow)) return 0;
          static const bool exact = [] { const char* v = std::getenv("STRATA_OWNED_PRICE"); return v != nullptr && std::string(v) == "exact"; }();
          if (!exact) return 160 + (o.prefill_chunk * 680) / 1024;
@@ -119,7 +121,7 @@ index a78d088..d0c1d01 100644
          std::fprintf(stderr, "strata generate: STRATA_OWNED_PRICE=exact: the prompt path's own buffers for a %lld-token chunk: %lld MiB (the 0.1.39 rule: %lld MiB)\n",
                       (long long) o.prefill_chunk, (long long) mib, (long long) (160 + (o.prefill_chunk * 680) / 1024));
          return mib + 64;   // a margin for the allocator
-@@ -5548,7 +5548,7 @@ int main(int argc, char** argv) {
+@@ -5710,7 +5710,7 @@ int main(int argc, char** argv) {
          return (uint64_t) k * (uint64_t) strata::kernels::cpu::expert_layout().max_blob;
      };
      auto lend_slots = [&](int64_t c) -> int64_t {
@@ -128,7 +130,7 @@ index a78d088..d0c1d01 100644
      };
      // `lend_bytes` went with the single-cache serve loan: a participant's loan is priced by `part_bytes` from its
      // OWN cache, and the only other user of the old helper was the serve path's own relayout.
-@@ -5653,7 +5653,7 @@ int main(int argc, char** argv) {
+@@ -5815,7 +5815,7 @@ int main(int argc, char** argv) {
              const int64_t blob = (int64_t) strata::kernels::cpu::expert_layout().max_blob;
              const uint64_t avail = bytes_from_slots(budget);
              auto room_of = [&](int64_t t) -> int64_t {
@@ -137,7 +139,7 @@ index a78d088..d0c1d01 100644
                  return std::min((int64_t) ((avail - std::min(avail, nonring)) / (uint64_t) blob), ring_max);
              };
              // `room_of` is capped at ring_max, so "the ring is full" is exactly room == ring_max, and both that
-@@ -6073,7 +6073,7 @@ int main(int argc, char** argv) {
+@@ -6247,7 +6247,7 @@ int main(int argc, char** argv) {
              return (int64_t) ((need + (uint64_t) blob - 1) / (uint64_t) blob);
          };
          auto part_slots = [&](const PfPart& p, int64_t c) -> int64_t {
@@ -146,7 +148,7 @@ index a78d088..d0c1d01 100644
          };
          auto part_bytes = [&](const PfPart& p, int32_t first) -> uint64_t {
              strata::core::ExpertCache& xc = *p.cache;
-@@ -6146,7 +6146,7 @@ int main(int argc, char** argv) {
+@@ -6320,7 +6320,7 @@ int main(int argc, char** argv) {
                      const int64_t budget = std::max<int64_t>(0, std::min(p.cache->slots() - 128,
                                                                          kAutoLendPct * p.cache->slots() / 100));
                      const uint64_t avail = part_bytes(p, (int32_t) (p.cache->slots() - budget));
@@ -155,7 +157,7 @@ index a78d088..d0c1d01 100644
                      room = std::min(room, (int64_t) ((avail - std::min(avail, nonring)) / (uint64_t) kBlob));
                  }
                  return room;
-@@ -6259,7 +6259,7 @@ int main(int argc, char** argv) {
+@@ -6433,7 +6433,7 @@ int main(int argc, char** argv) {
                          const strata::core::OnDevice on(p.dev);
                          size_t fb = 0, tb = 0;
                          if (cudaMemGetInfo(&fb, &tb) != cudaSuccess) { (void) cudaGetLastError(); continue; }
@@ -164,7 +166,7 @@ index a78d088..d0c1d01 100644
                          if ((uint64_t) fb >= need + (3ull << 29)) {
                              std::fprintf(stderr, "strata serve:   CUDA%d keeps its own prompt buffers (%.2f GiB of "
                                                   "%.2f GiB free): no loan\n", p.dev < 0 ? 0 : p.dev,
-@@ -6349,7 +6349,7 @@ int main(int argc, char** argv) {
+@@ -6523,7 +6523,7 @@ int main(int argc, char** argv) {
                      const strata::core::OnDevice on(dev);
                      size_t fb = 0, tb = 0;
                      cudaMemGetInfo(&fb, &tb);

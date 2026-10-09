@@ -1,8 +1,8 @@
 diff --git a/serve/server.py b/serve/server.py
-index 46e3fc3..9567c8c 100644
+index 553f440..4de0b10 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -2106,6 +2106,10 @@ def make_handler(svc: Service):
+@@ -4451,6 +4451,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -13,7 +13,7 @@ index 46e3fc3..9567c8c 100644
              if path.startswith("/fonts/"):
                  # the web app's font (Outfit, OFL: serve/web/fonts); the page falls back to the system font
                  name = path[len("/fonts/"):]
-@@ -2221,6 +2225,9 @@ def make_handler(svc: Service):
+@@ -4598,6 +4602,9 @@ def make_handler(svc: Service):
              if not self._authorized():
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
@@ -23,7 +23,7 @@ index 46e3fc3..9567c8c 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -2624,6 +2631,11 @@ def _name_in(name: str, names) -> bool:
+@@ -5355,6 +5362,11 @@ def _name_in(name: str, names) -> bool:
      return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
  
  
