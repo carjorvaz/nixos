@@ -459,6 +459,7 @@
             // (import ./checks/hindsight.nix {
               inherit pkgs;
               lib = inputs.nixpkgs.lib;
+              pius = self.nixosConfigurations.pius;
             })
             // (import ./checks/strata.nix {
               inherit pkgs;

@@ -8,6 +8,12 @@
 let
   cfg = config.services.hindsight;
 
+  # lib.types.path values may be path literals or carry a trailing slash; a raw
+  # comparison against the default string would then silently fail and drop the
+  # StateDirectory/CacheDirectory management below.
+  stateDirPath = lib.removeSuffix "/" (toString cfg.stateDir);
+  cacheDirPath = lib.removeSuffix "/" (toString cfg.cacheDir);
+
   loopbackBindAddresses = [
     "127.0.0.1"
     "::1"
@@ -187,7 +193,7 @@ in
     databaseUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Plain Hindsight API PostgreSQL connection URL for local or passwordless deployments.";
+      description = "Plain Hindsight API PostgreSQL connection URL for local or passwordless deployments. The database must have the pgvector extension available, which the application validates at start.";
     };
 
     databaseUrlFile = lib.mkOption {
@@ -262,7 +268,12 @@ in
         ]
       );
       default = { };
-      description = "Additional environment variables for the Hindsight API service.";
+      description = ''
+        Additional environment variables for the Hindsight API service.
+        Values are written verbatim into the world-readable systemd unit
+        environment, so secrets must be supplied through the *_File options
+        instead.
+      '';
     };
 
   };
@@ -353,6 +364,9 @@ in
       path = [
         cfg.package
         pkgs.coreutils
+        # pydub (markitdown's audio converter) shells out to ffmpeg for
+        # compressed audio; without it only uncompressed formats work.
+        pkgs.ffmpeg-headless
       ];
       serviceConfig = {
         ExecStart =
@@ -364,16 +378,26 @@ in
         User = cfg.user;
         Group = cfg.group;
         RuntimeDirectory = runtimeDirectory;
-        RuntimeDirectoryMode = "0750";
-        StateDirectory = lib.mkIf (cfg.stateDir == "/var/lib/hindsight") "hindsight";
-        CacheDirectory = lib.mkIf (cfg.cacheDir == "/var/cache/hindsight") "hindsight";
+        # Nothing but the service user reads /run/hindsight; 0700 matches the
+        # sibling firecrawl module.
+        RuntimeDirectoryMode = "0700";
+        StateDirectory = lib.mkIf (stateDirPath == "/var/lib/hindsight") "hindsight";
+        # systemd defaults StateDirectory/CacheDirectory to 0755 and re-adjusts
+        # the innermost directory on every start, silently overriding both the
+        # tmpfiles 0700 rules above and the mode declared for the persistence
+        # path in the profile.
+        StateDirectoryMode = "0700";
+        CacheDirectory = lib.mkIf (cacheDirPath == "/var/cache/hindsight") "hindsight";
+        CacheDirectoryMode = "0700";
         WorkingDirectory = cfg.stateDir;
         Restart = "on-failure";
         RestartSec = "5s";
-        # The service runs database migrations at start; on a large database
-        # that exceeds the 15s system-wide DefaultTimeoutStartSec, which would
-        # kill and rerun the migration in a loop.
-        TimeoutStartSec = "15min";
+        # Migrations run in-process in the main process. The unit is Type=exec,
+        # so systemd marks it started as soon as the binary is exec'd and a start
+        # timeout cannot bound the migration; a config switch instead sends
+        # SIGTERM and SIGKILLs the process after TimeoutStopSec, which killed a
+        # 16-minute migration after the fleet's 15s default.
+        TimeoutStopSec = "30min";
         NoNewPrivileges = true;
         PrivateTmp = true;
         PrivateDevices = true;

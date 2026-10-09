@@ -1,6 +1,9 @@
 {
   lib,
   pkgs,
+  # The rendered pius NixOS configuration, so the deploy profile is asserted
+  # directly instead of only through fixture configs below.
+  pius,
 }:
 
 let
@@ -360,6 +363,33 @@ let
     "HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY:/run/keys/hindsight-embeddings-openai"
     "HINDSIGHT_API_TENANT_API_KEY:/run/keys/hindsight-tenant"
   ];
+
+  # The fixture configs above cannot see profile-side regressions, so assert the
+  # rendered pius deploy configuration directly (checks/strata.nix follows the
+  # same precedent for tiberius). These bindings stay lazy until the
+  # hindsight-deploy-config derivation below is built.
+  piusHindsightDomain = "hindsight.vaz.ovh";
+  piusHindsightTailscaleAuthVirtualHosts = pius.config.services.nginx.tailscaleAuth.virtualHosts;
+  piusHindsightVhostExtraConfig =
+    pius.config.services.nginx.virtualHosts.${piusHindsightDomain}.locations."/".extraConfig or "";
+  piusHindsightServiceConfig = pius.config.services.hindsight;
+  piusHindsightTimeoutStopSec =
+    pius.config.systemd.services.hindsight.serviceConfig.TimeoutStopSec or null;
+  piusHindsightVhostGated = builtins.elem piusHindsightDomain piusHindsightTailscaleAuthVirtualHosts;
+  piusHindsightVhostAuthRequest = lib.hasInfix "auth_request" piusHindsightVhostExtraConfig;
+  piusHindsightTimeoutStopSet = piusHindsightTimeoutStopSec != null;
+  piusHindsightBindAddressLoopback = piusHindsightServiceConfig.bindAddress == "127.0.0.1";
+  piusHindsightPortMatches = piusHindsightServiceConfig.port == 8889;
+  piusHindsightLlmBaseUrlMatches = piusHindsightServiceConfig.llmBaseUrl == "http://tiberius:8080/v1";
+  piusHindsightLlmModelMatches = piusHindsightServiceConfig.llmModel == "qwen3.8-flash-next-iq3_s";
+  displayDeployValue = value: if value == null then "<null>" else toString value;
+
+  # The eval check asserts TIKTOKEN_CACHE_DIR only when the package declares a
+  # cache, so the smoke test must skip the same grep under the same condition;
+  # both read the expectation from expectedTiktokenCacheDir.
+  smokeTiktokenAssertion =
+    lib.optionalString (expectedTiktokenCacheDir != null)
+      "machine.succeed(\"systemctl show hindsight.service -P Environment | grep -F 'TIKTOKEN_CACHE_DIR=${expectedTiktokenCacheDir}'\")";
 in
 {
   hindsight-module-generic-quality = pkgs.runCommand "hindsight-module-generic-quality" { } ''
@@ -864,6 +894,48 @@ in
     touch $out
   '';
 
+  # Regression guard for the real host config: the fixture evaluations above
+  # cannot catch a profile dropping the vhost from the tailnet gate, which is
+  # how hindsight.vaz.ovh was silently reachable off-tailnet before.
+  hindsight-deploy-config = pkgs.runCommand "hindsight-deploy-config" { } ''
+    if [ "${lib.boolToString piusHindsightVhostGated}" != true ]; then
+      echo "Deployed pius config must list ${piusHindsightDomain} in services.nginx.tailscaleAuth.virtualHosts; got:" ${lib.escapeShellArg (toString piusHindsightTailscaleAuthVirtualHosts)} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightVhostAuthRequest}" != true ]; then
+      echo "Deployed pius services.nginx.virtualHosts.\"${piusHindsightDomain}\".locations.\"/\".extraConfig must render an auth_request (tailnet gate); got:" ${lib.escapeShellArg piusHindsightVhostExtraConfig} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightTimeoutStopSet}" != true ]; then
+      echo "Deployed pius systemd.services.hindsight.serviceConfig.TimeoutStopSec must be set (non-null); got:" ${lib.escapeShellArg (displayDeployValue piusHindsightTimeoutStopSec)} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightBindAddressLoopback}" != true ]; then
+      echo "Deployed pius services.hindsight.bindAddress must be 127.0.0.1; got:" ${lib.escapeShellArg piusHindsightServiceConfig.bindAddress} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightPortMatches}" != true ]; then
+      echo "Deployed pius services.hindsight.port must be 8889; got:" ${lib.escapeShellArg (displayDeployValue piusHindsightServiceConfig.port)} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightLlmBaseUrlMatches}" != true ]; then
+      echo "Deployed pius services.hindsight.llmBaseUrl must be http://tiberius:8080/v1; got:" ${lib.escapeShellArg (displayDeployValue piusHindsightServiceConfig.llmBaseUrl)} >&2
+      exit 1
+    fi
+
+    if [ "${lib.boolToString piusHindsightLlmModelMatches}" != true ]; then
+      echo "Deployed pius services.hindsight.llmModel must be qwen3.8-flash-next-iq3_s; got:" ${lib.escapeShellArg piusHindsightServiceConfig.llmModel} >&2
+      exit 1
+    fi
+
+    touch $out
+  '';
+
   hindsight-package-scripts = pkgs.runCommand "hindsight-package-scripts" { } ''
     for script in hindsight-api hindsight-worker hindsight-admin; do
       if [ ! -x ${pkgs.hindsight}/bin/$script ]; then
@@ -1026,7 +1098,7 @@ in
           wait_for_loopback_port(8888, timeout=120)
 
           machine.succeed("sudo -u postgres psql -d hindsight -tAc \"SELECT extname FROM pg_extension WHERE extname = 'vector'\" | grep -Fx vector")
-          machine.succeed("systemctl show hindsight.service -P Environment | grep -F 'TIKTOKEN_CACHE_DIR=${expectedTiktokenCacheDir}'")
+          ${smokeTiktokenAssertion}
           machine.succeed("systemctl show hindsight.service -P Environment | grep -F 'HINDSIGHT_API_DATABASE_URL=${expectedLocalDatabaseUrl}'")
           machine.succeed("curl --noproxy '*' -fsS --max-time 30 -H 'Authorization: Bearer hindsight-test-api-key' http://127.0.0.1:8888/health")
           machine.succeed("curl --noproxy '*' -fsS --max-time 30 -H 'Authorization: Bearer hindsight-test-api-key' http://127.0.0.1:8888/v1/default/banks")

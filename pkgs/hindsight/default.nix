@@ -241,7 +241,7 @@ ps.buildPythonApplication rec {
     PY
   '';
 
-  "build-system" = [ ps.hatchling ];
+  build-system = [ ps.hatchling ];
 
   nativeBuildInputs = [
     ps.pythonRelaxDepsHook

@@ -104,6 +104,11 @@ in
         locations."/" = {
           proxyPass = "http://127.0.0.1:${toString port}";
           proxyWebsockets = true;
+          # The app's own LLM timeout is 600s; nginx must not cut a
+          # synchronous retain/reflect short before that.
+          extraConfig = ''
+            proxy_read_timeout 600s;
+          '';
         };
       };
     };
@@ -118,10 +123,10 @@ in
     ];
   };
 
-  users.groups.hindsight.gid = 1000;
+  users.groups.hindsight.gid = lib.mkDefault 1000;
   users.users.hindsight = {
     isSystemUser = true;
-    uid = 1000;
+    uid = lib.mkDefault 1000;
     group = "hindsight";
     home = "/var/lib/hindsight";
     createHome = false;

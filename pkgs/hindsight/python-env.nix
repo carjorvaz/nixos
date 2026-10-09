@@ -187,16 +187,10 @@ in
       disabledTests = (old.disabledTests or [ ]) ++ [ "test_kill_auto_restart" ];
     });
 
-    # mirakuru is pure test infrastructure (pytest-postgresql and friends);
-    # its signal-handling suite takes 21 minutes and had a timing-dependent
-    # failure on this builder, so skip its checks entirely.
-    mirakuru = python-prev.mirakuru.overridePythonAttrs (_: {
-      doCheck = false;
-    });
-
-    # uvloop and trio are only consumed transitively. Their sandboxed test
-    # suites hang on this builder (sockets/timers that never resolve), so
-    # skip their checks.
+    # uvloop is a declared direct runtime dependency of hindsight (wheel
+    # Requires-Dist) and is imported by the app. Its sandboxed test suite, like
+    # trio's, hangs on this builder (sockets/timers that never resolve), so
+    # skip the checks.
     uvloop = python-prev.uvloop.overridePythonAttrs (_: {
       doCheck = false;
     });
@@ -210,18 +204,11 @@ in
       doCheck = false;
     });
 
-    # pydantic-monty is consumed transitively; its test_keyboard_interrupt is
-    # signal-timing dependent on this builder ("Expected KeyboardInterrupt to
-    # be raised"), so skip its checks.
-    pydantic-monty = python-prev.pydantic-monty.overridePythonAttrs (_: {
-      doCheck = false;
-    });
-
-    # obstore is consumed transitively. Its checks drag in a heavyweight
-    # geo test stack (pyarrow, polars, pystac-client, docker), so skip them;
-    # nothing here exercises obstore at run time. Its wheel metadata requires
-    # typing-extensions but the nixpkgs expression wires no dependencies at
-    # all, so supply it.
+    # obstore is a declared direct runtime dependency of hindsight (wheel
+    # Requires-Dist) and is imported by the app. Its checks drag in a
+    # heavyweight geo test stack (pyarrow, polars, pystac-client, docker), so
+    # skip them. Its wheel metadata requires typing-extensions but the nixpkgs
+    # expression wires no dependencies at all, so supply it.
     obstore = python-prev.obstore.overridePythonAttrs (_: {
       doCheck = false;
       dependencies = [ python-final.typing-extensions ];
@@ -238,13 +225,14 @@ in
     });
 
     # markitdown is needed at runtime, but its nixpkgs expression folds every
-    # optional converter into `dependencies`: the audio/cloud/YouTube extras
-    # drag in speechrecognition -> whisper -> torch (hours to build from
-    # source) for converters Hindsight never calls. Upstream raises
-    # MissingDependencyException by design when an extra converter is absent,
-    # so keep the local document converters (including pdfplumber, which
-    # markitdown's PDF converter imports alongside pdfminer.six) and drop the
-    # extras; skip the tests.
+    # optional converter into `dependencies`. The azure/youtube extras drag in
+    # heavyweight cloud and API clients for converters Hindsight does not
+    # expose, so drop those. The local document converters are kept (including
+    # pdfplumber, which markitdown's PDF converter imports alongside
+    # pdfminer.six), and so is the audio converter: the .wav/.mp3 transcription
+    # path that the hindsight markitdown parser advertises needs pydub and
+    # speechrecognition. Upstream raises MissingDependencyException by design
+    # when an extra converter is absent; skip the tests.
     markitdown = python-prev.markitdown.overridePythonAttrs (_: {
       doCheck = false;
       dependencies = [
@@ -260,10 +248,19 @@ in
         python-final.pandas
         python-final.pdfminer-six
         python-final.pdfplumber
+        python-final.pydub
         python-final.python-pptx
         python-final.requests
+        python-final.speechrecognition
         python-final.xlrd
       ];
+    });
+
+    # speechrecognition's checks fold in every optional backend (openai-whisper
+    # -> torch, faster-whisper, pyaudio); the audio path only needs the base
+    # package, so skip its checks.
+    speechrecognition = python-prev.speechrecognition.overridePythonAttrs (_: {
+      doCheck = false;
     });
 
     # pdfplumber's checks pull jupyterlab/nbexec/pandas-stubs (and through
@@ -272,11 +269,17 @@ in
       doCheck = false;
     });
 
-    # fastmcp is a runtime dependency; its 5785-test suite has an
-    # unraisable-exception flake (test_code_mode_max_tool_calls_enforced) on
-    # this builder, so skip its checks.
-    fastmcp = python-prev.fastmcp.overridePythonAttrs (_: {
+    # pydantic-monty is a check input of fastmcp's suite; its
+    # test_keyboard_interrupt is signal-timing dependent on this builder
+    # ("Expected KeyboardInterrupt to be raised"), so skip its checks.
+    pydantic-monty = python-prev.pydantic-monty.overridePythonAttrs (_: {
       doCheck = false;
+    });
+
+    # fastmcp's suite has one flaky test on this builder (an unraisable
+    # exception); drop that test rather than the whole suite.
+    fastmcp = python-prev.fastmcp.overridePythonAttrs (old: {
+      disabledTests = (old.disabledTests or [ ]) ++ [ "test_code_mode_max_tool_calls_enforced" ];
     });
 
     # --- dependencies absent from nixpkgs --------------------------------
