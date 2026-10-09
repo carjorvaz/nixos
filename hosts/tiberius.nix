@@ -70,6 +70,82 @@ let
       -H Content-Type:application/json --data @${qwenWarmupBody} "$url"
   '';
 
+  # Both populated chassis fans hang off BMC PWM channels, so quieting them is
+  # a raw IPMI write (Tyan/MiTAC OEM netfn 0x2e): duty 0x00-0x64 percent, 0xff
+  # returns the channel to automatic control, and a manual duty reads back as
+  # 0x80|duty.  Channel map measured on this board 2026-10-09: PWM 1 and 3
+  # drive SYS_FAN_3 (one zone, both carry its value), PWM 2 drives SYS_FAN_1,
+  # and PWM 0/4/5/6 sit on unpopulated headers.  60% is above the automatic
+  # curve's calm floor (45%, ~1200 RPM) and well below its peaks (90%, ~2400
+  # RPM), which is what removes the revving; the guard below restores
+  # automatic control for good if the chassis runs hot.
+  fanQuiet = pkgs.writeShellScript "tiberius-fan-quiet" ''
+    set -u
+    ipmi=${pkgs.ipmitool}/bin/ipmitool
+    logger=${pkgs.util-linux}/bin/logger
+    latch=/run/tiberius-fan-quiet.latched
+
+    # The in-band device can lag boot; wait for it instead of mistaking a slow
+    # boot for a failed BMC.
+    tries=0
+    while ! "$ipmi" mc info >/dev/null 2>&1; do
+      tries=$((tries + 1))
+      if [ "$tries" -ge 12 ]; then
+        "$logger" -t tiberius-fan-quiet "in-band IPMI did not come up; fan control untouched"
+        exit 1
+      fi
+      ${pkgs.coreutils}/bin/sleep 5
+    done
+
+    [ -e "$latch" ] && exit 0
+
+    sdr=$("$ipmi" sdr 2>/dev/null || true)
+    sensor() {
+      printf '%s\n' "$sdr" \
+        | ${pkgs.gnugrep}/bin/grep -m1 -- "$1" \
+        | ${pkgs.gawk}/bin/awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) { print $i; exit } }'
+    }
+
+    restore_auto() {
+      for ch in 1 2 3; do
+        "$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" 0xff >/dev/null 2>&1 || true
+      done
+      ${pkgs.coreutils}/bin/touch "$latch"
+    }
+
+    cpu=$(sensor CPU_Temp)
+    dimm=$(sensor P0_MC0_DIM_CH_A)
+    mos=$(sensor CPU_MOS)
+    if [ -z "$cpu" ] || [ -z "$dimm" ] || [ -z "$mos" ]; then
+      "$logger" -t tiberius-fan-quiet "chassis sensor read failed; restoring automatic fan control"
+      restore_auto
+      exit 0
+    fi
+
+    # Below the BMC's upper-critical limits (DIMM 85, CPU 100, VRM 110), so the
+    # pin cannot hide a trend toward them.
+    if [ "$dimm" -ge 84 ] || [ "$cpu" -ge 95 ] || [ "$mos" -ge 92 ]; then
+      "$logger" -t tiberius-fan-quiet "hot (CPU=$cpu DIMM=$dimm MOS=$mos); restoring automatic fan control"
+      restore_auto
+      exit 0
+    fi
+
+    # Re-assert the pin: a BMC config reset drops it and the write is
+    # idempotent.  A pinned channel reads back as 0x80|0x3c = "bc".
+    d1=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 1 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
+    d2=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 2 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
+    d3=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 3 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
+    if [ "$d1" != bc ] || [ "$d2" != bc ] || [ "$d3" != bc ]; then
+      for ch in 1 2 3; do
+        "$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" 0x3c >/dev/null || {
+          "$logger" -t tiberius-fan-quiet "pin write to PWM $ch failed"
+          exit 1
+        }
+      done
+      "$logger" -t tiberius-fan-quiet "chassis fans pinned at 60% (PWM 1/2/3)"
+    fi
+  '';
+
 in
 {
   imports = [
@@ -261,6 +337,29 @@ in
             sleep 30
           done
         '';
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
+      };
+    };
+
+    # The two populated chassis fans are the loudest part of this box: the
+    # BMC's automatic curve held SYS_FAN_1 at a fixed 100% duty (1400 RPM) and
+    # swung SYS_FAN_3 between 61% and 90% (1200-2400 RPM) with the CPU while
+    # the inference load kept the Optane DIMM at ~82C of its 85C critical.
+    # Pinning the PWM channels at 60% measured 900 / ~1500 RPM under the live
+    # load with the DIMM unmoved (CPU peaks +1C over the automatic curve).
+    # This timer both re-asserts the pin after a BMC config reset and runs the
+    # thermal guard in `fanQuiet`: crossing any threshold restores the BMC's
+    # automatic control for good (latched until reboot), so the pin cannot
+    # hide a rising trend.  The interface has no UI or Redfish surface; see
+    # docs/VALIDATION.md.
+    tiberius-fan-quiet = {
+      description = "Pin the chassis fans quietly, unless the chassis runs hot";
+      serviceConfig = {
+        Type = "oneshot";
+        TimeoutStartSec = "120s";
+        ExecStart = fanQuiet;
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectHome = true;
@@ -618,6 +717,16 @@ in
         ProtectHome = true;
         ProtectSystem = "strict";
       };
+    };
+  };
+
+  systemd.timers.tiberius-fan-quiet = {
+    description = "Re-assert the chassis fan pin and run its thermal guard";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "30s";
+      OnUnitActiveSec = "60s";
+      AccuracySec = "5s";
     };
   };
 

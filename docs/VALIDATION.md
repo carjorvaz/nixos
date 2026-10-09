@@ -233,6 +233,46 @@ Cold prefill can take minutes and decode runs at roughly 20 tok/s, so budget
 timeouts accordingly. Confirm the serving unit and PID identity before and after
 the checks: another service can answer the same port and model name.
 
+## Tiberius chassis fan control
+
+The two populated chassis fans (SYS_FAN_1, SYS_FAN_3; the other four headers
+are empty) hang off the BMC, not the host, and are the loudest part of the box:
+under the inference load the automatic curve held SYS_FAN_1 at a fixed 100%
+duty (1400 RPM) and swung SYS_FAN_3 between 61% and 90% (1200-2400 RPM) with
+the CPU, while the same load kept the Optane DIMM at ~82C of its 85C
+upper-critical. The BMC web UI and Redfish expose no fan control; the knob is
+the Tyan/MiTAC OEM fan IPMI (the S8036 homelab writeup and the MiTAC KB
+document the same family):
+
+```sh
+# per channel: duty 0x00-0x64 (percent, decimal in hex), 0xfe read back,
+# 0xff returns the channel to automatic control
+ipmitool raw 0x2e 0x05 0xfd 0x19 0x00 <channel> <0x00-0x64 | 0xfe | 0xff>
+# global automatic fan control: 0x00 off, 0x01 on, 0xff read back
+ipmitool raw 0x2e 0x06 0xfd 0x19 0x00 <0x00 | 0x01 | 0xff>
+```
+
+A channel under a manual duty reads back as `0x80|duty` (60% = `bc`), and
+`0x06 ... 0x01` does not clear per-channel overrides (measured 2026-10-09):
+the restore path is the per-channel `0xff`. Channel map measured on this
+board: PWM 1+3 = SYS_FAN_3 (one zone, both carry its value), PWM 2 =
+SYS_FAN_1; PWM 0/4/5/6 are unpopulated. `0x2e 0x44` is not implemented on this
+firmware (0xc1).
+
+`hosts/tiberius.nix` runs `tiberius-fan-quiet.service` from a 60s timer: it
+pins PWM 1/2/3 at 60% (measured 900 / ~1500 RPM under the live load, DIMM
+unmoved, CPU peaks +1C) and restores the BMC's automatic control for good -
+latched until reboot - when CPU_Temp >= 95, P0_MC0_DIM_CH_A >= 84 (critical
+85) or CPU_MOS >= 92, so the pin cannot hide a rising trend. The timer also
+re-asserts the pin after a BMC config reset.
+
+```sh
+ipmitool sdr type fan                             # RPMs
+ipmitool raw 0x2e 0x05 0xfd 0x19 0x00 1 0xfe      # bc = pinned, else auto
+systemctl list-timers tiberius-fan-quiet.service
+journalctl -u tiberius-fan-quiet -n 20
+```
+
 ## Tiberius vLLM runtime and memory checks
 
 The default `qwen38-sm75` runtime uses pinned upstream patches and Python wheels, native
