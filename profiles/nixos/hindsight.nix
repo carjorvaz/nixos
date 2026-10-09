@@ -46,8 +46,8 @@ in
       # defaults to it; the engine generates one request at a time, so client
       # concurrency is pinned to 1 and the read timeout is raised above the
       # 120 s default for cold prefills and ~20 tok/s decode.
-      # NOTE: the tailnet policy must allow pius outbound TCP to tiberius:8080
-      # (source-side tagging currently blocks it).
+      # The tailnet policy allows pius outbound TCP to tiberius:8080 (verified
+      # 2026-10-09 from pius: TCP connect and /health both succeed).
       llmProvider = "openai";
       llmModel = "qwen3.8-flash-next-iq3_s";
       llmBaseUrl = "http://tiberius:8080/v1";
