@@ -650,6 +650,40 @@ map and a cheap draft pass in the runtime. That is a loader and spec-loop
 patch, not a configuration change. The measurement campaign and the open items
 live in `docs/exec-plans/active/llamacpp-parity.md`.
 
+## Hindsight runtime (pius)
+
+Hindsight 0.10.2 runs on pius: `pkgs/hindsight.override { withLocalOnnx = true; }`
+through `modules/nixos/hindsight.nix`, configured by `profiles/nixos/hindsight.nix`.
+The database is an external PostgreSQL (`hindsight` on the local socket), the
+embeddings are the packaged ONNX provider, and the LLM lane is the Strata engine
+on tiberius (`http://tiberius:8080/v1`, `qwen3.8-flash-next-iq3_s`, thinking
+disabled, concurrency pinned to 1). `hindsight.vaz.ovh` is registered in
+`services.nginx.tailscaleAuth.virtualHosts`: the app authenticates `/v1` and
+`/mcp` with the tenant key, but `/metrics`, `/docs` and `/openapi.json` are
+unauthenticated in-app, and the host firewall accepts 80/443 on every
+interface, so the nginx gate is what keeps non-tailnet clients out.
+
+Packaging and unit traps this deployment paid for, worth not repeating:
+
+- `mk-python-derivation` derives `doInstallCheck` from `doCheck` and
+  `installCheckPhase` from `attrs.checkPhase`. Keep `doCheck = true` and define
+  no `checkPhase`, or the package's install-check smoke is silently skipped.
+  The phase body must also share one base indentation, or Nix's indentation
+  stripping leaves the python heredoc indented.
+- The fleet default is `DefaultTimeoutStartSec=15s`/`DefaultTimeoutStopSec=15s`
+  and the unit is `Type=exec`, so `TimeoutStartSec` cannot bound in-process
+  migrations; `TimeoutStopSec = "30min"` is what keeps a switch landing during
+  a migration from SIGKILLing it (a 0.8.2 to 0.10.2 upgrade took ~16 minutes).
+- `StateDirectoryMode`/`CacheDirectoryMode` must be pinned (0700); systemd
+  otherwise resets the innermost directory to 0755 on every start, overriding
+  the declared modes.
+- Objects left by earlier deployments can be owned by `postgres`, which fails
+  the alembic chain on `CREATE OR REPLACE FUNCTION`; reassign the non-extension
+  functions and types to `hindsight` first (pgvector's own objects excluded).
+- `checks/hindsight.nix` carries `hindsight-deploy-config`, which asserts the
+  vhost gate, the unit timeout, and the deployed bind/port/LLM wiring against
+  `nixosConfigurations.pius`.
+
 ## Deploy and rebuild commands
 
 Deploy/rebuild commands are intentionally not part of default validation. Run them only when you intend to mutate a host:
