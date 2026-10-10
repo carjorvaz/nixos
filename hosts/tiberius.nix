@@ -101,7 +101,6 @@ let
       ${pkgs.coreutils}/bin/sleep 5
     done
 
-    sdr=$("$ipmi" sdr 2>/dev/null || true)
     sensor() {
       printf '%s\n' "$sdr" \
         | ${pkgs.gnugrep}/bin/grep -m1 -- "$1" \
@@ -114,13 +113,29 @@ let
       done
     }
 
-    cpu=$(sensor CPU_Temp)
-    dimm=$(sensor P0_MC0_DIM_CH_A)
-    mos=$(sensor CPU_MOS)
+    # The in-band KCS read hiccups occasionally ("unexpected ID"): retry before
+    # believing a failure, or one bad read would hand the fans to the BMC for
+    # the rest of a busy session.
+    cpu=""
+    dimm=""
+    mos=""
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+      sdr=$("$ipmi" sdr 2>/dev/null || true)
+      cpu=$(sensor CPU_Temp)
+      dimm=$(sensor P0_MC0_DIM_CH_A)
+      mos=$(sensor CPU_MOS)
+      if [ -n "$cpu" ] && [ -n "$dimm" ] && [ -n "$mos" ]; then
+        break
+      fi
+      tries=$((tries + 1))
+      ${pkgs.coreutils}/bin/sleep 2
+    done
     if [ -z "$cpu" ] || [ -z "$dimm" ] || [ -z "$mos" ]; then
+      # Fail safe to the BMC, but do not latch: a chassis that cannot be read
+      # right now must not pin the loud curve for the rest of the session.
       "$logger" -t tiberius-fan-quiet "chassis sensor read failed; restoring automatic fan control"
       restore_auto
-      ${pkgs.coreutils}/bin/echo auto > "$state"
       exit 0
     fi
 

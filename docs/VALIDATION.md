@@ -269,7 +269,10 @@ because these two fans barely move the DIMM either way). It re-asserts the pin
 after a BMC config reset and hands the fans back to the BMC when hot -
 CPU_Temp >= 95, P0_MC0_DIM_CH_A >= 84 (critical 85) or CPU_MOS >= 92 - staying
 off until the chassis cools below CPU 70 / DIMM 75 / VRM 70, so the pin cannot
-hide a rising trend and the fans cannot oscillate at the trip points.
+hide a rising trend and the fans cannot oscillate at the trip points. A sensor
+read is retried up to three times; a chassis that stays unreadable fails safe
+to the BMC for that tick without latching, so a transient IPMI hiccup cannot
+pin the loud curve for the rest of a session.
 
 While the timer runs, an ad-hoc duty write to PWM 1/2/3 is transient: the next
 tick rewrites that tick's tier duty. To return to BMC control on purpose:
