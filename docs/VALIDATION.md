@@ -259,17 +259,30 @@ board: PWM 1+3 = SYS_FAN_3 (one zone, both carry its value), PWM 2 =
 SYS_FAN_1; PWM 0/4/5/6 are unpopulated. `0x2e 0x44` is not implemented on this
 firmware (0xc1).
 
-`hosts/tiberius.nix` runs `tiberius-fan-quiet.service` from a 60s timer: it
-pins PWM 1/2/3 at 60% (measured 900 / ~1500 RPM under the live load, DIMM
-unmoved, CPU peaks +1C) and restores the BMC's automatic control for good -
-latched until reboot - when CPU_Temp >= 95, P0_MC0_DIM_CH_A >= 84 (critical
-85) or CPU_MOS >= 92, so the pin cannot hide a rising trend. The timer also
-re-asserts the pin after a BMC config reset.
+`hosts/tiberius.nix` runs `tiberius-fan-quiet.service` from a 60s timer. It
+picks one of two tested duties from the chassis sensors each tick: 30% while
+cold (`CPU_Temp`, the Optane DIMM and the VRM all <= 60C; idle and the
+GPU-bound vLLM lanes sit near 40C; measured 500 / ~900 RPM) and 50% otherwise
+(the strata engine soaks the DIMM to ~82C of its 85C critical; measured
+800 / ~1300 RPM, the same thermal envelope as the automatic curve's 60-90%,
+because these two fans barely move the DIMM either way). It re-asserts the pin
+after a BMC config reset and hands the fans back to the BMC when hot -
+CPU_Temp >= 95, P0_MC0_DIM_CH_A >= 84 (critical 85) or CPU_MOS >= 92 - staying
+off until the chassis cools below CPU 70 / DIMM 75 / VRM 70, so the pin cannot
+hide a rising trend and the fans cannot oscillate at the trip points.
+
+While the timer runs, an ad-hoc duty write to PWM 1/2/3 is transient: the next
+tick rewrites that tick's tier duty. To return to BMC control on purpose:
+
+```sh
+systemctl stop tiberius-fan-quiet.timer
+for ch in 1 2 3; do ipmitool raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" 0xff; done
+```
 
 ```sh
 ipmitool sdr type fan                             # RPMs
-ipmitool raw 0x2e 0x05 0xfd 0x19 0x00 1 0xfe      # bc = pinned, else auto
-systemctl list-timers tiberius-fan-quiet.service
+ipmitool raw 0x2e 0x05 0xfd 0x19 0x00 1 0xfe      # 9e/b2 = pinned, else auto
+systemctl list-timers tiberius-fan-quiet.timer
 journalctl -u tiberius-fan-quiet -n 20
 ```
 

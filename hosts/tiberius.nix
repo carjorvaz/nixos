@@ -75,15 +75,19 @@ let
   # returns the channel to automatic control, and a manual duty reads back as
   # 0x80|duty.  Channel map measured on this board 2026-10-09: PWM 1 and 3
   # drive SYS_FAN_3 (one zone, both carry its value), PWM 2 drives SYS_FAN_1,
-  # and PWM 0/4/5/6 sit on unpopulated headers.  60% is above the automatic
-  # curve's calm floor (45%, ~1200 RPM) and well below its peaks (90%, ~2400
-  # RPM), which is what removes the revving; the guard below restores
-  # automatic control for good if the chassis runs hot.
+  # and PWM 0/4/5/6 sit on unpopulated headers.  Two duties, picked from the
+  # chassis sensors each tick: 30% when cold (idle and the GPU-bound lanes
+  # measure ~40C; 500/~900 RPM) and 50% whenever anything is warm (the strata
+  # engine soaks the DIMM to ~82C of its 85C critical, and 45-60% all measured
+  # the same envelope, so 50% is the quietest tested level that keeps the
+  # guard's headroom; ~800/~1300 RPM).  The guard below hands control back to
+  # the BMC when hot, and only re-arms the pin once the chassis has cooled
+  # well below the trip points, so the fans cannot oscillate at the edge.
   fanQuiet = pkgs.writeShellScript "tiberius-fan-quiet" ''
     set -u
     ipmi=${pkgs.ipmitool}/bin/ipmitool
     logger=${pkgs.util-linux}/bin/logger
-    latch=/run/tiberius-fan-quiet.latched
+    state=/run/tiberius-fan-quiet.state
 
     # The in-band device can lag boot; wait for it instead of mistaking a slow
     # boot for a failed BMC.
@@ -97,8 +101,6 @@ let
       ${pkgs.coreutils}/bin/sleep 5
     done
 
-    [ -e "$latch" ] && exit 0
-
     sdr=$("$ipmi" sdr 2>/dev/null || true)
     sensor() {
       printf '%s\n' "$sdr" \
@@ -110,7 +112,6 @@ let
       for ch in 1 2 3; do
         "$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" 0xff >/dev/null 2>&1 || true
       done
-      ${pkgs.coreutils}/bin/touch "$latch"
     }
 
     cpu=$(sensor CPU_Temp)
@@ -119,6 +120,7 @@ let
     if [ -z "$cpu" ] || [ -z "$dimm" ] || [ -z "$mos" ]; then
       "$logger" -t tiberius-fan-quiet "chassis sensor read failed; restoring automatic fan control"
       restore_auto
+      ${pkgs.coreutils}/bin/echo auto > "$state"
       exit 0
     fi
 
@@ -127,22 +129,40 @@ let
     if [ "$dimm" -ge 84 ] || [ "$cpu" -ge 95 ] || [ "$mos" -ge 92 ]; then
       "$logger" -t tiberius-fan-quiet "hot (CPU=$cpu DIMM=$dimm MOS=$mos); restoring automatic fan control"
       restore_auto
+      ${pkgs.coreutils}/bin/echo auto > "$state"
       exit 0
     fi
 
-    # Re-assert the pin: a BMC config reset drops it and the write is
-    # idempotent.  A pinned channel reads back as 0x80|0x3c = "bc".
+    # After a trip, stay on the BMC's curve until the chassis has genuinely
+    # cooled - a wide band against fan oscillation at the trip points.
+    if [ -e "$state" ] && [ "$(${pkgs.coreutils}/bin/cat "$state")" = auto ]; then
+      if [ "$cpu" -le 70 ] && [ "$dimm" -le 75 ] && [ "$mos" -le 70 ]; then
+        ${pkgs.coreutils}/bin/echo quiet > "$state"
+        "$logger" -t tiberius-fan-quiet "cooled (CPU=$cpu DIMM=$dimm MOS=$mos); re-arming the quiet pin"
+      else
+        exit 0
+      fi
+    fi
+
+    if [ "$cpu" -le 60 ] && [ "$dimm" -le 60 ] && [ "$mos" -le 60 ]; then
+      duty=0x1e want=9e pct=30
+    else
+      duty=0x32 want=b2 pct=50
+    fi
+
+    # Re-assert the pin: a BMC config reset drops it and the duty write is
+    # idempotent.  A pinned channel reads back as 0x80|duty ("9e" or "b2").
     d1=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 1 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
     d2=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 2 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
     d3=$("$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 3 0xfe 2>/dev/null | ${pkgs.gawk}/bin/awk '{ print $NF }' || true)
-    if [ "$d1" != bc ] || [ "$d2" != bc ] || [ "$d3" != bc ]; then
+    if [ "$d1" != "$want" ] || [ "$d2" != "$want" ] || [ "$d3" != "$want" ]; then
       for ch in 1 2 3; do
-        "$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" 0x3c >/dev/null || {
+        "$ipmi" raw 0x2e 0x05 0xfd 0x19 0x00 "$ch" "$duty" >/dev/null || {
           "$logger" -t tiberius-fan-quiet "pin write to PWM $ch failed"
           exit 1
         }
       done
-      "$logger" -t tiberius-fan-quiet "chassis fans pinned at 60% (PWM 1/2/3)"
+      "$logger" -t tiberius-fan-quiet "chassis fans pinned at ''${pct}% (PWM 1/2/3)"
     fi
   '';
 
@@ -347,13 +367,13 @@ in
     # BMC's automatic curve held SYS_FAN_1 at a fixed 100% duty (1400 RPM) and
     # swung SYS_FAN_3 between 61% and 90% (1200-2400 RPM) with the CPU while
     # the inference load kept the Optane DIMM at ~82C of its 85C critical.
-    # Pinning the PWM channels at 60% measured 900 / ~1500 RPM under the live
-    # load with the DIMM unmoved (CPU peaks +1C over the automatic curve).
-    # This timer both re-asserts the pin after a BMC config reset and runs the
-    # thermal guard in `fanQuiet`: crossing any threshold restores the BMC's
-    # automatic control for good (latched until reboot), so the pin cannot
-    # hide a rising trend.  The interface has no UI or Redfish surface; see
-    # docs/VALIDATION.md.
+    # The two-duty pin in `fanQuiet` (30% cold / 50% warm) measured the same
+    # DIMM envelope as the automatic curve and drops the fans to 500/900 RPM
+    # whenever nothing is hot.  This timer re-asserts the pin after a BMC
+    # config reset and runs the thermal guard: crossing any threshold hands
+    # the fans back to the BMC until the chassis cools well below the trip
+    # points, so the pin cannot hide a rising trend.  The interface has no UI
+    # or Redfish surface; see docs/VALIDATION.md.
     tiberius-fan-quiet = {
       description = "Pin the chassis fans quietly, unless the chassis runs hot";
       serviceConfig = {
