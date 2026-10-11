@@ -349,7 +349,10 @@ its 3.97 acceptance at 8k is not reproducible on 0.29 today either, and
 acceptance moves ~9% between boots at a fixed cell (3.541 against 3.848 on the
 same pin), so those tables compare within a session only. The transient W4A8
 prefill is not the difference (`VLLM_TURING_PREFILL_INT8=off` reads 3.25 on the
-same cell, lower than on). Method notes for the next such A/B: the packaged
+same cell, lower than on). Prompt-length probes (1632 / 1633 / 1634 / 1636 /
+3265 tokens) all complete, so the lookahead-window deferral upstream documents
+is not reachable in this configuration. Method notes for the next such A/B: the
+packaged
 `qwen38-sm75-serve` refuses a hand-linked root (manifest check), so launch each
 arm as `<runtime>/bin/vllm serve <args>` from `/root/serve-args.txt` with the
 unit's `Environment=` *and* `serve.env` (EnvironmentFile wins over Environment=,
