@@ -303,12 +303,6 @@ in
     '';
   };
   systemd.services = {
-    # Parked 2026-10-11: the 27B vLLM lane is the boot engine (see the
-    # services.tiberius-strata note below).  The strata module still defines
-    # the unit and every check reads its rendered text; only the boot want is
-    # gone, so `systemctl start tiberius-strata` still flips a running box.
-    tiberius-strata.wantedBy = lib.mkForce [ ];
-
     # Keep NInfer available for manual fallback, but boot into vLLM. Never let
     # both resident engines contend for the single GPU or the API port.
     # Parked with the profile import above (the unit no longer exists without
@@ -599,24 +593,21 @@ in
 
     tiberius-qwen38 = {
       description = "Qwen3.8-27B on the RTX 2080 Ti (vLLM)";
-      # The boot engine since 2026-10-11.  Hindsight's memory traffic is what
-      # keeps this box busy, and its mental-model refresh - the reflect
-      # pipeline running tool-call iterations over a 9.5-28K-token
-      # consolidation prompt - is serialized through this one slot.  Measured
-      # 2026-10-11 against the strata lane on the same job class: strata's 17
-      # captured cells ran 17-80 s per call at 28-30 tok/s decode, while this
-      # lane decodes at 95-120 tok/s (card validation, 0.31.0) and lands 65-70%
-      # prefix-cache hits on the shared hindsight prompt, so the refresh pass
-      # drains in roughly half the wall clock and the Optane DIMM stays cold.
-      # The same pass still died at the reflect wall clock's 300 s default on
-      # BOTH engines, so that default moved too (see
-      # HINDSIGHT_API_REFLECT_WALL_TIMEOUT in profiles/nixos/hindsight.nix).
-      # Strata stays installed for A/B and fallback: services.tiberius-strata
-      # below is still fully configured, just un-wanted from boot, so
-      # `systemctl start tiberius-strata` flips a running box.  For a durable
-      # flip back, park this lane (wantedBy = lib.mkForce [ ]) and restore the
-      # strata unit's wantedBy.
-      wantedBy = [ "multi-user.target" ];
+      # Parked 2026-10-11.  An on-box A/B of the exact hindsight job
+      # (project-decisions-nixos, delta refresh, same page budget, raised wall
+      # clock) kept this lane and strata in the same envelope - 67-617 s here
+      # against strata's 283 s - because the reflect loop is prefill-heavy
+      # (1.8-17K-token calls, 0.75-1.2K outputs) and strata reads prompts
+      # faster; strata's page came back richer on the same input (6.6 KB vs
+      # 5.4 KB, with sections this lane had dropped).  So strata stays the boot
+      # engine: what actually blocked hindsight was the reflect pipeline's
+      # 300 s wall-clock default, not this lane's absence (raised to 1800 s in
+      # profiles/nixos/hindsight.nix).  This lane stays installed and proven
+      # (95-120 tok/s decode - the fast lane for interactive use, and the
+      # fallback); to make it the boot engine again, restore the wantedBy below
+      # and park the strata unit the same way (both sides conflict, so only
+      # one ever holds the GPU).
+      wantedBy = lib.mkForce [ ];
       # Symmetric with the uncensored lane: either start takes the other down,
       # so toggling in either direction cannot leave two engines on one 22 GB
       # card (which fails the second one with a memory error).
@@ -839,19 +830,19 @@ in
     ];
   };
 
-  # Strata (Qwen3.8-Flash-Next IQ3_S) is the parked fallback engine on this
-  # host (boot engine 2026-10-01 .. 2026-10-11): the experts are mmapped from
-  # the Optane PMEM (126 GiB fsdax, dax=always) and the 262K-context int8-KV
-  # configuration measures 20-21 tok/s decode and 457-1034 tok/s prefill
-  # (4.3K-27.5K tokens; the lane note below has the exact cells) - but
-  # hindsight's refresh pass runs 9.5-28K-token reflect jobs through the same
-  # one slot and the 27B vLLM lane does that job class faster (see the
-  # tiberius-qwen38 note above).  The module stays enabled so the unit text,
-  # the optane mount and every check stay exercised; only the boot want is
-  # parked, so `systemctl start tiberius-strata` flips a running box, and
-  # dropping the wantedBy mkForce in systemd.services above flips a boot
-  # (parking the vLLM lane the same way first - both sides conflict, so only
-  # one ever holds the GPU).
+  # Strata (Qwen3.8-Flash-Next IQ3_S) is the boot engine on this host: the
+  # experts are mmapped from the Optane PMEM (126 GiB fsdax, dax=always) and the
+  # 262K-context int8-KV configuration measures 20-21 tok/s decode and 457-1034
+  # tok/s prefill (4.3K-27.5K tokens; the lane note below has the exact cells).
+  # It was briefly parked on 2026-10-11 (the 27B vLLM lane took the boot slot)
+  # until an on-box A/B of the exact hindsight refresh job put the two lanes in
+  # the same envelope - 283 s here against the 27B's 67-617 s, the reflect loop
+  # being prefill-heavy - with a richer page from this lane (6.6 KB vs 5.4 KB).
+  # The 27B lane stays installed and proven as the fast interactive lane and the
+  # fallback: park this unit with wantedBy = lib.mkForce [ ] in systemd.services
+  # and restore the vLLM lane's wantedBy to flip a boot (both sides conflict, so
+  # only one ever holds the GPU); `systemctl start` flips a running box either
+  # way.
   services.tiberius-strata = {
     enable = true;
     package = pkgs.strata-sm75;

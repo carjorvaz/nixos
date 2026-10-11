@@ -324,14 +324,11 @@ in
     workingDirectory = hermesWorkspace;
     extraPackages = hermesBrowserPackages;
     settings = {
-      # The default model is the Qwen3.8-27B vLLM lane on tiberius, reached
-      # over the tailnet (MagicDNS) as an OpenAI-compatible endpoint.  A named
-      # provider entry owns the endpoint, so no model.base_url here.  (That
-      # provider key keeps its old `tiberius-strata` name on purpose: the
-      # module's merge preserves keys already in config.yaml, so renaming it
-      # would strand the old entry.)
+      # The default model is Strata (Qwen3.8-Flash-Next IQ3_S) on tiberius,
+      # reached over the tailnet (MagicDNS) as an OpenAI-compatible endpoint.
+      # A named provider entry owns the endpoint, so no model.base_url here.
       model = {
-        default = "qwen3.8-27b";
+        default = "qwen3.8-flash-next-iq3_s";
         provider = "tiberius-strata";
         # Displaces the stale codex URL the live config carried before the
         # switch; the named provider above owns the real endpoint.
@@ -340,23 +337,20 @@ in
       providers."tiberius-strata" = {
         api = "http://tiberius:8080/v1";
         transport = "chat_completions";
-        default_model = "qwen3.8-27b";
-        # The served model advertises a 262144-token window (max_model_len; the
-        # /v1/models payload carries it) and refuses, rather than truncates, a
-        # request whose prompt plus max_tokens exceeds it - but Hermes never
-        # crosses the bound: compaction fires at 0.75 of the window (196608 of
-        # 262144), which is exactly window - the 65536 output cap Hermes sends
-        # for this endpoint.
+        default_model = "qwen3.8-flash-next-iq3_s";
+        # The server refuses, rather than truncates, a request whose prompt
+        # plus max_tokens exceeds the window it advertises in /v1/models. Its
+        # own fit_max_tokens escape hatch is a server-config key (strata-*.json)
+        # and is ignored in a request body, but Hermes never crosses the bound:
+        # compaction fires at 0.75 of the window (196608 of 262144), which is
+        # exactly window - the 65536 output cap Hermes sends for this endpoint.
         context_length = 262144;
-        # Thinking is deliberately left ON for the main turn, chosen 2026-10-07
-        # for reasoning quality (then on strata's ~20 tok/s decode; the 27B
-        # lane decodes at ~95-120 tok/s at short context, so the same choice
-        # now costs a fraction of that). It must be set EXPLICITLY: the
+        # Thinking is deliberately left ON (the served template's default
+        # xhigh effort) for the main turn, chosen 2026-10-07 for reasoning
+        # quality even at ~20 tok/s decode. It must be set EXPLICITLY: the
         # module's deep merge preserves keys already in config.yaml, so simply
         # omitting it would leave the earlier `enable_thinking: false` in
-        # place. Verified against the 27B on 2026-10-11: enable_thinking=true
-        # and =false both render (the former returns a reasoning block, the
-        # latter none). The auxiliary rails below keep `enable_thinking: false`:
+        # place. The auxiliary rails below keep `enable_thinking: false`:
         # their deadlines are 8-30 s and a thinking call would blow them on
         # the single-request engine.
         extra_body = {
@@ -367,14 +361,13 @@ in
       };
       auxiliary = {
         # Local-only by design: every auxiliary rail follows the main model
-        # (the 27B lane), so nothing here depends on a cloud credential. Each
-        # rail must opt out of thinking itself — plain aux calls forward
+        # (Strata), so nothing here depends on a cloud credential. Each rail
+        # must opt out of thinking itself — plain aux calls forward
         # auxiliary.<task>.extra_body, never the provider entry's — and
         # compression needs a deadline that survives a long replay on the
-        # single-request engine. The served model is text-only (the lane runs
-        # --language-model-only), so image attachments stay unsupported until
-        # a vision-capable provider is pinned to `auxiliary.vision` (or the
-        # main model changes).
+        # single-request engine. Strata is text-only, so image attachments
+        # stay unsupported until a vision-capable provider is pinned to
+        # `auxiliary.vision` (or the main model changes).
         title_generation.extra_body.chat_template_kwargs.enable_thinking = false;
         approval.extra_body.chat_template_kwargs.enable_thinking = false;
         skills_hub.extra_body.chat_template_kwargs.enable_thinking = false;
@@ -395,8 +388,7 @@ in
           # Full-agent rails inherit the provider entry's extra_body, and the
           # module's merge keeps any key already in config.yaml — so thinking
           # must be pinned explicitly (`true`) or the earlier `false` survives.
-          # 600 s gives the replay room even on the parked strata fallback
-          # (~20 tok/s).
+          # 600 s gives the replay room on the ~20 tok/s engine.
           timeout = 600;
           extra_body.chat_template_kwargs.enable_thinking = true;
         };

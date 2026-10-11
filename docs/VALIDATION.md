@@ -137,18 +137,21 @@ when changing backend; do not assume a vLLM-specific client overlay works unchan
 The pinned server has no `--reasoning-effort` default override, even though its CLI
 does. Explicit per-request effort avoids the artifact template's default.
 
-`tiberius-qwen38.service` is the boot default; NInfer and its assets remain
+`tiberius-qwen38.service` is a parked fast lane (the strata engine holds the
+boot slot - see the Strata section below); NInfer and its assets remain
 available for manual fallback. The services conflict and their stop/start jobs
-are ordered, so only one owns the GPU/API port. Temporary fallback: stop
-`tiberius-qwen38.service` and start `tiberius-ninfer.service`; to return, stop
-NInfer and start Qwen. For a durable backend change, update the host's `wantedBy`
+are ordered, so only one owns the GPU/API port. Temporary fallback: stop the
+running engine and start `tiberius-ninfer.service`; to return, stop NInfer and
+start the other lane. For a durable backend change, update the host's `wantedBy`
 selection and the client's context/reasoning mapping together.
 
 ## Tiberius Strata runtime
 
-`strata-sm75` is the parked fallback engine on Tiberius (the 27B vLLM lane is
-the boot default since 2026-10-11; see the host module's boot notes and the
-NInfer/Qwen section above). It builds upstream Strata at pin
+`strata-sm75` is the boot engine on Tiberius (the 27B vLLM lane took the boot
+slot on 2026-10-11 until an on-box A/B of hindsight's refresh job put the two
+lanes in the same envelope - 283 s on strata against 67-617 s on the 27B, with
+a richer page from strata; the 27B stays installed as the parked fast and
+interactive lane). It builds upstream Strata at pin
 `61b3fb5d` (v0.1.42) with two patches: `tiberius.patch` (a sliding DAX register
 window, decode-time refill pinning with its straddle guard) and
 `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled web app, its
@@ -254,9 +257,7 @@ peer releases the GPU before it starts. It binds `0.0.0.0:8080` with a
 Host-header allowlist and no API key -- tailnet-only in practice, since the
 firewall opens nothing and `tailscale0` is trusted. It serves one request at a
 time (extra requests queue), and its conversation cache is RAM-only, so a
-restart loses it. Since 2026-10-11 the unit is not wanted at boot (the 27B vLLM
-lane is the boot engine); it stays fully wired, and `systemctl start
-tiberius-strata` flips a running box.
+restart loses it.
 
 Validation for the engine, module and its wiring:
 
@@ -788,19 +789,20 @@ live in `docs/exec-plans/active/llamacpp-parity.md`.
 Hindsight 0.10.2 runs on pius: `pkgs/hindsight.override { withLocalOnnx = true; }`
 through `modules/nixos/hindsight.nix`, configured by `profiles/nixos/hindsight.nix`.
 The database is an external PostgreSQL (`hindsight` on the local socket), the
-embeddings are the packaged ONNX provider, and the LLM lane is the vLLM
-Qwen3.8-27B lane on tiberius (`http://tiberius:8080/v1`, `qwen3.8-27b`, thinking
-disabled, concurrency pinned to 1; the strata lane stays installed on the box as
-the parked fallback). The reflect wall clock is raised to 1800 s: a mental-model
-refresh runs the reflect pipeline (tool-call iterations over a 9.5-28K-token
-prompt) and the 300 s default killed every refresh since 2026-07-03 - on both
-engines. Mental-model pages honour each model's own `max_tokens` (600-800 in
-this bank) via the page-length directive plus the delta/retraction pass, so
-refreshed pages are leaner than the pre-cutover DeepSeek-era ones (~12 KB,
-about 4x the budget): that is the configured page shape, not engine loss - raise
-a model's `max_tokens` if depth matters. Reasoning for the refresh path only
+embeddings are the packaged ONNX provider, and the LLM lane is the Strata engine
+on tiberius (`http://tiberius:8080/v1`, `qwen3.8-flash-next-iq3_s`, thinking
+disabled, concurrency pinned to 1; the 27B vLLM lane stays installed as the
+parked fast/interactive lane). The reflect wall clock is raised to 1800 s: a
+mental-model refresh runs the reflect pipeline (tool-call iterations over a
+9.5-28K-token prompt) and the 300 s default killed every refresh since
+2026-07-03 - on both engines. With it raised, both engines complete the job in
+the same envelope (283 s on strata, 67-617 s on the 27B), so the 2026-10-11
+engine swap was not what fixed hindsight - the clock was. Mental-model pages
+regrow across refreshes (2.8 -> 3.2 -> 5.4 -> 6.6 KB over one afternoon) and
+each model's `max_tokens` (600-800 here) acts as a soft page-length directive,
+not a hard cap. Reasoning for the refresh path only
 (`HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_EXTRA_BODY` with
-`enable_thinking: true`) was tried on 2026-10-11 and FAILS on the 27B:
+`enable_thinking: true`) was tried on 2026-10-11 and fails:
 `Reflect's done tool returned no answer` (iteration 7, 14 tool calls) - the
 route to a deeper page is the page budget or a different refresh-path model
 (the block has its own provider/model/base_url knobs), not thinking.
