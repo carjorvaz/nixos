@@ -23,7 +23,8 @@ for prompt in [1,15,16,17,31,32,33,1632,1633,1648,32640,32641,32656,32768,32769,
          use_eagle_block_drop=True,
          # Internal Mamba prefill checkpoint blocks are disabled under
          # Eagle/MTP, which is the configuration this check exercises.
-         mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=4)
+         mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=4,
+         mamba_shared_prefix_checkpoint=False)
     request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
     stops=[]
     while request.num_computed_tokens<prompt:
@@ -82,7 +83,8 @@ for hash_size, lookahead in [(1,0),(1,1),(2,2),(4,4),(8,3),(16,4),(32,8)]:
                  use_eagle_block_drop=bool(lookahead),
                  # The spec below leaves num_prefill_checkpoint_blocks at 0, so
                  # internal Mamba prefill checkpoints stay off here.
-                 mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=lookahead)
+                 mamba_has_prefill_checkpoint_blocks=False,mamba_partial_cache_hit=True,max_num_scheduled_tokens=2048,scheduler_config=NS(long_prefill_token_threshold=0),num_prefill_lookahead=lookahead,
+                 mamba_shared_prefix_checkpoint=False)
         request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
         stops=[]
         while request.num_computed_tokens<prompt:
@@ -95,11 +97,21 @@ for hash_size, lookahead in [(1,0),(1,1),(2,2),(4,4),(8,3),(16,4),(32,8)]:
         if checkpoint>0 and not 0<prompt%BLOCK<lookahead:
             assert checkpoint in stops,(hash_size,lookahead,prompt,checkpoint,stops)
     print('PASS exhaustive boundaries',hash_size,lookahead,flush=True)
-for invalid_hash in (1,2,3):
-    config=KVCacheConfig(num_blocks=256,kv_cache_tensors=[],kv_cache_groups=[KVCacheGroupSpec(['full'],full),KVCacheGroupSpec(['mamba'],mamba),KVCacheGroupSpec(['draft'],full,is_eagle_group=True)])
-    try: HybridKVCacheCoordinator(config,262144,8,True,True,False,1,1,BLOCK,invalid_hash,num_prefill_lookahead=4)
-    except ValueError as e: assert 'hash_block_size' in str(e)
-    else: raise AssertionError('unsafe fine-hash lookahead accepted')
+# 0.31 guards this contract in two places: the hash unit must divide the
+# scheduling granularity (a bare assert in the coordinator), and fine-hash
+# caching must not exclude a tail narrower than the MTP lookahead (a
+# ValueError naming scheduler_block_size, not the hash unit).
+config=KVCacheConfig(num_blocks=256,kv_cache_tensors=[],kv_cache_groups=[KVCacheGroupSpec(['full'],full),KVCacheGroupSpec(['mamba'],mamba),KVCacheGroupSpec(['draft'],full,is_eagle_group=True)])
+for bad_hash in (5,7,11):
+    try: HybridKVCacheCoordinator(config,262144,8,True,True,False,1,1,BLOCK,bad_hash,num_prefill_lookahead=4)
+    except AssertionError: pass
+    else: raise AssertionError('hash_block_size not dividing the scheduling granularity accepted',bad_hash)
+tiny=FullAttentionSpec(block_size=1,num_kv_heads=1,head_size=16,dtype=torch.float16)
+tiny_config=KVCacheConfig(num_blocks=16,kv_cache_tensors=[],kv_cache_groups=[KVCacheGroupSpec(['full'],tiny),KVCacheGroupSpec(['draft'],tiny,is_eagle_group=True)])
+for narrow in (2,3):
+    try: HybridKVCacheCoordinator(tiny_config,64,8,True,True,False,1,1,narrow,1,num_prefill_lookahead=4)
+    except ValueError as e: assert 'scheduler_block_size' in str(e),(narrow,str(e))
+    else: raise AssertionError('MTP lookahead wider than the scheduling granularity accepted',narrow)
 
 # Exercise the real align-mode manager and pool across the sparse null gaps
 # produced by chunked prefill.  The eligible prefix must be retired even when

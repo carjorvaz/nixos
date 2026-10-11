@@ -323,8 +323,12 @@ files compile under 3.12, the 0.29 -> 0.31 removed-name scan reports only the
 calls with 0 breaks. `requirements.lock` was re-resolved for the new pin (uv,
 python 3.12, `x86_64-manylinux_2_34`) from upstream's pin list; the 0.29 lock's
 other pins held except where 0.31 forces a move. `check-prefix.py` carries the
-two harness adjustments the port needs (the `use_eagle_block_drop` bit on the
-scheduler stubs, `retention_interval` on `_cache_partial_tail_block`).
+two harness adjustments the port needs (the `use_eagle_block_drop` and
+`mamba_shared_prefix_checkpoint` bits on the scheduler stubs, `retention_interval`
+on `_cache_partial_tail_block`), and its invalid-configuration block now asserts
+0.31's two guards (the hash unit divides the scheduling granularity; the
+lookahead cannot exceed it) instead of the fork's retired `hash_block_size >=
+lookahead` ValueError.
 
 Still to run on the card, in this order: the runtime build (`qwen38-sm75-prepare`
 after the switch, which compiles the CUDA kernels), `check attention|prefill|
