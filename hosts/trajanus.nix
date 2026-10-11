@@ -140,8 +140,7 @@ in
     # the experiment record; weights are re-downloadable from HF).
     # "${self}/profiles/nixos/local-model.nix"
 
-    # STATE: sudo tailscale up
-    # STATE: sudo tailscale set --exit-node=pius
+    # STATE: sudo tailscale up --advertise-exit-node (2026-10-08); exit routes enabled via API 2026-10-11
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
@@ -449,6 +448,10 @@ in
   };
 
   services = {
+    # Exit node (like pius): needs IPv4+IPv6 forwarding; profile default is "client".
+    # STATE: exit routes enabled via Tailscale API (enabledRoutes 0.0.0.0/0 + ::/0, 2026-10-11).
+    tailscale.useRoutingFeatures = "both";
+
     # Keep the graphical stack available as an emergency workstation, but require
     # an explicit login so stale compositor sessions do not accumulate unattended.
     displayManager.autoLogin.enable = false;

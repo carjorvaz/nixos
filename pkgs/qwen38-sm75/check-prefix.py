@@ -28,8 +28,15 @@ for prompt in [1,15,16,17,31,32,33,1632,1633,1648,32640,32641,32656,32768,32769,
     request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
     stops=[]
     while request.num_computed_tokens<prompt:
-        length=Scheduler._mamba_block_aligned_split(sched,request,min(2048,prompt-request.num_computed_tokens))
+        remaining=prompt-request.num_computed_tokens
+        length=Scheduler._mamba_block_aligned_split(sched,request,min(2048,remaining))
         length=Scheduler._reserve_prefill_lookahead(sched,request,request.num_computed_tokens,length)
+        if length==0:
+            # 0.31 defers a chunk whose remainder sits inside the draft window
+            # (the scheduler's num_new_tokens == 0 path). The next step passes
+            # the whole remainder, which the reserve leaves alone because
+            # nothing would be left behind it.
+            length=remaining
         assert length>0,(prompt,request.num_computed_tokens)
         request.num_computed_tokens+=length
         stops.append(request.num_computed_tokens)
@@ -88,8 +95,11 @@ for hash_size, lookahead in [(1,0),(1,1),(2,2),(4,4),(8,3),(16,4),(32,8)]:
         request=NS(num_computed_tokens=0,num_prompt_tokens=prompt,num_tokens=prompt,shared_prefix_boundary=0)
         stops=[]
         while request.num_computed_tokens<prompt:
-            length=Scheduler._mamba_block_aligned_split(sched,request,min(2048,prompt-request.num_computed_tokens))
+            remaining=prompt-request.num_computed_tokens
+            length=Scheduler._mamba_block_aligned_split(sched,request,min(2048,remaining))
             length=Scheduler._reserve_prefill_lookahead(sched,request,request.num_computed_tokens,length)
+            if length==0:
+                length=remaining  # the reserve defers the chunk; see above
             assert length>0,(hash_size,lookahead,prompt,stops)
             request.num_computed_tokens+=length;stops.append(request.num_computed_tokens)
             assert len(stops)<10
