@@ -339,26 +339,37 @@ pick `BLOCK_M=128`), and `runai-model-streamer==0.16.1` with its `humanize`
 dependency back in `requirements.lock` (the serve profile loads with
 `--load-format runai_streamer`, which 0.31 lists only for ROCm).
 
-**No decode regression, and the old baseline is a session, not a target.** An
-A/B with the same client, file and flags on the same day: 0.31 (vLLM 0.31.0)
-measures 2k 113.7-117.6 tok/s and 8k 98.0-113.0 (acceptance 3.85-3.98 and
-3.54-3.85), while the 0.29 runtime measures 2k 109.7 (3.79) and 8k 96-97 (3.40)
-— at or below this pin in every cell — and one 0.31 boot reproduces the recorded
-112.4 at 8k. The 0.29 column in `docs/VALIDATION.md` is the 2026-09-24 session:
-its 3.97 acceptance at 8k is not reproducible on 0.29 today either, and
-acceptance moves ~9% between boots at a fixed cell (3.541 against 3.848 on the
-same pin), so those tables compare within a session only. The transient W4A8
-prefill is not the difference (`VLLM_TURING_PREFILL_INT8=off` reads 3.25 on the
-same cell, lower than on). Prompt-length probes (1632 / 1633 / 1634 / 1636 /
-3265 tokens) all complete, so the lookahead-window deferral upstream documents
-is not reachable in this configuration. Method notes for the next such A/B: the
-packaged
+**No decode regression.** Production procedure (the unit, after its warmup
+service): 2k 122.1 [4.10], 8k 98.9 [3.54], 32k 95.5 [3.66], 64k 81.1 [3.46]
+tok/s. A same-day A/B with the same client (byte-identical to the September
+package), file and flags puts this pin at or above the 0.29 runtime in every
+cell — 2k 117.6 [3.98] against 109.7 [3.794], 8k 113.0/110.9 [3.848] against
+97.0/95.8 [3.395], copy 3.59 on both — with step time at parity (27.7 against
+28.6 ms at 8k). Acceptance tracks the measurement state rather than the pin: the
+same 8k cell reads 3.541 under the production procedure (three sessions, stable)
+and 3.848 when a short prefix-warming request precedes it (the A/B's procedure).
+The README's 0.29 column is the 2026-09-24 session; its 8k 112.4 / 3.97 was not
+reproduced by either procedure on either runtime, and the warmup-overlap caveat
+in VALIDATION.md did *not* show here (readings right after the service start and
+20 minutes later agree). The transient W4A8 prefill is not the difference either:
+the only same-procedure pair (`VLLM_TURING_PREFILL_INT8=off` against on, fresh
+boots) reads 3.25 against 3.848 — the wrong way for that theory, and unexplained.
+Prompt-length probes (1632 / 1633 / 1634 / 1636 / 3265 tokens) all complete, so
+the lookahead-window deferral upstream documents is not reachable in this
+configuration. Method notes for the next such A/B: the packaged
 `qwen38-sm75-serve` refuses a hand-linked root (manifest check), so launch each
 arm as `<runtime>/bin/vllm serve <args>` from `/root/serve-args.txt` with the
 unit's `Environment=` *and* `serve.env` (EnvironmentFile wins over Environment=,
 so override it with an appended `EnvironmentFile=` drop-in, not `Environment=`),
 and stop `tiberius-qwen38.service` first — its `Restart=always` otherwise
-resurrects the 8080 server and the second engine CUDA-OOMs at 8k.
+resurrects the 8080 server, which contends for the GPU (that alone was the
+first arm's 8k CUDA OOM). Contention is not the whole story, though: with the
+GPU idle and no other engine the hand-rolled arm OOM'd at 8k in
+`load_turing_gdn_o()` while the unit never does, so treat the manual arms' 8k
+OOM as an artefact of a launch whose warmup/allocator state differs from the
+unit's rollout (the unit's warmup service is what keeps the pool clear); keep
+the *unit* as the measurement reference and use the manual arms only as the
+reference runtime.
 
 Still open: the 128k / 253k decode cells, the prefill tails and the copy/edit
 acceptance, which remain the 0.29.0 numbers.
