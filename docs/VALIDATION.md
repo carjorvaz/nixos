@@ -798,7 +798,13 @@ engines. Mental-model pages honour each model's own `max_tokens` (600-800 in
 this bank) via the page-length directive plus the delta/retraction pass, so
 refreshed pages are leaner than the pre-cutover DeepSeek-era ones (~12 KB,
 about 4x the budget): that is the configured page shape, not engine loss - raise
-a model's `max_tokens` if depth matters. `hindsight.vaz.ovh` is registered in
+a model's `max_tokens` if depth matters. Reasoning for the refresh path only
+(`HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_EXTRA_BODY` with
+`enable_thinking: true`) was tried on 2026-10-11 and FAILS on the 27B:
+`Reflect's done tool returned no answer` (iteration 7, 14 tool calls) - the
+route to a deeper page is the page budget or a different refresh-path model
+(the block has its own provider/model/base_url knobs), not thinking.
+`hindsight.vaz.ovh` is registered in
 `services.nginx.tailscaleAuth.virtualHosts`: the app authenticates `/v1` and
 `/mcp` with the tenant key, but `/metrics`, `/docs` and `/openapi.json` are
 unauthenticated in-app, and the host firewall accepts 80/443 on every
