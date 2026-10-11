@@ -337,13 +337,23 @@ journalctl -u tiberius-fan-quiet -n 20
 ## Tiberius vLLM runtime and memory checks
 
 The runtime is pinned to the fork's `turing` branch re-exported against **vLLM
-0.31.0** (fork `4151387`, 2026-10-11): upstream's 49-patch 3090 series and the
+0.31.0** (fork `ed0422a`, 2026-10-11): upstream's 49-patch 3090 series and the
 21-patch Turing series apply to a pristine `v0.31.0` at `--fuzz 0`, and
 `prepare-runtime.py` applies the same stack to the wheel and asserts the
 49-patch upstream series. The fork's port record — the one retired patch
 (upstream 0.31 now owns the Mamba checkpoint alignment) and the marlin `g_idx`
-re-signing — is `docs/turing-0.31-port.md` in the fork. Everything below was
-measured on the 0.29.0 runtime or earlier and is due a re-run on this pin.
+re-signing — is `docs/turing-0.31-port.md` in the fork.
+
+**Validated on this pin (2026-10-11, tiberius).** All five packaged checks
+(`attention`, `prefill`, `prefix`, `gdn`, `downloads`) and the three kernel
+suites (`test_turing_gdn`, `test_turing_prefill`, `test_turing_marlin`) pass;
+the first pass found and fixed the retired shared-memory guard and the missing
+`runai-model-streamer` pin in `requirements.lock`. Decode on the same
+instrument is 98-100 / 96.1 / 76.8 tok/s at 8k / 32k / 64k against the 0.29
+record's 112.4 / 99.8 / 80.6 (the 8k gap tracks MTP acceptance, 3.54 against
+3.97), and quality is unchanged (PPL en 10.8097 / da 10.942; GSM8K 96.0%
+n=200). The 2k / 128k / 253k decode cells and the prefill tails below still
+come from the 0.29.0 runs.
 
 The default `qwen38-sm75` runtime uses pinned upstream patches and Python wheels, native
 CUDA 12.9/GCC 14 tools, native paged prefill, and SM75 Tensor Core speculative

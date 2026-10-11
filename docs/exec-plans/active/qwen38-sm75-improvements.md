@@ -330,11 +330,21 @@ on `_cache_partial_tail_block`), and its invalid-configuration block now asserts
 lookahead cannot exceed it) instead of the fork's retired `hash_block_size >=
 lookahead` ValueError.
 
-Still to run on the card, in this order: the runtime build (`qwen38-sm75-prepare`
-after the switch, which compiles the CUDA kernels), `check attention|prefill|
-prefix|gdn|downloads`, the three kernel suites (`test_turing_gdn.py`,
-`test_turing_prefill.py`, `test_turing_marlin.py`), then quality (PPL / GSM8K)
-and the benchmark tables, which stay the 0.29.0 numbers until re-run.
+Deployed and validated on the card 2026-10-11 (fork `ed0422a`): the runtime
+built, all five packaged checks and the three kernel suites pass, decode is
+98-100 / 96.1 / 76.8 tok/s at 8k / 32k / 64k against the 0.29 record's 112.4 /
+99.8 / 80.6 (the 8k gap tracks MTP acceptance, 3.54 against 3.97), and quality
+is unchanged (PPL en 10.8097 / da 10.942, GSM8K 96.0% n=200). Two fixes came
+out of the run: the restored `small_shared_memory` guard in
+`fp16-attn-verify` (upstream's `spec-attn-smem-fit` only halves the KV tile,
+and `_plan` can still pick `BLOCK_M=128`), and `runai-model-streamer==0.16.1`
+with its `humanize` dependency back in `requirements.lock` (the serve profile
+loads with `--load-format runai_streamer`, which 0.31 lists only for ROCm).
+Prompt-length probes (1632 / 1633 / 1634 / 1636 / 3265 tokens) all complete, so
+the lookahead-window deferral upstream documents is not reachable in this
+configuration. Still open: the 2k / 128k / 253k decode cells, the prefill tails
+and the copy/edit acceptance, which remain the 0.29.0 numbers, and the 8k
+acceptance gap as a drafting follow-up.
 
 ### Xid 45 bisect arms
 
