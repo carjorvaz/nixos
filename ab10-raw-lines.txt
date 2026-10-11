@@ -1,0 +1,250 @@
+# ab10 raw log lines (engine stderr), one block per run
+# ab10*: trajanus-built engine (the first batch); ab10n*: the tiberius-native build that ships
+# <run> | <verbatim line>
+ab10-parity-0 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1271 MiB/s)
+ab10-parity-0 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3260 ms (17.8 tok/s), 8 generated in 470 ms (17.0 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-parity-0 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-parity-0 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9204 ms (466.3 tok/s), 256 generated in 12029 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10-parity-0 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10-parity-0 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8980 ms (391.7 tok/s), 226 generated in 8692 ms (26.0 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10-parity-0 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10-parity-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1281 MiB/s)
+ab10-parity-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3271 ms (17.7 tok/s), 8 generated in 469 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-parity-1 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-parity-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9266 ms (463.2 tok/s), 256 generated in 12005 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10-parity-1 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10-parity-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8968 ms (392.2 tok/s), 226 generated in 8674 ms (26.1 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10-parity-1 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10-parity-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1267 MiB/s)
+ab10-parity-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3267 ms (17.8 tok/s), 8 generated in 469 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-parity-2 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-parity-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9266 ms (463.2 tok/s), 256 generated in 12024 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10-parity-2 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10-parity-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8977 ms (391.8 tok/s), 226 generated in 8680 ms (26.0 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10-parity-2 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10-parity-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.63 s (1255 MiB/s)
+ab10-parity-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3269 ms (17.7 tok/s), 8 generated in 468 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-parity-3 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-parity-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9212 ms (465.9 tok/s), 256 generated in 12025 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10-parity-3 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10-parity-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8950 ms (393.0 tok/s), 226 generated in 8672 ms (26.1 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10-parity-3 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10-ts7-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1277 MiB/s)
+ab10-ts7-1 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-ts7-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2392 ms (24.2 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-ts7-1 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-ts7-1 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-ts7-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9172 ms (467.9 tok/s), 256 generated in 8681 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10-ts7-1 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10-ts7-1 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10-ts7-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8923 ms (394.1 tok/s), 242 generated in 7010 ms (34.5 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10-ts7-1 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10-ts7-1 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10-ts7-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.64 s (1235 MiB/s)
+ab10-ts7-2 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-ts7-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2401 ms (24.2 tok/s), 8 generated in 360 ms (22.2 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-ts7-2 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-ts7-2 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-ts7-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9345 ms (459.3 tok/s), 256 generated in 8689 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10-ts7-2 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10-ts7-2 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10-ts7-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9037 ms (389.2 tok/s), 242 generated in 7032 ms (34.4 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10-ts7-2 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10-ts7-2 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10-ts7-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1281 MiB/s)
+ab10-ts7-3 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-ts7-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2409 ms (24.1 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-ts7-3 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-ts7-3 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-ts7-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9133 ms (470.0 tok/s), 256 generated in 8680 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10-ts7-3 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10-ts7-3 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10-ts7-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8964 ms (392.3 tok/s), 242 generated in 7037 ms (34.4 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10-ts7-3 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10-ts7-3 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10-pcie-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1278 MiB/s)
+ab10-pcie-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3292 ms (17.6 tok/s), 8 generated in 468 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-pcie-1 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-pcie-1 | strata serve: PCIe share: the CPU pool takes 326 us per missed expert (6.3 GB/s of expert bytes), the link 12.3 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-pcie-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9216 ms (465.7 tok/s), 239 generated in 12079 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10-pcie-1 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10-pcie-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9060 ms (388.2 tok/s), 250 generated in 10317 ms (24.2 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10-pcie-1 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10-pcie-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.63 s (1255 MiB/s)
+ab10-pcie-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3263 ms (17.8 tok/s), 8 generated in 467 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-pcie-2 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-pcie-2 | strata serve: PCIe share: the CPU pool takes 326 us per missed expert (6.3 GB/s of expert bytes), the link 12.3 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-pcie-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9182 ms (467.4 tok/s), 239 generated in 12054 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10-pcie-2 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10-pcie-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8946 ms (393.1 tok/s), 250 generated in 10288 ms (24.3 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10-pcie-2 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10-pcie-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1265 MiB/s)
+ab10-pcie-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3264 ms (17.8 tok/s), 8 generated in 467 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-pcie-3 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10-pcie-3 | strata serve: PCIe share: the CPU pool takes 326 us per missed expert (6.3 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-pcie-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9241 ms (464.4 tok/s), 239 generated in 12048 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10-pcie-3 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10-pcie-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8936 ms (393.6 tok/s), 250 generated in 10309 ms (24.3 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10-pcie-3 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10-new-0 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.64 s (1225 MiB/s)
+ab10-new-0 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-new-0 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2398 ms (24.2 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-new-0 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-new-0 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-new-0 | strata serve: PCIe share: the CPU pool takes 329 us per missed expert (6.2 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-new-0 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9100 ms (471.6 tok/s), 256 generated in 8749 ms (29.3 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10-new-0 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10-new-0 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10-new-0 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9032 ms (389.4 tok/s), 239 generated in 7302 ms (32.7 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10-new-0 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10-new-0 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10-new-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1277 MiB/s)
+ab10-new-1 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-new-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2389 ms (24.3 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-new-1 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-new-1 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-new-1 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-new-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9225 ms (465.2 tok/s), 256 generated in 8705 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10-new-1 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10-new-1 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10-new-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8940 ms (393.4 tok/s), 239 generated in 7287 ms (32.8 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10-new-1 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10-new-1 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10-new-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1280 MiB/s)
+ab10-new-2 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-new-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2395 ms (24.2 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-new-2 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-new-2 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-new-2 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-new-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9337 ms (459.7 tok/s), 256 generated in 8718 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10-new-2 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10-new-2 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10-new-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9030 ms (389.5 tok/s), 239 generated in 7294 ms (32.8 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10-new-2 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10-new-2 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10-new-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1268 MiB/s)
+ab10-new-3 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10-new-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2410 ms (24.1 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10-new-3 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10-new-3 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10-new-3 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.3 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10-new-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9145 ms (469.3 tok/s), 256 generated in 8720 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10-new-3 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10-new-3 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10-new-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8982 ms (391.6 tok/s), 239 generated in 7302 ms (32.7 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10-new-3 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10-new-3 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10n-parity-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1278 MiB/s)
+ab10n-parity-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3277 ms (17.7 tok/s), 8 generated in 469 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-parity-1 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-parity-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9712 ms (441.9 tok/s), 256 generated in 12034 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10n-parity-1 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10n-parity-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9021 ms (389.9 tok/s), 226 generated in 8688 ms (26.0 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10n-parity-1 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10n-parity-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1280 MiB/s)
+ab10n-parity-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3249 ms (17.9 tok/s), 8 generated in 467 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-parity-2 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-parity-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9354 ms (458.8 tok/s), 256 generated in 12009 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10n-parity-2 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10n-parity-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9193 ms (382.6 tok/s), 226 generated in 8674 ms (26.1 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10n-parity-2 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10n-parity-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1258 MiB/s)
+ab10n-parity-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3263 ms (17.8 tok/s), 8 generated in 469 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-parity-3 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-parity-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9265 ms (463.2 tok/s), 256 generated in 12018 ms (21.3 tok/s), drafts accepted 155 of 203, 1 checkpoints
+ab10n-parity-3 | strata serve: decode expert cache hit rate: 78.6% (114348 hits / 145532 lookups); 388 more read by the GPU over PCIe or from another GPU (0.3% of all 145920 routed)
+ab10n-parity-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8972 ms (392.0 tok/s), 226 generated in 8684 ms (26.0 tok/s), drafts accepted 137 of 181, 1 checkpoints
+ab10n-parity-3 | strata serve: decode expert cache hit rate: 85.0% (111091 hits / 130749 lookups); 291 more read by the GPU over PCIe or from another GPU (0.2% of all 131040 routed)
+ab10n-ts7-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1266 MiB/s)
+ab10n-ts7-1 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-ts7-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2391 ms (24.3 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-ts7-1 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-ts7-1 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-ts7-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9229 ms (465.1 tok/s), 256 generated in 8685 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10n-ts7-1 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10n-ts7-1 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10n-ts7-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8920 ms (394.3 tok/s), 242 generated in 7013 ms (34.5 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10n-ts7-1 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10n-ts7-1 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10n-ts7-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.65 s (1208 MiB/s)
+ab10n-ts7-2 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-ts7-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2389 ms (24.3 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-ts7-2 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-ts7-2 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-ts7-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9253 ms (463.9 tok/s), 256 generated in 8680 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10n-ts7-2 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10n-ts7-2 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10n-ts7-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8916 ms (394.5 tok/s), 242 generated in 7019 ms (34.5 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10n-ts7-2 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10n-ts7-2 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10n-ts7-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.63 s (1254 MiB/s)
+ab10n-ts7-3 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON: a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-ts7-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2376 ms (24.4 tok/s), 8 generated in 355 ms (22.5 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-ts7-3 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-ts7-3 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-ts7-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9137 ms (469.7 tok/s), 256 generated in 8681 ms (29.5 tok/s), drafts accepted 153 of 196, 1 checkpoints
+ab10n-ts7-3 | strata serve: decode expert cache hit rate: 85.4% (113273 hits / 132689 lookups); 279 more read by the GPU over PCIe or from another GPU (0.2% of all 132968 routed)
+ab10n-ts7-3 | strata serve: route tail skip: 14141 missed experts skipped (15153 entries) since the start
+ab10n-ts7-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8977 ms (391.8 tok/s), 242 generated in 7020 ms (34.5 tok/s), drafts accepted 143 of 189, 1 checkpoints
+ab10n-ts7-3 | strata serve: decode expert cache hit rate: 89.7% (117687 hits / 131172 lookups); 149 more read by the GPU over PCIe or from another GPU (0.1% of all 131321 routed)
+ab10n-ts7-3 | strata serve: route tail skip: 22328 missed experts skipped (23675 entries) since the start
+ab10n-pcie-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.61 s (1278 MiB/s)
+ab10n-pcie-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3280 ms (17.7 tok/s), 8 generated in 471 ms (17.0 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-pcie-1 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-pcie-1 | strata serve: PCIe share: the CPU pool takes 326 us per missed expert (6.3 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-pcie-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9209 ms (466.1 tok/s), 239 generated in 12071 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10n-pcie-1 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10n-pcie-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9271 ms (379.4 tok/s), 250 generated in 10316 ms (24.2 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10n-pcie-1 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10n-pcie-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1272 MiB/s)
+ab10n-pcie-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3261 ms (17.8 tok/s), 8 generated in 467 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-pcie-2 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-pcie-2 | strata serve: PCIe share: the CPU pool takes 325 us per missed expert (6.3 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-pcie-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9232 ms (464.9 tok/s), 239 generated in 12043 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10n-pcie-2 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10n-pcie-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8945 ms (393.2 tok/s), 250 generated in 10286 ms (24.3 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10n-pcie-2 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10n-pcie-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1258 MiB/s)
+ab10n-pcie-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 3252 ms (17.8 tok/s), 8 generated in 468 ms (17.1 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-pcie-3 | strata serve: decode expert cache hit rate: 60.2% (2573 hits / 4277 lookups); 43 more read by the GPU over PCIe or from another GPU (1.0% of all 4320 routed)
+ab10n-pcie-3 | strata serve: PCIe share: the CPU pool takes 326 us per missed expert (6.3 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-pcie-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9226 ms (465.2 tok/s), 239 generated in 12058 ms (19.8 tok/s), drafts accepted 148 of 198, 1 checkpoints
+ab10n-pcie-3 | strata serve: decode expert cache hit rate: 77.0% (107149 hits / 139079 lookups); 601 more read by the GPU over PCIe or from another GPU (0.4% of all 139680 routed)
+ab10n-pcie-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8996 ms (391.0 tok/s), 250 generated in 10294 ms (24.3 tok/s), drafts accepted 151 of 200, 1 checkpoints
+ab10n-pcie-3 | strata serve: decode expert cache hit rate: 83.4% (120414 hits / 144424 lookups); 536 more read by the GPU over PCIe or from another GPU (0.4% of all 144960 routed)
+ab10n-new-1 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1274 MiB/s)
+ab10n-new-1 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-new-1 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2382 ms (24.3 tok/s), 8 generated in 357 ms (22.4 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-new-1 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-new-1 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-new-1 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.3 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-new-1 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9253 ms (463.9 tok/s), 256 generated in 8714 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10n-new-1 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10n-new-1 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10n-new-1 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8932 ms (393.7 tok/s), 239 generated in 7290 ms (32.8 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10n-new-1 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10n-new-1 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10n-new-2 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1268 MiB/s)
+ab10n-new-2 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-new-2 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2401 ms (24.2 tok/s), 8 generated in 356 ms (22.5 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-new-2 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-new-2 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-new-2 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-new-2 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9139 ms (469.6 tok/s), 256 generated in 8719 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10n-new-2 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10n-new-2 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10n-new-2 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 9041 ms (389.0 tok/s), 239 generated in 7292 ms (32.8 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10n-new-2 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10n-new-2 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start
+ab10n-new-3 | strata mtp: draft layer loaded, 1098 MiB of VRAM (experts 675, dense 111), files read in 0.62 s (1260 MiB/s)
+ab10n-new-3 | strata serve: STRATA_ROUTE_TAIL_SKIP=7 is ON (default): a missed expert that every token of a verify window routes at rank 7 or lower is skipped (+10..20% decode on 12-16 GB cards that miss experts, answers differ slightly from 0.1.41); STRATA_ROUTE_TAIL_SKIP=0 turns it off
+ab10n-new-3 | strata serve: prompt 58 tokens = 0 reused + 58 read in 2392 ms (24.2 tok/s), 8 generated in 358 ms (22.3 tok/s), drafts accepted 6 of 6, 1 checkpoints
+ab10n-new-3 | strata serve: decode expert cache hit rate: 65.7% (2510 hits / 3820 lookups); 33 more read by the GPU over PCIe or from another GPU (0.9% of all 3853 routed)
+ab10n-new-3 | strata serve: route tail skip: 3078 missed experts skipped (3449 entries) since the start
+ab10n-new-3 | strata serve: PCIe share: the CPU pool takes 328 us per missed expert (6.2 GB/s of expert bytes), the link 12.2 GB/s -> pcie_frac 0.50 (was 0.34; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+ab10n-new-3 | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 9084 ms (472.5 tok/s), 256 generated in 8706 ms (29.4 tok/s), drafts accepted 153 of 197, 1 checkpoints
+ab10n-new-3 | strata serve: decode expert cache hit rate: 85.4% (113673 hits / 133032 lookups); 391 more read by the GPU over PCIe or from another GPU (0.3% of all 133423 routed)
+ab10n-new-3 | strata serve: route tail skip: 14163 missed experts skipped (15178 entries) since the start
+ab10n-new-3 | strata serve: prompt 3517 tokens = 0 reused + 3517 read in 8925 ms (394.0 tok/s), 239 generated in 7287 ms (32.8 tok/s), drafts accepted 148 of 195, 1 checkpoints
+ab10n-new-3 | strata serve: decode expert cache hit rate: 87.8% (112096 hits / 127744 lookups); 397 more read by the GPU over PCIe or from another GPU (0.3% of all 128141 routed)
+ab10n-new-3 | strata serve: route tail skip: 22963 missed experts skipped (24477 entries) since the start

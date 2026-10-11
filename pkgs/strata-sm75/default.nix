@@ -23,11 +23,11 @@
 let
   c = cudaPackages;
 
-  # fb58e0db: v0.1.41 (2026-10-08), the 0.1.40.3/.4 hotfixes (Arc, Windows AMD, Pascal
-  # sm_61) folded in and no-ops for this sm_75 build.  Upstream rewrote its history on
-  # 2026-10-06 (the v0.1.40.1 notes say so), so pins older than that line are not
-  # ancestors of this one.
-  revision = "fb58e0dbc8399662c0e47c76578c6e878b14f6cf";
+  # 61b3fb5d: v0.1.42 (2026-10-10), the release with the new CUDA defaults the module
+  # measures before adopting (STRATA_ROUTE_TAIL_SKIP=7 on this shape, the CPU-measured
+  # PCIe share; see profiles/nixos/strata.nix).  v0.1.41 (fb58e0d) is an ancestor of
+  # this tag; upstream rewrote its history before v0.1.40.2, so older pins are not.
+  revision = "61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -59,20 +59,44 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.41";
+  version = "0.1.42";
+
+  # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
+  # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
+  # pius (an AVX2-only i5-8400) and trajanus (Zen 4) as builders, so a plain
+  # nix build dispatches this derivation and the result carries the BUILDER's
+  # instructions.  Measured 2026-10-11: the trajanus and pius builds of the
+  # same drv differ in 50,132,344 bytes, and two instruction classes show up:
+  #   * the engine's own AVX-512 expert kernels (expert.cpp) are compiled with
+  #     explicit -mavx512f/bw/vl/dq/vnni/vbmi (CMake, on every build) and
+  #     selected at run time by cpu_avx512_ok() = F+BW+VL+VNNI+VBMI; that gate
+  #     is FALSE on this CPU (the deployed log reads "this CPU has no AVX-512:
+  #     the expert kernels run on AVX-2"), so the 296 vpmultishiftqb in
+  #     q2g_row_multi never execute - dead by design, in every build;
+  #   * ggml's own `*_generic` fallback dots and `ggml_vec_dot_bf16` are
+  #     compiled with the BUILD host's -march=native and carry no run-time
+  #     gate: the trajanus build has 262 instructions the Xeon Gold 6246
+  #     cannot execute (260 vpermt2b / AVX512-VBMI in the q3_K/q5_0/q5_1/q6_K
+  #     generic kernels and 2 vdpbf16ps / AVX512-BF16 in ggml_vec_dot_bf16),
+  #     the native build has 0, and the deployed v0.1.41 (also trajanus) has
+  #     the same 262.  They were NOT reached in this config (16 campaign runs
+  #     plus two days of production, all clean), but they are one fallback
+  #     kernel away from a SIGILL for another quant type or lane - so the
+  #     engine is built for the host that runs it.  preferLocalBuild keeps the
+  #     dispatch local (tiberius builds natively; the darwin workstation still
+  #     dispatches), and a non-tiberius consumer should pass -DGGML_NATIVE=OFF.
+  preferLocalBuild = true;
 
   src = fetchFromGitHub {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-WhoIwg8GgeG3jAXYLSjNoZyN3RZ3T3JhgJX57fM80eE=";
+    hash = "sha256-FPwm4cuGTFiXgWkK5eTcfD9VIrH/OnVZiG6ToQFOfMQ=";
   };
 
-  # carry-1283.patch is upstream PR #1283 (sergqwer), carried until it merges: the
-  # prompt borrow's MoE-buffer accounting now takes the `src` its callers pass to
-  # init.  v0.1.39 took the PR's first half (the xn / grs count, STRATA_RING_BYTES).
-  # Pure accounting, no numerics or configuration; separate file so dropping it when
-  # it lands is one line.  tiberius.patch was generated on top of it, hence the order.
+  # carry-1283.patch is GONE at this pin: upstream took PR #1283 (commit a26fcbcd,
+  # released in v0.1.42), so tiberius.patch is regenerated against 61b3fb5 directly
+  # and no longer sits on the carry's tree.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
@@ -90,9 +114,8 @@ stdenv.mkDerivation {
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
-  # All three were regenerated against the pin above, so `patch -p1` applies cleanly.
+  # Both were regenerated against the pin above, so `patch -p1` applies cleanly.
   patches = [
-    ./carry-1283.patch
     ./tiberius.patch
     ./no-web-ui.patch
   ];
@@ -154,13 +177,22 @@ stdenv.mkDerivation {
       echo "the engine no longer reads STRATA_PREFILL_CPU_SHARE (the module pins the CPU share off)" >&2
       exit 1
     }
+    grep -q 'STRATA_ROUTE_TAIL_SKIP' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_ROUTE_TAIL_SKIP (the measured decode default)" >&2
+      exit 1
+    }
+    grep -q 'STRATA_PCIE_FRAC_DEFAULT' src/program/generate.cpp || {
+      echo "the engine no longer reads STRATA_PCIE_FRAC_DEFAULT (the pinned start-up share)" >&2
+      exit 1
+    }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
       echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
       exit 1
     }
-    # The carried PR's own surface: the `src` argument the prompt-path sizing takes.
+    # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`
+    # argument the prompt-path sizing takes, and that tiberius.patch's call sites use.
     grep -q 'bool src' include/strata/prefill/prefill.hpp || {
-      echo "carry-1283.patch did not reach the bytes_needed signatures" >&2
+      echo "the bytes_needed signatures no longer take src" >&2
       exit 1
     }
   '';

@@ -147,21 +147,21 @@ selection and the client's context/reasoning mapping together.
 ## Tiberius Strata runtime
 
 `strata-sm75` is the boot engine on Tiberius. It builds upstream Strata at pin
-`fb58e0d` (v0.1.41) with three patches: `carry-1283.patch` (upstream PR #1283's
-`bytes_needed` src accounting, rebased by its author; the PR lineage is #547 ->
-#1042 -> #1283), `tiberius.patch` (a sliding DAX register window, decode-time
-refill pinning with its straddle guard; generated on top of `carry-1283.patch`,
-hence the order) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
-web app, its pages/assets and `/settings`; the OpenAI-compatible API is
-untouched). All three were regenerated against this pin at the v0.1.41 bump
-(the changed lines are byte-identical to the v0.1.40.2 generation; two hunks
-were re-homed around upstream's new CPU-share block and serve report line).
-The dense-FP16 tensor-core change that `tiberius.patch` used to carry
-was retired at the v0.1.40.2 bump: upstream 0.1.39+ has the same path natively
-(`bf16_path()`, #540/#655) and the module selects it with upstream's
-`STRATA_BF16_TC=1` (opt-in on the RTX 20's compute capability 7.5). Build-time
-greps fail the derivation if a flag or environment variable the module sets
-disappears on a rebase.
+`61b3fb5d` (v0.1.42) with two patches: `tiberius.patch` (a sliding DAX register
+window, decode-time refill pinning with its straddle guard) and
+`no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled web app, its
+pages/assets and `/settings`; the OpenAI-compatible API is untouched).
+`carry-1283.patch` was retired at this bump: upstream took PR #1283 (commit
+`a26fcbcd`, the same change; the lineage was #547 -> #1042 -> #1283), and both
+remaining patches were regenerated against `61b3fb5` directly (two hunks
+re-homed again: the `FileExpertSource` dax members now sit above upstream's new
+`stage_lend_regions_` member, and the serve join-timing block after the new
+`PcieAuto` share block; the rest is context-only). The dense-FP16 tensor-core
+change that `tiberius.patch` used to carry was retired at the v0.1.40.2 bump:
+upstream 0.1.39+ has the same path natively (`bf16_path()`, #540/#655) and the
+module selects it with upstream's `STRATA_BF16_TC=1` (opt-in on the RTX 20's
+compute capability 7.5). Build-time greps fail the derivation if a flag or
+environment variable the module sets disappears on a rebase.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
@@ -173,6 +173,51 @@ config, 3 counterbalanced pairs, fresh engine per run): the share-eligible cells
 control above the window is unchanged. The prompt path is bounded by the Optane
 read of the pack, not by the PCIe stream the share relieves, so the pin stays;
 unsetting the variable adopts upstream's default.
+
+v0.1.42's two new CUDA decode defaults were measured the same way and split.
+The rank-7 verify tail skip (`STRATA_ROUTE_TAIL_SKIP=7`, upstream's default,
+set explicitly so a future default flip cannot move the box) won big here:
+decode 21.30 -> 29.50 tok/s (+38.5%) on the 4292-token cell and
+26.03 -> 34.50 (+32.5%) on the 3517 cell, with the prompt read within noise
+and pool + plan per decode window down 104.8 -> 63.0 / 85.6 -> 50.4 ms
+(-40% / -41%).  It is adopted, accepting upstream's answer drift (mean
+KL 0.0058, top-1 agreement 97.7%, PPL x1.011; HumanEval/reasoning within their
+own noise).  The CPU-measured PCIe share lost instead: it moved the share
+0.34 -> 0.50 on every run that used it ("the CPU pool takes ~328 us per missed
+expert (6.2 GB/s of expert bytes), the link 12.2-12.3 GB/s") and decode fell
+21.30 -> 19.80 (-7.0%) and 26.03 -> 24.27 (-6.8%) with the tail skip off (and
+-0.3% / -4.9% on top of it), so the module pins
+`STRATA_PCIE_FRAC_DEFAULT=old` (the start-up rule the ab8 campaign already
+kept as control).  The campaign ran twice, on a trajanus-built engine
+(`/data/ab10*`) and on the tiberius-native build that ships (`/data/ab10n*`),
+with the same conclusions to within 0.1-0.3%; the numbers above are the native
+run's.  Evidence: `/data/ab10*` + `/data/ab10n*` (driver `/data/ab10.py`,
+`/data/ab10-arms.sh`, per-run engine logs and `/metrics`).
+
+The engine build must happen ON tiberius. ggml compiles with `-march=native`
+(the package clears `NIX_ENFORCE_NO_NATIVE`), and the host's `nix.conf` lists
+pius (an AVX2-only i5-8400) and trajanus (Zen 4) as builders, so a plain build
+dispatches this derivation and the binary carries the BUILDER's codegen.
+Measured 2026-10-11: a pius build of the same drv differs from a trajanus one
+in 50,132,344 bytes, with two instruction classes in play.  The engine's own
+AVX-512 expert kernels (`expert.cpp`) are compiled with explicit
+`-mavx512f/bw/vl/dq/vnni/vbmi` on every build and selected at run time by
+`cpu_avx512_ok()` = F+BW+VL+VNNI+VBMI; that gate is false on this CPU (the
+deployed log reads "this CPU has no AVX-512: the expert kernels run on AVX-2"),
+so their 296 `vpmultishiftqb` are dead by design.  ggml's own `*_generic`
+fallback dots and `ggml_vec_dot_bf16`, by contrast, carry the build host's
+`-march=native` with no run-time gate: the trajanus build has 262 instructions
+the Xeon Gold 6246 cannot execute (260 `vpermt2b` / AVX512-VBMI in the
+q3_K/q5_0/q5_1/q6_K generic kernels and 2 `vdpbf16ps` / AVX512-BF16 in
+`ggml_vec_dot_bf16`), the native build has 0, and the deployed v0.1.41 (also
+trajanus) has the same 262.  They have not been reached in this config (16
+campaign runs plus two days of production, all clean), but they are one
+fallback kernel away from a SIGILL for another quant type or lane.
+`preferLocalBuild = true` in `pkgs/strata-sm75` keeps the dispatch on the host
+that runs the engine (verified on the 2026-10-11 deploy: the box built it
+locally, 44 compilers, no `ssh-ng` line, and the result has 0 of the
+builder-only set); `-DGGML_NATIVE=OFF` is the portable fallback for any
+non-tiberius consumer.
 
 The module also forces `STRATA_UNBUFFERED_LOAD=0`: v0.1.40's #1194 makes the Linux
 file tier read unbuffered when the file cache cannot keep the returning experts,

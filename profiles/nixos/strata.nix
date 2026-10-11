@@ -319,6 +319,50 @@ let
         # upstream's documented escape hatch ("the output is then the 0.1.40.3
         # bytes").
         STRATA_PREFILL_CPU_SHARE = "0";
+        # tiberius: v0.1.42's two CUDA decode defaults, both measured on this
+        # box (2026-10-11, production config, fresh engine per run, counter-
+        # balanced; the ab8 decode cells - 4292-token read + 256 gen, then
+        # 3517 + 256 - with the prompt read as the control).  The arms:
+        # parity (both 0.1.41 answers), ts7, pcie and the unset defaults.
+        # Measured twice: /data/ab10* (built on trajanus) and /data/ab10n*,
+        # the tiberius-native build that ships - same conclusions, and the
+        # numbers below are the native run's.
+        #
+        # STRATA_ROUTE_TAIL_SKIP=7: a missed expert that every token of a
+        # verify window routes at rank 7 or lower is skipped.  Upstream's
+        # default, set explicitly so a future default flip cannot silently
+        # move this box.  It is a big win HERE, far above upstream's +10..20%
+        # on 12-16 GB cards: decode 21.30 -> 29.50 tok/s (+38.5%) on the 4292
+        # cell and 26.03 -> 34.50 (+32.5%) on the 3517 cell (3 runs per arm;
+        # the within-arm spread is +-0.1 tok/s), with the prompt read as the
+        # control within noise in both runs (-0.2%/+0.1% and -2.5%/-1.4%, the
+        # latter carried by one slow parity read).  The pool + plan time per
+        # decode window drops 104.8 -> 63.0 / 85.6 -> 50.4 ms (-40% / -41%),
+        # the acceptance-free form of the same win.  The mechanism: this box's
+        # 6,282-slot cache of 24,576 experts misses enough for the skip to pay
+        # - 14.1K-22.9K missed experts skipped of 15.2K-24.5K entries per cell
+        # - and every skip removes a DMA plus its compute.
+        # It changes answers slightly (upstream's mean first-token KL 0.0058
+        # on an RTX 3060 IQ3_XXS, top-1 agreement 97.7%, PPL x1.011; their
+        # HumanEval and reasoning sets did not move beyond their own noise):
+        # accepted for the decode win, like STRATA_BF16_TC; =0 is upstream's
+        # documented escape hatch (with STRATA_PREFILL_CPU_SHARE=0 it is the
+        # exact 0.1.41 recipe).
+        STRATA_ROUTE_TAIL_SKIP = "7";
+        # STRATA_PCIE_FRAC_DEFAULT=old: v0.1.42 replaces the start-up link
+        # probe that sets the missed-expert split with a rule that times the
+        # CPU pool (~10 s, steps of 0.05 between 0.10 and 0.60, at most three
+        # changes).  On this box the rule moved the share UP on every run that
+        # used it - 0.34 -> 0.50, "the CPU pool takes 328 us per missed expert
+        # (6.2 GB/s of expert bytes), the link 12.2-12.3 GB/s" - and decode
+        # LOST at it: 21.30 -> 19.80 tok/s (-7.0%) and 26.03 -> 24.27 (-6.8%)
+        # with the tail skip off, and 29.50/34.50 -> 29.40/32.80 (-0.3% /
+        # -4.9%) with it on.  The pool here is slower per expert than the
+        # link, so the split the rule computes costs decode; the start-up
+        # probe's auto share was already the control in the ab8 campaign
+        # (explicit 0/0.5/1.0 fractions: no win).  "old" is the variable's
+        # only other value; unset adopts the measured rule.
+        STRATA_PCIE_FRAC_DEFAULT = "old";
         # tiberius: the dense GEMMs on the FP16 tensor cores.  Turing has FP16
         # tensor cores and no BF16 ones, so cuBLAS served the dense (non-expert)
         # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT
