@@ -339,21 +339,24 @@ pick `BLOCK_M=128`), and `runai-model-streamer==0.16.1` with its `humanize`
 dependency back in `requirements.lock` (the serve profile loads with
 `--load-format runai_streamer`, which 0.31 lists only for ROCm).
 
-**No decode regression.** Production procedure (the unit, after its warmup
-service): 2k 122.1 [4.10], 8k 98.9 [3.54], 32k 95.5 [3.66], 64k 81.1 [3.46]
-tok/s. A same-day A/B with the same client (byte-identical to the September
-package), file and flags puts this pin at or above the 0.29 runtime in every
-cell — 2k 117.6 [3.98] against 109.7 [3.794], 8k 113.0/110.9 [3.848] against
-97.0/95.8 [3.395], copy 3.59 on both — with step time at parity (27.7 against
-28.6 ms at 8k). Acceptance tracks the measurement state rather than the pin: the
-same 8k cell reads 3.541 under the production procedure (three sessions, stable)
-and 3.848 when a short prefix-warming request precedes it (the A/B's procedure).
-The README's 0.29 column is the 2026-09-24 session; its 8k 112.4 / 3.97 was not
-reproduced by either procedure on either runtime, and the warmup-overlap caveat
-in VALIDATION.md did *not* show here (readings right after the service start and
-20 minutes later agree). The transient W4A8 prefill is not the difference either:
-the only same-procedure pair (`VLLM_TURING_PREFILL_INT8=off` against on, fresh
-boots) reads 3.25 against 3.848 — the wrong way for that theory, and unexplained.
+**No decode regression.** Production procedure (the unit): 2k 121.8-122.1
+[4.097], 8k 98.1-110.0 [3.541-3.848], 32k 95.1-95.5 [3.657], 64k 80.5-81.1
+[3.459] tok/s. The spread inside the 8k cell is the pass, not the pin: the first
+pass at a cell reads lower than a repeat in the same boot (98.1 [3.541] then
+110.0 [3.848]), and the two whole-run measurements — with the warmup service
+active and with it stopped — agree to the digit in acceptance and within 1% in
+decode, so the warmup service is not the depressor (which is the opposite of what
+the hygiene caveat in VALIDATION.md would predict for these cells; its 10-15%
+figure presumably belongs to the soak-style reads the caveat was written from).
+A same-day A/B with the same client (byte-identical to the September package),
+file, flags and procedure puts this pin at or above the 0.29 runtime in every
+cell and pass state — 2k 117.6 [3.98] against 109.7 [3.794], 8k 113.0/110.9
+[3.848] against 97.0/95.8 [3.395], copy 3.59 on both — with step time at parity
+(27.7 against 28.6 ms at 8k). The README's 0.29 column is the 2026-09-24 session;
+its 8k 112.4 / 3.97 sits at the top of the warm-pass range and closer agreement
+was not chased. The transient W4A8 prefill is not the difference either: the only
+same-procedure pair (`VLLM_TURING_PREFILL_INT8=off` against on, fresh boots)
+reads 3.25 against 3.848 — the wrong way for that theory, and unexplained.
 Prompt-length probes (1632 / 1633 / 1634 / 1636 / 3265 tokens) all complete, so
 the lookahead-window deferral upstream documents is not reachable in this
 configuration. Method notes for the next such A/B: the packaged

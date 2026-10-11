@@ -349,17 +349,20 @@ re-signing — is `docs/turing-0.31-port.md` in the fork.
 suites (`test_turing_gdn`, `test_turing_prefill`, `test_turing_marlin`) pass;
 the first pass found and fixed the retired shared-memory guard and the missing
 `runai-model-streamer` pin in `requirements.lock`. Decode on the same
-instrument, production procedure: **122.1 / 98.9 / 95.5 / 81.1 tok/s** at
-2k / 8k / 32k / 64k (acceptance 4.10 / 3.54 / 3.66 / 3.46). The same-day A/B
-(same client, file and flags) puts this pin at or above the 0.29 runtime in every
-cell (2k 117.6 against 109.7; 8k 113.0/110.9 against 97.0/95.8; copy 3.59 on
-both), and acceptance tracks the measurement state rather than the pin — the same
-8k cell reads 3.54 under the production procedure and 3.85 with a warmed prefix
-ahead of it, stably within each — so compare cells within a procedure. The 0.29
-column in the tables below is the 2026-09-24 session, and its 8k 112.4 / 3.97 is
-not reproduced by either procedure on either runtime. Quality is unchanged (PPL
-en 10.8097 / da 10.942; GSM8K 96.0% n=200). The 128k / 253k decode cells and the
-prefill tails below still come from the 0.29.0 runs.
+instrument, production procedure: **121.8-122.1 / 98.1-110.0 / 95.1-95.5 /
+80.5-81.1 tok/s** at 2k / 8k / 32k / 64k (acceptance 4.10 / 3.54-3.85 / 3.66 /
+3.46). The spread inside the 8k cell is the **pass**, not the pin: the first
+pass at a cell reads lower than a repeat in the same boot (98.1 [3.541], then
+110.0 [3.848]), and that reproduces with the unit's warmup service running or
+stopped — the two runs agree to the digit in acceptance and within 1% in decode,
+so the warmup service is not the depressor. The same-day A/B (same client, file,
+flags and procedure) puts this pin at or above the 0.29 runtime in every cell and
+pass state: 2k 117.6 against 109.7, 8k 113.0/110.9 against 97.0/95.8 (acceptance
+3.85 against 3.40), copy 3.59 on both. The 0.29 column in the tables below is the
+2026-09-24 session, and its 8k 112.4 / 3.97 sits at the top of the warm-pass
+range. Quality is unchanged (PPL en 10.8097 / da 10.942; GSM8K 96.0% n=200). The
+128k / 253k decode cells and the prefill tails below still come from the 0.29.0
+runs.
 
 The default `qwen38-sm75` runtime uses pinned upstream patches and Python wheels, native
 CUDA 12.9/GCC 14 tools, native paged prefill, and SM75 Tensor Core speculative
