@@ -381,7 +381,7 @@ let
   piusHindsightBindAddressLoopback = piusHindsightServiceConfig.bindAddress == "127.0.0.1";
   piusHindsightPortMatches = piusHindsightServiceConfig.port == 8889;
   piusHindsightLlmBaseUrlMatches = piusHindsightServiceConfig.llmBaseUrl == "http://tiberius:8080/v1";
-  piusHindsightLlmModelMatches = piusHindsightServiceConfig.llmModel == "qwen3.8-flash-next-iq3_s";
+  piusHindsightLlmModelMatches = piusHindsightServiceConfig.llmModel == "qwen3.8-27b";
   displayDeployValue = value: if value == null then "<null>" else toString value;
 
   # The eval check asserts TIKTOKEN_CACHE_DIR only when the package declares a
@@ -929,7 +929,7 @@ in
     fi
 
     if [ "${lib.boolToString piusHindsightLlmModelMatches}" != true ]; then
-      echo "Deployed pius services.hindsight.llmModel must be qwen3.8-flash-next-iq3_s; got:" ${lib.escapeShellArg piusHindsightServiceConfig.llmModel} >&2
+      echo "Deployed pius services.hindsight.llmModel must be qwen3.8-27b; got:" ${lib.escapeShellArg piusHindsightServiceConfig.llmModel} >&2
       exit 1
     fi
 

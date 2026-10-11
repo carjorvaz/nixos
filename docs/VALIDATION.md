@@ -146,7 +146,9 @@ selection and the client's context/reasoning mapping together.
 
 ## Tiberius Strata runtime
 
-`strata-sm75` is the boot engine on Tiberius. It builds upstream Strata at pin
+`strata-sm75` is the parked fallback engine on Tiberius (the 27B vLLM lane is
+the boot default since 2026-10-11; see the host module's boot notes and the
+NInfer/Qwen section above). It builds upstream Strata at pin
 `61b3fb5d` (v0.1.42) with two patches: `tiberius.patch` (a sliding DAX register
 window, decode-time refill pinning with its straddle guard) and
 `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled web app, its
@@ -252,7 +254,9 @@ peer releases the GPU before it starts. It binds `0.0.0.0:8080` with a
 Host-header allowlist and no API key -- tailnet-only in practice, since the
 firewall opens nothing and `tailscale0` is trusted. It serves one request at a
 time (extra requests queue), and its conversation cache is RAM-only, so a
-restart loses it.
+restart loses it. Since 2026-10-11 the unit is not wanted at boot (the 27B vLLM
+lane is the boot engine); it stays fully wired, and `systemctl start
+tiberius-strata` flips a running box.
 
 Validation for the engine, module and its wiring:
 
@@ -784,9 +788,13 @@ live in `docs/exec-plans/active/llamacpp-parity.md`.
 Hindsight 0.10.2 runs on pius: `pkgs/hindsight.override { withLocalOnnx = true; }`
 through `modules/nixos/hindsight.nix`, configured by `profiles/nixos/hindsight.nix`.
 The database is an external PostgreSQL (`hindsight` on the local socket), the
-embeddings are the packaged ONNX provider, and the LLM lane is the Strata engine
-on tiberius (`http://tiberius:8080/v1`, `qwen3.8-flash-next-iq3_s`, thinking
-disabled, concurrency pinned to 1). `hindsight.vaz.ovh` is registered in
+embeddings are the packaged ONNX provider, and the LLM lane is the vLLM
+Qwen3.8-27B lane on tiberius (`http://tiberius:8080/v1`, `qwen3.8-27b`, thinking
+disabled, concurrency pinned to 1; the strata lane stays installed on the box as
+the parked fallback). The reflect wall clock is raised to 1800 s: a mental-model
+refresh runs the reflect pipeline (tool-call iterations over a 9.5-28K-token
+prompt) and the 300 s default killed every refresh since 2026-07-03 - on both
+engines. `hindsight.vaz.ovh` is registered in
 `services.nginx.tailscaleAuth.virtualHosts`: the app authenticates `/v1` and
 `/mcp` with the tenant key, but `/metrics`, `/docs` and `/openapi.json` are
 unauthenticated in-app, and the host firewall accepts 80/443 on every

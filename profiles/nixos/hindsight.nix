@@ -40,16 +40,20 @@ in
       inherit port;
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
-      # Strata (Qwen3.8-Flash-Next) on tiberius, OpenAI-compatible on the
+      # The vLLM Qwen3.8-27B lane on tiberius, OpenAI-compatible on the
       # tailnet. The endpoint needs no key (the module's placeholder is what it
-      # gets); thinking is disabled for every call because the served template
-      # defaults to it; the engine generates one request at a time, so client
-      # concurrency is pinned to 1 and the read timeout is raised above the
-      # 120 s default for cold prefills and ~20 tok/s decode.
+      # gets); thinking is disabled for every call (verified 2026-10-11: the
+      # 27B template honours chat_template_kwargs.enable_thinking=false and
+      # returns no reasoning block); the engine generates one request at a
+      # time, so client concurrency is pinned to 1 and the read timeout is
+      # raised above the 120 s default for cold prefills (~800 tok/s) and
+      # 95-120 tok/s decode.  This lane replaced the strata pack on
+      # 2026-10-11 (hosts/tiberius.nix has the measured A/B); strata stays
+      # installed on the box as the parked fallback.
       # The tailnet policy allows pius outbound TCP to tiberius:8080 (verified
       # 2026-10-09 from pius: TCP connect and /health both succeed).
       llmProvider = "openai";
-      llmModel = "qwen3.8-flash-next-iq3_s";
+      llmModel = "qwen3.8-27b";
       llmBaseUrl = "http://tiberius:8080/v1";
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
@@ -62,10 +66,21 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
         HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai";
-        HINDSIGHT_API_REFLECT_LLM_MODEL = "qwen3.8-flash-next-iq3_s";
+        HINDSIGHT_API_REFLECT_LLM_MODEL = "qwen3.8-27b";
         HINDSIGHT_API_LLM_EXTRA_BODY = ''{"chat_template_kwargs":{"enable_thinking":false}}'';
         HINDSIGHT_API_LLM_TIMEOUT = "600";
         HINDSIGHT_API_LLM_MAX_CONCURRENT = "1";
+        # A mental-model refresh runs the REFLECT pipeline, not consolidation,
+        # and the reflect default is 300 s for the whole operation - tool-call
+        # iterations over a 9.5-28K-token prompt that also queue behind other
+        # jobs on the single-slot engine.  Every refresh since 2026-07-03 died
+        # at that cap ("Task exceeded the 300s wall-clock limit for
+        # 'refresh_mental_model'"), reproduced 2026-10-11 on the 27B lane
+        # (attempt=1/4, cancelled at 300 s with the model still working).
+        # Hindsight's retain/consolidation defaults are 3600/7200 s for the
+        # same reason; 1800 keeps the per-call LLM timeout (600 s) as the
+        # operative ceiling while letting a refresh finish.
+        HINDSIGHT_API_REFLECT_WALL_TIMEOUT = "1800";
       };
       user = "hindsight";
       group = "hindsight";

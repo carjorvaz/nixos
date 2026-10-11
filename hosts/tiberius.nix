@@ -303,6 +303,12 @@ in
     '';
   };
   systemd.services = {
+    # Parked 2026-10-11: the 27B vLLM lane is the boot engine (see the
+    # services.tiberius-strata note below).  The strata module still defines
+    # the unit and every check reads its rendered text; only the boot want is
+    # gone, so `systemctl start tiberius-strata` still flips a running box.
+    tiberius-strata.wantedBy = lib.mkForce [ ];
+
     # Keep NInfer available for manual fallback, but boot into vLLM. Never let
     # both resident engines contend for the single GPU or the API port.
     # Parked with the profile import above (the unit no longer exists without
@@ -593,10 +599,24 @@ in
 
     tiberius-qwen38 = {
       description = "Qwen3.8-27B on the RTX 2080 Ti (vLLM)";
-      # Strata is the boot engine on this host (services.tiberius-strata); the
-      # lane stays installed for A/B and fallback.  To flip back: make this
-      # [ "multi-user.target" ] and set services.tiberius-strata.enable = false.
-      wantedBy = lib.mkForce [ ];
+      # The boot engine since 2026-10-11.  Hindsight's memory traffic is what
+      # keeps this box busy, and its mental-model refresh - the reflect
+      # pipeline running tool-call iterations over a 9.5-28K-token
+      # consolidation prompt - is serialized through this one slot.  Measured
+      # 2026-10-11 against the strata lane on the same job class: strata's 17
+      # captured cells ran 17-80 s per call at 28-30 tok/s decode, while this
+      # lane decodes at 95-120 tok/s (card validation, 0.31.0) and lands 65-70%
+      # prefix-cache hits on the shared hindsight prompt, so the refresh pass
+      # drains in roughly half the wall clock and the Optane DIMM stays cold.
+      # The same pass still died at the reflect wall clock's 300 s default on
+      # BOTH engines, so that default moved too (see
+      # HINDSIGHT_API_REFLECT_WALL_TIMEOUT in profiles/nixos/hindsight.nix).
+      # Strata stays installed for A/B and fallback: services.tiberius-strata
+      # below is still fully configured, just un-wanted from boot, so
+      # `systemctl start tiberius-strata` flips a running box.  For a durable
+      # flip back, park this lane (wantedBy = lib.mkForce [ ]) and restore the
+      # strata unit's wantedBy.
+      wantedBy = [ "multi-user.target" ];
       # Symmetric with the uncensored lane: either start takes the other down,
       # so toggling in either direction cannot leave two engines on one 22 GB
       # card (which fails the second one with a memory error).
@@ -819,13 +839,19 @@ in
     ];
   };
 
-  # Strata (Qwen3.8-Flash-Next IQ3_S) is the default engine on this host: the
-  # experts are mmapped from the Optane PMEM (126 GiB fsdax, dax=always) and the
-  # 262K-context int8-KV configuration measures 20-21 tok/s decode and 457-1034
-  # tok/s prefill (4.3K-27.5K tokens; the lane note below has the exact cells).
-  # The vLLM lanes below stay installed for A/B and fallback; flip
-  # their wantedBy back to [ "multi-user.target" ] to make one the boot engine
-  # (both sides conflict, so only one ever holds the GPU).
+  # Strata (Qwen3.8-Flash-Next IQ3_S) is the parked fallback engine on this
+  # host (boot engine 2026-10-01 .. 2026-10-11): the experts are mmapped from
+  # the Optane PMEM (126 GiB fsdax, dax=always) and the 262K-context int8-KV
+  # configuration measures 20-21 tok/s decode and 457-1034 tok/s prefill
+  # (4.3K-27.5K tokens; the lane note below has the exact cells) - but
+  # hindsight's refresh pass runs 9.5-28K-token reflect jobs through the same
+  # one slot and the 27B vLLM lane does that job class faster (see the
+  # tiberius-qwen38 note above).  The module stays enabled so the unit text,
+  # the optane mount and every check stay exercised; only the boot want is
+  # parked, so `systemctl start tiberius-strata` flips a running box, and
+  # dropping the wantedBy mkForce in systemd.services above flips a boot
+  # (parking the vLLM lane the same way first - both sides conflict, so only
+  # one ever holds the GPU).
   services.tiberius-strata = {
     enable = true;
     package = pkgs.strata-sm75;
