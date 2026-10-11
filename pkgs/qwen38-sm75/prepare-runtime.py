@@ -24,7 +24,7 @@ if not REVISION:
     raise RuntimeError(
         "QWEN_SOURCE_REVISION is unset; run this through the packaged wrappers"
     )
-VLLM_VERSION = "0.29.0"
+VLLM_VERSION = "0.31.0"
 IDENTITY_ENV = (
     "PATH", "CC", "CXX", "CUDAHOSTCXX", "NVCC_CCBIN", "CUDA_HOME",
     "LD_LIBRARY_PATH", "TRITON_LIBCUDA_PATH", "TRITON_PTXAS_PATH",
@@ -69,9 +69,9 @@ def series_patches(directory, skip=()):
 def specification(source, assets, python):
     upstream = series_patches(source / "patches", skip=("dflash2-backport.patch",))
     turing = series_patches(source / "patches-turing")
-    if len(upstream) != 44 or not turing:
+    if len(upstream) != 49 or not turing:
         raise RuntimeError(
-            "Expected the pinned source to carry the 44-patch 3090 series and the Turing port"
+            "Expected the pinned source to carry the 49-patch 3090 series and the Turing port"
         )
     identity = {
         "schema": 1,

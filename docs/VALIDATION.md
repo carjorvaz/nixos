@@ -336,6 +336,15 @@ journalctl -u tiberius-fan-quiet -n 20
 
 ## Tiberius vLLM runtime and memory checks
 
+The runtime is pinned to the fork's `turing` branch re-exported against **vLLM
+0.31.0** (fork `4151387`, 2026-10-11): upstream's 49-patch 3090 series and the
+21-patch Turing series apply to a pristine `v0.31.0` at `--fuzz 0`, and
+`prepare-runtime.py` applies the same stack to the wheel and asserts the
+49-patch upstream series. The fork's port record — the one retired patch
+(upstream 0.31 now owns the Mamba checkpoint alignment) and the marlin `g_idx`
+re-signing — is `docs/turing-0.31-port.md` in the fork. Everything below was
+measured on the 0.29.0 runtime or earlier and is due a re-run on this pin.
+
 The default `qwen38-sm75` runtime uses pinned upstream patches and Python wheels, native
 CUDA 12.9/GCC 14 tools, native paged prefill, and SM75 Tensor Core speculative
 attention for head-dimension-256 FP16/INT8/INT4 KV caches. Models, versioned runtimes,

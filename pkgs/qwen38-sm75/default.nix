@@ -22,12 +22,12 @@ let
   # patches and the Turing port, so the pin and the patches cannot drift apart.
   # Bump both together: `rev` to the fork commit, `hash` to
   # `nix hash path --type sha256 <the unpacked GitHub archive, root stripped>`.
-  revision = "241e01bfe2d079b1d49fb6fc0a576fa36cdd3d1c";
+  revision = "415138770b3de3af744df0ab55eda71140ab2407";
   stack = fetchFromGitHub {
     owner = "carjorvaz";
     repo = "qwen38-27b-rtx2080ti";
     rev = revision;
-    hash = "sha256-m2y/g0b4mWLI+auXIf9Aww8SF/E42EAeodZuyPfnp10=";
+    hash = "sha256-/87XQELJVycz68GbZWksvVDMibdYY4eJ9XFwqzW9aKM=";
   };
   # Content-address this directory so unrelated repo commits do not change the
   # asset store path (which would restart the service on every switch).
@@ -211,7 +211,7 @@ let
 in
 assert lib.versions.majorMinor cudaPackages.cuda_nvcc.version == "12.9";
 symlinkJoin {
-  name = "qwen38-sm75-0.29.0";
+  name = "qwen38-sm75-0.31.0";
   paths = [
     prepare
     serve
