@@ -349,11 +349,14 @@ re-signing — is `docs/turing-0.31-port.md` in the fork.
 suites (`test_turing_gdn`, `test_turing_prefill`, `test_turing_marlin`) pass;
 the first pass found and fixed the retired shared-memory guard and the missing
 `runai-model-streamer` pin in `requirements.lock`. Decode on the same
-instrument is 98-100 / 96.1 / 76.8 tok/s at 8k / 32k / 64k against the 0.29
-record's 112.4 / 99.8 / 80.6 (the 8k gap tracks MTP acceptance, 3.54 against
-3.97), and quality is unchanged (PPL en 10.8097 / da 10.942; GSM8K 96.0%
-n=200). The 2k / 128k / 253k decode cells and the prefill tails below still
-come from the 0.29.0 runs.
+instrument is 98.0-113.0 / 96.1 / 76.8 tok/s at 8k / 32k / 64k (and 113.7-117.6
+at 2k); the 0.29 runtime measured on the same day, client and flags sits at or
+below that in every cell (8k 96-97 at acceptance 3.40 against this pin's
+3.54-3.85), while the 0.29 column in the tables below is the 2026-09-24
+session. Acceptance moves ~9% between boots at a fixed cell, so the tables
+compare within a session. Quality is unchanged (PPL en 10.8097 / da 10.942;
+GSM8K 96.0% n=200). The 128k / 253k decode cells and the prefill tails below
+still come from the 0.29.0 runs.
 
 The default `qwen38-sm75` runtime uses pinned upstream patches and Python wheels, native
 CUDA 12.9/GCC 14 tools, native paged prefill, and SM75 Tensor Core speculative

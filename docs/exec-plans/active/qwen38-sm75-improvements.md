@@ -331,20 +331,34 @@ lookahead cannot exceed it) instead of the fork's retired `hash_block_size >=
 lookahead` ValueError.
 
 Deployed and validated on the card 2026-10-11 (fork `ed0422a`): the runtime
-built, all five packaged checks and the three kernel suites pass, decode is
-98-100 / 96.1 / 76.8 tok/s at 8k / 32k / 64k against the 0.29 record's 112.4 /
-99.8 / 80.6 (the 8k gap tracks MTP acceptance, 3.54 against 3.97), and quality
-is unchanged (PPL en 10.8097 / da 10.942, GSM8K 96.0% n=200). Two fixes came
-out of the run: the restored `small_shared_memory` guard in
-`fp16-attn-verify` (upstream's `spec-attn-smem-fit` only halves the KV tile,
-and `_plan` can still pick `BLOCK_M=128`), and `runai-model-streamer==0.16.1`
-with its `humanize` dependency back in `requirements.lock` (the serve profile
-loads with `--load-format runai_streamer`, which 0.31 lists only for ROCm).
-Prompt-length probes (1632 / 1633 / 1634 / 1636 / 3265 tokens) all complete, so
-the lookahead-window deferral upstream documents is not reachable in this
-configuration. Still open: the 2k / 128k / 253k decode cells, the prefill tails
-and the copy/edit acceptance, which remain the 0.29.0 numbers, and the 8k
-acceptance gap as a drafting follow-up.
+built, all five packaged checks and the three kernel suites pass, and quality is
+unchanged (PPL en 10.8097 / da 10.942, GSM8K 96.0% n=200). Two fixes came out of
+the run: the restored `small_shared_memory` guard in `fp16-attn-verify`
+(upstream's `spec-attn-smem-fit` only halves the KV tile, and `_plan` can still
+pick `BLOCK_M=128`), and `runai-model-streamer==0.16.1` with its `humanize`
+dependency back in `requirements.lock` (the serve profile loads with
+`--load-format runai_streamer`, which 0.31 lists only for ROCm).
+
+**No decode regression, and the old baseline is a session, not a target.** An
+A/B with the same client, file and flags on the same day: 0.31 (vLLM 0.31.0)
+measures 2k 113.7-117.6 tok/s and 8k 98.0-113.0 (acceptance 3.85-3.98 and
+3.54-3.85), while the 0.29 runtime measures 2k 109.7 (3.79) and 8k 96-97 (3.40)
+— at or below this pin in every cell — and one 0.31 boot reproduces the recorded
+112.4 at 8k. The 0.29 column in `docs/VALIDATION.md` is the 2026-09-24 session:
+its 3.97 acceptance at 8k is not reproducible on 0.29 today either, and
+acceptance moves ~9% between boots at a fixed cell (3.541 against 3.848 on the
+same pin), so those tables compare within a session only. The transient W4A8
+prefill is not the difference (`VLLM_TURING_PREFILL_INT8=off` reads 3.25 on the
+same cell, lower than on). Method notes for the next such A/B: the packaged
+`qwen38-sm75-serve` refuses a hand-linked root (manifest check), so launch each
+arm as `<runtime>/bin/vllm serve <args>` from `/root/serve-args.txt` with the
+unit's `Environment=` *and* `serve.env` (EnvironmentFile wins over Environment=,
+so override it with an appended `EnvironmentFile=` drop-in, not `Environment=`),
+and stop `tiberius-qwen38.service` first — its `Restart=always` otherwise
+resurrects the 8080 server and the second engine CUDA-OOMs at 8k.
+
+Still open: the 128k / 253k decode cells, the prefill tails and the copy/edit
+acceptance, which remain the 0.29.0 numbers.
 
 ### Xid 45 bisect arms
 
