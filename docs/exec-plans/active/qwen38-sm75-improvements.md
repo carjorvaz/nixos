@@ -178,8 +178,10 @@ Decisions taken from this window:
   The previous runtime stays for rollback, and the pip/compile caches stay
   because they are what makes a re-prepare take six minutes instead of twenty.
 - **Campaign complete, remaining work parked**: see *Parked work (resume
-  recipes)* below for the uncensored requantization, sub-4-bit trades, the 0.29
-  rebase, the Xid bisect arms, a prefill rewrite and concurrency.
+  recipes)* below for the uncensored requantization, sub-4-bit trades, the Xid
+  bisect arms, a prefill rewrite and concurrency. The 0.29 rebase landed and
+  was validated on the card; the 0.31.0 rebase is ported and pinned but has not
+  been built or run on the card yet.
 
 ## Parked work (resume recipes)
 
@@ -293,6 +295,42 @@ The two lanes now conflict in both directions (`tiberius-qwen38` declares
 `tiberius-qwen38-uncensored.service` alongside `tiberius-ninfer`), so
 `systemctl start` on either one takes the other down; the target remains the
 enabled-at-boot default and the uncensored lane stays a manual toggle.
+
+### vLLM 0.31.0 rebase
+
+*Offline port and pin done 2026-10-11; the runtime build and the on-card
+validation are pending (the box runs strata, and the qwen38 lane is a manual
+toggle).*
+
+The runtime pin is the fork's `turing` branch at `4151387`, re-exported against
+v0.31.0 (upstream's 0.30.0 and 0.31.0 ports, 85 commits). `patches/` is
+upstream's 0.31.0 series unmodified (49 in `patches/series` plus the four KVarN
+files; `prepare-runtime.py` asserts the 49), and `patches-turing/` is 21
+patches: seven needed hand porting and one retired, because upstream 0.31 now
+owns the Mamba checkpoint alignment itself (`drop_eagle_checkpoint_block` +
+`latest_prompt_hash_boundary` + `is_mamba_prefill_checkpoint_valid`), which is
+what `mtp-prefix-checkpoint` existed to do. The other hand ports: the Triton
+smem retry loop (`spec-attn-smem-fit`) supersedes `fp16-attn-verify`'s guard,
+`spec-decode-mma` wraps the new retry loop, and `marlin-prefill-only-int8`
+follows the g_idx removal (`has_g_idx`, `g_idx_sort_indices` and `is_k_full`
+are gone from 0.31; the transient W4A8 path and its custom op were re-signed).
+The fork's `docs/turing-0.31-port.md` has the stop-by-stop record.
+
+Offline validation: both series apply to a pristine `v0.31.0` at `--fuzz 0`
+(upstream's own checker green, `git diff --check` clean), all 76 changed Python
+files compile under 3.12, the 0.29 -> 0.31 removed-name scan reports only the
+`envs.py` hash-exclusion list entry, and the changed-signature scan binds 136
+calls with 0 breaks. `requirements.lock` was re-resolved for the new pin (uv,
+python 3.12, `x86_64-manylinux_2_34`) from upstream's pin list; the 0.29 lock's
+other pins held except where 0.31 forces a move. `check-prefix.py` carries the
+two harness adjustments the port needs (the `use_eagle_block_drop` bit on the
+scheduler stubs, `retention_interval` on `_cache_partial_tail_block`).
+
+Still to run on the card, in this order: the runtime build (`qwen38-sm75-prepare`
+after the switch, which compiles the CUDA kernels), `check attention|prefill|
+prefix|gdn|downloads`, the three kernel suites (`test_turing_gdn.py`,
+`test_turing_prefill.py`, `test_turing_marlin.py`), then quality (PPL / GSM8K)
+and the benchmark tables, which stay the 0.29.0 numbers until re-run.
 
 ### Xid 45 bisect arms
 
