@@ -1,0 +1,334 @@
+# ab8 sweep - complete raw log lines (engine stderr) per arm/run
+# arm-run PROMPT | <verbatim line from /data/strata-src/strata-ab5-<arm-run>.log>
+
+== pca  args: (none)
+pca-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pca-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pca-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pca-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pca-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pca-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pca-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10462 ms (410.2 tok/s), 236 generated in 11129 ms (21.2 tok/s), drafts accepted 130 of 189, 1 checkpoints
+pca-1 hit      | strata serve: decode expert cache hit rate: 85.2% (121010 hits / 141985 lookups)
+pca-1 stage0   | strata serve: stage 0: 122 windows; per window: wait for the GPU 18.655 ms, pool + plan 80.205 ms, host staging 0.073 ms, commit 1.113 ms
+pca-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9889 ms (355.3 tok/s), 253 generated in 10955 ms (23.1 tok/s), drafts accepted 149 of 200, 1 checkpoints
+pca-1 hit      | strata serve: decode expert cache hit rate: 89.0% (131079 hits / 147269 lookups)
+pca-1 stage0   | strata serve: stage 0: 230 windows; per window: wait for the GPU 18.919 ms, pool + plan 69.491 ms, host staging 0.066 ms, commit 1.130 ms
+pca-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pca-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pca-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pca-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pca-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pca-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pca-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10642 ms (403.3 tok/s), 242 generated in 11531 ms (21.0 tok/s), drafts accepted 132 of 198, 1 checkpoints
+pca-2 hit      | strata serve: decode expert cache hit rate: 85.2% (126280 hits / 148223 lookups)
+pca-2 stage0   | strata serve: stage 0: 126 windows; per window: wait for the GPU 18.816 ms, pool + plan 94.012 ms, host staging 0.070 ms, commit 1.038 ms
+pca-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10262 ms (342.4 tok/s), 246 generated in 9460 ms (26.0 tok/s), drafts accepted 157 of 202, 1 checkpoints
+pca-2 hit      | strata serve: decode expert cache hit rate: 88.1% (124262 hits / 141030 lookups)
+pca-2 stage0   | strata serve: stage 0: 219 windows; per window: wait for the GPU 19.403 ms, pool + plan 78.664 ms, host staging 0.062 ms, commit 1.125 ms
+
+== pc0  args: --pcie-frac 0
+pc0-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc0-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc0-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc0-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc0-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc0-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10482 ms (409.5 tok/s), 256 generated in 13163 ms (19.4 tok/s), drafts accepted 149 of 198, 1 checkpoints
+pc0-1 hit      | strata serve: decode expert cache hit rate: 81.7% (120858 hits / 147840 lookups)
+pc0-1 stage0   | strata serve: stage 0: 125 windows; per window: wait for the GPU 18.690 ms, pool + plan 92.456 ms, host staging 0.066 ms, commit 1.172 ms
+pc0-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9975 ms (352.3 tok/s), 247 generated in 9677 ms (25.5 tok/s), drafts accepted 146 of 201, 1 checkpoints
+pc0-1 hit      | strata serve: decode expert cache hit rate: 88.4% (128135 hits / 144960 lookups)
+pc0-1 stage0   | strata serve: stage 0: 227 windows; per window: wait for the GPU 18.960 ms, pool + plan 74.562 ms, host staging 0.058 ms, commit 1.176 ms
+pc0-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc0-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc0-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc0-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc0-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc0-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10603 ms (404.8 tok/s), 242 generated in 11810 ms (20.5 tok/s), drafts accepted 155 of 191, 1 checkpoints
+pc0-2 hit      | strata serve: decode expert cache hit rate: 80.2% (107724 hits / 134400 lookups)
+pc0-2 stage0   | strata serve: stage 0: 104 windows; per window: wait for the GPU 19.447 ms, pool + plan 106.491 ms, host staging 0.077 ms, commit 1.210 ms
+pc0-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9844 ms (357.0 tok/s), 256 generated in 10350 ms (24.7 tok/s), drafts accepted 146 of 202, 1 checkpoints
+pc0-2 hit      | strata serve: decode expert cache hit rate: 88.3% (133120 hits / 150720 lookups)
+pc0-2 stage0   | strata serve: stage 0: 217 windows; per window: wait for the GPU 19.155 ms, pool + plan 76.704 ms, host staging 0.061 ms, commit 1.171 ms
+
+== pc5  args: --pcie-frac 0.5
+pc5-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc5-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc5-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc5-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc5-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc5-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10575 ms (405.9 tok/s), 217 generated in 11073 ms (19.6 tok/s), drafts accepted 122 of 173, 1 checkpoints
+pc5-1 hit      | strata serve: decode expert cache hit rate: 84.6% (109418 hits / 129341 lookups)
+pc5-1 stage0   | strata serve: stage 0: 112 windows; per window: wait for the GPU 18.983 ms, pool + plan 89.380 ms, host staging 0.076 ms, commit 1.173 ms
+pc5-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10009 ms (351.1 tok/s), 256 generated in 10659 ms (24.0 tok/s), drafts accepted 144 of 210, 1 checkpoints
+pc5-1 hit      | strata serve: decode expert cache hit rate: 89.3% (138207 hits / 154781 lookups)
+pc5-1 stage0   | strata serve: stage 0: 226 windows; per window: wait for the GPU 19.094 ms, pool + plan 70.245 ms, host staging 0.061 ms, commit 1.168 ms
+pc5-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc5-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc5-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc5-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc5-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc5-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10642 ms (403.3 tok/s), 241 generated in 12091 ms (19.9 tok/s), drafts accepted 151 of 200, 1 checkpoints
+pc5-2 hit      | strata serve: decode expert cache hit rate: 81.6% (114515 hits / 140335 lookups)
+pc5-2 stage0   | strata serve: stage 0: 108 windows; per window: wait for the GPU 19.737 ms, pool + plan 102.661 ms, host staging 0.076 ms, commit 1.187 ms
+pc5-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10028 ms (350.4 tok/s), 256 generated in 10825 ms (23.6 tok/s), drafts accepted 148 of 222, 1 checkpoints
+pc5-2 hit      | strata serve: decode expert cache hit rate: 88.3% (140108 hits / 158642 lookups)
+pc5-2 stage0   | strata serve: stage 0: 218 windows; per window: wait for the GPU 19.591 ms, pool + plan 78.262 ms, host staging 0.063 ms, commit 1.162 ms
+
+== pc1  args: --pcie-frac 1.0
+pc1-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc1-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc1-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc1-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc1-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc1-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10586 ms (405.4 tok/s), 256 generated in 12999 ms (19.7 tok/s), drafts accepted 153 of 200, 1 checkpoints
+pc1-1 hit      | strata serve: decode expert cache hit rate: 83.1% (121022 hits / 145556 lookups)
+pc1-1 stage0   | strata serve: stage 0: 120 windows; per window: wait for the GPU 22.474 ms, pool + plan 91.358 ms, host staging 0.073 ms, commit 1.147 ms
+pc1-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10039 ms (350.0 tok/s), 256 generated in 10536 ms (24.3 tok/s), drafts accepted 151 of 214, 1 checkpoints
+pc1-1 hit      | strata serve: decode expert cache hit rate: 89.0% (135815 hits / 152542 lookups)
+pc1-1 stage0   | strata serve: stage 0: 226 windows; per window: wait for the GPU 21.619 ms, pool + plan 73.809 ms, host staging 0.063 ms, commit 1.129 ms
+pc1-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pc1-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pc1-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pc1-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pc1-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pc1-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10521 ms (408.0 tok/s), 256 generated in 13710 ms (18.7 tok/s), drafts accepted 148 of 195, 1 checkpoints
+pc1-2 hit      | strata serve: decode expert cache hit rate: 82.5% (119211 hits / 144569 lookups)
+pc1-2 stage0   | strata serve: stage 0: 123 windows; per window: wait for the GPU 22.119 ms, pool + plan 95.002 ms, host staging 0.072 ms, commit 1.135 ms
+pc1-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9930 ms (353.9 tok/s), 253 generated in 10409 ms (24.3 tok/s), drafts accepted 148 of 199, 1 checkpoints
+pc1-2 hit      | strata serve: decode expert cache hit rate: 89.1% (129484 hits / 145331 lookups)
+pc1-2 stage0   | strata serve: stage 0: 229 windows; per window: wait for the GPU 21.300 ms, pool + plan 76.074 ms, host staging 0.061 ms, commit 1.145 ms
+
+== pw4  args: --pool-workers 4
+pw4-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw4-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw4-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw4-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw4-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw4-1 OVERRIDE | strata generate: 4 expert-pool workers + the host thread
+pw4-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10675 ms (402.1 tok/s), 237 generated in 16334 ms (14.5 tok/s), drafts accepted 131 of 189, 1 checkpoints
+pw4-1 hit      | strata serve: decode expert cache hit rate: 85.2% (121032 hits / 141983 lookups)
+pw4-1 stage0   | strata serve: stage 0: 122 windows; per window: wait for the GPU 18.656 ms, pool + plan 138.808 ms, host staging 0.073 ms, commit 1.163 ms
+pw4-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10000 ms (351.4 tok/s), 256 generated in 14244 ms (18.0 tok/s), drafts accepted 150 of 214, 1 checkpoints
+pw4-1 hit      | strata serve: decode expert cache hit rate: 89.1% (136849 hits / 153521 lookups)
+pw4-1 stage0   | strata serve: stage 0: 229 windows; per window: wait for the GPU 19.033 ms, pool + plan 115.948 ms, host staging 0.062 ms, commit 1.186 ms
+pw4-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw4-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw4-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw4-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw4-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw4-2 OVERRIDE | strata generate: 4 expert-pool workers + the host thread
+pw4-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10556 ms (406.6 tok/s), 219 generated in 14914 ms (14.7 tok/s), drafts accepted 119 of 180, 1 checkpoints
+pw4-2 hit      | strata serve: decode expert cache hit rate: 85.3% (114942 hits / 134792 lookups)
+pw4-2 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.760 ms, pool + plan 140.631 ms, host staging 0.072 ms, commit 1.131 ms
+pw4-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9938 ms (353.6 tok/s), 231 generated in 12060 ms (19.2 tok/s), drafts accepted 139 of 198, 1 checkpoints
+pw4-2 hit      | strata serve: decode expert cache hit rate: 89.6% (125585 hits / 140092 lookups)
+pw4-2 stage0   | strata serve: stage 0: 211 windows; per window: wait for the GPU 19.306 ms, pool + plan 115.549 ms, host staging 0.062 ms, commit 1.172 ms
+
+== pw8  args: --pool-workers 8
+pw8-1 OVERRIDE | strata generate: PCIe probe: 12.3 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw8-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw8-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw8-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw8-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw8-1 OVERRIDE | strata generate: 8 expert-pool workers + the host thread
+pw8-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10579 ms (405.7 tok/s), 236 generated in 12464 ms (18.9 tok/s), drafts accepted 133 of 188, 1 checkpoints
+pw8-1 hit      | strata serve: decode expert cache hit rate: 83.8% (118150 hits / 141022 lookups)
+pw8-1 stage0   | strata serve: stage 0: 121 windows; per window: wait for the GPU 18.541 ms, pool + plan 94.202 ms, host staging 0.068 ms, commit 1.152 ms
+pw8-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9813 ms (358.1 tok/s), 238 generated in 10556 ms (22.5 tok/s), drafts accepted 141 of 198, 1 checkpoints
+pw8-1 hit      | strata serve: decode expert cache hit rate: 87.9% (125653 hits / 142944 lookups)
+pw8-1 stage0   | strata serve: stage 0: 222 windows; per window: wait for the GPU 18.923 ms, pool + plan 79.551 ms, host staging 0.059 ms, commit 1.139 ms
+pw8-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw8-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw8-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw8-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw8-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw8-2 OVERRIDE | strata generate: 8 expert-pool workers + the host thread
+pw8-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10546 ms (407.0 tok/s), 236 generated in 12449 ms (19.0 tok/s), drafts accepted 133 of 188, 1 checkpoints
+pw8-2 hit      | strata serve: decode expert cache hit rate: 83.8% (118150 hits / 141022 lookups)
+pw8-2 stage0   | strata serve: stage 0: 121 windows; per window: wait for the GPU 18.628 ms, pool + plan 94.021 ms, host staging 0.067 ms, commit 1.133 ms
+pw8-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9805 ms (358.4 tok/s), 253 generated in 10700 ms (23.6 tok/s), drafts accepted 150 of 208, 1 checkpoints
+pw8-2 hit      | strata serve: decode expert cache hit rate: 88.7% (133580 hits / 150631 lookups)
+pw8-2 stage0   | strata serve: stage 0: 228 windows; per window: wait for the GPU 19.031 ms, pool + plan 76.993 ms, host staging 0.058 ms, commit 1.153 ms
+
+== pw11  args: --pool-workers 11
+pw11-1 OVERRIDE | strata generate: PCIe probe: 12.3 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw11-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw11-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw11-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw11-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw11-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pw11-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10407 ms (412.4 tok/s), 242 generated in 12366 ms (19.6 tok/s), drafts accepted 148 of 206, 1 checkpoints
+pw11-1 hit      | strata serve: decode expert cache hit rate: 81.6% (118573 hits / 145317 lookups)
+pw11-1 stage0   | strata serve: stage 0: 112 windows; per window: wait for the GPU 19.324 ms, pool + plan 100.399 ms, host staging 0.073 ms, commit 1.170 ms
+pw11-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9784 ms (359.2 tok/s), 238 generated in 9303 ms (25.6 tok/s), drafts accepted 137 of 189, 1 checkpoints
+pw11-1 hit      | strata serve: decode expert cache hit rate: 88.8% (123595 hits / 139117 lookups)
+pw11-1 stage0   | strata serve: stage 0: 214 windows; per window: wait for the GPU 19.242 ms, pool + plan 75.997 ms, host staging 0.061 ms, commit 1.140 ms
+pw11-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw11-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw11-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw11-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw11-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw11-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+pw11-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10390 ms (413.1 tok/s), 216 generated in 10460 ms (20.7 tok/s), drafts accepted 116 of 173, 1 checkpoints
+pw11-2 hit      | strata serve: decode expert cache hit rate: 84.8% (111471 hits / 131431 lookups)
+pw11-2 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.693 ms, pool + plan 80.770 ms, host staging 0.071 ms, commit 1.157 ms
+pw11-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10088 ms (348.3 tok/s), 253 generated in 9696 ms (26.1 tok/s), drafts accepted 146 of 204, 1 checkpoints
+pw11-2 hit      | strata serve: decode expert cache hit rate: 89.3% (133253 hits / 149193 lookups)
+pw11-2 stage0   | strata serve: stage 0: 224 windows; per window: wait for the GPU 19.058 ms, pool + plan 64.887 ms, host staging 0.060 ms, commit 1.183 ms
+
+== pw16  args: --pool-workers 16
+pw16-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw16-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw16-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw16-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw16-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw16-1 OVERRIDE | strata generate: 16 expert-pool workers + the host thread
+pw16-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10458 ms (410.4 tok/s), 236 generated in 11849 ms (19.9 tok/s), drafts accepted 130 of 189, 1 checkpoints
+pw16-1 hit      | strata serve: decode expert cache hit rate: 85.2% (121010 hits / 141985 lookups)
+pw16-1 stage0   | strata serve: stage 0: 122 windows; per window: wait for the GPU 18.671 ms, pool + plan 88.504 ms, host staging 0.074 ms, commit 1.150 ms
+pw16-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9965 ms (352.6 tok/s), 256 generated in 10026 ms (25.5 tok/s), drafts accepted 151 of 204, 1 checkpoints
+pw16-1 hit      | strata serve: decode expert cache hit rate: 90.0% (134218 hits / 149214 lookups)
+pw16-1 stage0   | strata serve: stage 0: 230 windows; per window: wait for the GPU 18.993 ms, pool + plan 70.656 ms, host staging 0.063 ms, commit 1.137 ms
+pw16-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+pw16-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+pw16-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+pw16-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+pw16-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+pw16-2 OVERRIDE | strata generate: 16 expert-pool workers + the host thread
+pw16-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10509 ms (408.4 tok/s), 256 generated in 13836 ms (18.5 tok/s), drafts accepted 150 of 203, 1 checkpoints
+pw16-2 hit      | strata serve: decode expert cache hit rate: 82.8% (124336 hits / 150090 lookups)
+pw16-2 stage0   | strata serve: stage 0: 125 windows; per window: wait for the GPU 18.817 ms, pool + plan 100.146 ms, host staging 0.077 ms, commit 1.120 ms
+pw16-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9907 ms (354.7 tok/s), 225 generated in 8796 ms (25.6 tok/s), drafts accepted 142 of 193, 1 checkpoints
+pw16-2 hit      | strata serve: decode expert cache hit rate: 89.6% (118594 hits / 132414 lookups)
+pw16-2 stage0   | strata serve: stage 0: 209 windows; per window: wait for the GPU 19.574 ms, pool + plan 84.107 ms, host staging 0.069 ms, commit 1.151 ms
+
+== kv4  args: --kv q4_0
+kv4-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+kv4-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+kv4-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+kv4-1 OVERRIDE | strata generate: expert cache auto: 15.30 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5891 slots
+kv4-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+kv4-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+kv4-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10567 ms (406.2 tok/s), 256 generated in 13239 ms (19.3 tok/s), drafts accepted 143 of 211, 1 checkpoints
+kv4-1 hit      | strata serve: decode expert cache hit rate: 84.1% (131892 hits / 156822 lookups)
+kv4-1 stage0   | strata serve: stage 0: 131 windows; per window: wait for the GPU 19.376 ms, pool + plan 86.944 ms, host staging 0.072 ms, commit 1.108 ms
+kv4-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9788 ms (359.0 tok/s), 256 generated in 10063 ms (25.4 tok/s), drafts accepted 144 of 214, 1 checkpoints
+kv4-1 hit      | strata serve: decode expert cache hit rate: 89.5% (141328 hits / 157840 lookups)
+kv4-1 stage0   | strata serve: stage 0: 247 windows; per window: wait for the GPU 19.663 ms, pool + plan 67.451 ms, host staging 0.060 ms, commit 1.122 ms
+kv4-2 OVERRIDE | strata generate: PCIe probe: 12.3 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+kv4-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+kv4-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+kv4-2 OVERRIDE | strata generate: expert cache auto: 15.30 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5891 slots
+kv4-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+kv4-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+kv4-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10555 ms (406.6 tok/s), 232 generated in 11530 ms (20.1 tok/s), drafts accepted 142 of 192, 1 checkpoints
+kv4-2 hit      | strata serve: decode expert cache hit rate: 81.5% (111063 hits / 136208 lookups)
+kv4-2 stage0   | strata serve: stage 0: 107 windows; per window: wait for the GPU 20.218 ms, pool + plan 98.099 ms, host staging 0.074 ms, commit 1.155 ms
+kv4-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9811 ms (358.2 tok/s), 217 generated in 7797 ms (27.8 tok/s), drafts accepted 126 of 175, 1 checkpoints
+kv4-2 hit      | strata serve: decode expert cache hit rate: 90.5% (115427 hits / 127610 lookups)
+kv4-2 stage0   | strata serve: stage 0: 199 windows; per window: wait for the GPU 20.182 ms, pool + plan 72.826 ms, host staging 0.061 ms, commit 1.150 ms
+
+== kv8  args: --kv k8v4
+kv8-1 OVERRIDE | strata generate: PCIe probe: 12.3 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+kv8-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+kv8-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+kv8-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+kv8-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+kv8-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+kv8-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10515 ms (408.2 tok/s), 222 generated in 11059 ms (20.1 tok/s), drafts accepted 124 of 180, 1 checkpoints
+kv8-1 hit      | strata serve: decode expert cache hit rate: 84.0% (113202 hits / 134778 lookups)
+kv8-1 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.748 ms, pool + plan 85.342 ms, host staging 0.074 ms, commit 1.118 ms
+kv8-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9802 ms (358.5 tok/s), 223 generated in 7820 ms (28.5 tok/s), drafts accepted 143 of 187, 1 checkpoints
+kv8-1 hit      | strata serve: decode expert cache hit rate: 90.0% (116621 hits / 129540 lookups)
+kv8-1 stage0   | strata serve: stage 0: 200 windows; per window: wait for the GPU 19.509 ms, pool + plan 70.410 ms, host staging 0.064 ms, commit 1.144 ms
+kv8-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+kv8-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+kv8-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+kv8-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+kv8-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+kv8-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+kv8-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10535 ms (407.4 tok/s), 222 generated in 11061 ms (20.1 tok/s), drafts accepted 124 of 181, 1 checkpoints
+kv8-2 hit      | strata serve: decode expert cache hit rate: 84.0% (113559 hits / 135258 lookups)
+kv8-2 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.750 ms, pool + plan 85.692 ms, host staging 0.074 ms, commit 1.185 ms
+kv8-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 10002 ms (351.3 tok/s), 256 generated in 8849 ms (28.9 tok/s), drafts accepted 159 of 202, 1 checkpoints
+kv8-2 hit      | strata serve: decode expert cache hit rate: 90.0% (130862 hits / 145370 lookups)
+kv8-2 stage0   | strata serve: stage 0: 218 windows; per window: wait for the GPU 19.225 ms, pool + plan 67.329 ms, host staging 0.061 ms, commit 1.149 ms
+
+== rs512  args: --resident-cpu-mib 512
+rs512-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs512-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs512-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs512-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs512-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 512 MiB from the profile ranking
+rs512-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs512-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10370 ms (413.9 tok/s), 236 generated in 11184 ms (21.1 tok/s), drafts accepted 130 of 189, 1 checkpoints
+rs512-1 hit      | strata serve: decode expert cache hit rate: 85.2% (120959 hits / 141983 lookups)
+rs512-1 stage0   | strata serve: stage 0: 122 windows; per window: wait for the GPU 18.585 ms, pool + plan 81.132 ms, host staging 0.070 ms, commit 1.067 ms
+rs512-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9776 ms (359.4 tok/s), 256 generated in 9712 ms (26.4 tok/s), drafts accepted 153 of 208, 1 checkpoints
+rs512-1 hit      | strata serve: decode expert cache hit rate: 88.9% (132606 hits / 149197 lookups)
+rs512-1 stage0   | strata serve: stage 0: 226 windows; per window: wait for the GPU 18.947 ms, pool + plan 67.384 ms, host staging 0.060 ms, commit 1.109 ms
+rs512-2 OVERRIDE | strata generate: PCIe probe: 12.3 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs512-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs512-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs512-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs512-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 512 MiB from the profile ranking
+rs512-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs512-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10400 ms (412.7 tok/s), 236 generated in 11643 ms (20.3 tok/s), drafts accepted 133 of 187, 1 checkpoints
+rs512-2 hit      | strata serve: decode expert cache hit rate: 83.8% (117783 hits / 140541 lookups)
+rs512-2 stage0   | strata serve: stage 0: 121 windows; per window: wait for the GPU 18.756 ms, pool + plan 85.306 ms, host staging 0.069 ms, commit 1.110 ms
+rs512-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9831 ms (357.4 tok/s), 249 generated in 9260 ms (26.9 tok/s), drafts accepted 153 of 206, 1 checkpoints
+rs512-2 hit      | strata serve: decode expert cache hit rate: 89.5% (130057 hits / 145377 lookups)
+rs512-2 stage0   | strata serve: stage 0: 219 windows; per window: wait for the GPU 19.380 ms, pool + plan 69.947 ms, host staging 0.061 ms, commit 1.130 ms
+
+== rs1024  args: --resident-cpu-mib 1024
+rs1024-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs1024-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs1024-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs1024-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs1024-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+rs1024-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs1024-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10449 ms (410.7 tok/s), 237 generated in 12023 ms (19.7 tok/s), drafts accepted 131 of 189, 1 checkpoints
+rs1024-1 hit      | strata serve: decode expert cache hit rate: 85.3% (121057 hits / 141984 lookups)
+rs1024-1 stage0   | strata serve: stage 0: 122 windows; per window: wait for the GPU 18.828 ms, pool + plan 88.703 ms, host staging 0.075 ms, commit 1.111 ms
+rs1024-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9867 ms (356.1 tok/s), 256 generated in 9605 ms (26.7 tok/s), drafts accepted 156 of 206, 1 checkpoints
+rs1024-1 hit      | strata serve: decode expert cache hit rate: 90.1% (132211 hits / 146804 lookups)
+rs1024-1 stage0   | strata serve: stage 0: 223 windows; per window: wait for the GPU 19.410 ms, pool + plan 72.604 ms, host staging 0.063 ms, commit 1.142 ms
+rs1024-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs1024-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs1024-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs1024-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs1024-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 1024 MiB from the profile ranking
+rs1024-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs1024-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10335 ms (415.3 tok/s), 219 generated in 10555 ms (20.7 tok/s), drafts accepted 119 of 178, 1 checkpoints
+rs1024-2 hit      | strata serve: decode expert cache hit rate: 85.0% (113805 hits / 133828 lookups)
+rs1024-2 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.852 ms, pool + plan 81.114 ms, host staging 0.072 ms, commit 1.144 ms
+rs1024-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9805 ms (358.4 tok/s), 224 generated in 8455 ms (26.5 tok/s), drafts accepted 141 of 205, 1 checkpoints
+rs1024-2 hit      | strata serve: decode expert cache hit rate: 89.5% (124992 hits / 139605 lookups)
+rs1024-2 stage0   | strata serve: stage 0: 203 windows; per window: wait for the GPU 19.713 ms, pool + plan 69.342 ms, host staging 0.063 ms, commit 1.146 ms
+
+== rs2048  args: --resident-cpu-mib 2048
+rs2048-1 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs2048-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs2048-1 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs2048-1 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs2048-1 OVERRIDE | strata generate: host expert tier: pageable, capped at 2048 MiB from the profile ranking
+rs2048-1 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs2048-1 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10417 ms (412.0 tok/s), 242 generated in 12172 ms (19.9 tok/s), drafts accepted 148 of 206, 1 checkpoints
+rs2048-1 hit      | strata serve: decode expert cache hit rate: 81.6% (118614 hits / 145317 lookups)
+rs2048-1 stage0   | strata serve: stage 0: 112 windows; per window: wait for the GPU 19.401 ms, pool + plan 98.492 ms, host staging 0.075 ms, commit 1.154 ms
+rs2048-1 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9825 ms (357.7 tok/s), 256 generated in 10003 ms (25.6 tok/s), drafts accepted 151 of 208, 1 checkpoints
+rs2048-1 hit      | strata serve: decode expert cache hit rate: 88.3% (132642 hits / 150165 lookups)
+rs2048-1 stage0   | strata serve: stage 0: 218 windows; per window: wait for the GPU 19.318 ms, pool + plan 75.722 ms, host staging 0.062 ms, commit 1.151 ms
+rs2048-2 OVERRIDE | strata generate: PCIe probe: 12.2 GB/s host->device -> pcie_frac 0.26 (default 0.55)
+rs2048-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: sliding window of 6.00 GiB over a 46.84 GiB pack (48 layers, 0.98 GiB per layer)
+rs2048-2 OVERRIDE | FileExpertSource: STRATA_REGISTER_DAX: window on layers 0..5, 5.52 GiB registered (device alias ok); the prompt path DMAs straight out of it
+rs2048-2 OVERRIDE | strata generate: expert cache auto: 14.89 GiB free, 700 MiB reserved (+5 MiB for the draft head) -> 5726 slots
+rs2048-2 OVERRIDE | strata generate: host expert tier: pageable, capped at 2048 MiB from the profile ranking
+rs2048-2 OVERRIDE | strata generate: 11 expert-pool workers + the host thread
+rs2048-2 P1/4292    | strata serve: prompt 4292 tokens = 0 reused + 4292 read in 10416 ms (412.1 tok/s), 222 generated in 10946 ms (20.3 tok/s), drafts accepted 124 of 181, 1 checkpoints
+rs2048-2 hit      | strata serve: decode expert cache hit rate: 84.0% (113559 hits / 135258 lookups)
+rs2048-2 stage0   | strata serve: stage 0: 116 windows; per window: wait for the GPU 18.755 ms, pool + plan 83.422 ms, host staging 0.072 ms, commit 1.180 ms
+rs2048-2 P2/3514    | strata serve: prompt 3514 tokens = 0 reused + 3514 read in 9974 ms (352.3 tok/s), 253 generated in 18214 ms (13.9 tok/s), drafts accepted 159 of 203, 1 checkpoints
+rs2048-2 hit      | strata serve: decode expert cache hit rate: 88.6% (127559 hits / 143911 lookups)
+rs2048-2 stage0   | strata serve: stage 0: 214 windows; per window: wait for the GPU 19.838 ms, pool + plan 104.508 ms, host staging 0.077 ms, commit 1.317 ms
