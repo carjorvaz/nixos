@@ -177,15 +177,15 @@ in
         "flakes"
       ];
 
+      # cache.garnix.io was dropped 2026-10: garnix retired the cache, the
+      # hostname no longer resolves, and every nix invocation paid its retries.
       substituters = [
         "https://attic.xuyh0120.win/lantian"
-        "https://cache.garnix.io"
         "https://cache.numtide.com"
         "https://lanzaboote.cachix.org"
       ];
       trusted-public-keys = [
         "lantian:EeAUQ+W+6r7EtwnmYjeVwx5kOGEBpjlBfPlzGlTNvHc="
-        "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
         "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
         "lanzaboote.cachix.org-1:Nt9//zGmqkg1k5iu+B3bkj3OmHPC30CL3ENQBOH9aVM="
       ];
@@ -218,6 +218,13 @@ in
     config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) allowedUnfree;
 
     overlays = [
+      # `pinned` keeps cachyosKernels on the kernel flake's own nixpkgs — the
+      # revision its Hydra/Attic builds were made against. The default overlay
+      # drifts onto our nixpkgs, which turns cache hits into local kernel
+      # builds. The `release` input only advances to revisions whose CI jobs
+      # succeeded (2026-10-12: release = b133239/7.2.8, fully cached for the
+      # default-arch variants; master = 7.2.9 with failing LTO jobs). Bumping
+      # to master today would force local LTO builds on every LTO host.
       inputs.nix-cachyos-kernel.overlays.pinned
       (_final: prev: {
         unstable = import inputs.nixpkgs-unstable {

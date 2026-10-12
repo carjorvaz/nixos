@@ -146,6 +146,9 @@ in
 
   boot = {
     # Use the Zen4-optimized CachyOS LTO kernel for AMD Ryzen 7 8845HS.
+    # The kernel itself is substituted from lantian at the pinned rev; the
+    # zen4 zfs module is not (upstream caches zfs only for the default
+    # x86_64-v1 kernels), so a kernel bump still compiles zfs here.
     # Its module closure currently includes nixpkgs' yt6801 driver via
     # autoModules. That driver does not pass the kernel's Clang/LTO module
     # make flags by default, so remote builds fall back to a missing `gcc`.

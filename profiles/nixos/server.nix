@@ -7,7 +7,11 @@
 
 {
   boot = {
-    # CachyOS server-lto kernel for all servers.
+    # CachyOS server-lto kernel for all servers. Upstream's CI jobset has no
+    # server-lto job, so neither this kernel nor its zfs module is ever
+    # substituted — every server compiles both (measured 2026-10-12). The
+    # non-LTO `linux-cachyos-server` kernel is on the lantian cache, its zfs
+    # module is not.
     kernelPackages = lib.mkDefault pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
     zfs = {
       package = lib.mkDefault config.boot.kernelPackages.zfs_cachyos;
