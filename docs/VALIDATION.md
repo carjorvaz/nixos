@@ -800,12 +800,18 @@ the same envelope (283 s on strata, 67-617 s on the 27B), so the 2026-10-11
 engine swap was not what fixed hindsight - the clock was. Mental-model pages
 regrow across refreshes (2.8 -> 3.2 -> 5.4 -> 6.6 KB over one afternoon) and
 each model's `max_tokens` (600-800 here) acts as a soft page-length directive,
-not a hard cap. Reasoning for the refresh path only
-(`HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_EXTRA_BODY` with
-`enable_thinking: true`) was tried on 2026-10-11 and fails:
-`Reflect's done tool returned no answer` (iteration 7, 14 tool calls) - the
-route to a deeper page is the page budget or a different refresh-path model
-(the block has its own provider/model/base_url knobs), not thinking.
+not a hard cap. The refresh task fails intermittently with
+`ReflectNoAnswerError: Reflect's done tool returned no answer` - seen on both
+engines and with thinking on or off (2026-10-11: 21:46 on the 27B with
+refresh-path reasoning, iteration 7 / 14 tool calls; 22:39 on strata with the
+deployed thinking-off config, iteration 10 / 9 tool calls), roughly one run in
+four that afternoon, and the task's own retry (up to 4 attempts) completed both
+times - so a single failure is expected flakiness, not a config verdict.
+Refresh-path reasoning
+(`HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_EXTRA_BODY` with `enable_thinking:
+true`) therefore remains untested rather than disproven; the proven levers for
+deeper pages are the page budget (or a different refresh-path model - the block
+has its own provider/model/base_url knobs).
 `hindsight.vaz.ovh` is registered in
 `services.nginx.tailscaleAuth.virtualHosts`: the app authenticates `/v1` and
 `/mcp` with the tenant key, but `/metrics`, `/docs` and `/openapi.json` are
