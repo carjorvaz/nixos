@@ -363,6 +363,18 @@ let
         # (explicit 0/0.5/1.0 fractions: no win).  "old" is the variable's
         # only other value; unset adopts the measured rule.
         STRATA_PCIE_FRAC_DEFAULT = "old";
+        # tiberius: v0.1.43's adaptive overlap - the adaptive tier's copies land
+        # while the next verify window runs, each layer waiting on its own copies
+        # (upstream's AdaptGate).  On Linux CUDA the feature is on by default, but
+        # it is SKIPPED in the resident RAM mode this box runs unless
+        # STRATA_ADAPT_OVERLAP_RESIDENT=1, so the deployed default already has it
+        # off; =0 pins that, so a future default flip cannot move this box.
+        # Measured 2026-10-12 (ab11: 3 counterbalanced runs per arm, P1
+        # 4292-token / P2 3517-token decode cells, per-arm spread <=0.1 tok/s;
+        # /data/ab11-*): the RESIDENT=1 opt-in read 25.6 / 30.3 tok/s against
+        # 27.2 / 35.2 with it off (-5.8% / -14.0%) and streamed more file bytes,
+        # so it stays off here.
+        STRATA_ADAPT_OVERLAP = "0";
         # tiberius: the dense GEMMs on the FP16 tensor cores.  Turing has FP16
         # tensor cores and no BF16 ones, so cuBLAS served the dense (non-expert)
         # GEMMs - 482 calls, 335.7 ms of a 9.2 s prompt - with its FP32 SIMT

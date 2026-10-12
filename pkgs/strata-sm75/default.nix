@@ -23,11 +23,13 @@
 let
   c = cudaPackages;
 
-  # 61b3fb5d: v0.1.42 (2026-10-10), the release with the new CUDA defaults the module
-  # measures before adopting (STRATA_ROUTE_TAIL_SKIP=7 on this shape, the CPU-measured
-  # PCIe share; see profiles/nixos/strata.nix).  v0.1.41 (fb58e0d) is an ancestor of
-  # this tag; upstream rewrote its history before v0.1.40.2, so older pins are not.
-  revision = "61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406";
+  # 7695859a: v0.1.43 (2026-10-11), the release that reworks the adaptive tier's
+  # copies for STRATA_ADAPT_OVERLAP (off by default in the resident RAM mode this
+  # box runs; opt-in there with STRATA_ADAPT_OVERLAP_RESIDENT=1) and adds the
+  # non-finite-logits guard (upstream #1892).  v0.1.42 (61b3fb5d) and v0.1.41
+  # (fb58e0d) are ancestors of this tag; upstream rewrote its history before
+  # v0.1.40.2, so older pins are not.
+  revision = "7695859aa13afb248bdb4d36f9b2e95707db079d";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -59,7 +61,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.42";
+  version = "0.1.43";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -91,12 +93,14 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-FPwm4cuGTFiXgWkK5eTcfD9VIrH/OnVZiG6ToQFOfMQ=";
+    hash = "sha256-SjhgL3wXV36a4AuDlrQH9E9PDAOAqDS6dXMuVM5/5yw=";
   };
 
-  # carry-1283.patch is GONE at this pin: upstream took PR #1283 (commit a26fcbcd,
-  # released in v0.1.42), so tiberius.patch is regenerated against 61b3fb5 directly
-  # and no longer sits on the carry's tree.
+  # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
+  # a26fcbcd), so tiberius.patch sits directly on the release trees.  At this bump it
+  # was regenerated against 7695859a; the only seams upstream moved under it are the
+  # adaptive-overlap additions (AdaptGate, the layer landing callbacks), and the
+  # patch's pin-release contract absorbed them unchanged - see its header.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}

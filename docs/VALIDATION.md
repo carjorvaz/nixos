@@ -152,21 +152,31 @@ slot on 2026-10-11 until an on-box A/B of hindsight's refresh job put the two
 lanes in the same envelope - 283 s on strata against 67-617 s on the 27B, with
 a richer page from strata; the 27B stays installed as the parked fast and
 interactive lane). It builds upstream Strata at pin
-`61b3fb5d` (v0.1.42) with two patches: `tiberius.patch` (a sliding DAX register
-window, decode-time refill pinning with its straddle guard) and
-`no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled web app, its
-pages/assets and `/settings`; the OpenAI-compatible API is untouched).
-`carry-1283.patch` was retired at this bump: upstream took PR #1283 (commit
-`a26fcbcd`, the same change; the lineage was #547 -> #1042 -> #1283), and both
-remaining patches were regenerated against `61b3fb5` directly (two hunks
-re-homed again: the `FileExpertSource` dax members now sit above upstream's new
-`stage_lend_regions_` member, and the serve join-timing block after the new
-`PcieAuto` share block; the rest is context-only). The dense-FP16 tensor-core
-change that `tiberius.patch` used to carry was retired at the v0.1.40.2 bump:
-upstream 0.1.39+ has the same path natively (`bf16_path()`, #540/#655) and the
-module selects it with upstream's `STRATA_BF16_TC=1` (opt-in on the RTX 20's
-compute capability 7.5). Build-time greps fail the derivation if a flag or
-environment variable the module sets disappears on a rebase.
+`7695859a` (v0.1.43; the annotated tag v0.1.43 is `16374b3e`) with two patches:
+`tiberius.patch` (a sliding DAX register window, decode-time refill pinning with
+its straddle guard) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the
+bundled web app, its pages/assets and `/settings`; the OpenAI-compatible API is
+untouched).  At this bump upstream reworked the same refill/adapt loop for its
+new adaptive-overlap default (the `AdaptGate`, layer-ordered swaps, a per-layer
+landing host-func on the refill stream) and added the `soft_in_`/exchange-buffer
+clause to `FileExpertSource::device_alias`; the patch's pin-release contract is
+unchanged (`held_pins` goes back only in `apply_pending`, once `adapt_ev` has
+completed - the same event that admits the batch), its landing callback is
+re-anchored to the last copy of each layer in the issue loop (enqueued after
+those copies, never before), and the `device_alias` merge keeps the arena-first
+structure (upstream's `!pinned()` guard would otherwise fall through to the
+arena's pointer for an expert only the DAX window holds).  `carry-1283.patch`
+was retired at the v0.1.42 bump: upstream took PR #1283 (commit `a26fcbcd`, the
+same change; the lineage was #547 -> #1042 -> #1283), and both remaining patches
+have been regenerated against the release tree at every bump since (two hunks
+were re-homed at v0.1.42: the `FileExpertSource` dax members now sit above
+upstream's new `stage_lend_regions_` member, and the serve join-timing block
+after the new `PcieAuto` share block; the rest is context-only). The dense-FP16
+tensor-core change that `tiberius.patch` used to carry was retired at the
+v0.1.40.2 bump: upstream 0.1.39+ has the same path natively (`bf16_path()`,
+#540/#655) and the module selects it with upstream's `STRATA_BF16_TC=1` (opt-in
+on the RTX 20's compute capability 7.5). Build-time greps fail the derivation if
+a flag or environment variable the module sets disappears on a rebase.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
@@ -198,6 +208,34 @@ kept as control).  The campaign ran twice, on a trajanus-built engine
 with the same conclusions to within 0.1-0.3%; the numbers above are the native
 run's.  Evidence: `/data/ab10*` + `/data/ab10n*` (driver `/data/ab10.py`,
 `/data/ab10-arms.sh`, per-run engine logs and `/metrics`).
+
+v0.1.43's adaptive overlap (the tier's copies landing while the next verify
+window runs) was measured before adopting.  On Linux CUDA upstream turns it on
+by default, but it is skipped in the resident RAM mode this box runs unless
+`STRATA_ADAPT_OVERLAP_RESIDENT=1`, so the deployed default already has it off;
+the opt-in lost here: 25.6 / 30.3 tok/s against 27.2 / 35.2 on the P1
+(4292-token) / P2 (3517-token) decode cells - 3 counterbalanced runs per arm,
+per-arm spread <=0.1 tok/s - and it streamed more file bytes - so the module
+pins `STRATA_ADAPT_OVERLAP=0` (upstream's escape hatch, explicit so a future
+default flip cannot move the box).  The bump's answer drift was run to ground:
+v0.1.43's resident-tier arena is 1 MiB larger at the same `--resident-budget-gib
+1.0` (1022 -> 1023 MiB), so 1 MiB less VRAM is free when the expert cache opens
+and the profile walk packs one expert pair fewer at the same budget (6285 vs
+6286 slots, both reporting 11.93 GiB; `--expert-cache N` on a native pack is a
+budget of N x largest-blob bytes, NOT a slot count - a request above what fits
+is a no-op).  On this box's tight 6 GiB-window cache that one pair moves the
+residency margin, and the text follows the residency (the same binary answers
+differently at 6281 vs 6285 slots).  At a budget both versions fit
+(`--expert-cache 4400`: 5743 slots and 11171 MiB on both) the engines are
+byte-identical on all three cells - the 4292-token and 3517-token reads and a
+short question - 3 runs per arm, with identical content shas, streamed bytes of
+42148 / 32327 / 10924 MB, hit rates 82.3 / 86.3 / 64.6% and decode within 0.1%
+(25.03/31.23/21.77 vs 25.00/31.27/21.77 tok/s) - so the drift is the sizing
+margin alone, not the engine.  Evidence: `/data/ab11*` (auto cache, 3 arms x 3
+runs), `/data/ab12*` + `/data/ab16*` (budgets above what fits, 2 arms),
+`/data/ab17*` (the matched-budget parity run), `/data/ab13*`-`ab15*`
+(flag-semantics probes; drivers `/data/ab11.py`-`ab17.py`, per-run engine logs
+and `/metrics`).
 
 The engine build must happen ON tiberius. ggml compiles with `-march=native`
 (the package clears `NIX_ENFORCE_NO_NATIVE`), and the host's `nix.conf` lists
