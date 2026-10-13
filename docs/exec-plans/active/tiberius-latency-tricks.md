@@ -67,7 +67,7 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
 | **IRQ steering / irqbalance** | irqbalance active (dynamic masks); the nvidia MSI-X (irq 47) lands on cpu21 — an SMT sibling of core 9, **not** the host core; xhci on cpu5, ahci on cpu11 with 26.6 irq/s are the only engine-CPU fires [M]. | ≤0.5 % [E] | **wasted** (cheap to do anyway — `echo <mask> > /proc/irq/47/smp_affinity_list`) |
 | **Hugepages / TLB** | The pack is **already 2 MiB PMD-mapped** (`FilePmdMapped` 71.9 GB against 20 MB of PTEs; 0–737 major faults for 21–81 GB of reads) [M]; the pinned vs pageable *host* tier was already measured byte-identical; `HugePages_Total=0`, THP=madvise with `thp_fault_fallback 12 916` on the anonymous side [M]. | ~0 on the pack; unknown-but-small on the 1.37 GiB anon arena | **wasted for weights**; hugetlbfs reservation would pin ~1.4 GB of non-swappable RAM on a box already swapping 1.07 GB — do not |
 | **Busy-poll vs yield** | The engine already spins everywhere (host spins on a volatile sequence before any CUDA call; workers `_mm_pause`-spin). The remaining surface was thought to be ~144 pool barriers/window ≈ 1–1.5 % [E]; the `generate`-mode phase split (§4) replaced that conjecture: `wait-park` and `re-park` read 0.000 on every run, and the drain decomposes completely into the gate/up + quantize + down row work. | barriers bounded at ≤7 × 10⁻⁶ of the pool term [M]; the `~1–1.5 %` estimate is **retired** | **closed** — nothing to buy here |
-| **NUMA / DIMM placement** | Single socket, single NUMA node, one 8 GB DDR4-2400 DIMM **and** the DCPMM on iMC#0/Chan#0 — 5 of 6 channels empty; the pool is documented DRAM-bound; a pinned thread cannot outrun the channel [M]. | hardware | **nothing to steer** (the real fix is a second DIMM) |
+| **NUMA / DIMM placement** | Single socket, single NUMA node, one 8 GB DDR4-2400 DIMM **and** the DCPMM on iMC#0/Chan#0 — 5 of 6 channels empty; the pool is documented DRAM-bound [M]. | hardware | **nothing to steer** — and the channel is not this pool's limit: the same-window probe measures 18.4–18.5 GB/s achievable against the pool's 6.2 (~34 %), so a second DIMM raises a wall the pool is not at (it would matter for a *CPU-resident* lane, which is the use case the maya recon's DIMM note belongs to) |
 | **Kernel variants / preempt / isolcpus / nohz_full / rcu_nocbs** | `preempt=full` was a clean null, CachyOS v4 ≤0.6 % confounded (`tiberius-kernel-tuning.md` §7) [M]; jitter is 0.08 % of the window, so tick/RCU/callback steering has nothing to recover; `CONFIG_NO_HZ_FULL=y` is inert with no cpulist; `isolcpus` would strand 11 of 24 threads on a swapping box [M]. | ~0 | **wasted** (all boot-only except in-kernel knobs, and none addresses bytes) |
 
 ## 4. Where the honest EV is: instrumentation, not sysctls
@@ -141,11 +141,28 @@ inherit a 2.8× phantom.
   (8.3–9.3 % of the window) and **98.5 % of it lands on cpu0** — the host thread's core — while
   the 11 pool workers' cores accrue 0.5–16.6 ms total. The workers are never queue-starved, in
   agreement with §3's pinning row and with the nil barriers.
-- **What this leaves as headroom [D]:** the row work runs at ~40 % of the one-populated-channel
-  DRAM practical rate (~15 GB/s), so the remaining upside is *engine-side* — memory-level
-  parallelism in the pool kernels, or fewer bytes (cache hit rate / route-tail skip, both already
-  tuned) — with a second DIMM as the hardware version of the same fix. Every host-side latency
+- **What this leaves as headroom [M]:** the box's own streaming-read ceiling was measured in the
+  same window (1 GiB fresh-mmap buffer, `nix shell nixpkgs#gcc` gcc 15.3.0, plain unaligned
+  8-byte loads): 1/2/4/8/12 threads give 14.19 / 17.51 / **18.42 / 18.40 / 18.48 GB/s** — one
+  populated DDR4-2400 channel at ≈96 % of its 19.2 GB/s theoretical. The pool runs at 6.2 GB/s,
+  i.e. **≈34 % of what the channel actually delivers**, so it is *not* at the memory wall: a
+  second DIMM would raise a wall nobody is touching. (The probe streams; the pool reads 1.95 MiB
+  contiguous blobs with coarse jumps between them, so the streaming figure is the right
+  comparator modulo blob-boundary effects — it is an upper bound, not an exact target.) The
+  remaining upside is engine-side
+  (memory-level parallelism, access pattern, compute-vs-memory balance in the row kernels) or
+  fewer bytes (cache hit rate / route-tail skip — both already tuned). Every host-side latency
   family in §3 is now closed by measurement rather than by argument.
+
+**Closing test — the resident-pin knob is refused by the engine itself [M].** With
+`STRATA_RESIDENT_PIN=1` the engine takes the mlock path and declines it on this box: `locked
+resident cache complement ready: resident 1.00 GiB, pinned 0.00 GiB … WARNING: only 0.00 of 1.00
+GiB could be page-locked (the RAM left would fall under the reserve); the rest is resident but
+pageable, so its copies to the GPU go through the CPU (#1250)`. Six runs (pin0 control / pin1,
+3 each, rc=0, service restored) are indistinguishable — P1 9148 vs 9129 ms, 28.0 tok/s both, hit
+82.9 % both, identical draft and window counts. So the last untested cheap engine knob is closed
+by the engine's own memory policy, not by measurement: it needs RAM headroom this 7.5 GB box does
+not have.
 
 1. ~~**Turn on the engine's existing instrumentation**~~ — **done** (the block above):
    `STRATA_IO_STATS=1` answered where the bytes come from, and the `generate`-mode `--stats`
