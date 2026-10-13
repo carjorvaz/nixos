@@ -69,12 +69,15 @@ stdenv.mkDerivation {
   # nix build dispatches this derivation and the result carries the BUILDER's
   # instructions.  Measured 2026-10-11: the trajanus and pius builds of the
   # same drv differ in 50,132,344 bytes, and two instruction classes show up:
-  #   * the engine's own AVX-512 expert kernels (expert.cpp) are compiled with
-  #     explicit -mavx512f/bw/vl/dq/vnni/vbmi (CMake, on every build) and
-  #     selected at run time by cpu_avx512_ok() = F+BW+VL+VNNI+VBMI; that gate
-  #     is FALSE on this CPU (the deployed log reads "this CPU has no AVX-512:
-  #     the expert kernels run on AVX-2"), so the 296 vpmultishiftqb in
-  #     q2g_row_multi never execute - dead by design, in every build;
+  #   * the engine's own AVX-512 expert kernels (expert.cpp) are built for
+  #     F/DQ/BW/VL/VNNI and selected at run time by cpu_avx512_ok().  Before
+  #     avx512-bw-tier.patch (below) that gate demanded VBMI too, which made
+  #     them dead code here and printed "this CPU has no AVX-512: the expert
+  #     kernels run on AVX-2" in every deployment log; with the patch the gate
+  #     is TRUE on this CPU and they execute - the built object has 0
+  #     vpmultishiftqb and 492 vpsrlvw.  Measured 2026-10-12 (ab18 campaign, 3
+  #     counterbalanced runs per arm): ~5 % cheaper CPU expert pool+plan per
+  #     decode window, prefill and the Optane reads unchanged;
   #   * ggml's own `*_generic` fallback dots and `ggml_vec_dot_bf16` are
   #     compiled with the BUILD host's -march=native and carry no run-time
   #     gate: the trajanus build has 262 instructions the Xeon Gold 6246
@@ -119,9 +122,22 @@ stdenv.mkDerivation {
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # Both were regenerated against the pin above, so `patch -p1` applies cleanly.
+  #
+  # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs: it
+  # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent
+  # VPERMW + VPSRLVW + VPMOVWB form (layout-verified exhaustively against a
+  # scalar reference), drops the VBMI term from cpu_avx512_ok() and removes
+  # `-mavx512vbmi` from both AVX-512 translation units -- so this Cascade Lake
+  # part (avx512f/bw/cd/dq/vl/vnni, no VBMI) runs the VNNI expert kernels.
+  # Measured on tiberius 2026-10-12 (ab18 campaign, 3 counterbalanced runs per
+  # arm): ~5 % cheaper CPU expert pool+plan per decode window, GPU wait and
+  # Optane reads unchanged, outputs numerically sound (parity 0 failures vs the
+  # ggml references) but NOT bit-identical to the AVX-2 tier on the long cells.
+  # See docs/exec-plans/active/tiberius-kernel-tuning.md.
   patches = [
     ./tiberius.patch
     ./no-web-ui.patch
+    ./avx512-bw-tier.patch
   ];
 
   # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX and
@@ -199,6 +215,23 @@ stdenv.mkDerivation {
       echo "the bytes_needed signatures no longer take src" >&2
       exit 1
     }
+    # avx512-bw-tier.patch removes VBMI from the AVX-512 tier.  The absence checks
+    # are the SIGILL guard: if an unpack or the flag survives, the gate would let
+    # this VBMI-less CPU execute VBMI (the failure class in VALIDATION.md:245-262),
+    # so fail the build rather than ship a binary that traps.  Patterns are precise
+    # so they cannot match the explanatory comments the patch itself adds.
+    if grep -q 'multishift_epi64_epi8' src/kernels/cpu/expert.cpp; then
+      echo "avx512-bw-tier.patch did not remove the VPMULTISHIFTQB 2-bit unpacks" >&2
+      exit 1
+    fi
+    grep -q '_mm512_srlv_epi16' src/kernels/cpu/expert.cpp || {
+      echo "avx512-bw-tier.patch did not introduce the VBMI-free unpack" >&2
+      exit 1
+    }
+    if grep -q ';-mavx512vbmi;' CMakeLists.txt; then
+      echo "avx512-bw-tier.patch left -mavx512vbmi in an AVX-512 translation unit" >&2
+      exit 1
+    fi
   '';
 
   nativeBuildInputs = [

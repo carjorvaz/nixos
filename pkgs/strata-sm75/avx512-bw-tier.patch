@@ -1,0 +1,150 @@
+diff -r strata-orig/CMakeLists.txt strata-src/CMakeLists.txt
+--- strata-orig/CMakeLists.txt	2026-10-12 16:57:25.790502431 +0100
++++ strata-src/CMakeLists.txt	2026-10-12 18:45:31.671400057 +0100
+@@ -1166,9 +1166,14 @@
+   set_source_files_properties(src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+   set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+ else()
+-  # GCC/Clang spell it differently, and `-mavx512vnni` alone is not enough: VBMI is a separate feature bit.
++  # GCC/Clang spell it differently.  `-mavx512vbmi` is deliberately absent: the tier's only VBMI user was the
++  # 2-bit unpack in expert.cpp, which now expands its fixed shift pattern with F/BW shifts, so dropping the
++  # flag cannot silently remove a VPMULTISHIFTQB the code still needs, and a VBMI-less CPU (Cascade Lake) can
++  # run these kernels.  After editing this list, verify the built object is clean:
++  #   objdump -d <expert.cpp.o> | grep -cE 'vpermb|vpermt2b|vpermi2b|vpmultishiftqb|vpmadd52|vpcompress|vpexpand'
++  # must be 0 (VBMI, VBMI2, IFMA).
+   set_source_files_properties(src/kernels/cpu/expert.cpp
+-                              PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
++                              PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
+   set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+ endif()
+ # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
+@@ -1280,8 +1285,10 @@
+     # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
+     set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
+   else()
++    # No VBMI here either: the i-quant 512-bit kernels use F/DQ/BW/VL/VNNI only, and dropping the flag stops a
++    # build host from emitting VBMI that this CPU family cannot execute (see expert.cpp's unpack comment).
+     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
+-                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
++                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
+     set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+     set_source_files_properties(src/kernels/cpu/kq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+     set_source_files_properties(src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "-mavx")
+diff -r strata-orig/include/strata/kernels/cpu/expert.hpp strata-src/include/strata/kernels/cpu/expert.hpp
+--- strata-orig/include/strata/kernels/cpu/expert.hpp	2026-10-12 16:57:48.638342768 +0100
++++ strata-src/include/strata/kernels/cpu/expert.hpp	2026-10-12 18:46:38.775262644 +0100
+@@ -12,9 +12,12 @@
+ //
+ //   * `vpdpbusd` (AVX512-VNNI) does four int8 MACs per instruction.  The scalar loop it replaces ran at
+ //     9.89 GB/s on one core; VNNI is the reason the 6-core figure is 42.55 GB/s.
+-//   * `vpmultishiftqb` (AVX512-VBMI) unpacks the 2-bit codes eight at a time.  Its ARGUMENT ORDER is
+-//     (control, data) and was determined empirically - the Intel guide states the opposite, and following the
+-//     guide produced 43 of 64 wrong codes.
++//   * The 2-bit unpack expands its fixed shift pattern with AVX512-F/BW shifts (`unpack64_q2_0` in
++//     `expert.cpp`): eight masked 16-bit shifts plus per-byte placement, bit-identical to the
++//     VPMULTISHIFTQB form it replaced.  VBMI is deliberately NOT used, so this tier runs on
++//     F/DQ/BW/VL/VNNI CPUs without VBMI (Cascade Lake).  The old argument-order trap lived in the
++//     intrinsic and went with it; `bench/micro/probe_multishift.cpp` documents the pre-patch behaviour.
++//     Do not reintroduce a VBMI intrinsic here without also restoring `-mavx512vbmi` and the gate.
+ //   * The row accumulator stays a FLOAT VECTOR and is reduced ONCE at the end of the row.  Reducing per
+ //     64-weight block cost more than the dot products themselves: it made the kernel compute-bound at
+ //     21 GB/s instead of DRAM-bound at 32.
+diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert.cpp
+--- strata-orig/src/kernels/cpu/expert.cpp	2026-10-12 16:57:40.262548128 +0100
++++ strata-src/src/kernels/cpu/expert.cpp	2026-10-12 18:58:23.364471835 +0100
+@@ -110,21 +110,36 @@
+     }
+ }
+ 
+-/// 2-bit unpack via VPMULTISHIFTQB.
++/// 2-bit unpack, VBMI-free: the fixed shift pattern 0x0E0C0A0806040200 expanded with F/BW shifts.
+ ///
+-/// ARGUMENT ORDER IS (control, data) AND WAS DETERMINED EMPIRICALLY (`bench/micro/probe_multishift.cpp`).
+-/// The Intel guide states (a=data, b=control); using that produced 43 of 64 wrong codes.  `plan.md`'s sketch
+-/// passes the shift pattern first, which is correct - so a "fix" that swapped it to match the guide was the
+-/// bug, not the fix.  Within each 64-bit lane, output byte i is `(u16 >> 2i) & 0xFF`, so AND 3 yields the
+-/// eight 2-bit codes in order.
++/// Within each 64-bit lane, output byte i is `(u16 >> 2i) & 3`, so the eight 2-bit codes come out in order.
++/// With a CONSTANT control vector that is exactly what VPMULTISHIFTQB produced, so eight masked 16-bit
++/// shifts plus per-byte placement are bit-identical - and they keep this translation unit free of VBMI, which
++/// lets the AVX-512 tier run on F/DQ/BW/VL/VNNI CPUs that lack it (Cascade Lake).  The argument-order trap
++/// documented in `bench/micro/probe_multishift.cpp` applies only to the pre-patch build (no intrinsic, no
++/// order to get wrong); keep the micro-benchmark's expectations in sync if it is ever re-run.
+ ///
+ /// The result is the 32 codes of ONE ACTIVATION CHUNK (4 qword lanes), which is the unit the Q8_1 scale is
+ /// defined on - not the 64-weight block.
+ inline __m256i unpack_q2_0(const uint8_t* codes) {
+     const __m128i packed = _mm_loadl_epi64((const __m128i*) codes);   // 8 bytes -> 4 u16 in the low half
+-    const __m256i lanes = _mm256_cvtepu16_epi64(packed);              // 4 qwords, 8 codes each
+-    const __m256i ctrl = _mm256_set1_epi64x((long long) 0x0E0C0A0806040200ULL);
+-    return _mm256_and_si256(_mm256_multishift_epi64_epi8(ctrl, lanes), _mm256_set1_epi8(3));
++    const __m256i q = _mm256_cvtepu16_epi64(packed);                  // 4 qwords, one u16 each (lanes 0,4,8,12)
++    // Same VBMI-free construction as unpack64_q2_0, in 256-bit lanes: VPERMW replicates each u16 into the
++    // sixteen 16-bit lanes that become its code bytes, VPSRLVW shifts each lane by 2*(lane%8), VPMOVWB
++    // truncates to bytes.  Two rounds of two u16s each, joined by VINSERTI128.  Byte k = (u16 >> 2*(k%8)) & 3
++    // - the exact VPMULTISHIFTQB layout (verified exhaustively against a scalar reference when written).
++    const uint16_t idx0_a[16] = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4};
++    const uint16_t idx1_a[16] = {8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12, 12};
++    const uint16_t sh_a[16] = {0, 2, 4, 6, 8, 10, 12, 14, 0, 2, 4, 6, 8, 10, 12, 14};
++    const __m256i idx0 = _mm256_loadu_si256((const __m256i*) idx0_a);
++    const __m256i idx1 = _mm256_loadu_si256((const __m256i*) idx1_a);
++    const __m256i sh = _mm256_loadu_si256((const __m256i*) sh_a);
++    const __m256i m3 = _mm256_set1_epi16(0x0003);
++    const __m128i lo = _mm256_cvtepi16_epi8(
++        _mm256_and_si256(_mm256_srlv_epi16(_mm256_permutexvar_epi16(idx0, q), sh), m3));
++    const __m128i hi = _mm256_cvtepi16_epi8(
++        _mm256_and_si256(_mm256_srlv_epi16(_mm256_permutexvar_epi16(idx1, q), sh), m3));
++    return _mm256_inserti128_si256(_mm256_castsi128_si256(lo), hi, 1);
+ }
+ 
+ /// 32 codes against 32 int8 activations. Codes 0 contribute nothing to `sum(c*xhat)`, so the zero lanes the
+@@ -152,9 +167,29 @@
+ 
+ inline __m512i unpack64_q2_0(const uint8_t* codes) {
+     const __m128i packed = _mm_loadu_si128((const __m128i*) codes);          // 8 u16 = 64 codes
+-    const __m512i lanes = _mm512_cvtepu16_epi64(packed);                    // 8 qwords, 8 codes each
+-    const __m512i ctrl = _mm512_set1_epi64((long long) 0x0E0C0A0806040200ULL);
+-    return _mm512_and_si512(_mm512_multishift_epi64_epi8(ctrl, lanes), _mm512_set1_epi8(3));
++    const __m512i q = _mm512_cvtepu16_epi64(packed);                        // 8 qwords, one u16 each
++    // VBMI-free: VPERMW replicates each u16 into the eight 16-bit lanes that become its eight code bytes,
++    // VPSRLVW shifts lane e by 2*(e%8), VPMOVWB truncates to bytes, VINSERTI64X4 joins the two halves.  Four
++    // instructions per 32 codes against the VBMI original's one - close enough that a measured delta is the
++    // tier's, not the substitute's.  Layout is byte-identical to VPMULTISHIFTQB with the old fixed control
++    // vector (verified exhaustively against a scalar reference when written).
++    // little-endian lane order, element e = 16-bit lane e (GCC has no _mm512_setr_epi16; arrays also make the
++    // layout auditable against the scalar reference).
++    const uint16_t idx_lo_a[32] = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4,
++                                   8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12, 12};
++    const uint16_t idx_hi_a[32] = {16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20, 20, 20, 20, 20, 20,
++                                   24, 24, 24, 24, 24, 24, 24, 24, 28, 28, 28, 28, 28, 28, 28, 28};
++    const uint16_t sh_a[32] = {0, 2, 4, 6, 8, 10, 12, 14, 0, 2, 4, 6, 8, 10, 12, 14,
++                               0, 2, 4, 6, 8, 10, 12, 14, 0, 2, 4, 6, 8, 10, 12, 14};
++    const __m512i idx_lo = _mm512_loadu_si512((const void*) idx_lo_a);
++    const __m512i idx_hi = _mm512_loadu_si512((const void*) idx_hi_a);
++    const __m512i sh = _mm512_loadu_si512((const void*) sh_a);
++    const __m512i m3 = _mm512_set1_epi16(0x0003);
++    const __m256i lo = _mm512_cvtepi16_epi8(
++        _mm512_and_si512(_mm512_srlv_epi16(_mm512_permutexvar_epi16(idx_lo, q), sh), m3));
++    const __m256i hi = _mm512_cvtepi16_epi8(
++        _mm512_and_si512(_mm512_srlv_epi16(_mm512_permutexvar_epi16(idx_hi, q), sh), m3));
++    return _mm512_inserti64x4(_mm512_castsi256_si512(lo), hi, 1);
+ }
+ 
+ // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
+diff -r strata-orig/src/kernels/cpu/expert_layout.cpp strata-src/src/kernels/cpu/expert_layout.cpp
+--- strata-orig/src/kernels/cpu/expert_layout.cpp	2026-10-12 16:57:40.181487703 +0100
++++ strata-src/src/kernels/cpu/expert_layout.cpp	2026-10-12 18:44:57.727844938 +0100
+@@ -66,7 +66,12 @@
+         if ((xcr0 & 0xE6) != 0xE6) return false;          // the OS saves the AVX-512 state
+         cpuid(7, 0);
+         const unsigned ebx = r[1], ecx = r[2];
+-        return ((ebx >> 16) & 1u) && ((ebx >> 30) & 1u) && ((ebx >> 31) & 1u) && ((ecx >> 11) & 1u) && ((ecx >> 1) & 1u);
++        // F (EBX16) && DQ (EBX17) && BW (EBX30) && VL (EBX31) && VNNI (ECX11).  VBMI (ECX1) is deliberately
++        // NOT required: the AVX-512 tier's only VBMI user was the 2-bit unpack in expert.cpp, which now
++        // expands the fixed shift pattern with F/BW shifts (see the comment there) and the file is compiled
++        // without -mavx512vbmi, so no VBMI can be emitted.  This opens the VNNI expert kernels on Cascade
++        // Lake (F/DQ/BW/VL/VNNI, no VBMI) and changes nothing on CPUs that do have VBMI.
++        return ((ebx >> 16) & 1u) && ((ebx >> 17) & 1u) && ((ebx >> 30) & 1u) && ((ebx >> 31) & 1u) && ((ecx >> 11) & 1u);
+     }();
+     return ok;
+ }
