@@ -66,7 +66,7 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
 | **C-states** | `intel_idle`, states POLL/C1/C1E/**C6 (133 µs exit)**; C6 84.9 % of residency mostly *between* requests; the engine cores are out of C6 ~72 % during serving, but they spin in userspace rather than idle during a window [M]. | ~130 µs per window start = 0.14 % of 91 ms | **mostly wasted**; `idle=poll` is the worst risk/benefit here (24 threads burning power next to an 82/85 °C Optane) |
 | **IRQ steering / irqbalance** | irqbalance active (dynamic masks); the nvidia MSI-X (irq 47) lands on cpu21 — an SMT sibling of core 9, **not** the host core; xhci on cpu5, ahci on cpu11 with 26.6 irq/s are the only engine-CPU fires [M]. | ≤0.5 % [E] | **wasted** (cheap to do anyway — `echo <mask> > /proc/irq/47/smp_affinity_list`) |
 | **Hugepages / TLB** | The pack is **already 2 MiB PMD-mapped** (`FilePmdMapped` 71.9 GB against 20 MB of PTEs; 0–737 major faults for 21–81 GB of reads) [M]; the pinned vs pageable *host* tier was already measured byte-identical; `HugePages_Total=0`, THP=madvise with `thp_fault_fallback 12 916` on the anonymous side [M]. | ~0 on the pack; unknown-but-small on the 1.37 GiB anon arena | **wasted for weights**; hugetlbfs reservation would pin ~1.4 GB of non-swappable RAM on a box already swapping 1.07 GB — do not |
-| **Busy-poll vs yield** | The engine already spins everywhere (host spins on a volatile sequence before any CUDA call; workers `_mm_pause`-spin; doorbells are mapped host memory). What remains is ~144 pool barriers/window (wait-park/drain/re-park) ≈ 0.7–1.4 ms ≈ **1–1.5 %** [E]. | 1–1.5 % | **the only live HFT-style surface** — and it is *unmeasured* because the instrumentation is off (see §4) |
+| **Busy-poll vs yield** | The engine already spins everywhere (host spins on a volatile sequence before any CUDA call; workers `_mm_pause`-spin). The remaining surface was thought to be ~144 pool barriers/window ≈ 1–1.5 % [E]; the `generate`-mode phase split (§4) replaced that conjecture: `wait-park` and `re-park` read 0.000 on every run, and the drain decomposes completely into the gate/up + quantize + down row work. | barriers bounded at ≤7 × 10⁻⁶ of the pool term [M]; the `~1–1.5 %` estimate is **retired** | **closed** — nothing to buy here |
 | **NUMA / DIMM placement** | Single socket, single NUMA node, one 8 GB DDR4-2400 DIMM **and** the DCPMM on iMC#0/Chan#0 — 5 of 6 channels empty; the pool is documented DRAM-bound; a pinned thread cannot outrun the channel [M]. | hardware | **nothing to steer** (the real fix is a second DIMM) |
 | **Kernel variants / preempt / isolcpus / nohz_full / rcu_nocbs** | `preempt=full` was a clean null, CachyOS v4 ≤0.6 % confounded (`tiberius-kernel-tuning.md` §7) [M]; jitter is 0.08 % of the window, so tick/RCU/callback steering has nothing to recover; `CONFIG_NO_HZ_FULL=y` is inert with no cpulist; `isolcpus` would strand 11 of 24 threads on a swapping box [M]. | ~0 | **wasted** (all boot-only except in-kernel knobs, and none addresses bytes) |
 
@@ -117,6 +117,13 @@ windows / 256 tokens each, ~27 tok/s decode, production args and env preserved i
   pool multi   gate/up 42.80  quantize 0.12  down 24.86  ms/round                     (sums to the drain within 0.003 ms)
 ```
 
+*Unit note — the engine's own label is wrong:* the row prints `ms/token`, but the divisor is
+the **window** count. 67.76 × 92 windows = 6.23 s, exactly the run's reported drain total and
+the same per-window quantity as the campaign's `pool+plan` (P3: 67.7–67.9 both ways); × 256
+tokens would be 17.3 s, *more* than the 9.475 s decode it came from. Quote it as per-window and
+treat `ms/token` there as a known label bug — anyone comparing it to `pool+plan` will otherwise
+inherit a 2.8× phantom.
+
 - **The synchronisation terms are nil, structurally.** `wait-park` and `re-park` are exactly
   0.000 in all three runs, and the engine's own estimate for the multi path bounds them at
   ≤0.046 ms over the whole run against a 6.23 s drain — i.e. ≤7 × 10⁻⁶ of the pool term.
@@ -127,7 +134,9 @@ windows / 256 tokens each, ~27 tok/s decode, production args and env preserved i
   `run_phase` would sit inside the gate/up and down rows — and those two rows sum to the drain.
 - **The drain is the row work, at ~6.2 GB/s.** `gate/up + quantize + down` decomposes the pool
   term completely, so the ~68 ms window term is CPU expert rows streaming the cache/dax-served
-  miss stream (§4.1) — not congestion, not barriers.
+  miss stream (§4.1) — not congestion, not barriers. Note that `host_works_` is true (the host
+  thread drains through the same claim counter), so `drain` is the *batch's* whole time rather
+  than "the workers' time": a large value says the batch is slow, not that the workers are.
 - **Independent cross-check:** `/proc/schedstat` `run_delay` across each run is 3.74–3.82 s
   (8.3–9.3 % of the window) and **98.5 % of it lands on cpu0** — the host thread's core — while
   the 11 pool workers' cores accrue 0.5–16.6 ms total. The workers are never queue-starved, in
