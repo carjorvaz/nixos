@@ -205,13 +205,14 @@ in
   ];
 
   boot = {
-    # Stock kernel/zfs pair from cache.nixos.org — deliberate choice: the
-    # CachyOS server-lto kernel has no substituter and building it for this
-    # host was not worth the pain (7 GB RAM box; remote-build detours via
-    # pius/trajanus shelved). The remote builders stay wired and proven for
-    # everything else. To flip later: delete the two mkForce lines, build
-    # kernelPackages.zfs_cachyos on a builder, `nix copy` the closure back,
-    # then `nixos-rebuild switch`.
+    # Stock kernel/zfs pair from cache.nixos.org — deliberate choice. Upstream
+    # CI has no server-lto job at all (checked 2026-10-12), so no substituter
+    # for it will ever appear, and building it on this 7 GB box was not worth
+    # the pain (remote-build detours via pius/trajanus are shelved). The
+    # remote builders stay wired and proven for everything else. If the
+    # CachyOS server kernel is wanted here later: `linux-cachyos-server`
+    # (non-LTO) is cached, its zfs module is not — build that on a builder,
+    # `nix copy` the closure back, then delete the two mkForce lines below.
     kernelPackages = lib.mkForce pkgs.linuxPackages;
     zfs.package = lib.mkForce pkgs.zfs;
     initrd.availableKernelModules = [
@@ -264,6 +265,13 @@ in
     };
   };
 
+  # The A/B boot arms that measured the kernel options (specialisations
+  # `kernel-cachy-v4` and `preempt-full`) were removed after the measurement:
+  # CachyOS 7.2.8-v4 bought <=0.6 % decode (and that arm was confounded by the
+  # driver bump its package set carries), `preempt=full` was a clean null, and
+  # the engine-side AVX-512 tier was the only real winner.  The record lives in
+  # docs/exec-plans/active/tiberius-kernel-tuning.md; the default arm here is
+  # the stock kernel + fsdax long-term pin, unchanged.
   networking = {
     hostName = "tiberius";
     hostId = "5eed08d7";
