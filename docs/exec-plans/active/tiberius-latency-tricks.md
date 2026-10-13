@@ -182,7 +182,16 @@ not have.
 2. **Measure the round-trip floor with the engine's own `--no-pool` arm.** The authors'
    reference figure is 38.73 ms/token against a 26.32 ms pure-GPU floor, i.e. 12.4 ms of
    round trip with *no expert work at all*; on this box that single number is the ceiling
-   for every wakeup/jitter/isolation idea. A/B only (it changes output).
+   for every wakeup/jitter/isolation idea. Scope the attribution before quoting a delta:
+   `--no-pool` does not remove the CPU workers alone — it also skips the expert-cache/VRAM
+   tier setup (`generate.cpp:5257`, `:5428`) and nulls both the pool and hit hooks, so the arm
+   measures *everything the pool owns* (the workers, the staging `parts`, and the resident hit
+   path), not the CPU pool in isolation. **Run it in `generate` mode**: a serve-mode attempt on
+   2026-10-13 is recorded as inert — the serve path's verify windows call `win_pool_fn`
+   (`drive_pool_split`/`drive_pool_multi`, `:7480`) unconditionally, and the engine's own
+   startup label read "11 expert-pool workers + the host thread (UNUSED: --no-pool)"; only the
+   `--dump-routing` combination hard-refuses the flag (`:5506`). `--stats`, which prints in
+   generate mode only, is the readout the authors' arm used. A/B only (it changes output).
 3. ~~**Spend the ~20 % device-idle fraction**~~ — **withdrawn** (§4.1 and §4.6): the stream is
    page-cache/dax served, so device idle is not the constraint and a deeper pre-read ring would
    prefetch into RAM bytes that are already there. That 20 % is an engine-side overlap
