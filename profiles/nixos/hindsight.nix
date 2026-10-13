@@ -83,6 +83,20 @@ in
         # the operative ceiling while letting a refresh finish (measured: the
         # refresh then completes in 283 s on strata, 67-617 s on the 27B).
         HINDSIGHT_API_REFLECT_WALL_TIMEOUT = "1800";
+        # A refresh's 1800 s ceiling is an absolute total-runtime cap (unlike
+        # consolidation's, which restarts on every commit), so what keeps it
+        # reachable is how much company each refresh has: the upstream default
+        # of 10 worker slots leaves an 8-task shared pool (10 minus the 2
+        # consolidation reservations), and a post-consolidation refresh batch
+        # - 14 ops when this bit - is claimed 8-wide against an engine that
+        # serves one request at a time, so every task's clock runs while it
+        # queues behind the rest.  On 2026-10-12 that killed all 17 in-flight
+        # refreshes at exactly 1800 s (then a manual serial re-run cleared
+        # every one in 105-1227 s).  Four slots leave a 2-task shared pool:
+        # measured walls are 685-805 s for two refreshes sharing and 1227 s
+        # for a refresh beside a full retain, both inside the ceiling, while
+        # retains still overlap pairwise.
+        HINDSIGHT_API_WORKER_MAX_SLOTS = "4";
       };
       user = "hindsight";
       group = "hindsight";
