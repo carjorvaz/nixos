@@ -126,8 +126,10 @@ inherit a 2.8× phantom. The arithmetic above is the verification, and the sourc
 are error-prone independently of us: its own comment on the neighbouring rings row reads "the
 denominator is the number of positions, not the number of generated tokens. Dividing by
 `n_layers * decoded` printed '240 of 192', which is a reporting bug that looks like a ring firing
-more often than it should" (`generate.cpp:13076-13079`) — re-derive every denominator here; do
-not trust the label.
+more often than it should" (`generate.cpp:13076-13079`, in the 0.1.42 tree — a comment can't be
+verified against the deployed binary, so the arithmetic above is the verification and this only
+corroborates that the authors treat these divisors as risky) — re-derive every denominator here;
+do not trust the label.
 
 - **The synchronisation terms are nil, structurally.** `wait-park` and `re-park` are exactly
   0.000 in all three runs, and the engine's own estimate for the multi path bounds them at
