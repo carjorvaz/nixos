@@ -191,7 +191,16 @@ not have.
    (`drive_pool_split`/`drive_pool_multi`, `:7480`) unconditionally, and the engine's own
    startup label read "11 expert-pool workers + the host thread (UNUSED: --no-pool)"; only the
    `--dump-routing` combination hard-refuses the flag (`:5506`). `--stats`, which prints in
-   generate mode only, is the readout the authors' arm used. A/B only (it changes output).
+   generate mode only, is the readout the authors' arm used. A/B only (it changes output). Two
+   prerequisites are on record from the 2026-10-13 attempts: the serve refusal is explicit
+   ("strata serve: verify: needs the profile-filled VRAM expert tier"), so the arm must also
+   drop `--expert-profile` — which makes it a *configuration* comparison rather than a
+   round-trip probe; and the generate path needs pretokenized input (`--tokens-file`), where
+   `/data/pyenv` has no `tokenizers` module (the pack does ship `tokenizer.json`). What §4
+   already gives on this box is the reason to treat the arm as optional refinement rather than
+   an open question: with the pool in the path, the window carries 18–21 ms of GPU wait and
+   ≤0.3 ms of host staging/commit, so the non-pool term is already bounded here and no open
+   question depends on splitting it further.
 3. ~~**Spend the ~20 % device-idle fraction**~~ — **withdrawn** (§4.1 and §4.6): the stream is
    page-cache/dax served, so device idle is not the constraint and a deeper pre-read ring would
    prefetch into RAM bytes that are already there. That 20 % is an engine-side overlap
