@@ -122,7 +122,12 @@ the **window** count. 67.76 × 92 windows = 6.23 s, exactly the run's reported d
 the same per-window quantity as the campaign's `pool+plan` (P3: 67.7–67.9 both ways); × 256
 tokens would be 17.3 s, *more* than the 9.475 s decode it came from. Quote it as per-window and
 treat `ms/token` there as a known label bug — anyone comparing it to `pool+plan` will otherwise
-inherit a 2.8× phantom.
+inherit a 2.8× phantom. The arithmetic above is the verification, and the source shows these rows
+are error-prone independently of us: its own comment on the neighbouring rings row reads "the
+denominator is the number of positions, not the number of generated tokens. Dividing by
+`n_layers * decoded` printed '240 of 192', which is a reporting bug that looks like a ring firing
+more often than it should" (`generate.cpp:13076-13079`) — re-derive every denominator here; do
+not trust the label.
 
 - **The synchronisation terms are nil, structurally.** `wait-park` and `re-park` are exactly
   0.000 in all three runs, and the engine's own estimate for the multi path bounds them at
@@ -148,8 +153,13 @@ inherit a 2.8× phantom.
   i.e. **≈34 % of what the channel actually delivers**, so it is *not* at the memory wall: a
   second DIMM would raise a wall nobody is touching. (The probe streams; the pool reads 1.95 MiB
   contiguous blobs with coarse jumps between them, so the streaming figure is the right
-  comparator modulo blob-boundary effects — it is an upper bound, not an exact target.) The
-  remaining upside is engine-side
+  comparator modulo blob-boundary effects — it is an upper bound, not an exact target. Two
+  further caveats from the probe's own header: it reads a *private anonymous* buffer, not the
+  page cache and the dax mapping the pool streams from, so the gap implicates the pool or that
+  path rather than DRAM as such; and it was built `-O2` with no `-ffast-math`, where the
+  single-thread 14.19 GB/s is exactly what rules out a compute-bound scalar loop (that would
+  have read at 1–2 GB/s). The curve is flat from four threads up, so the pool's thread count is
+  not a lever either.) The remaining upside is engine-side
   (memory-level parallelism, access pattern, compute-vs-memory balance in the row kernels) or
   fewer bytes (cache hit rate / route-tail skip — both already tuned). Every host-side latency
   family in §3 is now closed by measurement rather than by argument.
@@ -233,8 +243,9 @@ in `/data/gov/` with per-arm `freq.csv` samples.
   control `STRATA_ROUTE_TAIL_SKIP` = 3 hits). `STRATA_ADAPT_OVERLAP` **is** in the binary
   (6 hits) — the prod config's `=0` is a live knob, and the pin is deliberate: the **ab11**
   campaign of 2026-10-12 measured the adaptive path losing 25.6/30.3 tok/s against 27.2/35.2
-  with it off (per-arm spread ≤0.1 tok/s; artifacts `/data/ab11-*`,
-  `docs/VALIDATION.md:210-235`), and in the resident-RAM mode this box runs, adaptive overlap
+  with it off (per-arm spread ≤0.1 tok/s; `docs/VALIDATION.md:210-235`) — the docs are the
+  durable record by design; the `/data/*` artifact dirs are best-effort work areas, not an
+  archive — and in the resident-RAM mode this box runs, adaptive overlap
   is *already* skipped unless `STRATA_ADAPT_OVERLAP_RESIDENT=1`
   (`docs/VALIDATION.md:213-216`) — that opt-in is the arm those numbers came from, so the
   module's `=0` is belt-and-braces against a future default flip rather than the thing that

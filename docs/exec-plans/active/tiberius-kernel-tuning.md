@@ -312,9 +312,15 @@ satisfied. Considered and rejected on those numbers, not left open.
   `cjv.impermanence.zfsBootRollback` rolls `zroot/local/root` back to a blank snapshot on
   **every boot** (`flake.nix` wires the module, `disko/tiberius.nix` names the root
   dataset, `disko/base.nix` creates `@blank`). Verified when the kernel A/B's three
-  reboots wiped `/root/nixos-arm` mid-session. Keep the deployment tree under a persistent
-  mount (`/data/nixos-arm`, alongside `/data/ab17*` and `/persist/strata`) and expect to
-  re-push before any rebuild — the tree there currently matches the repo file-for-file.
+  reboots wiped `/root/nixos-arm` mid-session (`/` is `zroot/local/root`, the rollback
+  target; the other pools are not rolled back). Keep the deployment tree under `/persist`: it
+  lives at **`/persist/nixos-arm`** (`zroot/safe/persist` — the dataset that holds the agenix
+  secrets and `/persist/strata`), pushed 2026-10-13 and re-pushed whenever the repo moves. `/data`
+  (`zdata/local/data`) also survives boots in practice — `/data/real-corpus.txt` is dated
+  2026-09-30 across the 2026-10-13 01:28 boot — but the repo stages durable artifacts under
+  `/persist` (and picked it for `/data`'s *capacity* in the uncensored-checkpoint unit, not its
+  durability), so treat `/data` as the scratch area (`/data/ab17*`, `/data/kab*`). Expect to
+  re-push before any rebuild changed the tree.
 - Rollback: specialisations are extra entries in the *same* generation as the
   default one; `boot.loader.systemd-boot.configurationLimit = 8` keeps the
   previous generations. Booting the default entry is byte-identical to today.
