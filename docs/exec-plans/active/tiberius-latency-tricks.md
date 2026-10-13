@@ -190,7 +190,13 @@ not have.
 4. **Tail latency, if it ever matters, needs a new readout — not a new sysctl.** The
    engine prints timing *means only* (one `stage N: … per window: …` line per request);
    window dispersion is destroyed before it reaches any file, so no parser change can
-   recover p95/p99 [M]. The cheap addition is client-side: a copy of the harness driver
+   recover p95/p99 [M]. The cheap half is now closed by inspection: the driver's per-request
+   cells — 3 requests × 3 runs = 9 per arm, plus one warmup each — are flat to ≤0.5 % across the
+   nine cells (≤0.06 % on P1; the widest is pinned P2, 44 ms on 8384) — control P1 9148 / 9143 /
+   9143 ms and pinned 9129 / 9133 / 9130; P2 8393 / 8405 / 8381 vs 8424 / 8384 / 8380; P3 2205 /
+   2206 / 2201 vs 2201 / 2207 / 2198 — so request-to-request tails are already known tight and
+   p95 ≈ median ≈ max at this sample size. What is missing is *intra*-request jitter, which no
+   existing readout can give. The cheap addition is client-side: a copy of the harness driver
    with `stream=True` recording `perf_counter()` per SSE token chunk gives a real ITL
    series (p50/p95/p99/max, stall counts) on the *same* 3 runs/arm; the Prometheus
    endpoint (`/metrics?format=prometheus`) has vLLM-style TTFT/ITL/e2e histograms but its
