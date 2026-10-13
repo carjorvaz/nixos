@@ -89,16 +89,19 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
    `strata generate`-mode diagnostic run (same kernels, different loop) or an engine change
    (no upstream contact, per the current decision). Recorded rather than assumed.
 3. **A harness-scoping rule, not a production property: an unpinned start-up probe makes the
-   served text a trajectory variable.** DiagSession's *pilot* lost the recipe env, so the
-   engine ran v0.1.42's timing probe itself, landed on 0.32 against the campaign's pinned
-   0.34, and 3 of 9 answer hashes diverged (P1 462→480 B, P2 398→379 B — different
-   trajectories after a common prefix); with the split pinned, 9/9 hashes matched.
-   **Production already pins it** — `profiles/nixos/strata.nix:365` sets
-   `STRATA_PCIE_FRAC_DEFAULT = "old"` (guarded at `pkgs/strata-sm75/default.nix:204-205`),
-   which is *why* the served text is restart-deterministic, and that pin is load-bearing for
-   the answer-hash neutrality checks every campaign here has relied on. Harness launches must
-   keep the same pin (explicitly, or by preserving the recipe env) before comparing answers
-   or means.
+   served text a trajectory variable.** Two independent arms show it. (a) DiagSession's *pilot*
+   lost the recipe env, so the engine ran v0.1.42's timing probe itself — and that probe
+   *adapted mid-run*, 0.34 → 0.50, diverging from the pinned run in **1 of 3** comparisons
+   (P2 only, hash `2ca1ffdb`, 369 B / 222 tokens). (b) The deliberately unpinned arm let the
+   probe *start* elsewhere — 0.32 against the campaign's pinned 0.34 — and only **3 of 9**
+   answer hashes matched (P1 462→480 B, P2 398→379 B, P3 identical). **Production pins the
+   split** — `profiles/nixos/strata.nix:365` sets `STRATA_PCIE_FRAC_DEFAULT = "old"` (guarded
+   at `pkgs/strata-sm75/default.nix:204-205`) — which is *why* the served text is
+   restart-deterministic, and that pin is load-bearing for the answer-hash neutrality checks
+   every campaign here has relied on. Harness launches must keep the same pin (explicitly, or
+   by preserving the recipe env) before comparing answers or means: a mid-run adapting probe
+   and a differently-started probe are two distinct failure modes, both fatal to hash
+   comparisons.
 4. **The instrumentation itself costs ~0.5–0.7 %** (pool+plan 73.70 vs 73.22 ms, decode
    27.90 vs 28.00 on P1, with identical answers): enable diagnostics to *see* a mechanism,
    never to *benchmark* one.
