@@ -179,14 +179,16 @@ in `/data/gov/` with per-arm `freq.csv` samples.
   0.1.42, so every tree-derived claim here was re-checked against the *deployed* 0.1.43
   binary (`grep -a` on `/nix/store/1j1cf154…-strata-engine-0.1.43/bin/strata`, positive
   control `STRATA_ROUTE_TAIL_SKIP` = 3 hits). `STRATA_ADAPT_OVERLAP` **is** in the binary
-  (6 hits) — the prod config's `=0` is a live knob, and the pin is deliberate (the
-  2026-10-11 campaign measured the adaptive path losing: 25.6/30.3 vs 27.2/35.2 tok/s,
-  `docs/VALIDATION.md:210-235`). In the resident-RAM mode this box runs, adaptive overlap is
-  already skipped unless `STRATA_ADAPT_OVERLAP_RESIDENT=1` (`docs/VALIDATION.md:213-216`), so
-  the module's `=0` is belt-and-braces against a future default flip; `_RESIDENT=1` is the
-  actual opt-in and the arm that measured 25.6/30.3 against 27.2/35.2 tok/s — do not re-run it. Also present: `STRATA_ADAPT_OVERLAP_RESIDENT`,
-  `STRATA_IO_PREFETCH` / `_PF_AHEAD` / `_PF_THREADS`, `STRATA_POOL_SPIN_US`,
-  `STRATA_AUX_CPUS`, `STRATA_CPU_YMM`, `STRATA_STAGER_RING`. **Absent**: `STRATA_DOORBELL`
+  (6 hits) — the prod config's `=0` is a live knob, and the pin is deliberate: the **ab11**
+  campaign of 2026-10-12 measured the adaptive path losing 25.6/30.3 tok/s against 27.2/35.2
+  with it off (per-arm spread ≤0.1 tok/s; artifacts `/data/ab11-*`,
+  `docs/VALIDATION.md:210-235`), and in the resident-RAM mode this box runs, adaptive overlap
+  is *already* skipped unless `STRATA_ADAPT_OVERLAP_RESIDENT=1`
+  (`docs/VALIDATION.md:213-216`) — that opt-in is the arm those numbers came from, so the
+  module's `=0` is belt-and-braces against a future default flip rather than the thing that
+  disables it. Do not re-run it. Also present: `STRATA_IO_PREFETCH` / `_PF_AHEAD` /
+  `_PF_THREADS`, `STRATA_POOL_SPIN_US`, `STRATA_AUX_CPUS`, `STRATA_CPU_YMM`,
+  `STRATA_STAGER_RING`. **Absent**: `STRATA_DOORBELL`
   — the skeptic lens's doorbell claim was tree-specific and does not describe this build.
 - `smaps KernelPageSize: 4 kB` on dax VMAs is nominal metadata; the authoritative
   signal is `FilePmdMapped` (71.9 GB) — the pack *is* PMD-mapped [M].
