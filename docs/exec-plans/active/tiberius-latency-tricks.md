@@ -1,9 +1,10 @@
 # HFT-style latency tricks on tiberius — what applies, what is already spent, what is wasted
 
-Status: **complete.** The governor/EPP A/B is a conclusive null (§5); the instrumented
-session ran and is recorded in §4 — io counters work, the pool-phase row does not print in
-serve mode, and the expert split must be pinned for answer-hash neutrality. Written
-2026-10-13. Labels: **[M]** measured, **[D]** derived, **[E]** estimate, **[U]** unknown.
+Status: **complete, mechanism question closed.** The governor/EPP A/B is a conclusive null
+(§5); the instrumented session and its generate-mode follow-up are in §4 — io counters work,
+and the pool term is shown to be *work* (drain) with the barriers structurally nil, so every
+host-side latency family in §3 is closed by measurement. Written 2026-10-13. Labels: **[M]**
+measured, **[D]** derived, **[E]** estimate, **[U]** unknown.
 Companion: `tiberius-kernel-tuning.md` (kernel options, AVX-512 measurement, kernel A/B).
 
 ## 1. Bottom line
@@ -106,23 +107,48 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
    27.90 vs 28.00 on P1, with identical answers): enable diagnostics to *see* a mechanism,
    never to *benchmark* one.
 
-The remaining honest-EV items below stand, with item 1 now qualified by findings 2 and 4.
+**Generate-mode follow-up, same day [M] — the phase split, and it is WORK.** `--stats` prints
+the three phases only in `generate` mode, so the question was re-asked there (3 runs, 92 verify
+windows / 256 tokens each, ~27 tok/s decode, production args and env preserved including the
+`STRATA_PCIE_FRAC_DEFAULT=old` pin):
 
-1. **Turn on the engine's existing instrumentation (zero risk, highest information).**
-   `--stats` prints the pool phases (`wait-park / drain / re-park` ms/token) that
-   separate *slow at the work* from *slow at the synchronisation* — "opposite fixes",
-   per the engine's own comment — and `STRATA_IO_STATS=1` prints the prefetch counters
-   (`N read ahead, X MB by pread, used/unused/skipped`). Neither is set in production
-   (`generate.cpp` reads them behind `--stats`; the module never passes it). One harness
-   session answers whether the ~144 barriers are worth attacking at all.
+```
+  pool phases              wait-park 0.000  drain 67.759  re-park 0.000  ms/token     (67.718 / 67.946 in the other two)
+  pool multi   gate/up 42.80  quantize 0.12  down 24.86  ms/round                     (sums to the drain within 0.003 ms)
+```
+
+- **The synchronisation terms are nil, structurally.** `wait-park` and `re-park` are exactly
+  0.000 in all three runs, and the engine's own estimate for the multi path bounds them at
+  ≤0.046 ms over the whole run against a 6.23 s drain — i.e. ≤7 × 10⁻⁶ of the pool term.
+  Caveat, from the source rather than the measurement: only `ExpertPool::run()` accumulates
+  those two counters; the split paths (`run_split*`, which this run demonstrably took — the
+  `pool multi` row is non-zero) add their whole duration to `drain` and never time a barrier.
+  So 0.000 certifies *no separately instrumented barrier on this path*; a barrier hidden inside
+  `run_phase` would sit inside the gate/up and down rows — and those two rows sum to the drain.
+- **The drain is the row work, at ~6.2 GB/s.** `gate/up + quantize + down` decomposes the pool
+  term completely, so the ~68 ms window term is CPU expert rows streaming the cache/dax-served
+  miss stream (§4.1) — not congestion, not barriers.
+- **Independent cross-check:** `/proc/schedstat` `run_delay` across each run is 3.74–3.82 s
+  (8.3–9.3 % of the window) and **98.5 % of it lands on cpu0** — the host thread's core — while
+  the 11 pool workers' cores accrue 0.5–16.6 ms total. The workers are never queue-starved, in
+  agreement with §3's pinning row and with the nil barriers.
+- **What this leaves as headroom [D]:** the row work runs at ~40 % of the one-populated-channel
+  DRAM practical rate (~15 GB/s), so the remaining upside is *engine-side* — memory-level
+  parallelism in the pool kernels, or fewer bytes (cache hit rate / route-tail skip, both already
+  tuned) — with a second DIMM as the hardware version of the same fix. Every host-side latency
+  family in §3 is now closed by measurement rather than by argument.
+
+1. ~~**Turn on the engine's existing instrumentation**~~ — **done** (the block above):
+   `STRATA_IO_STATS=1` answered where the bytes come from, and the `generate`-mode `--stats`
+   run answered the phase question — the pool term is work, not barriers.
 2. **Measure the round-trip floor with the engine's own `--no-pool` arm.** The authors'
    reference figure is 38.73 ms/token against a 26.32 ms pure-GPU floor, i.e. 12.4 ms of
    round trip with *no expert work at all*; on this box that single number is the ceiling
    for every wakeup/jitter/isolation idea. A/B only (it changes output).
-3. **Spend the ~20 % device-idle fraction.** The Optane is busy 73/91 = 80 % of a window;
-   deepening the pre-read ring (`STRATA_STAGER_RING=4` today, default 16; plus
-   `STRATA_IO_PREFETCH*`) is the only cheap way to overlap the miss stream into that
-   idle. Metric: `pool+plan` and the prefetch counters. Risk: RAM on a 7.4 GiB box.
+3. ~~**Spend the ~20 % device-idle fraction**~~ — **withdrawn** (§4.1 and §4.6): the stream is
+   page-cache/dax served, so device idle is not the constraint and a deeper pre-read ring would
+   prefetch into RAM bytes that are already there. That 20 % is an engine-side overlap
+   question, not a device one.
 4. **Tail latency, if it ever matters, needs a new readout — not a new sysctl.** The
    engine prints timing *means only* (one `stage N: … per window: …` line per request);
    window dispersion is destroyed before it reaches any file, so no parser change can
