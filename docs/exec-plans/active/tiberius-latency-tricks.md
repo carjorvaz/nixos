@@ -11,8 +11,10 @@ Companion: `tiberius-kernel-tuning.md` (kernel options, AVX-512 measurement, ker
 **The decode window is a bytes/rate term, not a latency term, so the HFT playbook has
 almost nothing left to fix here.** Of a 91.18 ms window (P1), 73.21 ms is host-side
 `pool+plan`, 17.86 ms is `gpu_wait`, and staging+commit together are 0.13 ms (0.15 %);
-the pool moves the miss-expert stream at **6.2 / 5.8 GB/s — 85–90 % of the best
-single-path Optane rate ever measured on this box (6.88 GB/s)** [M]. Run-to-run
+the pool moves the miss-expert stream at **6.2 / 5.8 GB/s — but that stream is served from
+the ZFS page cache and the dax mapping, not the Optane media** (storage reads 0.4–607 MB per
+request against 21–81 GB of expert reads, §4.1), so the figure is a cache/one-DRAM-channel
+rate, not a device-bound one. Run-to-run
 deviation of that 73 ms term is **0.06 ms (0.08 % of the window)** [M] — inside the
 harness's own ±0.3 % floor, by ~4× (the 60–100× figure belongs to the pool workers'
 run-queue wait, 32–227 ms over 5 724 s of runtime each — a different measurement).
@@ -86,13 +88,17 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
    is *not* obtainable from the served configuration. Getting it needs either a
    `strata generate`-mode diagnostic run (same kernels, different loop) or an engine change
    (no upstream contact, per the current decision). Recorded rather than assumed.
-3. **A first-order confounder for any hash-based neutrality check: the start-up probe picks
-   `pcie_frac` per session.** With the split left to the probe, one session landed on 0.32
-   and 3 of 9 answer hashes diverged from the pinned 0.34 run (P1 462→480 B, P2 398→379 B —
-   different trajectories after a common prefix); with `--pcie-frac` pinned, 9/9 hashes
-   matched. **Future A/Bs must pin `--pcie-frac` (and check for other probe-derived
-   parameters) before comparing answers or means** — an unpinned probe is a silent
-   trajectory variable, not noise.
+3. **A harness-scoping rule, not a production property: an unpinned start-up probe makes the
+   served text a trajectory variable.** DiagSession's *pilot* lost the recipe env, so the
+   engine ran v0.1.42's timing probe itself, landed on 0.32 against the campaign's pinned
+   0.34, and 3 of 9 answer hashes diverged (P1 462→480 B, P2 398→379 B — different
+   trajectories after a common prefix); with the split pinned, 9/9 hashes matched.
+   **Production already pins it** — `profiles/nixos/strata.nix:365` sets
+   `STRATA_PCIE_FRAC_DEFAULT = "old"` (guarded at `pkgs/strata-sm75/default.nix:204-205`),
+   which is *why* the served text is restart-deterministic, and that pin is load-bearing for
+   the answer-hash neutrality checks every campaign here has relied on. Harness launches must
+   keep the same pin (explicitly, or by preserving the recipe env) before comparing answers
+   or means.
 4. **The instrumentation itself costs ~0.5–0.7 %** (pool+plan 73.70 vs 73.22 ms, decode
    27.90 vs 28.00 on P1, with identical answers): enable diagnostics to *see* a mechanism,
    never to *benchmark* one.
@@ -129,10 +135,13 @@ The remaining honest-EV items below stand, with item 1 now qualified by findings
    0.047 sd). With 3 runs/arm the 2σ floor is ~0.29–0.40 % on decode; a single 20 ms stall
    in 101 windows is 0.22 % — i.e. **a tail-only win is invisible to the current design**
    unless it also moves the mean.
-6. **Re-probe the Optane concurrently [U].** The 8.9–9.0 GB/s aggregate implied by the
-   engine's own read counters is above every single-path figure measured so far; if two
-   concurrent readers really do sum past 6.8 GB/s, the "device ceiling" framing (and the
-   Maya decision built on it) changes.
+6. ~~**Re-probe the Optane concurrently**~~ — **withdrawn** by the instrumented session §4.1:
+   the 8.9–9.0 GB/s aggregate came from counters over a stream that is essentially 100 %
+   page-cache served after warmup, so it is an mmap-from-cache quantity, not a device rate.
+   Nothing to re-probe; and the consequence for item 3 is that the 20 %-device-idle overlap
+   idea loses its premise — the bytes are already in RAM, so what remains is the engine's
+   CPU-side pool time, which needs the generate-mode phase split (item 1's caveat) to
+   localize rather than a deeper prefetch ring.
 
 ## 5. Governor / EPP A/B — a conclusive null [M]
 
@@ -169,7 +178,10 @@ in `/data/gov/` with per-arm `freq.csv` samples.
   control `STRATA_ROUTE_TAIL_SKIP` = 3 hits). `STRATA_ADAPT_OVERLAP` **is** in the binary
   (6 hits) — the prod config's `=0` is a live knob, and the pin is deliberate (the
   2026-10-11 campaign measured the adaptive path losing: 25.6/30.3 vs 27.2/35.2 tok/s,
-  `docs/VALIDATION.md:210-235`). Also present: `STRATA_ADAPT_OVERLAP_RESIDENT`,
+  `docs/VALIDATION.md:210-235`). In the resident-RAM mode this box runs, adaptive overlap is
+  already skipped unless `STRATA_ADAPT_OVERLAP_RESIDENT=1` (`docs/VALIDATION.md:213-216`), so
+  the module's `=0` is belt-and-braces against a future default flip; `_RESIDENT=1` is the
+  actual opt-in and the arm that measured 25.6/30.3 against 27.2/35.2 tok/s — do not re-run it. Also present: `STRATA_ADAPT_OVERLAP_RESIDENT`,
   `STRATA_IO_PREFETCH` / `_PF_AHEAD` / `_PF_THREADS`, `STRATA_POOL_SPIN_US`,
   `STRATA_AUX_CPUS`, `STRATA_CPU_YMM`, `STRATA_STAGER_RING`. **Absent**: `STRATA_DOORBELL`
   — the skeptic lens's doorbell claim was tree-specific and does not describe this build.
