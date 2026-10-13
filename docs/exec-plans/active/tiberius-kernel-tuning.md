@@ -1,8 +1,10 @@
 # Tiberius kernel tuning for the strata lane — options, measurements, A/B plan
 
-Status: **reconnaissance + first A/B arms wired.** Written 2026-10-12. Not a lane;
-no non-default arm has been booted yet. Labels: **[M]** measured, **[D]** derived
-arithmetic, **[E]** estimate, **[P]** pending.
+Status: **complete for this round.** Written 2026-10-12; the arms it staged were booted
+and measured (§7), the engine-side winner was promoted into `pkgs/strata-sm75`, and the
+test arms were then removed from `hosts/tiberius.nix` (§4). What remains open is listed in
+§9 and in the companion `tiberius-latency-tricks.md`. Labels: **[M]** measured, **[D]**
+derived arithmetic, **[E]** estimate, **[P]** pending.
 
 ## 1. Bottom line
 
@@ -139,9 +141,10 @@ code — no caller**; note it does *not* test VNNI, which these kernels need, so
 gate change went into `cpu_avx512_ok()` (which already tested ECX[11] VNNI)
 rather than reusing it. Enabling the AVX-512/VNNI expert tier here is therefore a
 source-level change: replace both unpacks with a VBMI-free equivalent and gate on
-F/DQ/BW/VL/VNNI — see §5(a2) for what was actually built and verified. **Effect UNKNOWN [P]** — no benchmark exists for this rung on
-this CPU and upstream gates it on VBMI, but it is the largest identified CPU-side
-lever for the engine and it is orthogonal to the kernel.
+F/DQ/BW/VL/VNNI — see §5(a2) for what was built, measured and promoted. **Measured
+2026-10-12: ~5 % cheaper CPU expert `pool+plan` per decode window, GPU wait and Optane
+reads unchanged, parity 0 failures against the ggml references** — it was the largest
+identified CPU-side lever, and it is orthogonal to the kernel.
 **(a2) The AVX-512 arm, as built (2026-10-12).**
 `pkgs/strata-sm75/avx512-bw-tier.patch` makes that tier reachable on this CPU:
 - `unpack_q2_0` / `unpack64_q2_0` (`expert.cpp`) expand the fixed shift pattern
@@ -211,12 +214,21 @@ knob (`vm.nr_hugepages` + a hugetlbfs mount) only becomes meaningful once the
 *pinned* resident tier is re-enabled, and earlier campaigns already found pageable
 and pinned tiers byte-identical (`docs/VALIDATION.md:210-235`) — so test
 `STRATA_RESIDENT_PIN=1` (engine-side, no rebuild) before reserving anything.
+**Closed 2026-10-13 [M]** by the companion `tiberius-latency-tricks.md`: the pack is
+already 2 MiB PMD-mapped (`FilePmdMapped` 71.9 GB against ~20 MB of PTEs), the anonymous
+arena is only ~1.37 GiB, and the box already swaps ~1.07 GB with a 948 MB ARC — so a
+hugetlbfs reservation spends non-swappable GiBs for a lever whose *pack* half is already
+satisfied. Considered and rejected on those numbers, not left open.
 
 ## 6. Measurement protocol
 
 1. Harness [M]: `/data/ab17.py` + `/data/ab17-arms.sh` + `/data/ab17-serve.sh`
-   (newest triplet; runlist-driven, prod service stopped under a GPU flock with an
-   `EXIT`-trap restore; ~80–90 s per run, ~13–15 min for 3+3 counterbalanced runs).
+   (runlist-driven, prod service stopped under a GPU flock with an `EXIT`-trap restore;
+   ~80–90 s per run, ~13–15 min for 3+3 counterbalanced runs). The **kernel** A/B of §7
+   used the one-armed session runner `/root/kernel-ab.sh` instead: same `ab17` driver over
+   the ab18 cells, one arm per boot, self-tagging by `uname -r` into `/data/kab/<kernel>/`
+   (it lived on the impermanent root — recreate it from §8's notes or the `/data/kab-*`
+   helpers).
    Workload `/data/real-corpus.txt`, cells P1 4292 tok / P2 3517 tok / P3 62 tok,
    256 gen (96 for P3). Invocation:
    `ssh root@tiberius 'AB_TAG=abK RUNLIST="A-1 B-1 B-2 A-2 B-3 A-3" /data/ab17-arms.sh'`.
@@ -296,11 +308,13 @@ and pinned tiers byte-identical (`docs/VALIDATION.md:210-235`) — so test
   peak 5.44 GiB [M]); the new kernel only takes effect at the next reboot.
 - Nothing is built or copied on the Mac (user constraint, 2026-10-12): no
   `nix build` from here for kernel-sized closures.
-- **tiberius' root is impermanent**: `/root` (and with it the pushed tree) is gone
-  after a reboot — verified when the kernel A/B's three reboots wiped
-  `/root/nixos-arm` mid-session. Keep the deployment tree under a persistent mount
-  (`/data/nixos-arm`, alongside `/data/ab17*` and `/persist/strata`), and expect to
-  re-push before any rebuild.
+- **tiberius' root is impermanent**, and the mechanism is on record rather than guessed:
+  `cjv.impermanence.zfsBootRollback` rolls `zroot/local/root` back to a blank snapshot on
+  **every boot** (`flake.nix` wires the module, `disko/tiberius.nix` names the root
+  dataset, `disko/base.nix` creates `@blank`). Verified when the kernel A/B's three
+  reboots wiped `/root/nixos-arm` mid-session. Keep the deployment tree under a persistent
+  mount (`/data/nixos-arm`, alongside `/data/ab17*` and `/persist/strata`) and expect to
+  re-push before any rebuild — the tree there currently matches the repo file-for-file.
 - Rollback: specialisations are extra entries in the *same* generation as the
   default one; `boot.loader.systemd-boot.configurationLimit = 8` keeps the
   previous generations. Booting the default entry is byte-identical to today.

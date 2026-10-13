@@ -1,7 +1,9 @@
 # HFT-style latency tricks on tiberius — what applies, what is already spent, what is wasted
 
-Status: **investigation complete; one measurement still in flight** (governor/EPP A/B).
-Written 2026-10-13. Labels: **[M]** measured, **[D]** derived, **[E]** estimate, **[U]** unknown.
+Status: **complete.** The governor/EPP A/B is a conclusive null (§5); the instrumented
+session ran and is recorded in §4 — io counters work, the pool-phase row does not print in
+serve mode, and the expert split must be pinned for answer-hash neutrality. Written
+2026-10-13. Labels: **[M]** measured, **[D]** derived, **[E]** estimate, **[U]** unknown.
 Companion: `tiberius-kernel-tuning.md` (kernel options, AVX-512 measurement, kernel A/B).
 
 ## 1. Bottom line
@@ -11,11 +13,15 @@ almost nothing left to fix here.** Of a 91.18 ms window (P1), 73.21 ms is host-s
 `pool+plan`, 17.86 ms is `gpu_wait`, and staging+commit together are 0.13 ms (0.15 %);
 the pool moves the miss-expert stream at **6.2 / 5.8 GB/s — 85–90 % of the best
 single-path Optane rate ever measured on this box (6.88 GB/s)** [M]. Run-to-run
-deviation of that 73 ms term is **0.06 ms (0.08 % of the window)** [M] — i.e. the
-jitter that HFT tricks exist to remove is 60–100× below the harness's own ±0.3 %
-measurability floor. Pinning is already done *by the engine*, the weights are already
-PMD-mapped, and there is no IOMMU, no NUMA spread, and one memory channel shared with
-the DCPMM.
+deviation of that 73 ms term is **0.06 ms (0.08 % of the window)** [M] — inside the
+harness's own ±0.3 % floor, by ~4× (the 60–100× figure belongs to the pool workers'
+run-queue wait, 32–227 ms over 5 724 s of runtime each — a different measurement).
+And the two compute-side manipulations that were tried both failed to move it: a wider
+ISA (−5.9 % at best, §2) and a ×3.2 median clock (§5). Pinning is already done *by the
+engine*, the weights are already PMD-mapped, there is no IOMMU, no NUMA spread, and one
+memory channel is shared with the DCPMM. The box also serves while **~1.07 GB of the
+engine is swapped out** against a 948 MB ZFS ARC on 7.5 GB of RAM [M] — a bound on any
+further tuning, and the reason §3 rejects a hugetlbfs reservation.
 
 ## 2. Window anatomy (stock kernel, promoted engine, mean of 3 runs, sd ≤ 0.06 ms) [M]
 
@@ -25,7 +31,12 @@ the DCPMM.
 | P2 | 77.48 ms | 17.79 | 59.58 | 0.066 | 0.057 | 107 | 2.39 |
 | P3 | 85.84 ms | 17.94 | 67.79 | 0.066 | 0.056 | 27 | 1.89 |
 
-`pool+plan` is 77–80 % of the window; `gpu_wait` 20–23 %; staging+commit 0.15 %.
+`pool+plan` is 77–80 % of the window; `gpu_wait` 20–23 %; staging+commit 0.15 %. Per the
+instrumented session (§4), that miss stream is served overwhelmingly from the ZFS page
+cache and the dax mapping — storage reads are 0.4–607 MB per request against 21–81 GB of
+expert reads — so read the 6.2/5.8 GB/s figure as a *cache/one-DRAM-channel* bound for the
+majority and the 6.8 GB/s dax ceiling for the registered window, not as an Optane-media
+rate.
 
 **Bytes arithmetic [D]:** 131 292 / 141 472 / 23 945 expert lookups for 256/256/51
 tokens = 513/553/470 lookups/token at 82.9/87.2/66.1 % hit ⇒ 180/145/325 MB of miss
@@ -57,6 +68,36 @@ per-path ceiling, not necessarily an aggregate one, until re-probed concurrently
 | **Kernel variants / preempt / isolcpus / nohz_full / rcu_nocbs** | `preempt=full` was a clean null, CachyOS v4 ≤0.6 % confounded (`tiberius-kernel-tuning.md` §7) [M]; jitter is 0.08 % of the window, so tick/RCU/callback steering has nothing to recover; `CONFIG_NO_HZ_FULL=y` is inert with no cpulist; `isolcpus` would strand 11 of 24 threads on a swapping box [M]. | ~0 | **wasted** (all boot-only except in-kernel knobs, and none addresses bytes) |
 
 ## 4. Where the honest EV is: instrumentation, not sysctls
+
+**Instrumented session run 2026-10-13 [M].** A `--stats` + `STRATA_IO_STATS=1` session
+(3 runs, answers 9/9 identical to the canonical ones when the expert split is pinned):
+
+1. **`STRATA_IO_STATS=1` works and is revealing.** The engine reads 81 474.8 / 75 354.1 /
+   21 486.1 MB of expert bytes per request while the OS reads from storage only **66–607 MB
+   (P1), 0.4–0.5 MB (P2), 0.0 MB (P3)**, and the page cache held 55 400 MB / 75 354 MB /
+   21 486 MB at the read (versus the engine's own expected 26 075 / 0 / 0 MB). So the decode
+   miss stream is served almost entirely from the ZFS page cache and the dax mapping, not
+   from the Optane media — the "6.2 GB/s out of the Optane" framing in §2 is better read as
+   a *DRAM/one-channel* bound for the cached majority plus the 6.8 GB/s dax path for the
+   registered window. This also explains the >8.9 GB/s aggregate the earlier counters
+   implied, and it points the hardware fix where the recon already put it: the second DIMM.
+2. **`--stats`'s `pool phases` row is a `generate`-mode report and does not print in serve
+   mode** — so the wait-park/drain/re-park split (the item that decides work-vs-synchronisation)
+   is *not* obtainable from the served configuration. Getting it needs either a
+   `strata generate`-mode diagnostic run (same kernels, different loop) or an engine change
+   (no upstream contact, per the current decision). Recorded rather than assumed.
+3. **A first-order confounder for any hash-based neutrality check: the start-up probe picks
+   `pcie_frac` per session.** With the split left to the probe, one session landed on 0.32
+   and 3 of 9 answer hashes diverged from the pinned 0.34 run (P1 462→480 B, P2 398→379 B —
+   different trajectories after a common prefix); with `--pcie-frac` pinned, 9/9 hashes
+   matched. **Future A/Bs must pin `--pcie-frac` (and check for other probe-derived
+   parameters) before comparing answers or means** — an unpinned probe is a silent
+   trajectory variable, not noise.
+4. **The instrumentation itself costs ~0.5–0.7 %** (pool+plan 73.70 vs 73.22 ms, decode
+   27.90 vs 28.00 on P1, with identical answers): enable diagnostics to *see* a mechanism,
+   never to *benchmark* one.
+
+The remaining honest-EV items below stand, with item 1 now qualified by findings 2 and 4.
 
 1. **Turn on the engine's existing instrumentation (zero risk, highest information).**
    `--stats` prints the pool phases (`wait-park / drain / re-park` ms/token) that
@@ -122,9 +163,16 @@ in `/data/gov/` with per-arm `freq.csv` samples.
 
 ## 6. Traps recorded
 
-- `STRATA_ADAPT_OVERLAP=0` (prod config) matches **no symbol** in the 0.1.42 tree — do not
-  read it as "overlap is disabled, turn it on"; the live overlap knobs are
-  `STRATA_STAGER_RING` and the `STRATA_IO_PREFETCH*` family [M for the tree, U for 0.1.43].
+- **Tree-vs-binary knob claims need verification.** The source tree on the workstation was
+  0.1.42, so every tree-derived claim here was re-checked against the *deployed* 0.1.43
+  binary (`grep -a` on `/nix/store/1j1cf154…-strata-engine-0.1.43/bin/strata`, positive
+  control `STRATA_ROUTE_TAIL_SKIP` = 3 hits). `STRATA_ADAPT_OVERLAP` **is** in the binary
+  (6 hits) — the prod config's `=0` is a live knob, and the pin is deliberate (the
+  2026-10-11 campaign measured the adaptive path losing: 25.6/30.3 vs 27.2/35.2 tok/s,
+  `docs/VALIDATION.md:210-235`). Also present: `STRATA_ADAPT_OVERLAP_RESIDENT`,
+  `STRATA_IO_PREFETCH` / `_PF_AHEAD` / `_PF_THREADS`, `STRATA_POOL_SPIN_US`,
+  `STRATA_AUX_CPUS`, `STRATA_CPU_YMM`, `STRATA_STAGER_RING`. **Absent**: `STRATA_DOORBELL`
+  — the skeptic lens's doorbell claim was tree-specific and does not describe this build.
 - `smaps KernelPageSize: 4 kB` on dax VMAs is nominal metadata; the authoritative
   signal is `FilePmdMapped` (71.9 GB) — the pack *is* PMD-mapped [M].
 - `processor.max_cstate=` only affects `acpi_idle`; this box runs `intel_idle`, so that
