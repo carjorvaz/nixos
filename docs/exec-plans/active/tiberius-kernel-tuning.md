@@ -296,6 +296,11 @@ and pinned tiers byte-identical (`docs/VALIDATION.md:210-235`) — so test
   peak 5.44 GiB [M]); the new kernel only takes effect at the next reboot.
 - Nothing is built or copied on the Mac (user constraint, 2026-10-12): no
   `nix build` from here for kernel-sized closures.
+- **tiberius' root is impermanent**: `/root` (and with it the pushed tree) is gone
+  after a reboot — verified when the kernel A/B's three reboots wiped
+  `/root/nixos-arm` mid-session. Keep the deployment tree under a persistent mount
+  (`/data/nixos-arm`, alongside `/data/ab17*` and `/persist/strata`), and expect to
+  re-push before any rebuild.
 - Rollback: specialisations are extra entries in the *same* generation as the
   default one; `boot.loader.systemd-boot.configurationLimit = 8` keeps the
   previous generations. Booting the default entry is byte-identical to today.
