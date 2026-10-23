@@ -31,6 +31,14 @@ in
     };
   };
 
+  # The SBCL image is the largest process on this 2 GB host. Bound it so a
+  # heap spike kills this game rather than the mail/DNS stack.
+  systemd.services.ultimate-tic-tac-toe.serviceConfig = {
+    MemoryHigh = "384M";
+    MemoryMax = "512M";
+    OOMScoreAdjust = 500;
+  };
+
   environment.persistence."/persist".directories = [
     {
       directory = stateDir;

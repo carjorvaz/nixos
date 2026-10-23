@@ -53,5 +53,13 @@ in
     };
   };
 
+  # On this 2 GB host, make the analytics stack the preferred OOM victim
+  # rather than mail, DNS or sshd.
+  systemd.services.umami.serviceConfig = {
+    MemoryHigh = "256M";
+    MemoryMax = "384M";
+    OOMScoreAdjust = 500;
+  };
+
   environment.persistence."/persist".directories = [ "/var/lib/postgresql" ];
 }

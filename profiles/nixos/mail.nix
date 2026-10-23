@@ -267,7 +267,34 @@ in
       "blocky.service"
       "unbound.service"
     ];
+    # Do not give up while the Required redis instance is coming back.
+    startLimitIntervalSec = 0;
+    serviceConfig = {
+      OOMScoreAdjust = -800;
+      RestartSec = "2s";
+    };
   };
+
+  # simple-nixos-mailserver leaves redis-rspamd at Restart=no. One OOM kill
+  # then stops rspamd (Requires) and postfix (Requires), and mail stays down
+  # until someone notices.
+  systemd.services.redis-rspamd.serviceConfig = {
+    Restart = "always";
+    RestartSec = "2s";
+    OOMScoreAdjust = -800;
+  };
+
+  systemd.services.postfix = {
+    # rspamd is Required by postfix, so a dead rspamd stops postfix. Pull
+    # postfix back up whenever rspamd starts again.
+    wantedBy = [
+      "multi-user.target"
+      "rspamd.service"
+    ];
+    serviceConfig.OOMScoreAdjust = -800;
+  };
+
+  systemd.services.dovecot.serviceConfig.OOMScoreAdjust = -800;
 
   environment.persistence."/persist".directories = [
     "/var/lib/rspamd"

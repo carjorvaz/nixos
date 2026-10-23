@@ -24,6 +24,13 @@ in
     };
   };
 
+  # The upstream unit has Restart=no, so an OOM kill leaves push notifications
+  # silently dead.
+  systemd.services.ntfy-sh.serviceConfig = {
+    Restart = "always";
+    RestartSec = "2s";
+  };
+
   environment.persistence."/persist".directories = [
     "/var/lib/private/ntfy-sh"
   ];

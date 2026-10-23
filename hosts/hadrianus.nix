@@ -25,14 +25,15 @@ in
     "${self}/profiles/nixos/acme/dns-vaz-one.nix"
     "${self}/profiles/nixos/fail2ban.nix"
     "${self}/profiles/nixos/mail.nix"
-    "${self}/profiles/nixos/ntfy.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/nginx/bastion.nix"
     "${self}/profiles/nixos/terreno-bastion.nix"
     "${self}/profiles/nixos/nginx/blog.nix"
     "${self}/profiles/nixos/ssh.nix"
     "${self}/profiles/nixos/umami.nix"
-    "${self}/profiles/nixos/ultimate-tic-tac-toe.nix"
+
+    # ntfy and ultimate-tic-tac-toe are unused; on this 2 GB host their
+    # resident memory (~350 MB) is needed by mail and DNS.
 
     # STATE: sudo tailscale up; disable key expiry
     "${self}/profiles/nixos/tailscale.nix"
@@ -47,6 +48,16 @@ in
     "sd_mod"
     "sr_mod"
   ];
+
+  # This VM has 2 GB of RAM. The default ARC cap (~60% of RAM) plus the mail,
+  # DNS and web stack left no headroom, so the nightly nix-gc store walk pushed
+  # the kernel into global OOM kills. Cap ARC at 384 MiB.
+  boot.kernelParams = [ "zfs.zfs_arc_max=402653184" ];
+
+  # The Redis NixOS module (pulled in for rspamd) sets this to 1, which makes
+  # the kernel never refuse an allocation and turns memory pressure into random
+  # OOM kills instead of a failing allocation. Use the heuristic instead.
+  boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
 
   networking = {
     hostName = "hadrianus";
