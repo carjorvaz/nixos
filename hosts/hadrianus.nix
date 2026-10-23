@@ -59,14 +59,32 @@ in
   # OOM kills instead of a failing allocation. Use the heuristic instead.
   boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
 
-  # base.nix marks nix-daemon as a preferred OOM victim (+250). On this 2 GB
-  # host that made store imports the first casualty; keep it below mail (-800)
-  # but not the default victim.
-  systemd.services.nix-daemon.serviceConfig.OOMScoreAdjust = lib.mkForce (-200);
+  systemd = {
+    # zram is the only swap device here, and its compressed pool is not
+    # charged to any cgroup, so the kernel OOM path is the only failure mode:
+    # thin provisioning can keep should_reclaim_retry() spinning instead of
+    # killing. oomd turns sustained PSI pressure into a clean kill. base.nix
+    # disables it (srvos default), and `enable` alone configures no kill target.
+    oomd = {
+      enable = lib.mkForce true;
+      enableSystemSlice = true;
+    };
 
-  # comma/nix-index is a desktop convenience. On this 2 GB mail/DNS server it
-  # only pulls a ~110 MB path-map database into every rebuild.
-  programs.nix-index-database.enable = lib.mkForce false;
+    # oomd monitors system.slice; keep DNS, the web edge and remote access out
+    # of its victim pool. Mail units are marked in profiles/nixos/mail.nix.
+    services = {
+      blocky.serviceConfig.ManagedOOMPreference = "avoid";
+      unbound.serviceConfig.ManagedOOMPreference = "avoid";
+      nginx.serviceConfig.ManagedOOMPreference = "avoid";
+      tailscaled.serviceConfig.ManagedOOMPreference = "avoid";
+      sshd.serviceConfig.ManagedOOMPreference = "avoid";
+
+      # base.nix marks nix-daemon as a preferred OOM victim (+250). On this
+      # 2 GB host that made store imports the first casualty; keep it below
+      # mail (-800) but not the default victim.
+      nix-daemon.serviceConfig.OOMScoreAdjust = lib.mkForce (-200);
+    };
+  };
 
   networking = {
     hostName = "hadrianus";

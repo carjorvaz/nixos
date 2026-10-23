@@ -271,6 +271,7 @@ in
     startLimitIntervalSec = 0;
     serviceConfig = {
       OOMScoreAdjust = -800;
+      ManagedOOMPreference = "avoid";
       RestartSec = "2s";
     };
   };
@@ -282,6 +283,7 @@ in
     Restart = "always";
     RestartSec = "2s";
     OOMScoreAdjust = -800;
+    ManagedOOMPreference = "avoid";
   };
 
   systemd.services.postfix = {
@@ -291,10 +293,16 @@ in
       "multi-user.target"
       "rspamd.service"
     ];
-    serviceConfig.OOMScoreAdjust = -800;
+    serviceConfig = {
+      OOMScoreAdjust = -800;
+      ManagedOOMPreference = "avoid";
+    };
   };
 
-  systemd.services.dovecot.serviceConfig.OOMScoreAdjust = -800;
+  systemd.services.dovecot.serviceConfig = {
+    OOMScoreAdjust = -800;
+    ManagedOOMPreference = "avoid";
+  };
 
   environment.persistence."/persist".directories = [
     "/var/lib/rspamd"

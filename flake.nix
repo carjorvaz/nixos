@@ -229,7 +229,6 @@
         inputs.disko.nixosModules.disko
         inputs.lanzaboote.nixosModules.lanzaboote
         inputs.impermanence.nixosModule
-        inputs.nix-index-database.nixosModules.nix-index
         ./modules/nixos/llmTuning.nix
         {
           nixpkgs.overlays = [
@@ -238,7 +237,6 @@
           ];
           programs = {
             command-not-found.enable = false;
-            nix-index-database.comma.enable = true;
           };
           system.configurationRevision = self.rev or self.dirtyRev or null;
         }

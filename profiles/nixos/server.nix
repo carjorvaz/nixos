@@ -30,6 +30,13 @@
     firewall.logRefusedConnections = lib.mkDefault false;
   };
 
+  # Firmware updates and removable-disk handling belong on physical desktops;
+  # on servers they only consume memory and show up in the OOM victim pool.
+  services = {
+    fwupd.enable = lib.mkForce false;
+    udisks2.enable = lib.mkForce false;
+  };
+
   # Disable documentation to save evaluation time on headless servers.
   documentation.enable = lib.mkDefault false;
 

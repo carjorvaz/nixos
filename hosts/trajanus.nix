@@ -119,6 +119,7 @@ in
     # "${self}/profiles/nixos/claude-deepseek.nix"
     # "${self}/profiles/nixos/podman.nix"
     "${self}/profiles/nixos/emacs.nix"
+    "${self}/profiles/nixos/comma.nix"
     "${self}/profiles/nixos/home-assistant.nix"
     "${self}/profiles/nixos/hermes.nix"
     "${self}/profiles/nixos/nginx/common.nix"
