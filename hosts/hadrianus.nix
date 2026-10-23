@@ -59,6 +59,10 @@ in
   # OOM kills instead of a failing allocation. Use the heuristic instead.
   boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
 
+  # comma/nix-index is a desktop convenience. On this 2 GB mail/DNS server it
+  # only pulls the multi-hundred-MB path-map database into every rebuild.
+  programs.nix-index-database.enable = lib.mkForce false;
+
   networking = {
     hostName = "hadrianus";
     hostId = "ce9c10db";
