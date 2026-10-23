@@ -164,6 +164,11 @@ in
     tailscale.useRoutingFeatures = "both";
     qemuGuest.enable = true;
 
+    # No firmware updates or removable disks on this VM; keep them out of the
+    # memory budget and the OOM victim pool.
+    fwupd.enable = lib.mkForce false;
+    udisks2.enable = lib.mkForce false;
+
     # ZFS backup source configuration
     zfsBackup.source = {
       enable = true;
