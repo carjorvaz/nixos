@@ -59,8 +59,13 @@ in
   # OOM kills instead of a failing allocation. Use the heuristic instead.
   boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
 
+  # base.nix marks nix-daemon as a preferred OOM victim (+250). On this 2 GB
+  # host that made store imports the first casualty; keep it below mail (-800)
+  # but not the default victim.
+  systemd.services.nix-daemon.serviceConfig.OOMScoreAdjust = lib.mkForce (-200);
+
   # comma/nix-index is a desktop convenience. On this 2 GB mail/DNS server it
-  # only pulls the multi-hundred-MB path-map database into every rebuild.
+  # only pulls a ~110 MB path-map database into every rebuild.
   programs.nix-index-database.enable = lib.mkForce false;
 
   networking = {
