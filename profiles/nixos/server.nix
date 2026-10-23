@@ -7,14 +7,13 @@
 
 {
   boot = {
-    # CachyOS server-lto kernel for all servers. Upstream's CI jobset has no
-    # server-lto job, so neither this kernel nor its zfs module is ever
-    # substituted — every server compiles both (measured 2026-10-12). The
-    # non-LTO `linux-cachyos-server` kernel is on the lantian cache, its zfs
-    # module is not.
-    kernelPackages = lib.mkDefault pkgs.cachyosKernels.linuxPackages-cachyos-server-lto;
+    # Use the upstream default kernel and its matching ZFS module on servers.
+    # The CachyOS server-lto kernel is never substituted and needs multi-hour
+    # LTO builds plus the third-party lantian cache; desktops keep CachyOS via
+    # graphical/performance.nix.
+    kernelPackages = lib.mkDefault pkgs.linuxPackages;
+
     zfs = {
-      package = lib.mkDefault config.boot.kernelPackages.zfs_cachyos;
       # Preserve the historical root-pool import behavior explicitly. NixOS warns
       # that the default will flip to false in 26.11 to reduce data-loss risk.
       forceImportRoot = true;
