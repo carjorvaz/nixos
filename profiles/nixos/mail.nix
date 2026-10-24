@@ -223,6 +223,11 @@ in
           }
         '';
         "classifier-bayes.conf".text = lib.mkAfter ''
+          # rspamd 4 defaults store_tokens=false: with new_schema it records
+          # learn counts but stores no token probabilities, so Bayes never
+          # classifies. Store tokens for a working classifier.
+          store_tokens = true;
+
           autolearn {
             # 8 keeps autolearn reachable: most spam lands between add_header (6)
             # and reject (15), and with the default 12 almost nothing qualified.
