@@ -152,12 +152,27 @@ in
           "carlosvaz.net"
           "carlosvaz.pt"
           "cjv.pt"
-          "sucklessweb.com"
           "tobepractical.com"
 
           "mafaldaribeiro.com"
           "mafaldaribeiro.pt"
         ];
+
+        # Keep the existing 1024-bit `mail` key for now, and add a 2048-bit
+        # selector so outbound mail is signed with both until DNS is published.
+        dkim = {
+          enable = true;
+          defaults.keyLength = 2048;
+          domains = lib.genAttrs config.mailserver.domains (domain: {
+            selectors = {
+              mail = { };
+              "rsa-2026-10" = {
+                keyType = "rsa";
+                keyLength = 2048;
+              };
+            };
+          });
+        };
 
         # A list of all login accounts. To create the password hashes, use
         # nix run nixpkgs.apacheHttpd -c htpasswd -nbB "" "super secret password" | cut -d: -f2 > /hashed/password/file/location
@@ -175,7 +190,6 @@ in
               "@carlosvaz.net"
               "@carlosvaz.pt"
               "@cjv.pt"
-              "@sucklessweb.com"
               "@tobepractical.com"
             ];
           };
