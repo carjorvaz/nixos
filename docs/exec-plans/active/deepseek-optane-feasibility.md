@@ -139,7 +139,9 @@ from the ISTA-DASLab/Coder HF repos.
 
 1. Record the Qwen service health, free space, and the IQ3_S shard sha; stop
    `tiberius-strata`.
-2. Delete the four paths above; verify free space.
+2. Delete `/optane/strata-data` and `/data/strata-models` (plus `/data/strata-staging`);
+   keep `/data/qwen2080-orchestration-20260906` and its 41 GB gain-source. Verify free
+   space (the actual safe layout in §5).
 3. Download the four IQ1_M shards (120.72 GB) to `/optane/dsv41/model/` and the
    Engram (110.60 GB) to `/data/dsv41/engram/`; skip DSpark. Verify SHA-256.
 4. `pack_gguf.py` with the final layout, `--engram` pointing at `/data`, the 5.8 MB
@@ -148,7 +150,7 @@ from the ISTA-DASLab/Coder HF repos.
    `strata-dsv41 --pack-info`.
 5. First run:
    `--pack /optane/dsv41/pack --mmap-experts on --prefill-chunk 4096
-   --ssd-cache 3 --ssd-policy lfu --cpu-threads 11 --max-context 8192
+   --ssd-cache 3 --ssd-policy lfu --cpu-threads 11 --max-context 32768
    --dspark auto --verbose`
    with `DS4_STORE_FLOOR_GB=1.5 DS4_STORE_RESERVE=32 DS4_STORE_PREGROW=0` and
    `STRATA_DS4_SLOT_KEEP=1 STRATA_DS4_SLOT_DIR=/persist/strata/ds4-slots`. Capture
@@ -213,8 +215,37 @@ lane needs ~75% hit (≥11,500 experts) or ≥15 GB/s, against 1,871 VRAM slots 
 may add a little); it is a quality experiment, not the Qwen-speed replacement. The
 `STRATA_DS4_DISK_SKIP_W` path is answer-changing and could add ~10–20%, not 2×.
 
-The Qwen lane is recoverable: 86.3 GB re-download (IQ3_S shard 1 51.05 + PLE 28.80 +
-MTP 6.5), then packs rebuild in ~7 min; the non-redownloadable qwen2080 gain-source
-was kept on `/data`. The current state (end of 2026-10-24): `tiberius-strata` stopped,
-DeepSeek pack on `/optane/dsv41/pack`, server config `/data/dsv41-serve.json` ready but
-not started, `/optane` 9.9 GB free and `/data` 11 GB free.
+The pack is **mixed**: 83 expert tensors IQ1_S, 20 IQ2_XXS, 15 IQ1_M, 2 IQ2_S (the
+GSQ-RCO search assigns a type per tensor). The Paris smoke passing means the dominant
+IQ1_S sm_75 GPU kernel is correct, not just IQ1_M. No DSpark/MTP is in the pack.
+
+The `--ids` timing run reports “windows of 32768”; it is not the chunked serve path.
+The immediate next prefill experiment is the queue’s own memory-copy path:
+`IoQueue::Job::mem` is “a copy of len bytes from memory to dst instead of a read”,
+but `flow_pump` sets only `j.map = pk.at(...)` (`ds4_model.cu:3392`). Setting
+`j.mem = j.map` for those jobs (and the lookahead jobs) makes the queue memcpy from
+the DAX mapping instead of `pread`; that is the ~6× prefill fix without a DAX-window
+port. The earlier attempts patched the `map` branch in `IoQueue` and still read
+1.00 GB/s; the `mem` path is the one the store already uses. Then run the resident
+server (`/data/dsv41-serve.json`, port 8081) with `--max-context 32768` and two
+identical requests, and capture `store:`, `expert cache: … swaps after the prompt`
+and `pm.disk`; that is the real warm/prompt-seeded test. The DAX window/direct-DMA
+port remains the fallback if the `mem` copy still does not reach the CPU lane's
+6.24 GB/s.
+
+Decode is **5.4–5.8 tok/s cold**; the 2 GB store adds <2% slots, and 15/20 tok/s
+would need ≥75–81% hit or ≥15 GB/s. No lossless flag changes that; the lane is a
+quality experiment, not the Qwen-speed replacement.
+
+## 9. Next session
+
+1. Patch `flow_pump`/lookahead to set `j.mem = j.map`; rebuild; run the resident
+   serve path (not `--ids`) at 4K/8K/17K with `--prefill-chunk 4096`.
+2. If prefill is not ~250+, port the Qwen `STRATA_REGISTER_DAX` window/direct DMA.
+3. Run the hindsight refresh job on the server; compare wall time and page quality
+   with Qwen's 283 s. The output-side decode is the wall; only a quality win makes
+   this lane worth keeping.
+4. To restore Qwen: remove the DeepSeek pack/backbone/Engram to free space,
+   re-download IQ3_S shard 1 + PLE + MTP (86.3 GB), rebuild the packs, and start
+   `tiberius-strata` (currently stopped but still enabled; disable it before a reboot
+   if the lane stays parked).
