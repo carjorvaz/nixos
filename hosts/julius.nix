@@ -32,6 +32,23 @@
     "sd_mod"
   ];
 
+  # zram is the only swap device; oomd kills the pressure source before the
+  # kernel spins in reclaim. Frigate is the intended victim (recordings resume);
+  # the gateway/DNS/mesh units must survive.
+  systemd = {
+    oomd = {
+      enable = lib.mkForce true;
+      enableSystemSlice = true;
+    };
+
+    services = {
+      blocky.serviceConfig.ManagedOOMPreference = "avoid";
+      tailscaled.serviceConfig.ManagedOOMPreference = "avoid";
+      nginx.serviceConfig.ManagedOOMPreference = "avoid";
+      sshd.serviceConfig.ManagedOOMPreference = "avoid";
+    };
+  };
+
   networking = {
     hostName = "julius";
     hostId = "236fb370";
