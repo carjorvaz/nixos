@@ -149,6 +149,10 @@ in
     kernelParams = [
       "intel_pstate.hwp_dynamic_boost=1"
       "transparent_hugepage=always" # THP for model weights loaded via --run-time-repack
+      # OpenZFS 2.4 defaults zfs_arc_max=0 to max(RAM-1 GiB, 5/8 RAM), i.e.
+      # ~61.6 GiB of this 62.6 GiB host. oomd's candidate list cannot see
+      # ARC, so cap it and leave real headroom for services.
+      "zfs.zfs_arc_max=34359738368"
     ];
 
     # As a Tailscale exit node, pius enables IPv6 forwarding. Linux only accepts
@@ -239,6 +243,15 @@ in
   };
 
   systemd = {
+    # zram is the only swap device and its compressed pool is not charged to
+    # any cgroup, so oomd turns sustained PSI pressure into a clean kill.
+    # base.nix pins oomd off (srvos copy) and `enable` alone configures no
+    # kill target; ARC is capped above so victims track cgroup memory.
+    oomd = {
+      enable = lib.mkForce true;
+      enableSystemSlice = true;
+    };
+
     # Keep the wireless name stable across udev reloads and reboots. The iwd
     # default link policy otherwise preserves whichever kernel name appeared first.
     network.links."40-pius-wifi" = {
@@ -247,6 +260,16 @@ in
     };
 
     services = {
+      # oomd ignores OOMScoreAdjust, so protection must be explicit. Keep the
+      # stateful databases and the ingress/DNS/mesh units off the kill list;
+      # jellyfin, hindsight, firecrawl and container scopes stay eligible.
+      postgresql.serviceConfig.ManagedOOMPreference = "avoid";
+      home-assistant.serviceConfig.ManagedOOMPreference = "avoid";
+      blocky.serviceConfig.ManagedOOMPreference = "avoid";
+      tailscaled.serviceConfig.ManagedOOMPreference = "avoid";
+      nginx.serviceConfig.ManagedOOMPreference = "avoid";
+      sshd.serviceConfig.ManagedOOMPreference = "avoid";
+
       # dhcpcd deliberately runs in the background so boot does not depend on
       # Wi-Fi. Transmission still needs a default route for tracker startup; its
       # sandbox excludes AF_NETLINK, so the readiness check reads procfs.
