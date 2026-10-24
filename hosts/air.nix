@@ -555,7 +555,6 @@ in
 
     brews = [
       "bun"
-      "can1357/tap/omp"
       "chrome-devtools-mcp"
       "herdr"
       "llama.cpp"
@@ -621,16 +620,6 @@ in
       "uBlock Origin Lite" = 6745342698;
     };
 
-    taps = [
-      {
-        name = "1broseidon/tap";
-        trusted = true;
-      }
-      {
-        name = "can1357/tap";
-        trusted = true;
-      }
-    ];
   };
 
   # Keep post-activation cleanup targeted. Avoid mutating app bundles here:
@@ -806,12 +795,11 @@ in
       "${self}/profiles/home-manager/mpv.nix"
       "${self}/profiles/home-manager/neovim.nix"
       "${self}/profiles/home-manager/ssh.nix"
+      "${self}/profiles/home-manager/yt-dlp.nix"
     ];
 
     home = {
       sessionPath = [
-        # STATE: install juliaup manually with curl method
-        "/Users/cjv/.juliaup/bin/"
         "/Users/cjv/.local/bin"
         "/opt/homebrew/bin"
         "/opt/homebrew/sbin"
