@@ -1,7 +1,64 @@
-diff -r strata-orig/CMakeLists.txt strata-src/CMakeLists.txt
---- strata-orig/CMakeLists.txt	2026-10-12 16:57:25.790502431 +0100
-+++ strata-src/CMakeLists.txt	2026-10-12 18:45:31.671400057 +0100
-@@ -1166,9 +1166,14 @@
+# tiberius: the AVX-512 expert tier without VBMI, against upstream dfa3f402 (v0.2.4.2, engine 0.1.49.2).
+#
+# THE PROBLEM.  cpu_avx512_ok() is the one gate the AVX-512 expert kernels were selected through, and it
+# demanded AVX512-VBMI.  This box's CPU (Cascade Lake) has F/DQ/BW/VL/VNNI but no VBMI, so the VNNI Q2_0
+# kernels - which never needed VBMI after the 2-bit unpack was rewritten (below) - sat behind a gate that
+# excluded it, and there was no honest way to relax the gate: in 0.1.49.2 it also selects the trellis
+# AVX-512 kernel (src/kernels/cpu/tq_cpu.cpp:116 TqIsa::avx512; tq_cpu.hpp documents F/BW/VL/VBMI/VNNI;
+# CMakeLists compiles tq_avx512.cpp with -mavx512vbmi).  Dropping VBMI from the shared gate would admit a
+# VBMI-less CPU to tq_avx512.cpp, which is compiled for VBMI (its documented ISA contract) and may emit it:
+# SIGILL in the middle of a token, exactly the failure class the startup probe exists to prevent.  So the
+# gate is SPLIT instead of weakened:
+#
+#   cpu_avx512_ok()       F/DQ/BW/VL + VNNI + VBMI   the full gate; trellis (tq_avx512.cpp) stays behind it.
+#   cpu_avx512_vnni_ok()  F/DQ/BW/VL + VNNI          new; every VBMI-free kernel, including expert.cpp,
+#                                                    iq_avx512.cpp, nvfp4_avx512.cpp and dsv41's iq512x
+#                                                    rows (the TU has no VBMI with the flag removed).
+#
+# Both use the same OSXSAVE/XCR0 probe, STRATA_FORCE_AVX2 handling and STRATA_FORCE_ISA cap.  The new gate is
+# stricter in one dimension (DQ) because its TUs are compiled with -mavx512dq; the full gate keeps upstream's
+# feature set unchanged, so no CPU that passes it today stops passing.
+#
+# WHAT ELSE CHANGED, and why:
+#   * expert.cpp: the two VPMULTISHIFTQB unpacks (_mm256/_mm512_multishift_epi64_epi8) are replaced by
+#     VPERMW + VPSRLVW + VPMOVWB + VINSERTI*, expanding the SAME fixed shift pattern (0x0E0C0A0806040200,
+#     i.e. byte i = (u16 >> 2i) & 3).  Byte-identical to the old layout; verified against a scalar reference
+#     when this form was first written (0.1.42) and re-checked here over 20,000 random inputs.  This is what
+#     lets expert.cpp drop -mavx512vbmi.
+#   * CMakeLists.txt and sycl/CMakeLists.txt: -mavx512vbmi removed from expert.cpp and from the iq_avx512.cpp
+#     + nvfp4_avx512.cpp flag lists; KEPT on tq_avx512.cpp (the trellis TU).  vpopcntdq/bmi2 stay as upstream
+#     has them (Cascade Lake has both).  The MSVC /arch:AVX512 branches are unchanged.
+#   * Call sites routed to the new gate: expert_layout.cpp's q2_rows_any / q2_rows_any_legacy /
+#     act_quant_any (expert.cpp kernels); native_expert.cpp's avx512, cpu512, nvfp4_512 (2x), exact_one and
+#     iq3s_one guards; nvfp4_avx512_parity.cpp (2x); native_expert_parity.cpp (iq512 check, exact-one guard,
+#     Q2_0 label); iq_avx2_parity.cpp and kq_cpu_bench.cpp banners (what dispatch actually does); and
+#     generate.cpp's "this CPU has no AVX-512" expert-kernel log line.  dsv41/ds4_gg_cpu.cpp:185 follows:
+#     its rows are iq_avx512.cpp's iq512x (no target attribute of its own, no VBMI in the TU), so the VNNI
+#     gate is the honest one.
+#   * Left on cpu_avx512_ok(): tq_cpu.cpp / tq_cpu_parity.cpp (trellis, compiled with VBMI) and dsv41's
+#     ds4_iq_cpu.cpp / ds4_gguf_cpu.cpp (their own VBMI/build checks, untouched).  setup.py's cpu_info() mirror
+#     is untouched too: the Nix build assembles the engine directly, and the installer path is not in this
+#     package's build.
+#   * CpuFeatures::usable() (the canonical Q2_0 pack's startup refusal, expert.hpp/expert_layout.cpp) drops
+#     the VBMI term: that card is expert.cpp, which no longer needs it.  Without this the pack still refuses
+#     to start on a VBMI-less CPU, defeating the split.  The vbmi field stays probed for diagnostics; reason()
+#     and the refusal message now name only the features the kernel actually uses.
+#
+# The gate mapping (and the SIGILL argument) is documented at each of the two definitions in
+# expert_layout.cpp, at the CMake flag lists, and in expert.hpp / iq_avx512.hpp / nvfp4_avx512.cpp.
+#
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 989f5cd..39dc923 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1600,14 +1600,21 @@ add_library(strata_kernels_cpu STATIC src/kernels/cpu/expert.cpp src/kernels/cpu
+             src/kernels/cpu/expert_layout.cpp src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)
+ target_include_directories(strata_kernels_cpu PUBLIC include)
+ # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
+-# and the engine picks the kernels at run time (cpu_avx512_ok).
++# and the engine picks the kernels at run time (cpu_avx512_vnni_ok for the VBMI-free ones, cpu_avx512_ok for
++# the trellis kernels).
+ if(MSVC)
    set_source_files_properties(src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
  else()
@@ -9,30 +66,39 @@ diff -r strata-orig/CMakeLists.txt strata-src/CMakeLists.txt
 +  # GCC/Clang spell it differently.  `-mavx512vbmi` is deliberately absent: the tier's only VBMI user was the
 +  # 2-bit unpack in expert.cpp, which now expands its fixed shift pattern with F/BW shifts, so dropping the
 +  # flag cannot silently remove a VPMULTISHIFTQB the code still needs, and a VBMI-less CPU (Cascade Lake) can
-+  # run these kernels.  After editing this list, verify the built object is clean:
++  # run these kernels - cpu_avx512_vnni_ok() is their gate.  After editing this list, verify the built object
++  # is clean:
 +  #   objdump -d <expert.cpp.o> | grep -cE 'vpermb|vpermt2b|vpermi2b|vpmultishiftqb|vpmadd52|vpcompress|vpexpand'
-+  # must be 0 (VBMI, VBMI2, IFMA).
++  # must be 0 (VBMI, VBMI2, IFMA).  tq_avx512.cpp keeps -mavx512vbmi and the full gate (cpu_avx512_ok).
    set_source_files_properties(src/kernels/cpu/expert.cpp
 -                              PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
 +                              PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -1280,8 +1285,10 @@
+@@ -1731,12 +1738,16 @@ if(STRATA_NATIVE_EXPERTS)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
-+    # No VBMI here either: the i-quant 512-bit kernels use F/DQ/BW/VL/VNNI only, and dropping the flag stops a
-+    # build host from emitting VBMI that this CPU family cannot execute (see expert.cpp's unpack comment).
-     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
--                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
-+                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
++    # No VBMI here either: the i-quant and NVFP4 512-bit kernels use F/DQ/BW/VL/VNNI only, and both files are
++    # gated by cpu_avx512_vnni_ok().  Dropping the flag stops a build host from emitting VBMI this CPU family
++    # (Cascade Lake) cannot execute; the trellis TU below keeps -mavx512vbmi and the full gate.
+     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp PROPERTIES COMPILE_OPTIONS
+-                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")
++                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")
      set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
      set_source_files_properties(src/kernels/cpu/kq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
-     set_source_files_properties(src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "-mavx")
-diff -r strata-orig/include/strata/kernels/cpu/expert.hpp strata-src/include/strata/kernels/cpu/expert.hpp
---- strata-orig/include/strata/kernels/cpu/expert.hpp	2026-10-12 16:57:48.638342768 +0100
-+++ strata-src/include/strata/kernels/cpu/expert.hpp	2026-10-12 18:46:38.775262644 +0100
+     set_source_files_properties(src/kernels/cpu/nvfp4_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+-    # the trellis kernels: AVX2 + FMA, and AVX-512 F/BW/VL/VBMI/VNNI (exactly what cpu_avx512_ok() checks)
++    # the trellis kernels: AVX2 + FMA, and AVX-512 F/BW/VL/VBMI/VNNI (exactly what cpu_avx512_ok() checks; this
++    # is the one AVX-512 TU that keeps VBMI, so it must stay on the full gate)
+     set_source_files_properties(src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+     set_source_files_properties(src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS
+                                 "-mavx512f;-mavx512bw;-mavx512vl;-mavx512vnni;-mavx512vbmi;-mavx2;-mfma;-mf16c")
+diff --git a/include/strata/kernels/cpu/expert.hpp b/include/strata/kernels/cpu/expert.hpp
+index 16dcabd..940ec11 100644
+--- a/include/strata/kernels/cpu/expert.hpp
++++ b/include/strata/kernels/cpu/expert.hpp
 @@ -12,9 +12,12 @@
  //
  //   * `vpdpbusd` (AVX512-VNNI) does four int8 MACs per instruction.  The scalar loop it replaces ran at
@@ -40,19 +106,99 @@ diff -r strata-orig/include/strata/kernels/cpu/expert.hpp strata-src/include/str
 -//   * `vpmultishiftqb` (AVX512-VBMI) unpacks the 2-bit codes eight at a time.  Its ARGUMENT ORDER is
 -//     (control, data) and was determined empirically - the Intel guide states the opposite, and following the
 -//     guide produced 43 of 64 wrong codes.
-+//   * The 2-bit unpack expands its fixed shift pattern with AVX512-F/BW shifts (`unpack64_q2_0` in
++//   * The 2-bit unpack expands its fixed shift pattern with AVX512-F/BW shifts (`unpack_q2_0` in
 +//     `expert.cpp`): eight masked 16-bit shifts plus per-byte placement, bit-identical to the
 +//     VPMULTISHIFTQB form it replaced.  VBMI is deliberately NOT used, so this tier runs on
 +//     F/DQ/BW/VL/VNNI CPUs without VBMI (Cascade Lake).  The old argument-order trap lived in the
-+//     intrinsic and went with it; `bench/micro/probe_multishift.cpp` documents the pre-patch behaviour.
-+//     Do not reintroduce a VBMI intrinsic here without also restoring `-mavx512vbmi` and the gate.
++//     intrinsic and went with it.  Do not reintroduce a VBMI intrinsic here without also restoring
++//     `-mavx512vbmi` and widening cpu_avx512_vnni_ok() to include it.
  //   * The row accumulator stays a FLOAT VECTOR and is reduced ONCE at the end of the row.  Reducing per
  //     64-weight block cost more than the dot products themselves: it made the kernel compute-bound at
  //     21 GB/s instead of DRAM-bound at 32.
-diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert.cpp
---- strata-orig/src/kernels/cpu/expert.cpp	2026-10-12 16:57:40.262548128 +0100
-+++ strata-src/src/kernels/cpu/expert.cpp	2026-10-12 18:58:23.364471835 +0100
-@@ -110,21 +110,36 @@
+@@ -89,16 +92,18 @@ struct ExpertScratch {
+     alignas(64) float ff[FF];
+ };
+ 
+-/// Runtime CPU feature check.  The kernel uses AVX512-VNNI + AVX512-VBMI + AVX512VL, and code compiled with
++/// Runtime CPU feature check.  The kernel uses AVX512-VNNI + AVX512VL (+ F/BW), and code compiled with
+ /// `/arch:AVX512` can emit AVX-512 anywhere in its translation unit, so a machine without them must be
+-/// REFUSED rather than silently run.  `s2_expert_scalar` is the fallback and exists for tests.
++/// REFUSED rather than silently run.  `s2_expert_scalar` is the fallback and exists for tests.  VBMI is probed
++/// but NOT required: the 2-bit unpack is VBMI-free (cpu_avx512_vnni_ok() in expert_layout.cpp); the trellis
++/// kernels, which are built for VBMI, gate on cpu_avx512_ok() instead.
+ struct CpuFeatures {
+     bool avx512f = false;
+     bool avx512bw = false;
+     bool avx512vl = false;
+     bool avx512_vnni = false;
+-    bool avx512_vbmi = false;
+-    bool usable() const { return avx512f && avx512bw && avx512vl && avx512_vnni && avx512_vbmi; }
++    bool avx512_vbmi = false;   ///< probed for the trellis kernels' full gate, not required by this one
++    bool usable() const { return avx512f && avx512bw && avx512vl && avx512_vnni; }
+     /// A one-line description of what is missing, or "ok".
+     const char* reason() const;
+ };
+diff --git a/include/strata/kernels/cpu/expert_layout.hpp b/include/strata/kernels/cpu/expert_layout.hpp
+index b78528c..1cdd18d 100644
+--- a/include/strata/kernels/cpu/expert_layout.hpp
++++ b/include/strata/kernels/cpu/expert_layout.hpp
+@@ -41,9 +41,15 @@ struct ExpertLayout {
+     }
+ };
+ 
+-/// Plan v0.3 P6: whether this CPU (and its OS) runs the AVX-512 kernels (F, BW, VL, VNNI, VBMI).  Probed in a
+-/// file compiled without AVX-512, so asking is safe everywhere; STRATA_FORCE_AVX2=1 answers no (for tests).
++/// Plan v0.3 P6: the full AVX-512 gate (F, BW, VL, VNNI, VBMI).  The trellis kernels (tq_avx512.cpp, compiled
++/// with -mavx512vbmi) are selected through it.  Probed in a file compiled without AVX-512, so asking is safe
++/// everywhere; STRATA_FORCE_AVX2=1 answers no (for tests).
+ bool cpu_avx512_ok();
++/// The VBMI-free AVX-512 gate (F, DQ, BW, VL, VNNI): expert.cpp's Q2_0 rows and activation quantizer,
++/// iq_avx512.cpp, nvfp4_avx512.cpp and dsv41's iq512x rows.  A Cascade Lake (VNNI, no VBMI) answers yes here
++/// and to cpu_avx512bw_ok(), no to cpu_avx512_ok(); the split is what keeps the VBMI-built trellis TU off such a CPU.
++/// Same probe site, STRATA_FORCE_AVX2 handling and STRATA_FORCE_ISA cap as cpu_avx512_ok().
++bool cpu_avx512_vnni_ok();
+ /// Whether this CPU runs AVX-512F + AVX-512BW + AVX-512VL + AVX-512DQ (e.g. Skylake-X i9-9920X) for iq_avx512.cpp.
+ bool cpu_avx512bw_ok();
+ /// Whether this CPU (and its OS) runs the AVX2 kernels (AVX, AVX2, FMA, F16C): the floor of every expert kernel
+diff --git a/include/strata/kernels/cpu/iq_avx512.hpp b/include/strata/kernels/cpu/iq_avx512.hpp
+index ae21dfd..3737a2b 100644
+--- a/include/strata/kernels/cpu/iq_avx512.hpp
++++ b/include/strata/kernels/cpu/iq_avx512.hpp
+@@ -17,7 +17,7 @@ void iq512_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const
+ 
+ /// The DeepSeek-V4.1 CPU lane's rows (src/dsv41/ds4_gg_cpu.cpp): the same 64-value decode, summed in ggml's order, so a token's
+ /// dot is ggml-cpu's AVX2 vec_dot bit for bit at any number of tokens (1-6 in one pass, 7 and more as a prompt chunk's tiles).
+-/// The caller checks cpu_avx512_ok() (AVX-512 F/BW/VL/DQ/VNNI/VBMI).
++/// The caller checks cpu_avx512_vnni_ok() (AVX-512 F/BW/VL/DQ/VNNI; no VBMI, so Cascade Lake runs these rows).
+ bool iq512x_supported(int ggml_type) noexcept;
+ void iq512x_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt,
+                  float* const* out, int r0, int r1);
+diff --git a/src/dsv41/ds4_gg_cpu.cpp b/src/dsv41/ds4_gg_cpu.cpp
+index cede307..279eb95 100644
+--- a/src/dsv41/ds4_gg_cpu.cpp
++++ b/src/dsv41/ds4_gg_cpu.cpp
+@@ -176,13 +176,14 @@ static int amd_family() {
+     }();
+     return fam;
+ }
+-// DS4_GG_IQ512: 1 takes the AVX-512 rows (bit-identical too) where the CPU has AVX-512 F/BW/VL/DQ/VNNI/VBMI, 0 never; unset: the rule
++// DS4_GG_IQ512: 1 takes the AVX-512 rows (bit-identical too) where the CPU has AVX-512 F/DQ/BW/VL/VNNI (no VBMI:
++// iq_avx512.cpp's iq512x rows are compiled without -mavx512vbmi and gated by cpu_avx512_vnni_ok()), 0 never; unset: the rule
+ // below, from the measurements on Zen 4.
+ static int g_iq512 = -1;
+ static bool want_512(int type, int nt) {
+     if (g_iq512 < 0) {
+         const char* v = std::getenv("DS4_GG_IQ512");
+-        g_iq512 = !strata::kernels::cpu::cpu_avx512_ok() ? 0 : v == nullptr ? 2 : std::atoi(v) != 0 ? 1 : 0;
++        g_iq512 = !strata::kernels::cpu::cpu_avx512_vnni_ok() ? 0 : v == nullptr ? 2 : std::atoi(v) != 0 ? 1 : 0;
+     }
+     if (g_iq512 == 0 || !strata::kernels::cpu::iq512x_supported(type)) return false;
+     if (g_iq512 == 1) return true;
+diff --git a/src/kernels/cpu/expert.cpp b/src/kernels/cpu/expert.cpp
+index 2436bbc..f12cf7a 100644
+--- a/src/kernels/cpu/expert.cpp
++++ b/src/kernels/cpu/expert.cpp
+@@ -110,21 +110,36 @@ void quantize_oracle_q8_0(const float* x, int n, ActQ& a) {
      }
  }
  
@@ -65,11 +211,11 @@ diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert
 -/// bug, not the fix.  Within each 64-bit lane, output byte i is `(u16 >> 2i) & 0xFF`, so AND 3 yields the
 -/// eight 2-bit codes in order.
 +/// Within each 64-bit lane, output byte i is `(u16 >> 2i) & 3`, so the eight 2-bit codes come out in order.
-+/// With a CONSTANT control vector that is exactly what VPMULTISHIFTQB produced, so eight masked 16-bit
-+/// shifts plus per-byte placement are bit-identical - and they keep this translation unit free of VBMI, which
-+/// lets the AVX-512 tier run on F/DQ/BW/VL/VNNI CPUs that lack it (Cascade Lake).  The argument-order trap
-+/// documented in `bench/micro/probe_multishift.cpp` applies only to the pre-patch build (no intrinsic, no
-+/// order to get wrong); keep the micro-benchmark's expectations in sync if it is ever re-run.
++/// With a CONSTANT shift pattern that is exactly what VPMULTISHIFTQB produced, so eight masked 16-bit shifts
++/// plus per-byte placement are bit-identical - and they keep this translation unit free of VBMI, which lets
++/// the AVX-512 tier run on F/DQ/BW/VL/VNNI CPUs that lack it (Cascade Lake; cpu_avx512_vnni_ok()).  The old
++/// VPMULTISHIFTQB form took (control, data) - the Intel guide states the opposite, and following the guide
++/// produced 43 of 64 wrong codes - but no intrinsic remains here to get the order wrong.
  ///
  /// The result is the 32 codes of ONE ACTIVATION CHUNK (4 qword lanes), which is the unit the Q8_1 scale is
  /// defined on - not the 64-weight block.
@@ -79,10 +225,10 @@ diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert
 -    const __m256i ctrl = _mm256_set1_epi64x((long long) 0x0E0C0A0806040200ULL);
 -    return _mm256_and_si256(_mm256_multishift_epi64_epi8(ctrl, lanes), _mm256_set1_epi8(3));
 +    const __m256i q = _mm256_cvtepu16_epi64(packed);                  // 4 qwords, one u16 each (lanes 0,4,8,12)
-+    // Same VBMI-free construction as unpack64_q2_0, in 256-bit lanes: VPERMW replicates each u16 into the
-+    // sixteen 16-bit lanes that become its code bytes, VPSRLVW shifts each lane by 2*(lane%8), VPMOVWB
++    // Same VBMI-free construction as unpack64_q2_0, in 256-bit lanes: VPERMW replicates each u16 into eight
++    // of the sixteen 16-bit lanes that become its code bytes, VPSRLVW shifts each lane by 2*(lane%8), VPMOVWB
 +    // truncates to bytes.  Two rounds of two u16s each, joined by VINSERTI128.  Byte k = (u16 >> 2*(k%8)) & 3
-+    // - the exact VPMULTISHIFTQB layout (verified exhaustively against a scalar reference when written).
++    // - the exact VPMULTISHIFTQB layout (verified against a scalar reference when written).
 +    const uint16_t idx0_a[16] = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4};
 +    const uint16_t idx1_a[16] = {8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12, 12};
 +    const uint16_t sh_a[16] = {0, 2, 4, 6, 8, 10, 12, 14, 0, 2, 4, 6, 8, 10, 12, 14};
@@ -98,7 +244,7 @@ diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert
  }
  
  /// 32 codes against 32 int8 activations. Codes 0 contribute nothing to `sum(c*xhat)`, so the zero lanes the
-@@ -152,9 +167,29 @@
+@@ -152,9 +167,29 @@ static const bool kZmm = std::getenv("STRATA_CPU_YMM") == nullptr;
  
  inline __m512i unpack64_q2_0(const uint8_t* codes) {
      const __m128i packed = _mm_loadu_si128((const __m128i*) codes);          // 8 u16 = 64 codes
@@ -110,7 +256,7 @@ diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert
 +    // VPSRLVW shifts lane e by 2*(e%8), VPMOVWB truncates to bytes, VINSERTI64X4 joins the two halves.  Four
 +    // instructions per 32 codes against the VBMI original's one - close enough that a measured delta is the
 +    // tier's, not the substitute's.  Layout is byte-identical to VPMULTISHIFTQB with the old fixed control
-+    // vector (verified exhaustively against a scalar reference when written).
++    // vector (verified against a scalar reference when written).
 +    // little-endian lane order, element e = 16-bit lane e (GCC has no _mm512_setr_epi16; arrays also make the
 +    // layout auditable against the scalar reference).
 +    const uint16_t idx_lo_a[32] = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4,
@@ -131,20 +277,366 @@ diff -r strata-orig/src/kernels/cpu/expert.cpp strata-src/src/kernels/cpu/expert
  }
  
  // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
-diff -r strata-orig/src/kernels/cpu/expert_layout.cpp strata-src/src/kernels/cpu/expert_layout.cpp
---- strata-orig/src/kernels/cpu/expert_layout.cpp	2026-10-12 16:57:40.181487703 +0100
-+++ strata-src/src/kernels/cpu/expert_layout.cpp	2026-10-12 18:44:57.727844938 +0100
-@@ -66,7 +66,12 @@
-         if ((xcr0 & 0xE6) != 0xE6) return false;          // the OS saves the AVX-512 state
-         cpuid(7, 0);
-         const unsigned ebx = r[1], ecx = r[2];
--        return ((ebx >> 16) & 1u) && ((ebx >> 30) & 1u) && ((ebx >> 31) & 1u) && ((ecx >> 11) & 1u) && ((ecx >> 1) & 1u);
-+        // F (EBX16) && DQ (EBX17) && BW (EBX30) && VL (EBX31) && VNNI (ECX11).  VBMI (ECX1) is deliberately
-+        // NOT required: the AVX-512 tier's only VBMI user was the 2-bit unpack in expert.cpp, which now
-+        // expands the fixed shift pattern with F/BW shifts (see the comment there) and the file is compiled
-+        // without -mavx512vbmi, so no VBMI can be emitted.  This opens the VNNI expert kernels on Cascade
-+        // Lake (F/DQ/BW/VL/VNNI, no VBMI) and changes nothing on CPUs that do have VBMI.
-+        return ((ebx >> 16) & 1u) && ((ebx >> 17) & 1u) && ((ebx >> 30) & 1u) && ((ebx >> 31) & 1u) && ((ecx >> 11) & 1u);
-     }();
+diff --git a/src/kernels/cpu/expert_layout.cpp b/src/kernels/cpu/expert_layout.cpp
+index 9d296c9..f24c17e 100644
+--- a/src/kernels/cpu/expert_layout.cpp
++++ b/src/kernels/cpu/expert_layout.cpp
+@@ -39,6 +39,10 @@ int cpu_isa_cap() {
+     return cap;
+ }
+ 
++/// The full AVX-512 gate: F, BW, VL, VNNI and VBMI.  The trellis kernels (tq_avx512.cpp, compiled with
++/// `-mavx512vbmi`) and the paths that call them are selected through this one; everything VBMI-free
++/// (expert.cpp, iq_avx512.cpp, nvfp4_avx512.cpp) uses cpu_avx512_vnni_ok() instead, so a Cascade Lake
++/// (VNNI, no VBMI) runs the expert kernels without ever being handed a VBMI instruction.
+ bool cpu_avx512_ok() {
+     static const bool ok = [] {
+         if (const char* f = std::getenv("STRATA_FORCE_AVX2"); f != nullptr && f[0] == '1') return false;
+@@ -74,6 +78,49 @@ bool cpu_avx512_ok() {
      return ok;
  }
+ 
++/// The VBMI-free AVX-512 gate: F, DQ, BW, VL and VNNI.  This is what expert.cpp (Q2_0 rows + activation
++/// quantizer), iq_avx512.cpp, nvfp4_avx512.cpp and dsv41's iq512x rows need; none of them is compiled with
++/// `-mavx512vbmi`.  Same OSXSAVE/XCR0 logic and STRATA_FORCE_AVX2 handling as cpu_avx512_ok().  VBMI is
++/// deliberately absent so Cascade Lake (VNNI, no VBMI) runs these kernels; keeping it here would leave the
++/// VBMI-free kernels unreachable on that CPU, and dropping it from cpu_avx512_ok() instead would admit a
++/// VBMI-less CPU to tq_avx512.cpp, which is compiled with -mavx512vbmi and may emit VBMI there (SIGILL the
++/// moment it does).
++bool cpu_avx512_vnni_ok() {
++    static const bool ok = [] {
++        if (const char* f = std::getenv("STRATA_FORCE_AVX2"); f != nullptr && f[0] == '1') return false;
++        if (cpu_isa_cap() < 3) return false;
++        unsigned r[4] = {0, 0, 0, 0};
++        auto cpuid = [&](unsigned leaf, unsigned sub) {
++#if defined(_MSC_VER)
++            int x[4];
++            __cpuidex(x, (int) leaf, (int) sub);
++            for (int i = 0; i < 4; ++i) r[i] = (unsigned) x[i];
++#else
++            __cpuid_count(leaf, sub, r[0], r[1], r[2], r[3]);
++#endif
++        };
++        cpuid(0, 0);
++        if (r[0] < 7) return false;
++        cpuid(1, 0);
++        if (!((r[2] >> 27) & 1u)) return false;             // OSXSAVE
++#if defined(_MSC_VER)
++        const unsigned long long xcr0 = _xgetbv(0);
++#else
++        unsigned lo = 0, hi = 0;
++#if !defined(__aarch64__)   // arm64 (the Metal build): no XCR0; cpuid reads zero there, so this is never reached
++        __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
++#endif
++        const unsigned long long xcr0 = ((unsigned long long) hi << 32) | lo;
++#endif
++        if ((xcr0 & 0xE6) != 0xE6) return false;          // the OS saves the AVX-512 state
++        cpuid(7, 0);
++        const unsigned ebx = r[1], ecx = r[2];
++        // F (EBX16), DQ (EBX17), BW (EBX30), VL (EBX31), VNNI (ECX11).  No VBMI (ECX1).
++        return ((ebx >> 16) & 1u) && ((ebx >> 17) & 1u) && ((ebx >> 30) & 1u) && ((ebx >> 31) & 1u) && ((ecx >> 11) & 1u);
++    }();
++    return ok;
++}
++
+ bool cpu_avx512bw_ok() {
+     static const bool ok = [] {
+         if (const char* f = std::getenv("STRATA_FORCE_AVX2"); f != nullptr && f[0] == '1') return false;
+@@ -312,11 +359,12 @@ bool expert_oracle_q8_0_enabled() { return g_oracle_q8_0.load(std::memory_order_
+ const char* CpuFeatures::reason() const {
+     if (usable()) return "ok";
+     // Named individually: "AVX-512 not supported" sends a user looking for a new CPU when the machine may have
+-    // AVX-512F and be missing only VNNI, which is a much narrower and more explicable gap.
++    // AVX-512F and be missing only VNNI, which is a much narrower and more explicable gap.  VBMI is not named:
++    // the Q2_0 kernel no longer needs it (cpu_avx512_vnni_ok in expert_layout.cpp), so its absence is not a fault.
+     static char buf[160];
+-    std::snprintf(buf, sizeof buf, "missing %s%s%s%s%s", avx512f ? "" : "AVX512F ",
++    std::snprintf(buf, sizeof buf, "missing %s%s%s%s", avx512f ? "" : "AVX512F ",
+                   avx512bw ? "" : "AVX512BW ", avx512vl ? "" : "AVX512VL ",
+-                  avx512_vnni ? "" : "AVX512-VNNI ", avx512_vbmi ? "" : "AVX512-VBMI");
++                  avx512_vnni ? "" : "AVX512-VNNI");
+     return buf;
+ }
+ 
+@@ -348,7 +396,7 @@ void cpu_require_expert_support() {
+     if (f.usable()) return;
+     std::fprintf(stderr,
+                  "strata: this CPU cannot run the expert kernel: %s.\n"
+-                 "        The engine needs AVX512-VNNI and AVX512-VBMI (Intel Ice Lake / AMD Zen 4 or newer).\n"
++                 "        The engine needs AVX512-F/BW/VL and AVX512-VNNI (Intel Cascade Lake / AMD Zen 4 or newer).\n"
+                  "        The scalar fallback exists for tests only and is far too slow to decode with.\n",
+                  f.reason());
+     std::exit(1);
+@@ -356,20 +404,20 @@ void cpu_require_expert_support() {
+ 
+ void q2_rows_any(const uint8_t* w, size_t row_bytes, int nblocks, const ActQ* const* a, int nt, float* const* out,
+                  int r0, int r1) {
+-    if (cpu_avx512_ok()) q2_0_gguf_rows_multi(w, row_bytes, nblocks, a, nt, out, r0, r1);
++    if (cpu_avx512_vnni_ok()) q2_0_gguf_rows_multi(w, row_bytes, nblocks, a, nt, out, r0, r1);
+     else if (cpu_avx2_ok()) q2_0_gguf_rows_multi_avx2(w, row_bytes, nblocks, a, nt, out, r0, r1);
+     else q2_0_gguf_rows_multi_avx1(w, row_bytes, nblocks, a, nt, out, r0, r1);   // issue #1699: the third rung
+ }
+ 
+ void q2_rows_any_legacy(const uint8_t* w, size_t row_bytes, int nblocks, const ActQ* const* a, int nt, float* const* out,
+                         int r0, int r1) {
+-    if (cpu_avx512_ok()) q2_0_gguf_rows_multi(w, row_bytes, nblocks, a, nt, out, r0, r1);
++    if (cpu_avx512_vnni_ok()) q2_0_gguf_rows_multi(w, row_bytes, nblocks, a, nt, out, r0, r1);
+     else if (cpu_avx2_ok()) q2_0_gguf_rows_multi_avx2_legacy(w, row_bytes, nblocks, a, nt, out, r0, r1);
+     else q2_0_gguf_rows_multi_avx1_legacy(w, row_bytes, nblocks, a, nt, out, r0, r1);
+ }
+ 
+ void act_quant_any(const float* x, int n, ActQ& a) {
+-    if (cpu_avx512_ok()) act_quant_q8_1(x, n, a);
++    if (cpu_avx512_vnni_ok()) act_quant_q8_1(x, n, a);
+     else if (cpu_avx2_ok()) act_quant_q8_1_avx2(x, n, a);
+     else act_quant_q8_1_avx1(x, n, a);   // issue #1699
+ }
+diff --git a/src/kernels/cpu/expert_parity.cpp b/src/kernels/cpu/expert_parity.cpp
+index 39f24a1..e70ebf5 100644
+--- a/src/kernels/cpu/expert_parity.cpp
++++ b/src/kernels/cpu/expert_parity.cpp
+@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
+ 
+     // ---- the CPU must be able to run the kernel, and the report must say WHICH feature is missing
+     const cpu::CpuFeatures feat = cpu::cpu_features();
+-    std::printf("  %-44s %s\n", "AVX512 F/BW/VL/VNNI/VBMI",
++    std::printf("  %-44s %s\n", "AVX512 F/BW/VL/VNNI",
+                 feat.usable() ? "all present" : feat.reason());
+     if (!feat.usable()) {
+         std::printf("      the VNNI path cannot run here; only the scalar oracle can be exercised.\n");
+diff --git a/src/kernels/cpu/iq_avx2_parity.cpp b/src/kernels/cpu/iq_avx2_parity.cpp
+index 67544c9..a76c75c 100644
+--- a/src/kernels/cpu/iq_avx2_parity.cpp
++++ b/src/kernels/cpu/iq_avx2_parity.cpp
+@@ -554,7 +554,7 @@ int main(int argc, char** argv) {
+     ggml_cpu_init();
+     auto env = [](const char* k) { const char* v = std::getenv(k); return v ? v : "-"; };
+     std::printf("iq_avx2_parity: %s (avx2 %d, avx512 %d), CPU %d, core type %02Xh\n", cpu::cpu_name().c_str(),
+-                (int) cpu::cpu_avx2_ok(), (int) cpu::cpu_avx512_ok(), pin, core_type());
++                (int) cpu::cpu_avx2_ok(), (int) cpu::cpu_avx512_vnni_ok(), pin, core_type());
+     std::printf("  STRATA_IQ256_GATHER %s, STRATA_NO_AVXVNNI %s, STRATA_IQ_MT_MIN %s, STRATA_IQ_PREFETCH %s\n",
+                 env("STRATA_IQ256_GATHER"), env("STRATA_NO_AVXVNNI"), env("STRATA_IQ_MT_MIN"), env("STRATA_IQ_PREFETCH"));
+     if (!cpu::cpu_avx2_ok()) {
+diff --git a/src/kernels/cpu/kq_cpu_bench.cpp b/src/kernels/cpu/kq_cpu_bench.cpp
+index 0655bc0..d1ae875 100644
+--- a/src/kernels/cpu/kq_cpu_bench.cpp
++++ b/src/kernels/cpu/kq_cpu_bench.cpp
+@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
+     }
+     ggml_cpu_init();
+     std::printf("kq_cpu_bench: %s (avx2 %d, avx512 %d), %d MB of blobs per format\n", cpu::cpu_name().c_str(),
+-                (int) cpu::cpu_avx2_ok(), (int) cpu::cpu_avx512_ok(), mb);
++                (int) cpu::cpu_avx2_ok(), (int) cpu::cpu_avx512_vnni_ok(), mb);
+     for (const std::string& pair : pairs) {
+         const size_t slash = pair.find('/');
+         const int gt = slash == std::string::npos ? -1 : type_of(pair.substr(0, slash));
+diff --git a/src/kernels/cpu/native_expert.cpp b/src/kernels/cpu/native_expert.cpp
+index 7c49183..ca9b036 100644
+--- a/src/kernels/cpu/native_expert.cpp
++++ b/src/kernels/cpu/native_expert.cpp
+@@ -255,7 +255,7 @@ int native_gu_mt_min(int gu_type) {
+     // and cpu_avx2_ok() comes first, so no AVX2 code runs before the check.  STRATA_IQ_MT_MIN set keeps its rule.
+     // Opt-in (STRATA_IQ3S_MT1=1): it changes a lone token's IQ3_S rounding on those CPUs, so the default stays 0.1.39's.
+     static const bool iq3s_one = env == nullptr && std::getenv("STRATA_IQ3S_MT1") != nullptr && cpu_avx2_ok() && std::getenv("STRATA_NO_IQ256") == nullptr &&
+-                                 !cpu_avx512_ok() && iq256_gather_setting() != 0 && cpu_gather_fast();
++                                 !cpu_avx512_vnni_ok() && iq256_gather_setting() != 0 && cpu_gather_fast();
+     return iq3s_one && gu_type == 21 ? 1 : mt_min;
+ }
+ 
+@@ -266,11 +266,11 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+     // first, then the AVX-2 one (Zen 2/3, Intel 12th-14th gen).  STRATA_NO_IQ512 drops an AVX-512 CPU to the
+     // AVX-2 kernel, STRATA_NO_IQ256 drops the AVX-2 kernel; ggml-cpu's single-token vec_dot is reached only with
+     // both set (and on a CPU without AVX-512, STRATA_NO_IQ512 changes nothing).
+-    static const bool avx512 = cpu_avx512_ok() && std::getenv("STRATA_NO_IQ512") == nullptr;
++    static const bool avx512 = cpu_avx512_vnni_ok() && std::getenv("STRATA_NO_IQ512") == nullptr;
+     // STRATA_NO_IQ256 drops the AVX-2 kernel.  cpu_avx2_ok() is ALSO required: iq_avx2.cpp and kq_avx2.cpp
+     // are compiled /arch:AVX2 and use AVX2 and FMA3, so calling them on a CPU without either is an
+     // illegal instruction, not a slow path.  The gate sat next to `avx512` above, which does test
+-    // cpu_avx512_ok(), and that asymmetry is what let a pre-Haswell CPU reach iq256_gu_rows.
++    // cpu_avx512_vnni_ok(), and that asymmetry is what let a pre-Haswell CPU reach iq256_gu_rows.
+     // Without it this falls through to ggml-cpu's vec_dot below, which is compiled for whatever
+     // baseline the build selected (AVX1 here) and covers the same types - IQ2_XXS and IQ2_S among
+     // them.  That path loops over tokens itself, so it is correct for any `nt`, not just one.
+@@ -292,7 +292,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+     }();
+     // only where ggml's dot runs today (below the #152 multi-token rule): with STRATA_IQ_MT_MIN=1 a lone token keeps the
+     // multi-token kernel, so a token's rows still do not depend on how many tokens share its expert
+-    if (exact_one && nt == 1 && nt < native_gu_mt_min(f.gu_type) && avx2 && !cpu_avx512_ok() &&
++    if (exact_one && nt == 1 && nt < native_gu_mt_min(f.gu_type) && avx2 && !cpu_avx512_vnni_ok() &&
+         (f.gu_type == 16 || f.gu_type == 17 || f.gu_type == 18 || f.gu_type == 21 || f.gu_type == 22)) {
+         static std::once_flag announced;
+         std::call_once(announced, [] { std::fprintf(stderr, "strata ab: GATE=STRATA_CPU_IQ_ALL_EXACT1 active=1\n"); });
+@@ -317,7 +317,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+     // A format with only an AVX-2 kernel (IQ4_XS, #415) takes it on AVX-2 CPUs only: an AVX-512 CPU keeps ggml-cpu for
+     // it, as before (its rows would round differently).  Each kernel only for the formats it implements: falling
+     // through an empty switch would leave ff unwritten instead of falling back to ggml-cpu.
+-    static const bool cpu512 = cpu_avx512_ok();
++    static const bool cpu512 = cpu_avx512_vnni_ok();
+     if (nt >= mt_min && (iq512_supported(f.gu_type) || (!cpu512 && iq256_supported(f.gu_type)))) {
+         if (avx512 && iq512_supported(f.gu_type)) {
+             iq512_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
+@@ -344,7 +344,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+     }
+     // NVFP4 in 512-bit lanes: ggml's arithmetic, blocks decoded once per window; 1.8x at one token, 3.7x at seven
+     // (nvfp4_avx512_parity). STRATA_NO_NVFP4_512 falls back to ggml-cpu.
+-    static const bool nvfp4_512 = cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
++    static const bool nvfp4_512 = cpu_avx512_vnni_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
+     if (f.gu_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n)) {
+         nvfp4_512_gu_rows(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su);
+         return;
+@@ -380,7 +380,7 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
+     static const bool kq = [] { const char* v = std::getenv("STRATA_KQ256"); return v != nullptr && std::atoi(v) != 0; }();
+     // Both multi-token kernels below are /arch:AVX2 translation units (kq_avx2.cpp and iq_avx2.cpp),
+     // so a CPU without AVX2 has to reach ggml-cpu's vec_dot instead - same reasoning as the gate/up
+-    // rows above, where `avx512` tested cpu_avx512_ok() and `avx2` did not.
++    // rows above, where `avx512` tested cpu_avx512_vnni_ok() and `avx2` did not.
+     if (tq_rows_own(f.d_type)) {   // the trellis types, as in native_gu_rows
+         tq_rows(tq_isa(), f.d_type, blob + f.down_off, f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
+         return;
+@@ -402,7 +402,7 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
+     const int n = (int) f.n_ff;
+     float sd = 1.f;                                   // NVFP4: the expert's s_down (see native_gu_rows)
+     if (f.tail_off) std::memcpy(&sd, blob + f.tail_off + 2 * sizeof(float), sizeof sd);
+-    static const bool nvfp4_512 = cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
++    static const bool nvfp4_512 = cpu_avx512_vnni_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
+     if (f.d_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n)) {
+         nvfp4_512_rows(blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
+         return;
+diff --git a/src/kernels/cpu/nvfp4_avx512.cpp b/src/kernels/cpu/nvfp4_avx512.cpp
+index 3353c2a..9c7730d 100644
+--- a/src/kernels/cpu/nvfp4_avx512.cpp
++++ b/src/kernels/cpu/nvfp4_avx512.cpp
+@@ -6,7 +6,8 @@
+ // 16 int32 lanes = four per 16-value sub-block, and one FMA applies ue4m3(d[s]) * d_q8. The UE4M3 decode is ggml's
+ // CPU one (ggml-impl.h ggml_ue4m3_to_fp32): halved for the doubled table, 0x7F read as 0.
+ //
+-// Needs AVX512F/BW/VL and VNNI - what cpu_avx512_ok() checks before anything here is called.
++// Needs AVX512F/BW/VL/DQ and VNNI - what cpu_avx512_vnni_ok() checks before anything here is called (no VBMI:
++// this file is compiled without -mavx512vbmi, and the trellis kernels own the full cpu_avx512_ok() gate).
+ #include "strata/kernels/cpu/nvfp4_avx512.hpp"
+ 
+ #define GGML_COMMON_DECL_CPP
+diff --git a/src/kernels/cpu/nvfp4_avx512_parity.cpp b/src/kernels/cpu/nvfp4_avx512_parity.cpp
+index 1042967..5ddf62e 100644
+--- a/src/kernels/cpu/nvfp4_avx512_parity.cpp
++++ b/src/kernels/cpu/nvfp4_avx512_parity.cpp
+@@ -290,7 +290,7 @@ int expert_e2e(const char* path, int layer, int e) {
+         float* fp[1] = {ff.data()};
+         float* op[1] = {out.data()};
+         for (int mode = 0; mode < 2; ++mode) {             // 0: s_down folded into up; 1: s_down on the output
+-            const Kern& k = strata::kernels::cpu::cpu_avx512_ok() ? k512 : k256;
++            const Kern& k = strata::kernels::cpu::cpu_avx512_vnni_ok() ? k512 : k256;
+             k.gu(b.data(), ROW_BYTES, up_off, N, ap, 1, fp, 0, F, sg, mode == 0 ? s_up * s_down : s_up);
+             if (mode == 0) for (float v : ff) hmax_fold = std::fmax(hmax_fold, std::fabs(v));
+             q8->from_float(ff.data(), hq.data(), FF);
+@@ -318,7 +318,7 @@ int main(int argc, char** argv) {
+     ggml_cpu_init();
+     if (argc >= 3 && std::string(argv[1]) == "--expert")
+         return expert_e2e(argv[2], argc >= 4 ? std::atoi(argv[3]) : 0, argc >= 5 ? std::atoi(argv[4]) : 0);
+-    const bool has512 = strata::kernels::cpu::cpu_avx512_ok(), has256 = strata::kernels::cpu::cpu_avx2_ok();
++    const bool has512 = strata::kernels::cpu::cpu_avx512_vnni_ok(), has256 = strata::kernels::cpu::cpu_avx2_ok();
+     if (argc >= 4 && std::string(argv[1]) == "--bw") {
+         const std::string how = argc >= 5 ? argv[4] : "";
+         return bandwidth(std::atoi(argv[2]), std::atoi(argv[3]), how == "ggml", how == "avx2" || !has512 ? k256 : k512);
+diff --git a/src/kernels/cpu/pool_tasks_test.cpp b/src/kernels/cpu/pool_tasks_test.cpp
+index aa27288..41d8dd8 100644
+--- a/src/kernels/cpu/pool_tasks_test.cpp
++++ b/src/kernels/cpu/pool_tasks_test.cpp
+@@ -146,9 +146,8 @@ int main(int argc, char** argv) {
+         // The split with modes 0-4 between the native batches, on one pool: a mode-0..4 batch lives on `head_`, a
+         // native one on the slice heads, so this alternates the two families of heads (a stale claim must fail on
+         // the other family) and runs the per-slice `parked` through the non-native modes.  The Strata-form kernels
+-        // need AVX-512 VBMI, the oracle contract included (a Xeon Gold 6226 stops on vpmultishiftqb inside
+-        // s2_expert_vnni_q with the oracle on), so a CPU without it skips this part.
+-        // CBA: no coverage on a VBMI-free CPU (the 6226 box); a test-only kernel seam in the pool if it must have it.
++        // need AVX-512 VNNI, the oracle contract included (the unpacks are VBMI-free, so CpuFeatures::usable()
++        // admits a Cascade Lake), so a CPU below that skips this part.
+         const cpu::CpuFeatures feat = cpu::cpu_features();
+         if (n == 7 && feat.usable()) {
+             std::mt19937 rng(7);
+diff --git a/src/kernels/native_expert_parity.cpp b/src/kernels/native_expert_parity.cpp
+index ffe8a6c..bc99dc0 100644
+--- a/src/kernels/native_expert_parity.cpp
++++ b/src/kernels/native_expert_parity.cpp
+@@ -117,7 +117,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
+             a[k] = act[k].data();
+             ffp[k] = ff[k].data();
+         }
+-        if ((f.gu_type == 18 || f.gu_type == 21 || f.gu_type == 22) && cpu::cpu_avx2_ok() && !cpu::cpu_avx512_ok()) {
++        if ((f.gu_type == 18 || f.gu_type == 21 || f.gu_type == 22) && cpu::cpu_avx2_ok() && !cpu::cpu_avx512_vnni_ok()) {
+             const auto dot = ggml_get_type_traits_cpu((ggml_type) f.gu_type)->vec_dot;
+             size_t differ = 0;
+             std::vector<float> exact((size_t) FF);
+@@ -189,7 +189,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
+                 std::printf("          gate+up %d tokens one thread: %s %.0f us vs ggml %d x %.0f us\n", NT, tag, usn, NT, usg);
+             };
+             // guarded: the binary runs on AVX-2 CPUs too, and IQ4_XS has no AVX-512 kernel (an empty switch)
+-            if (cpu::cpu_avx512_ok() && cpu::iq512_supported(f.gu_type)) check("avx512", true);
++            if (cpu::cpu_avx512_vnni_ok() && cpu::iq512_supported(f.gu_type)) check("avx512", true);
+             if (cpu::cpu_avx2_ok() && cpu::iq256_supported(f.gu_type)) check("avx2", false);   // no AVX2: ggml-cpu only
+         }
+         for (int k = 0; k < NT; ++k) {
+@@ -317,7 +317,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
+             }
+             cpu::q2_rows_any(blob.data() + f.down_off, f.d_row, (int) (FF / 64), ap, NT, altp, 0, (int) H);
+             std::printf("          q2_0 %s down vs ggml down: rel %.2e\n",
+-                        cpu::cpu_avx512_ok() ? "AVX-512" : "AVX-2", rel(alt, got_c));
++                        cpu::cpu_avx512_vnni_ok() ? "AVX-512" : "AVX-2", rel(alt, got_c));
+         }
+         if (f.d_type == 20 && cpu::cpu_avx2_ok()) {
+             // (b3) the IQ4_NL multi-token AVX-2 kernel the pool now uses for IQ4_NL down projections,
+diff --git a/src/program/generate.cpp b/src/program/generate.cpp
+index 7bafd68..832e3ee 100644
+--- a/src/program/generate.cpp
++++ b/src/program/generate.cpp
+@@ -3409,9 +3409,10 @@ int main(int argc, char** argv) {
+         return 2;
+     }
+ 
+-    // **BEFORE ANYTHING ELSE.**  The CPU expert kernel is AVX-512 (VNNI + VBMI) and its translation unit is
+-    // compiled `/arch:AVX512`, so on a CPU without those features it does not fail - it executes an illegal
+-    // instruction at some unpredictable token.  Refusing at second zero is the whole point of P2.S3's check.
++    // **BEFORE ANYTHING ELSE.**  The CPU expert kernel is AVX-512 (VNNI; the unpacks are VBMI-free) and its
++    // translation unit is compiled `/arch:AVX512`, so on a CPU without those features it does not fail - it
++    // executes an illegal instruction at some unpredictable token.  Refusing at second zero is the whole point
++    // of P2.S3's check.
+     strata::kernels::cpu::expert_set_oracle_q8_0(o.cpu_oracle_q8_0);
+     // ... and nothing runs on a CPU without AVX2: every CPU expert kernel is AVX2 at least (the AVX-512 ones are
+     // chosen above it), and so is ggml-cpu in the release build, which the native pack's layout load initializes
+@@ -3627,8 +3628,8 @@ int main(int argc, char** argv) {
+                                      "(setup writes it; run setup again).\n");
+         }
+         strata::kernels::cpu::cpu_require_expert_support();
+-    } else if (!strata::kernels::cpu::cpu_avx512_ok())
+-        std::fprintf(stderr, "strata generate: this CPU has no AVX-512: the expert kernels run on %s "
++    } else if (!strata::kernels::cpu::cpu_avx512_vnni_ok())
++        std::fprintf(stderr, "strata generate: this CPU has no AVX-512 VNNI: the expert kernels run on %s "
+                              "(multi-token for the i-quant gate/up rows)\n",
+                      !strata::kernels::cpu::cpu_avx2_ok()
+                          ? (strata::kernels::cpu::cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr
+diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
+index 6f963d0..1caf735 100644
+--- a/sycl/CMakeLists.txt
++++ b/sycl/CMakeLists.txt
+@@ -141,8 +141,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
+ strata_resolve(_cpu src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp src/kernels/cpu/expert_layout.cpp
+                     src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)   # hadamard.cpp: expert_layout.cpp reads hadamard.txt
+ add_library(strata_kernels_cpu STATIC ${_cpu})
++# Same lists as the top-level build: expert.cpp is VBMI-free (cpu_avx512_vnni_ok()), so no -mavx512vbmi here.
+ set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS
+-  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
++  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
+ set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+ # AVX-VNNI copies of the AVX-2 expert kernels (q2_avx2.cpp, iq_avx2.cpp), taken at run time where the CPU has them
+ include(CheckCXXSourceCompiles)
+@@ -207,8 +208,9 @@ if(STRATA_NATIVE_EXPERTS)
+                              src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp src/kernels/cpu/tq_avx512.cpp)   # Gyro trellis CPU rows (native_expert.cpp calls them; the SYCL GPU path does not run these types)
+   target_sources(strata_kernels_cpu PRIVATE ${_cpu_native})
+   target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
++  # i-quant / NVFP4 are VBMI-free too (cpu_avx512_vnni_ok()); tq_avx512.cpp below keeps -mavx512vbmi.
+   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/iq_avx512.cpp ${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx512.cpp
+-    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
++    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
+   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS

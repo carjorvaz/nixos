@@ -152,31 +152,27 @@ slot on 2026-10-11 until an on-box A/B of hindsight's refresh job put the two
 lanes in the same envelope - 283 s on strata against 67-617 s on the 27B, with
 a richer page from strata; the 27B stays installed as the parked fast and
 interactive lane). It builds upstream Strata at pin
-`7695859a` (v0.1.43; the annotated tag v0.1.43 is `16374b3e`) with two patches:
+`dfa3f402` (v0.2.4.2, engine 0.1.49.2; v0.2.4 is `96ca4383`) with three patches:
 `tiberius.patch` (a sliding DAX register window, decode-time refill pinning with
-its straddle guard) and `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the
-bundled web app, its pages/assets and `/settings`; the OpenAI-compatible API is
-untouched).  At this bump upstream reworked the same refill/adapt loop for its
-new adaptive-overlap default (the `AdaptGate`, layer-ordered swaps, a per-layer
-landing host-func on the refill stream) and added the `soft_in_`/exchange-buffer
-clause to `FileExpertSource::device_alias`; the patch's pin-release contract is
-unchanged (`held_pins` goes back only in `apply_pending`, once `adapt_ev` has
-completed - the same event that admits the batch), its landing callback is
-re-anchored to the last copy of each layer in the issue loop (enqueued after
-those copies, never before), and the `device_alias` merge keeps the arena-first
-structure (upstream's `!pinned()` guard would otherwise fall through to the
-arena's pointer for an expert only the DAX window holds).  `carry-1283.patch`
-was retired at the v0.1.42 bump: upstream took PR #1283 (commit `a26fcbcd`, the
-same change; the lineage was #547 -> #1042 -> #1283), and both remaining patches
-have been regenerated against the release tree at every bump since (two hunks
-were re-homed at v0.1.42: the `FileExpertSource` dax members now sit above
-upstream's new `stage_lend_regions_` member, and the serve join-timing block
-after the new `PcieAuto` share block; the rest is context-only). The dense-FP16
-tensor-core change that `tiberius.patch` used to carry was retired at the
-v0.1.40.2 bump: upstream 0.1.39+ has the same path natively (`bf16_path()`,
-#540/#655) and the module selects it with upstream's `STRATA_BF16_TC=1` (opt-in
-on the RTX 20's compute capability 7.5). Build-time greps fail the derivation if
-a flag or environment variable the module sets disappears on a rebase.
+its straddle guard), `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
+web app, its pages/assets and `/settings`; the OpenAI-compatible API is
+untouched) and `avx512-bw-tier.patch` (the VBMI-free AVX-512 expert tier and the
+split run-time gate).  At the v0.2.4.2 bump upstream's refill loops are
+single-pass again (no resolve/plans pass in either), so the local two-pass pin
+delta stays ours and keeps upstream's `fenced_slots` / `pin_blobs_on` blocks,
+the batched `cp_*` copies and the #2188 stream query.  The overlap gate's
+landing signal is upstream's D2H `cudaMemcpyAsync` into `agate.hland` when that
+buffer exists (a host function otherwise), and the local copy loop takes both
+arms with the plan's layer.  Upstream's new serve-loop `STRATA_RAM_ADAPT` /
+`ram_adapt2` block, its `dt_adapt_join` timer and the `res_checking` summary are
+kept; the local refill timing folds into that timer (one join per window, never
+a second one).  `carry-1283.patch` was retired at the v0.1.42 bump: upstream
+took PR #1283 (commit `a26fcbcd`, the same change).  The dense-FP16 tensor-core
+change that `tiberius.patch` used to carry was retired at the v0.1.40.2 bump:
+upstream 0.1.39+ has the same path natively (`bf16_path()`, #540/#655) and the
+module selects it with upstream's `STRATA_BF16_TC=1` (opt-in on the RTX 20's
+compute capability 7.5). Build-time greps fail the derivation if a flag or
+environment variable the module sets disappears on a rebase.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
@@ -237,17 +233,54 @@ runs), `/data/ab12*` + `/data/ab16*` (budgets above what fits, 2 arms),
 (flag-semantics probes; drivers `/data/ab11.py`-`ab17.py`, per-run engine logs
 and `/metrics`).
 
+The 0.2.x line also changed two serve defaults that would move this lane without
+touching a performance knob.  Since 0.1.45 a request that names no sampling keys
+gets the model card's values (thinking 1.0/0.95, instruct 0.7/0.8) where 0.1.43
+was greedy; the module now pins `sampling.temperature = 0` so the lane's clients
+and the campaign comparisons stay greedy (a client that sends sampling keys still
+overrides it).  Since 0.2.3 (#3493) `--serve` sizes a parked-conversation cache
+from the free RAM when `--conversation-cache-mib` is absent (up to 8 GiB, floor
+~2.5 GiB); the module pins `--conversation-cache-mib 0`, the 0.1.43 default, so
+the 7.4 GiB box cannot pin ~118 MB checkpoints or take RAM from the 1 GiB host
+tier.  Both pins were checked on the 0.1.49.2 build (`/data/ab24*`).
+
+The 0.1.45 RTX 20 kernel series (`STRATA_SM75_PERF=1`) is adopted.  It is bitwise
+here: every arm in the campaign returned the same answer sha on all four cells.
+Measured 2026-10-24 on the 0.1.49.2 build, 3 runs with the series against 5
+controls, counterbalanced (A-B-B-A), fresh engine per run, medians:
+
+| cell | prompt tokens | prompt read | decode |
+|---|---:|---:|---:|
+| D4K | 4,252 | +0.5% | +2.3% (78 generated) |
+| P20K | 19,407 | +5.6% | +2.5% (8 generated) |
+| P27K | 26,134 | +7.3% | +4.0% (8 generated) |
+| D29K | 27,720 | +8.0% | +3.5% (88 generated) |
+
+The other Turing-era switches were screened and not adopted: `STRATA_QSA_ROWS`,
+`STRATA_EXPDEC` and `STRATA_DEQUANT_WIDE` added nothing on top of the series
+(the four-switch stack read slightly below the series alone), and
+`STRATA_ATTN_DAILY=1` with `STRATA_ATTN_V3=0` was within noise.  The 0.1.49.2
+engine itself is +1.8..2.1% on the prompt read over 0.1.43 at the same pins;
+D4K/P20K/P27K answers are byte-identical to 0.1.43, while D29K diverges after the
+new engine's auto cache opens with 6,268 slots against 6,281 (the residency
+margin documented above).  Evidence: `/data/ab24*` (driver `/data/ab24.py`,
+`/data/ab24-arms.sh`, per-run engine logs and `/metrics`).
+
 The engine build must happen ON tiberius. ggml compiles with `-march=native`
 (the package clears `NIX_ENFORCE_NO_NATIVE`), and the host's `nix.conf` lists
 pius (an AVX2-only i5-8400) and trajanus (Zen 4) as builders, so a plain build
 dispatches this derivation and the binary carries the BUILDER's codegen.
 Measured 2026-10-11: a pius build of the same drv differs from a trajanus one
 in 50,132,344 bytes, with two instruction classes in play.  The engine's own
-AVX-512 expert kernels (`expert.cpp`) are compiled with explicit
-`-mavx512f/bw/vl/dq/vnni/vbmi` on every build and selected at run time by
-`cpu_avx512_ok()` = F+BW+VL+VNNI+VBMI; that gate is false on this CPU (the
-deployed log reads "this CPU has no AVX-512: the expert kernels run on AVX-2"),
-so their 296 `vpmultishiftqb` are dead by design.  ggml's own `*_generic`
+AVX-512 expert kernels (`expert.cpp`) are compiled without `-mavx512vbmi` and
+selected at run time by `cpu_avx512_vnni_ok()` = F+DQ+BW+VL+VNNI (the
+`avx512-bw-tier.patch` gate split), so this Cascade Lake part runs them; the
+trellis TU (`tq_avx512.cpp`) keeps `-mavx512vbmi` and the original
+`cpu_avx512_ok()` gate (which still requires VBMI), because weakening the shared
+gate would select a VBMI kernel on a VBMI-less CPU.  The split was measured on
+2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm): the expert tier is
+~5% cheaper in CPU `pool+plan` per decode window, with prefill and the Optane
+reads unchanged.  ggml's own `*_generic`
 fallback dots and `ggml_vec_dot_bf16`, by contrast, carry the build host's
 `-march=native` with no run-time gate: the trajanus build has 262 instructions
 the Xeon Gold 6246 cannot execute (260 `vpermt2b` / AVX512-VBMI in the
@@ -308,6 +341,31 @@ nix eval .#checks.x86_64-linux --apply builtins.attrNames
 The current-system check names include `tiberius-strata-module-eval`, which
 asserts the rendered unit's `[Unit]` start-limit keys, its `After=` ordering,
 the prepare unit's ordering, and the kernel patch/parameter wiring.
+
+### DeepSeek-V4.1-Flash IQ1_M: not runnable on this fleet (checked 2026-10-24)
+
+The smallest official set (`ist-das-1.75bpw`, ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF)
+needs a **239.30 GB download** (120.72 GB IQ1_M backbone + 110.60 GB shared Engram + 7.98 GB
+DSpark drafter + metadata) and roughly the same on disk after packing; setup adds 6 GB of
+headroom, so ~245 GB must be free in one folder. It also needs **>=34 GB RAM** for the tight
+IQ1_M RAM store (46 GB measured on an RTX 3060, 64 GB comfortable), a **>=8 GB (12 GB measured)
+GPU**, and the separate `strata-dsv41` 0.1.49.2 engine. That engine's signed CUDA packages
+contain `sm_86`/`sm_120`/`compute_120` only (RTX 30/40/50; HIP covers gfx1200/gfx1201); the
+source can be built for `sm_75` with `-DSTRATA_BUILD_DSV41=ON`, but that path is outside the
+validated matrix and does not remove the disk or RAM blockers.
+
+| Host | Hardware | Verdict | Binding constraint |
+|---|---|---|---|
+| tiberius | RTX 2080 Ti 22 GB (sm_75), 7.4 GB RAM, 35 GB largest free filesystem | **no** | disk (239 GB needed), then RAM (7.4 vs 34 GB); official package has no sm_75 |
+| trajanus | 30 GB RAM, no NVIDIA GPU | **no** | no supported GPU; RAM below the 34 GB tight mode |
+| pius | 62 GB RAM, no NVIDIA GPU | **no** | no supported GPU |
+| Mac | Apple silicon | **no** | no DeepSeek engine on macOS |
+
+The only locally runnable DeepSeek artifacts are random-tensor kernel/plumbing tests
+(`ds4_gg_bench`, `ds4_iq_test`, `ds4_gguf_test`); they do not load the model and do not cover
+IQ1_M. **Conclusion: blocked on hardware; do not download the 239 GB set.** A runnable
+configuration needs one host with >=245 GB free on an NVMe filesystem, >=34-46 GB RAM and an
+RTX 30/40/50 or RDNA4 card, or a rented/remote host.
 
 Live checks are explicitly opt-in and must not run in public CI. During a
 maintenance window, use a loopback SSH tunnel to port 8080 and confirm:

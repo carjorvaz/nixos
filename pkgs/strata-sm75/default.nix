@@ -23,13 +23,13 @@
 let
   c = cudaPackages;
 
-  # 7695859a: v0.1.43 (2026-10-11), the release that reworks the adaptive tier's
-  # copies for STRATA_ADAPT_OVERLAP (off by default in the resident RAM mode this
-  # box runs; opt-in there with STRATA_ADAPT_OVERLAP_RESIDENT=1) and adds the
-  # non-finite-logits guard (upstream #1892).  v0.1.42 (61b3fb5d) and v0.1.41
-  # (fb58e0d) are ancestors of this tag; upstream rewrote its history before
-  # v0.1.40.2, so older pins are not.
-  revision = "7695859aa13afb248bdb4d36f9b2e95707db079d";
+  # dfa3f402: v0.2.4.2 (2026-10-24), the current release.  The engine inside it
+  # is 0.1.49.2: the 0.1.44/0.1.45 engine series (the RTX 20 kernel series behind
+  # STRATA_SM75_PERF=1, the 0.1.45 prompt chunk and decode kernels) plus 0.2.x's
+  # DeepSeek V4.1 engine work, which does not change the Qwen engine's file set.
+  # v0.2.4.2 is the tag; v0.2.4 (96ca4383) is its ancestor.  llama.cpp's pin is
+  # unchanged (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
+  revision = "dfa3f4025c9f1bc4af8cee201b20a2d223061813";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -61,7 +61,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.43";
+  version = "0.1.49.2";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -70,14 +70,16 @@ stdenv.mkDerivation {
   # instructions.  Measured 2026-10-11: the trajanus and pius builds of the
   # same drv differ in 50,132,344 bytes, and two instruction classes show up:
   #   * the engine's own AVX-512 expert kernels (expert.cpp) are built for
-  #     F/DQ/BW/VL/VNNI and selected at run time by cpu_avx512_ok().  Before
-  #     avx512-bw-tier.patch (below) that gate demanded VBMI too, which made
-  #     them dead code here and printed "this CPU has no AVX-512: the expert
-  #     kernels run on AVX-2" in every deployment log; with the patch the gate
-  #     is TRUE on this CPU and they execute - the built object has 0
-  #     vpmultishiftqb and 492 vpsrlvw.  Measured 2026-10-12 (ab18 campaign, 3
-  #     counterbalanced runs per arm): ~5 % cheaper CPU expert pool+plan per
-  #     decode window, prefill and the Optane reads unchanged;
+  #     F/DQ/BW/VL/VNNI and selected at run time by cpu_avx512_vnni_ok() (the
+  #     VBMI-free gate avx512-bw-tier.patch adds; the trellis TU keeps the
+  #     VBMI-requiring cpu_avx512_ok()).  Before that patch the shared gate
+  #     demanded VBMI too, which made the expert tier dead code here and printed
+  #     "this CPU has no AVX-512: the expert kernels run on AVX-2" in every
+  #     deployment log; with the split gate the expert tier is TRUE on this CPU
+  #     and executes - the built object has 0 vpmultishiftqb and 492 vpsrlvw.
+  #     Measured 2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm):
+  #     ~5 % cheaper CPU expert pool+plan per decode window, prefill and the
+  #     Optane reads unchanged;
   #   * ggml's own `*_generic` fallback dots and `ggml_vec_dot_bf16` are
   #     compiled with the BUILD host's -march=native and carry no run-time
   #     gate: the trajanus build has 262 instructions the Xeon Gold 6246
@@ -96,14 +98,16 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-SjhgL3wXV36a4AuDlrQH9E9PDAOAqDS6dXMuVM5/5yw=";
+    hash = "sha256-rjkHoWjzXoJQoJ4ArTodNhCmPG2edYo1QeRpI5O3fGk=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
-  # a26fcbcd), so tiberius.patch sits directly on the release trees.  At this bump it
-  # was regenerated against 7695859a; the only seams upstream moved under it are the
-  # adaptive-overlap additions (AdaptGate, the layer landing callbacks), and the
-  # patch's pin-release contract absorbed them unchanged - see its header.
+  # a26fcbcd), so tiberius.patch sits directly on the release trees.  At the
+  # v0.2.4.2 bump it was regenerated against dfa3f402: upstream rewrote the serve
+  # adaptive lambda (the 0.1.44/0.1.45 refill/lend pass, AdaptGate's aov callback
+  # and the STRATA_RAM_ADAPT block), so the local pin delta now sits inside
+  # upstream's current loop rather than beside the old two-pass one - see the
+  # patch header for the seams.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
@@ -113,26 +117,30 @@ stdenv.mkDerivation {
   #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources,
   #     with its straddle guard.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
-  # this bump: upstream 0.1.39+ has the same path natively (bf16_path() in gemm.cu,
-  # #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
-  # The 0.1.40.x refill rework (the resolve/plans pass, STRATA_DMA_BATCH,
-  # adapt_copy_h2d, the AMD pin_blobs) is upstream's and is kept by the patch.
+  # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
+  # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
+  # The refill rework (the resolve/plans pass, STRATA_DMA_BATCH, adapt_copy_h2d,
+  # blob_stable, the AMD pin_blobs) is upstream's and is kept by the patch.
   # The host expert tier is NOT here any more: upstream has it natively
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # Both were regenerated against the pin above, so `patch -p1` applies cleanly.
   #
-  # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs: it
+  # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent
   # VPERMW + VPSRLVW + VPMOVWB form (layout-verified exhaustively against a
-  # scalar reference), drops the VBMI term from cpu_avx512_ok() and removes
-  # `-mavx512vbmi` from both AVX-512 translation units -- so this Cascade Lake
-  # part (avx512f/bw/cd/dq/vl/vnni, no VBMI) runs the VNNI expert kernels.
-  # Measured on tiberius 2026-10-12 (ab18 campaign, 3 counterbalanced runs per
-  # arm): ~5 % cheaper CPU expert pool+plan per decode window, GPU wait and
-  # Optane reads unchanged, outputs numerically sound (parity 0 failures vs the
-  # ggml references) but NOT bit-identical to the AVX-2 tier on the long cells.
+  # scalar reference), removes `-mavx512vbmi` from the expert and i-quant
+  # translation units, and SPLITS the run-time gate: the expert/iq/nvfp4 kernels
+  # use the new cpu_avx512_vnni_ok() (F/DQ/BW/VL/VNNI, no VBMI), while the
+  # trellis kernel keeps the original cpu_avx512_ok() (which still requires
+  # VBMI, matching tq_avx512.cpp's flags).  Weakening the shared gate instead
+  # would let this Cascade Lake part execute VBMI trellis code - the SIGILL class
+  # in VALIDATION.md.  Measured on tiberius 2026-10-12 (ab18 campaign, 3
+  # counterbalanced runs per arm): ~5 % cheaper CPU expert pool+plan per decode
+  # window, GPU wait and Optane reads unchanged, outputs numerically sound
+  # (parity 0 failures vs the ggml references) but NOT bit-identical to the
+  # AVX-2 tier on the long cells.
   # See docs/exec-plans/active/tiberius-kernel-tuning.md.
   patches = [
     ./tiberius.patch
@@ -215,11 +223,23 @@ stdenv.mkDerivation {
       echo "the bytes_needed signatures no longer take src" >&2
       exit 1
     }
-    # avx512-bw-tier.patch removes VBMI from the AVX-512 tier.  The absence checks
-    # are the SIGILL guard: if an unpack or the flag survives, the gate would let
-    # this VBMI-less CPU execute VBMI (the failure class in VALIDATION.md:245-262),
-    # so fail the build rather than ship a binary that traps.  Patterns are precise
-    # so they cannot match the explanatory comments the patch itself adds.
+    # the RTX 20 kernel series the perf campaign selects.  It lives in a header
+    # upstream owns; a rebase that drops it must fail here rather than silently
+    # turning STRATA_SM75_PERF into an ignored variable.
+    grep -q 'STRATA_SM75_PERF' include/strata/core/sm75_series.hpp || {
+      echo "the engine no longer has the Turing kernel series (STRATA_SM75_PERF)" >&2
+      exit 1
+    }
+    # avx512-bw-tier.patch splits the AVX-512 gate.  The absence checks are the
+    # SIGILL guard: if an unpack or a VBMI flag survives in a VBMI-free kernel
+    # while cpu_avx512_vnni_ok() admits this Cascade Lake part, the engine would
+    # execute VBMI (the failure class in VALIDATION.md).  The trellis TU must
+    # keep both its VBMI flag and the original gate.  Patterns are precise so
+    # they cannot match the explanatory comments the patch itself adds.
+    grep -q 'cpu_avx512_vnni_ok' include/strata/kernels/cpu/expert_layout.hpp || {
+      echo "avx512-bw-tier.patch did not add the VBMI-free gate" >&2
+      exit 1
+    }
     if grep -q 'multishift_epi64_epi8' src/kernels/cpu/expert.cpp; then
       echo "avx512-bw-tier.patch did not remove the VPMULTISHIFTQB 2-bit unpacks" >&2
       exit 1
@@ -228,10 +248,22 @@ stdenv.mkDerivation {
       echo "avx512-bw-tier.patch did not introduce the VBMI-free unpack" >&2
       exit 1
     }
-    if grep -q ';-mavx512vbmi;' CMakeLists.txt; then
-      echo "avx512-bw-tier.patch left -mavx512vbmi in an AVX-512 translation unit" >&2
+    if grep -A1 'src/kernels/cpu/expert.cpp' CMakeLists.txt | grep -q -- '-mavx512vbmi'; then
+      echo "avx512-bw-tier.patch left -mavx512vbmi on expert.cpp" >&2
       exit 1
     fi
+    if grep -A1 'iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp' CMakeLists.txt | grep -q -- '-mavx512vbmi'; then
+      echo "avx512-bw-tier.patch left -mavx512vbmi on iq/nvfp4_avx512.cpp" >&2
+      exit 1
+    fi
+    grep -A1 'src/kernels/cpu/tq_avx512.cpp PROPERTIES' CMakeLists.txt | grep -q -- '-mavx512vbmi' || {
+      echo "avx512-bw-tier.patch dropped VBMI from the trellis TU (its gate requires it)" >&2
+      exit 1
+    }
+    grep -q 'cpu_avx512_ok' src/kernels/cpu/tq_cpu.cpp || {
+      echo "the trellis kernel no longer uses the VBMI gate" >&2
+      exit 1
+    }
   '';
 
   nativeBuildInputs = [
@@ -281,10 +313,15 @@ stdenv.mkDerivation {
     [ -d "$src" ] || src="$sourceRoot"
     mkdir -p $out/bin $out/share/strata
     install -m755 "$(find . -maxdepth 2 -type f -name strata | head -1)" $out/bin/strata
-    cp -r "$src/serve" "$src/tools" $out/share/strata/
+    # server.py imports strata_control at module load (engine_component, tls,
+    # hipblaslt_tuning, vision_reader, draft_layer, drafting, user_args,
+    # gpu_roles), and strata_control.models resolves data/ relative to the
+    # package root.  A service built without either dies at import time.
+    cp -r "$src/serve" "$src/tools" "$src/strata_control" $out/share/strata/
     mkdir -p $out/share/strata/data
     install -m644 "$src/data/expert-profile.bin" $out/share/strata/data/
     install -m644 "$src/data/expert-profile-coder.bin" $out/share/strata/data/
+    install -m644 "$src/data/gguf_fingerprints.json" $out/share/strata/data/
     runHook postInstall
   '';
 

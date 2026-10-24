@@ -1,8 +1,8 @@
 diff --git a/serve/server.py b/serve/server.py
-index cb5543e..fd36aef 100644
+index 71a55e1..af75c52 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -4836,6 +4836,10 @@ def make_handler(svc: Service):
+@@ -6372,6 +6372,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -13,17 +13,17 @@ index cb5543e..fd36aef 100644
              if path.startswith("/fonts/"):
                  # the web app's font (Outfit, OFL: serve/web/fonts); the page falls back to the system font
                  name = path[len("/fonts/"):]
-@@ -4992,6 +4996,9 @@ def make_handler(svc: Service):
-             if not self._authorized():
+@@ -6722,6 +6726,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
+             path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
 +            if web_disabled() and path == "/settings":
 +                self._json(404, {"error": {"message": "not found"}})
 +                return
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -5764,6 +5771,11 @@ def _name_in(name: str, names) -> bool:
+@@ -7580,6 +7587,11 @@ def _name_in(name: str, names) -> bool:
      return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
  
  

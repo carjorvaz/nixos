@@ -28,8 +28,10 @@
 #                 cache slots.  Prefill is bounded by the non-resident expert
 #                 bytes per chunk, paced by the Optane's ~6.8 GB/s.
 #
-# The engine is built for sm_75 by pkgs/strata-sm75 (with the local engine patch:
-# the sliding DAX window and the registered decode refill).  The dense FP16
+# The engine is built for sm_75 by pkgs/strata-sm75 (local patches: the sliding
+# DAX window, the registered decode refill, and the VBMI-free AVX-512 expert
+# tier).  The 0.1.45 Turing kernel series is enabled (STRATA_SM75_PERF=1; it is
+# bitwise on the measured cells - see docs/VALIDATION.md).  The dense FP16
 # tensor-core GEMMs are upstream's own bf16_path() now (STRATA_BF16_TC=1).
 # The model itself is NOT in the store -- it was prepared once on the host by the
 # setup flow's iq_pack step and lives on the DAX-mounted Optane.  This module wires up:
@@ -176,6 +178,13 @@ let
         (toString cfg.context)
         "--kv"
         cfg.kv
+        # v0.2.3 (#3493) sizes a parked-conversation cache from the free RAM
+        # when this is absent (up to 8 GiB, floor 2.5 GiB), where 0.1.43's
+        # default was 0.  This 7.4 GiB box runs a 1 GiB host tier and a 6 GiB
+        # DAX window; pin 0 so a future sizing rule cannot take RAM from the
+        # tier or start pinning ~118 MB checkpoints.
+        "--conversation-cache-mib"
+        "0"
       ]
       # upstream has the resident host tier natively (0.1.35+): --resident-budget-gib N keeps
       # the N GiB of the GPU cache's complement that the expert profile ranks
@@ -257,10 +266,30 @@ let
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
       model_name = lane.modelName;
+      # v0.1.45 changed the default sampling of a request that names none: a
+      # config without a "sampling" block now gets the model card's values
+      # (thinking 1.0/0.95, instruct 0.7/0.8) instead of greedy.  The lane's
+      # clients and every measured campaign here were greedy, so pin it
+      # explicitly; a client that sends sampling keys still overrides this.
+      sampling = {
+        temperature = 0;
+      };
       log = "${cfg.stateDir}/strata-${cfg.model}.log";
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
+        # The RTX 20 (sm_75) kernel series, opt-in upstream since 0.1.45
+        # because nobody on the team has a Turing card.  It is bitwise on this
+        # box: all four ab24 cells (4252 / 19407 / 26134 / 27720-token prompts)
+        # returned the same answer sha with the series on and off.  Measured
+        # 2026-10-24 on the 0.1.49.2 build, 3 runs with the series against 5
+        # controls, counterbalanced (A-B-B-A), medians: prompt read
+        # +0.5 / +5.6 / +7.3 / +8.0% and decode +2.3% (D4K, 78 generated) /
+        # +3.5% (D29K, 88 generated).  The individual switches were also
+        # screened: STRATA_QSA_ROWS, STRATA_EXPDEC and STRATA_DEQUANT_WIDE
+        # added nothing on top of the series, and STRATA_ATTN_DAILY with
+        # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
+        STRATA_SM75_PERF = "1";
         # upstream's --resident-budget-gib page-locks its copy by default
         # (cudaHostAlloc / cudaHostRegister, reported as "mapped pinned").  The
         # measured tier on this box is the PAGEABLE one (the deployed log reads
