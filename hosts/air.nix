@@ -597,7 +597,6 @@ in
       "unnaturalscrollwheels"
       "utm"
       "whatsapp"
-      "zed@preview"
       "zoom"
     ];
 
