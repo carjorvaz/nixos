@@ -327,6 +327,15 @@ in
   # wiped on every boot (ZFS root rollback).
   environment.persistence."/persist".directories = [ "/var/lib/iwd" ];
   systemd = {
+    # Desktop pressure lives in user slices, so monitor the root slice; a
+    # system.slice-only policy would miss the browser. The module's 80% default
+    # is too late for a laptop, and oomd ignores OOMScoreAdjust.
+    oomd = {
+      enable = lib.mkForce true;
+      enableRootSlice = true;
+    };
+    slices."-".sliceConfig.ManagedOOMMemoryPressureLimit = "60%";
+
     network = {
       enable = true;
       networks."10-${remoteUnlockInterface}" = {
