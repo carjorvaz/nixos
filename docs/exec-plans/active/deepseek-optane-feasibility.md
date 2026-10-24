@@ -175,3 +175,46 @@ cache and the chunk/skip tricks — 6.4 tok/s if the profile stays static and th
 alone only adds ~10%. The remaining unknowns are the adaptive hit rate, the 7.4 GiB
 RAM pressure with the chunk buffers, and the Engram on SATA. It is worth one bounded
 experiment if the DeepSeek quality is the goal; it is not a speed win over Qwen.
+
+## 8. Measured on tiberius, 2026-10-24
+
+The lane is **functional**: four IQ1_M shards + Engram + metadata downloaded and SHA-256
+verified, packed with the official recipe (no DSpark), `--pack-info` sees 40 x 384
+experts / 6 active / every tensor device-supported, and the Paris smoke test passes.
+`strata-dsv41` loads in ~10 s; the pack is 5 files on Optane + `/data`.
+
+Cold benchmark, `--ids`, 64–128 generated, `--prefill-chunk 4096`, store 2 GB
+requested, `DS4_STORE_FLOOR_GB=0.5`:
+
+| cell | prompt tokens | prefill | decode |
+|---|---:|---:|---:|
+| 4K | 3,772 | 37.5 tok/s | 5.37 tok/s |
+| 8K | 7,150 | 47.1 tok/s | 5.60 tok/s |
+| 17K | 13,597 | 52.6 tok/s | 5.73 tok/s |
+
+Diagnostics from the 4K cell: 1,871 experts in VRAM (14.28 GB; 569 MiB free), 48% hit;
+123 CPU-lane experts/token; the CPU lane calibrates 6.24 GB/s from disk / 6.9 GB/s in
+RAM; the prompt streamed 87.7 GB at **1.00 GB/s** (all `pread`, both O_DIRECT and
+buffered), while the compute waited 19.4 s; the store allocated **0 of 229 slots**
+(only 1.4–2.6 GB RAM free after the 4096 chunk buffers). The expert cache learned the
+prompt and made 1,280–1,287 post-prompt swaps, which is why the hit is 48% rather than
+the static profile's 36–41%.
+
+Attempts to lift the prompt path without the DAX window: forcing buffered `pread`
+(`DS4_NO_DIRECT=1`) and copying from the file mapping instead of `pread` both still
+read **~1.00 GB/s**; the 6.24 GB/s figure is the CPU lane's compute-side mapping, not
+a staging copy. The Qwen `STRATA_REGISTER_DAX` sliding window / direct DMA port is
+required for the ~250 tok/s prefill; it is a 1–2 week engine port, not a flag.
+
+**Verdict: 15 tok/s is not reachable on this hardware, and 20 is not close.** The
+decode wall is 123 CPU-lane experts/token at ~6.5 GB/s plus Engram ~16 ms; a 15 tok/s
+lane needs ~75% hit (≥11,500 experts) or ≥15 GB/s, against 1,871 VRAM slots and a
+<1 GB effective RAM tier. The measured lane is **5.4–5.8 tok/s cold** (warm/slot-keep
+may add a little); it is a quality experiment, not the Qwen-speed replacement. The
+`STRATA_DS4_DISK_SKIP_W` path is answer-changing and could add ~10–20%, not 2×.
+
+The Qwen lane is recoverable: 86.3 GB re-download (IQ3_S shard 1 51.05 + PLE 28.80 +
+MTP 6.5), then packs rebuild in ~7 min; the non-redownloadable qwen2080 gain-source
+was kept on `/data`. The current state (end of 2026-10-24): `tiberius-strata` stopped,
+DeepSeek pack on `/optane/dsv41/pack`, server config `/data/dsv41-serve.json` ready but
+not started, `/optane` 9.9 GB free and `/data` 11 GB free.
