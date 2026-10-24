@@ -153,13 +153,20 @@ identified CPU-side lever, and it is orthogonal to the kernel.
   exhaustively against a scalar reference (0 mismatches over 200 k random 8-u16
   vectors plus edge cases) and cheap enough (4 instructions per 32 codes) that a
   null result is attributable to the tier, not to the substitute;
-- `cpu_avx512_ok()` drops the VBMI requirement → F ∧ DQ ∧ BW ∧ VL ∧ VNNI;
-- `CMakeLists.txt` drops `-mavx512vbmi` from **both** AVX-512 translation units
-  (leaving it on would let the compiler emit VBMI elsewhere in them — exactly the
-  SIGILL class `docs/VALIDATION.md:245-262` documents).
+- `cpu_avx512_ok()` keeps its VBMI requirement and remains the gate for the
+  VBMI-built trellis TU (`tq_avx512.cpp`); the new `cpu_avx512_vnni_ok()`
+  (F ∧ DQ ∧ BW ∧ VL ∧ VNNI) is the gate for `expert.cpp`, `iq_avx512.cpp` and
+  `nvfp4_avx512.cpp`.  The split replaced the old blanket drop at the v0.2.4.2
+  bump: the shared gate now also selects trellis code, so weakening it would
+  have been the SIGILL class `docs/VALIDATION.md:245-262` documents;
+- `CMakeLists.txt` drops `-mavx512vbmi` from the expert and iq/nvfp4
+  translation units and keeps it on `tq_avx512.cpp` (same SIGILL reason).
 
-Static proof on the built binary: **0** VBMI-class opcodes against 296
-`vpmultishiftqb` in the deployed control, VNNI dots intact (993 `vpdpbusd`).
+Source-level proof: `expert.cpp` has no `multishift_epi64_epi8` and carries the
+`_mm512_srlv_epi16` unpack; the trellis TU still has the VBMI flag and the
+original gate, and its functions are not reachable on this VBMI-less part.
+(The old binary-level "0 VBMI opcodes" claim no longer applies: the shipped
+binary now contains both tiers, selected at run time.)
 Measurement design: three arms — deployed engine, patched +
 `STRATA_FORCE_ISA=avx2`, patched + default — because the first two execute the
 *same* AVX-2 code, so their spread is the harness's noise floor for this box;
