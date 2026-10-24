@@ -76,10 +76,21 @@ sm_75 `strata-dsv41` build and the IQ1_M kernel tests. Labels: **[M]** measured,
 | h=0.55 + skip W=0.08 (s≈0.15) | 0.55 | 0.15 | 92 | **9.9** |
 | h=0.65 + skip (s≈0.25) | 0.65 | 0.25 | 63 | **14.4** |
 
-Expected operating point: **8–12 tok/s** (6.4 pessimistic, 15 optimistic). For
-comparison, the Qwen lane runs 20–22 tok/s; DeepSeek is ~2× slower, but a 763B model
-at 8–12 tok/s on a 2080 Ti / 7.4 GB box is the surprising part. The biggest unknown
-is the adaptive hit rate, not the arithmetic.
+Expected operating point: **8–12 tok/s** (6.4 pessimistic, 15 optimistic). The static
+profile is only the floor: the engine **learns the prompt's routing** (`l.heat[e] +=
+cnt`, `ds4_model.cu:7096`) and after a chunked prompt runs `post_prompt_swaps`
+(`:5908-5947`), moving the prompt's hottest CPU-lane experts into the spare VRAM
+slots before decode. The lookahead also guesses the next layer's experts. This is the
+built-in lossless cache seed; a narrow conversation can therefore beat the 41.3%
+profile coverage substantially. The >20 tok/s target needs h≈0.81, i.e. the prompt and
+the output must share most of their hot set; the first `--verbose` run's hit/store
+stats decide whether that is real. Tune `DS4_CACHE_MARGIN/BONUS/DECAY/INFLIGHT`
+(lower margin/bonus = more post-prompt swaps), `DS4_CACHE_THREADS` 2–4, LFU store,
+and `STRATA_DS4_SLOT_KEEP` for multi-turn heat.
+
+For comparison, the Qwen lane runs 20–22 tok/s; DeepSeek is ~2× slower at the static
+hit rate, but a 763B model at 8–15 tok/s on a 2080 Ti / 7.4 GB box is the surprising
+part. The biggest unknown is the prompt-seeded hit rate, not the arithmetic.
 
 ## 4. Prefill scenarios
 
@@ -112,23 +123,17 @@ skipped. The Engram can be a symlink in the pack dir; `tensors.txt` records a pa
 and the engine opens `model_dir + "/" + name`, so a symlink works. `engram.bin` (the
 MB-sized hash parameters) must stay in the pack dir.
 
-Minimum destructive action that keeps the production Qwen lane rebuildable:
-
-```sh
-rm -rf /optane/strata-data                         # 107 G; the PLE table goes with it
-rm -rf /data/qwen2080-orchestration-20260906       # 67 G (retired lane; 41 G gain-source)
-rm -rf /data/strata-models/coder-IQ1_M             # 27.6 G (coder shard 1; re-downloadable)
-rm -rf /data/strata-staging                        # 1.5 G (rebuilt in 6 s)
-```
-
-Keep `/data/strata-models/IQ3_S/` (51.05 GiB shard 1). Result: `/optane` ≈123 GiB
-free (backbone 112.43 + pack/headroom ≈ 118 → ~5 GiB spare); `/data` ≈126 GiB free
-(Engram 103 + 5.6 headroom → ~17 GiB slack). Qwen recovery needs the **PLE shard 2
-re-download (28.80 GB, `316b46f3…61e113`)** plus MTP (~6.5 GB); packs rebuild in
-~7 min (46.84 GiB `experts.bin` 4m31s, dense 6s, PLE copy 59s). The coder lane would
-need its 29.61 GB shard 1 again. The `qwen2080` 41 GB BF16 gain-source is the only
-canonical copy; the receipts survive, but that retired lane cannot be rebuilt from
-local data.
+Actual safe layout used (2026-10-24): delete `/optane/strata-data` (107 G; the PLE
+table goes with it), `/data/strata-models` (51 G IQ3_S shard 1; the coder shard was
+already gone) and `/data/strata-staging` (1.2 G). **Keep
+`/data/qwen2080-orchestration-20260906`** — its 41 GB BF16 gain-source is the only
+canonical copy; a pius backup copy is optional. Result: `/optane` ≈123 GiB free
+(backbone 112.43 + pack/headroom ≈ 118 → ~5 GiB spare); `/data` ≈114 GiB free
+(Engram 103 + 5.6 headroom → ~11 GiB slack). Qwen recovery downloads **IQ3_S shard 1
+(51.05 GiB) + PLE shard 2 (28.80 GB) + MTP (~6.5 GB) ≈ 86.3 GB**, then rebuilds the
+packs in ~7 min (46.84 GiB `experts.bin` 4m31s, dense 6s, PLE copy 59s); the coder
+lane adds its 29.61 GB shard 1. All deleted Qwen files are pinned and re-downloadable
+from the ISTA-DASLab/Coder HF repos.
 
 ## 6. Experiment sequence (after a go)
 
