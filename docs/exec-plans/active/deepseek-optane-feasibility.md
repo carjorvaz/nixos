@@ -12,7 +12,10 @@ sm_75 `strata-dsv41` build and the IQ1_M kernel tests. Labels: **[M]** measured,
   ggml/auto/own. The GPU-family blocker is gone for a self-built engine; the official
   `strata-dsv41` package still has no sm_75 package.
 - CPU lane, 11 threads, IQ1_M: **17.6–18.2 GB/s** (`--expert`), plain read 18.6 GB/s.
-  The CPU lane is memory-bound and **not** the wall.
+  The CPU lane is memory-bound and **not** the wall. The earlier 2.0 GB/s reading was
+  the 3.07 GB default working set under memory pressure; the 512 MB run is the lane
+  rate, and the native IQ1_M rows are bit-identical to the Strata rows. No port to
+  `own_rows` is needed.
 - Optane: 6.88 GB/s CPU mmap random blobs; 6.57–6.87 GB/s registered H2D; pageable
   2.3–2.4; PCIe from DRAM 12.2 [M, prior campaign].
 - The shipped profile `data/dsv41/profile-2.00.bin` has 43 layers × 384 uint32; the
@@ -32,10 +35,24 @@ sm_75 `strata-dsv41` build and the IQ1_M kernel tests. Labels: **[M]** measured,
   (16.9 GB), and a 4096 prefill chunk costs ~110 slots more.
 - RAM: the engine's automatic paths are all zero on 7.4 GiB — the `kRamMargin` is a
   hard **8 GiB**, and `--ssd-cache` auto is `avail − 12 GB` (off below 4 GB). The
-  store itself **does work for IQ1_M** (a GGUF layer is `kFmtMXFP4` layout with the
-  real IQ type in `K[r]`); only the floor blocks it. `--ssd-cache 3` +
-  `DS4_STORE_FLOOR_GB=1.5` + `DS4_STORE_RESERVE=32` is a no-code ~3 GB RAM tier
-  (≈400 experts, top ~70/layer). 4 GB gives ~535 experts (top ~73/layer).
+  store itself **does work for the official IQ1_M GGUF pack**: `pack_gguf.py` writes
+  `format gguf` (`tools/dsv41/pack_gguf.py:888`), `Pack::load` sets `gguf = true`
+  (`ds4_model.cu:321`), and `expert_layout_mx` leaves `lay.fmt = kFmtMXFP4` with the
+  real IQ type in `lay.K[r]` (`:1666-1667`); `store_gb()`/`init_store()` therefore
+  reach the store. An `iq_pack`-style native `experts.bin` pack would not (no GGUF,
+  `store_gb()` returns 0); this plan uses `pack_gguf.py`. Only the floor blocks the
+  store. Screen `--ssd-cache 2/3/4` with `DS4_STORE_FLOOR_GB` 0.5/1/1.5 and
+  `DS4_STORE_RESERVE=32`, `DS4_STORE_PREGROW=0`, `--ssd-policy lfu`, against
+  `MemAvailable`: 3 GB is ~400 experts (top ~70/layer), 4 GB ~535 (top ~73/layer).
+  The static gain over VRAM-only is ~10–20% (h 0.413 → 0.45–0.47); the larger
+  8–12 tok/s band needs the adaptive cache/conversation locality, not the store
+  alone. The store is the only cache that works on DAX; the page cache is zero on a
+  `dax=always` mount.
+- Multi-turn/agent work: `STRATA_DS4_SLOT_KEEP=1` + `STRATA_DS4_SLOT_DIR` keeps the
+  conversation state (~17 MB per 6.5K tokens; 4 slots ≈ 68 MB, `SLOT_GB` cap 16)
+  across turns/restarts, removing the re-prefill that an agent loop otherwise pays.
+  This is the DeepSeek analogue of Qwen's prompt cache and is worth much more than
+  its RAM cost for the refresh job.
 - `STRATA_DS4_DISK_SKIP_W` is the DeepSeek analogue of Qwen's tail skip: on decode
   windows only, leave out a routed expert whose route weight is below W and whose
   pages are not in RAM; the weight is lost (no renormalisation). It changes answers.
@@ -128,12 +145,17 @@ local data.
    `--pack /optane/dsv41/pack --mmap-experts on --prefill-chunk 4096
    --ssd-cache 3 --ssd-policy lfu --cpu-threads 11 --max-context 8192
    --dspark auto --verbose`
-   with `DS4_STORE_FLOOR_GB=1.5 DS4_STORE_RESERVE=32`. Capture the `--verbose`
-   `pm.disk/pm.dma/pm.cpu` rates, the accepted chunk, the store hit rate, and free
-   RAM. If the 4096 chunk is accepted and the store has slots, the model is live.
-6. Tune in this order: chunk 4096 vs 8192; store 0/2/3/4 GB; `--vram-experts`;
-   `DS4_CACHE_*`; then `STRATA_DS4_DISK_SKIP_W` only after fixing `in_ram()` for the
-   store, with a KL/top-1 check. Keep the prompt skip on; keep DSpark off.
+   with `DS4_STORE_FLOOR_GB=1.5 DS4_STORE_RESERVE=32 DS4_STORE_PREGROW=0` and
+   `STRATA_DS4_SLOT_KEEP=1 STRATA_DS4_SLOT_DIR=/persist/strata/ds4-slots`. Capture
+   the `--verbose` `pm.disk/pm.dma/pm.cpu` rates, the accepted chunk, the store hit
+   rate, the slot reuse, and `MemAvailable`. If the 4096 chunk is accepted and the
+   store has slots, the model is live.
+6. Tune in this order: chunk 4096 vs 8192; store 2/3/4 GB with floor 0.5/1/1.5
+   (watch `MemAvailable`; the store's `store_watch` gives chunks back below 5 GB
+   free); `--vram-experts`; `DS4_CACHE_*`; then `STRATA_DS4_DISK_SKIP_W` only after
+   fixing `in_ram()` for the store, with a KL/top-1 check. Keep the prompt skip on
+   (`=1`; `=2` only if the answers gate passes); keep DSpark off. `DS4_PF_ALL` is a
+   no-op on Linux; skip it.
 7. Run the hindsight refresh job on the DeepSeek lane and compare its wall time and
    page quality with the Qwen lane's 283 s. DeepSeek output is ~2× slower per token,
    so it needs fewer calls/tokens or a quality win to be worth keeping.
@@ -143,8 +165,8 @@ local data.
 ## 7. Decision
 
 The disk fits, the engine builds and passes IQ1_M kernels on sm_75, and the arithmetic
-supports **8–12 tok/s decode and 350–650 tok/s prefill** with the store/chunk tricks —
-not the 4 tok/s the planner's spill verdict suggests. The remaining unknowns are the
-adaptive hit rate, the 7.4 GiB RAM pressure with the chunk buffers, and the Engram on
-SATA. It is worth one bounded experiment if the DeepSeek quality is the goal; it is
-not a speed win over Qwen.
+supports **8–12 tok/s decode and 350–650 tok/s prefill** with the store, the adaptive
+cache and the chunk/skip tricks — 6.4 tok/s if the profile stays static and the store
+alone only adds ~10%. The remaining unknowns are the adaptive hit rate, the 7.4 GiB
+RAM pressure with the chunk buffers, and the Engram on SATA. It is worth one bounded
+experiment if the DeepSeek quality is the goal; it is not a speed win over Qwen.
