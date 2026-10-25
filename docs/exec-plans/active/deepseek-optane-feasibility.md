@@ -220,32 +220,39 @@ GSQ-RCO search assigns a type per tensor). The Paris smoke passing means the dom
 IQ1_S sm_75 GPU kernel is correct, not just IQ1_M. No DSpark/MTP is in the pack.
 
 The `--ids` timing run reports “windows of 32768”; it is not the chunked serve path.
-The immediate next prefill experiment is the queue’s own memory-copy path:
-`IoQueue::Job::mem` is “a copy of len bytes from memory to dst instead of a read”,
-but `flow_pump` sets only `j.map = pk.at(...)` (`ds4_model.cu:3392`). Setting
-`j.mem = j.map` for those jobs (and the lookahead jobs) makes the queue memcpy from
-the DAX mapping instead of `pread`; that is the ~6× prefill fix without a DAX-window
-port. The earlier attempts patched the `map` branch in `IoQueue` and still read
-1.00 GB/s; the `mem` path is the one the store already uses. Then run the resident
-server (`/data/dsv41-serve.json`, port 8081) with `--max-context 32768` and two
-identical requests, and capture `store:`, `expert cache: … swaps after the prompt`
-and `pm.disk`; that is the real warm/prompt-seeded test. The DAX window/direct-DMA
-port remains the fallback if the `mem` copy still does not reach the CPU lane's
-6.24 GB/s.
+The queue’s `Job::mem` path was tested: setting
+`j.mem = static_cast<const uint8_t*>(j.map)` at both `ds4_model.cu:3392` and the
+lookahead at `:7602` builds, but the first 4K prompt **crashes with a CUDA illegal
+memory access**. The earlier `Job::map` branch also crashed, and forced buffered
+`pread` still reads 1.00 GB/s. The staging-copy micro-patches are a dead end; the flow
+needs the real **DAX-window / direct-DMA integration** (the Qwen
+`STRATA_REGISTER_DAX` analogue) to read at 6.24–6.8 GB/s. That is the only remaining
+prefill lever, and it is a 1–2 week engine port.
 
-Decode is **5.4–5.8 tok/s cold**; the 2 GB store adds <2% slots, and 15/20 tok/s
+The resident server (`/data/dsv41-serve.json`, port 8081) was tested with the base
+engine and two identical 4K requests: first **102.5 s**, second **10.8 s** with
+3,771 / 3,772 prompt tokens cached and the same answer sha; decode **5.9 tok/s**. The
+prompt/slot cache is the real agent-loop win (a repeated turn is ~10× faster in
+latency), but it does not change the decode rate. Extrapolating the 17K refresh:
+258.6 s prefill + ~170 s for 1K output ≈ **430 s cold** against Qwen's 283 s; with
+the prompt cache the output is still ~170 s, so the lane is slower per call.
+
+Decode is **5.4–5.9 tok/s cold**; the 2 GB store adds <2% slots, and 15/20 tok/s
 would need ≥75–81% hit or ≥15 GB/s. No lossless flag changes that; the lane is a
 quality experiment, not the Qwen-speed replacement.
 
 ## 9. Next session
 
-1. Patch `flow_pump`/lookahead to set `j.mem = j.map`; rebuild; run the resident
-   serve path (not `--ids`) at 4K/8K/17K with `--prefill-chunk 4096`.
-2. If prefill is not ~250+, port the Qwen `STRATA_REGISTER_DAX` window/direct DMA.
-3. Run the hindsight refresh job on the server; compare wall time and page quality
+1. Stop the staging-copy micro-patches; port the Qwen `STRATA_REGISTER_DAX`
+   window/direct DMA into `flow_pump`/`ds4_pool`, then test the resident serve path
+   at 4K/8K/17K with `--prefill-chunk 4096`. The simple `pread`/`map`/`mem` paths
+   all measure 1.00 GB/s or crash.
+2. Run the hindsight refresh job on the server; compare wall time and page quality
    with Qwen's 283 s. The output-side decode is the wall; only a quality win makes
    this lane worth keeping.
-4. To restore Qwen: remove the DeepSeek pack/backbone/Engram to free space,
+3. To restore Qwen: remove the DeepSeek pack/backbone/Engram to free space,
    re-download IQ3_S shard 1 + PLE + MTP (86.3 GB), rebuild the packs, and start
    `tiberius-strata` (currently stopped but still enabled; disable it before a reboot
-   if the lane stays parked).
+   if the lane stays parked). The final state after the warm test: `dsv41-serve`
+   stopped, GPU free, `/optane` 9.9 GB and `/data` 11 GB free, the pack and the
+   base/skip/buf/map2/mem engine builds rooted under `/persist/dsv41`.
