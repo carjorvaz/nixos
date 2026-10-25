@@ -220,14 +220,20 @@ GSQ-RCO search assigns a type per tensor). The Paris smoke passing means the dom
 IQ1_S sm_75 GPU kernel is correct, not just IQ1_M. No DSpark/MTP is in the pack.
 
 The `--ids` timing run reports “windows of 32768”; it is not the chunked serve path.
-The queue’s `Job::mem` path was tested: setting
-`j.mem = static_cast<const uint8_t*>(j.map)` at both `ds4_model.cu:3392` and the
-lookahead at `:7602` builds, but the first 4K prompt **crashes with a CUDA illegal
-memory access**. The earlier `Job::map` branch also crashed, and forced buffered
-`pread` still reads 1.00 GB/s. The staging-copy micro-patches are a dead end; the flow
-needs the real **DAX-window / direct-DMA integration** (the Qwen
-`STRATA_REGISTER_DAX` analogue) to read at 6.24–6.8 GB/s. That is the only remaining
-prefill lever, and it is a 1–2 week engine port.
+The queue’s `Job::mem` path was tested. The compile error (`j.map` is `const void*`,
+`j.mem` is `const uint8_t*`) is fixed by the cast, but the tested form
+`j.mem = static_cast<const uint8_t*>(j.map)` also **overwrites the existing store/RAM
+source** set at `ds4_model.cu:3391` (`j.mem = it.ram != nullptr ? it.ram + … :
+nullptr`). The correct form preserves it:
+`j.mem = j.mem != nullptr ? j.mem : static_cast<const uint8_t*>(j.map)` at both
+`:3392` and the lookahead at `:7602` (the lookahead starts with `j.mem` null, so it
+takes the map). With the store-0 4K test line 3391 is `nullptr`, so preserve/fallback
+is a no-op and the first prompt still **crashes with a CUDA illegal memory access**;
+the crash is independent of the overwrite. The earlier `Job::map` branch also
+crashed, and forced buffered `pread` still reads 1.00 GB/s. The staging-copy
+micro-patches are a dead end; the flow needs the real **DAX-window / direct-DMA
+integration** (the Qwen `STRATA_REGISTER_DAX` analogue) to read at 6.24–6.8 GB/s.
+That is the only remaining prefill lever, and it is a 1–2 week engine port.
 
 The resident server (`/data/dsv41-serve.json`, port 8081) was tested with the base
 engine and two identical 4K requests: first **102.5 s**, second **10.8 s** with
