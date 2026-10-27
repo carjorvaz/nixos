@@ -23,13 +23,16 @@
 let
   c = cudaPackages;
 
-  # dfa3f402: v0.2.4.2 (2026-10-24), the current release.  The engine inside it
-  # is 0.1.49.2: the 0.1.44/0.1.45 engine series (the RTX 20 kernel series behind
-  # STRATA_SM75_PERF=1, the 0.1.45 prompt chunk and decode kernels) plus 0.2.x's
-  # DeepSeek V4.1 engine work, which does not change the Qwen engine's file set.
-  # v0.2.4.2 is the tag; v0.2.4 (96ca4383) is its ancestor.  llama.cpp's pin is
+  # 5e8a4cca: v0.2.7 (2026-10-27), the current release.  The engine inside it is
+  # 0.1.52.  Since the last pin (dfa3f402 = v0.2.4.2 / engine 0.1.49.2) the Qwen
+  # engine gained the 0.2.5 residency-biased router (STRATA_ROUTE_PRIOR, default on
+  # for a discrete CUDA card of 13 GiB or less), the deterministic prompt-path
+  # choice (>= 96 tokens always take the chunked pass) with a background warmup,
+  # the small-card chunk rule, the 0.2.7 Plan defaults for sm_80/sm_89 (not this
+  # card) and a conversation-cache fix (#1503: a conversation no longer reuses
+  # another's retained K/V).  v0.2.6 changed no Qwen file.  llama.cpp's pin is
   # unchanged (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
-  revision = "dfa3f4025c9f1bc4af8cee201b20a2d223061813";
+  revision = "5e8a4cca7d690ac60ca37eb09e7d0e010099ad6d";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -61,7 +64,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.49.2";
+  version = "0.1.52";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -98,16 +101,20 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-rjkHoWjzXoJQoJ4ArTodNhCmPG2edYo1QeRpI5O3fGk=";
+    hash = "sha256-6Q0IM0EuRdvW0z0TW9xp4PeiWpjt24rVFG5nyVTg32s=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
   # a26fcbcd), so tiberius.patch sits directly on the release trees.  At the
-  # v0.2.4.2 bump it was regenerated against dfa3f402: upstream rewrote the serve
-  # adaptive lambda (the 0.1.44/0.1.45 refill/lend pass, AdaptGate's aov callback
-  # and the STRATA_RAM_ADAPT block), so the local pin delta now sits inside
-  # upstream's current loop rather than beside the old two-pass one - see the
-  # patch header for the seams.
+  # v0.2.7 bump (5e8a4cca) it was rebased by three-way merge: upstream rewrote the
+  # adaptive refill again (the "resolve every swap first" plans pass, nib::guard_raw
+  # and the batch H2D path), so our pin classification (BlobClass), the merged
+  # page-rounded span registration and the straddle guard moved INSIDE that plans
+  # pass; the two small conflicts (the adapt-join timing counter and the verify-run
+  # decode_pool_fn) kept both sides.  no-web-ui.patch needed one merge: upstream put
+  # /tool-media/ at the top of the GET router and our 404 block now returns above it.
+  # avx512-bw-tier.patch merged cleanly except the sycl flag list, which now mirrors
+  # the root (no VBMI, upstream's vpopcntdq/bmi2 kept).
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
@@ -125,7 +132,8 @@ stdenv.mkDerivation {
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
-  # Both were regenerated against the pin above, so `patch -p1` applies cleanly.
+  # All three were generated against the pin above and re-applied in order onto a
+  # pristine 5e8a4cca tree (bit-identical result) before this build.
   #
   # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent

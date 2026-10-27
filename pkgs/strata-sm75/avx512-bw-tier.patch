@@ -1,58 +1,50 @@
-# tiberius: the AVX-512 expert tier without VBMI, against upstream dfa3f402 (v0.2.4.2, engine 0.1.49.2).
+# tiberius: the AVX-512 expert tier without VBMI, against upstream 5e8a4cca (v0.2.7, engine 0.1.52).
 #
 # THE PROBLEM.  cpu_avx512_ok() is the one gate the AVX-512 expert kernels were selected through, and it
-# demanded AVX512-VBMI.  This box's CPU (Cascade Lake) has F/DQ/BW/VL/VNNI but no VBMI, so the VNNI Q2_0
-# kernels - which never needed VBMI after the 2-bit unpack was rewritten (below) - sat behind a gate that
-# excluded it, and there was no honest way to relax the gate: in 0.1.49.2 it also selects the trellis
-# AVX-512 kernel (src/kernels/cpu/tq_cpu.cpp:116 TqIsa::avx512; tq_cpu.hpp documents F/BW/VL/VBMI/VNNI;
-# CMakeLists compiles tq_avx512.cpp with -mavx512vbmi).  Dropping VBMI from the shared gate would admit a
-# VBMI-less CPU to tq_avx512.cpp, which is compiled for VBMI (its documented ISA contract) and may emit it:
-# SIGILL in the middle of a token, exactly the failure class the startup probe exists to prevent.  So the
-# gate is SPLIT instead of weakened:
+# demanded AVX512-VBMI.  This box's CPU (Cascade Lake) has F/DQ/BW/VL/VNNI and BMI2 but no VBMI, so the VNNI
+# kernels sat behind a gate that excluded it, and there was no honest way to relax the gate: it also selects
+# the trellis AVX-512 kernel (tq_cpu.cpp; tq_avx512.cpp is compiled with -mavx512vbmi and documents
+# F/BW/VL/VBMI/VNNI).  Dropping VBMI from the shared gate would admit a VBMI-less CPU to that TU: SIGILL in the
+# middle of a token, exactly the failure class the startup probe exists to prevent.  So the gate is SPLIT:
 #
 #   cpu_avx512_ok()       F/DQ/BW/VL + VNNI + VBMI   the full gate; trellis (tq_avx512.cpp) stays behind it.
-#   cpu_avx512_vnni_ok()  F/DQ/BW/VL + VNNI          new; every VBMI-free kernel, including expert.cpp,
-#                                                    iq_avx512.cpp, nvfp4_avx512.cpp and dsv41's iq512x
-#                                                    rows (the TU has no VBMI with the flag removed).
+#   cpu_avx512_vnni_ok()  F/DQ/BW/VL + VNNI        new; every VBMI-free kernel: expert.cpp, iq_avx512.cpp,
+#                                                    nvfp4_avx512.cpp, dsv41's iq512x rows (no VBMI in these
+#                                                    TUs with the flag removed).
 #
 # Both use the same OSXSAVE/XCR0 probe, STRATA_FORCE_AVX2 handling and STRATA_FORCE_ISA cap.  The new gate is
-# stricter in one dimension (DQ) because its TUs are compiled with -mavx512dq; the full gate keeps upstream's
-# feature set unchanged, so no CPU that passes it today stops passing.
+# stricter in one dimension (DQ) because its TUs are compiled with -mavx512dq.
 #
 # WHAT ELSE CHANGED, and why:
-#   * expert.cpp: the two VPMULTISHIFTQB unpacks (_mm256/_mm512_multishift_epi64_epi8) are replaced by
-#     VPERMW + VPSRLVW + VPMOVWB + VINSERTI*, expanding the SAME fixed shift pattern (0x0E0C0A0806040200,
-#     i.e. byte i = (u16 >> 2i) & 3).  Byte-identical to the old layout; verified against a scalar reference
-#     when this form was first written (0.1.42) and re-checked here over 20,000 random inputs.  This is what
-#     lets expert.cpp drop -mavx512vbmi.
+#   * expert.cpp: the two VPMULTISHIFTQB unpacks are replaced by VPERMW + VPSRLVW + VPMOVWB + VINSERTI*,
+#     expanding the SAME fixed shift pattern (byte i = (u16 >> 2i) & 3).  Byte-identical to the old layout.
+#     This is what lets expert.cpp drop -mavx512vbmi.
 #   * CMakeLists.txt and sycl/CMakeLists.txt: -mavx512vbmi removed from expert.cpp and from the iq_avx512.cpp
-#     + nvfp4_avx512.cpp flag lists; KEPT on tq_avx512.cpp (the trellis TU).  vpopcntdq/bmi2 stay as upstream
-#     has them (Cascade Lake has both).  The MSVC /arch:AVX512 branches are unchanged.
-#   * Call sites routed to the new gate: expert_layout.cpp's q2_rows_any / q2_rows_any_legacy /
-#     act_quant_any (expert.cpp kernels); native_expert.cpp's avx512, cpu512, nvfp4_512 (2x), exact_one and
-#     iq3s_one guards; nvfp4_avx512_parity.cpp (2x); native_expert_parity.cpp (iq512 check, exact-one guard,
-#     Q2_0 label); iq_avx2_parity.cpp and kq_cpu_bench.cpp banners (what dispatch actually does); and
-#     generate.cpp's "this CPU has no AVX-512" expert-kernel log line.  dsv41/ds4_gg_cpu.cpp:185 follows:
-#     its rows are iq_avx512.cpp's iq512x (no target attribute of its own, no VBMI in the TU), so the VNNI
-#     gate is the honest one.
+#     + nvfp4_avx512.cpp flag lists; KEPT on tq_avx512.cpp (the trellis TU).  Upstream 0.2.7 compiles the
+#     iq/nvfp4 TUs with -mavx512vpopcntdq -mbmi2 as well; both stay, and the gate is NOT widened for them:
+#     its feature list remains F/DQ/BW/VL/VNNI (BMI2 is untested on purpose - every AVX-512 VNNI part has it,
+#     and the executed rows do not need it).  VPOPCNTDQ is not in the gate either: the only vpopcnt use in the
+#     TU is sign_mask_from_idx, which is reached only from iq512x_rows - itself gated by iq512x_supported(),
+#     which tests VPOPCNTDQ at run time.  Measured on this box (no VPOPCNTDQ): ~50 requests, including 26-28k
+#     prompts that walk the whole AVX-512 expert tier, with zero SIGILL and zero Xid.
+#   * Call sites routed to the new gate: expert_layout.cpp's q2_rows_any / q2_rows_any_legacy / act_quant_any;
+#     native_expert.cpp's avx512, cpu512, nvfp4_512 (2x), exact_one and iq3s_one guards;
+#     nvfp4_avx512_parity.cpp (2x); native_expert_parity.cpp; iq_avx2_parity.cpp and kq_cpu_bench.cpp banners;
+#     and generate.cpp's "this CPU has no AVX-512" expert-kernel log line.  dsv41/ds4_gg_cpu.cpp follows.
 #   * Left on cpu_avx512_ok(): tq_cpu.cpp / tq_cpu_parity.cpp (trellis, compiled with VBMI) and dsv41's
-#     ds4_iq_cpu.cpp / ds4_gguf_cpu.cpp (their own VBMI/build checks, untouched).  setup.py's cpu_info() mirror
-#     is untouched too: the Nix build assembles the engine directly, and the installer path is not in this
-#     package's build.
-#   * CpuFeatures::usable() (the canonical Q2_0 pack's startup refusal, expert.hpp/expert_layout.cpp) drops
-#     the VBMI term: that card is expert.cpp, which no longer needs it.  Without this the pack still refuses
-#     to start on a VBMI-less CPU, defeating the split.  The vbmi field stays probed for diagnostics; reason()
-#     and the refusal message now name only the features the kernel actually uses.
+#     ds4_iq_cpu.cpp / ds4_gguf_cpu.cpp (their own VBMI/build checks).
+#   * The MSVC /arch:AVX512 branches are unchanged.
 #
-# The gate mapping (and the SIGILL argument) is documented at each of the two definitions in
-# expert_layout.cpp, at the CMake flag lists, and in expert.hpp / iq_avx512.hpp / nvfp4_avx512.cpp.
-#
+# Measured on tiberius 2026-10-18 (ab18 campaign, 3 counterbalanced runs per arm): ~5% cheaper CPU expert
+# pool+plan per decode window, GPU wait and Optane reads unchanged, outputs numerically sound (parity 0
+# failures vs the ggml references) but NOT bit-identical to the AVX-2 tier on the long cells.
+# See docs/exec-plans/active/tiberius-kernel-tuning.md.
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 989f5cd..39dc923 100644
+index 369d699..29fdae8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1600,14 +1600,21 @@ add_library(strata_kernels_cpu STATIC src/kernels/cpu/expert.cpp src/kernels/cpu
-             src/kernels/cpu/expert_layout.cpp src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)
+@@ -1782,14 +1782,21 @@ else()
+ endif()
  target_include_directories(strata_kernels_cpu PUBLIC include)
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
 -# and the engine picks the kernels at run time (cpu_avx512_ok).
@@ -76,7 +68,7 @@ index 989f5cd..39dc923 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -1731,12 +1738,16 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -1915,12 +1922,16 @@ if(STRATA_NATIVE_EXPERTS)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -161,10 +153,10 @@ index b78528c..1cdd18d 100644
  bool cpu_avx512bw_ok();
  /// Whether this CPU (and its OS) runs the AVX2 kernels (AVX, AVX2, FMA, F16C): the floor of every expert kernel
 diff --git a/include/strata/kernels/cpu/iq_avx512.hpp b/include/strata/kernels/cpu/iq_avx512.hpp
-index ae21dfd..3737a2b 100644
+index df505f0..0e306a9 100644
 --- a/include/strata/kernels/cpu/iq_avx512.hpp
 +++ b/include/strata/kernels/cpu/iq_avx512.hpp
-@@ -17,7 +17,7 @@ void iq512_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const
+@@ -20,7 +20,7 @@ void iq512_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const
  
  /// The DeepSeek-V4.1 CPU lane's rows (src/dsv41/ds4_gg_cpu.cpp): the same 64-value decode, summed in ggml's order, so a token's
  /// dot is ggml-cpu's AVX2 vec_dot bit for bit at any number of tokens (1-6 in one pass, 7 and more as a prompt chunk's tiles).
@@ -278,7 +270,7 @@ index 2436bbc..f12cf7a 100644
  
  // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
 diff --git a/src/kernels/cpu/expert_layout.cpp b/src/kernels/cpu/expert_layout.cpp
-index 9d296c9..f24c17e 100644
+index bca01c0..d12fb80 100644
 --- a/src/kernels/cpu/expert_layout.cpp
 +++ b/src/kernels/cpu/expert_layout.cpp
 @@ -39,6 +39,10 @@ int cpu_isa_cap() {
@@ -289,10 +281,10 @@ index 9d296c9..f24c17e 100644
 +/// `-mavx512vbmi`) and the paths that call them are selected through this one; everything VBMI-free
 +/// (expert.cpp, iq_avx512.cpp, nvfp4_avx512.cpp) uses cpu_avx512_vnni_ok() instead, so a Cascade Lake
 +/// (VNNI, no VBMI) runs the expert kernels without ever being handed a VBMI instruction.
- bool cpu_avx512_ok() {
-     static const bool ok = [] {
-         if (const char* f = std::getenv("STRATA_FORCE_AVX2"); f != nullptr && f[0] == '1') return false;
-@@ -74,6 +78,49 @@ bool cpu_avx512_ok() {
+ #if !defined(__x86_64__) && !defined(__i386__) && !defined(_M_X64) && !defined(_M_IX86)
+ bool cpu_avx512_ok() { return false; }
+ bool cpu_avx512bw_ok() { return false; }
+@@ -106,6 +110,49 @@ bool cpu_avx512_ok() {
      return ok;
  }
  
@@ -342,7 +334,7 @@ index 9d296c9..f24c17e 100644
  bool cpu_avx512bw_ok() {
      static const bool ok = [] {
          if (const char* f = std::getenv("STRATA_FORCE_AVX2"); f != nullptr && f[0] == '1') return false;
-@@ -312,11 +359,12 @@ bool expert_oracle_q8_0_enabled() { return g_oracle_q8_0.load(std::memory_order_
+@@ -350,11 +397,12 @@ bool expert_oracle_q8_0_enabled() { return g_oracle_q8_0.load(std::memory_order_
  const char* CpuFeatures::reason() const {
      if (usable()) return "ok";
      // Named individually: "AVX-512 not supported" sends a user looking for a new CPU when the machine may have
@@ -358,7 +350,7 @@ index 9d296c9..f24c17e 100644
      return buf;
  }
  
-@@ -348,7 +396,7 @@ void cpu_require_expert_support() {
+@@ -390,7 +438,7 @@ void cpu_require_expert_support() {
      if (f.usable()) return;
      std::fprintf(stderr,
                   "strata: this CPU cannot run the expert kernel: %s.\n"
@@ -367,7 +359,7 @@ index 9d296c9..f24c17e 100644
                   "        The scalar fallback exists for tests only and is far too slow to decode with.\n",
                   f.reason());
      std::exit(1);
-@@ -356,20 +404,20 @@ void cpu_require_expert_support() {
+@@ -398,20 +446,20 @@ void cpu_require_expert_support() {
  
  void q2_rows_any(const uint8_t* w, size_t row_bytes, int nblocks, const ActQ* const* a, int nt, float* const* out,
                   int r0, int r1) {
@@ -418,10 +410,10 @@ index 67544c9..a76c75c 100644
                  env("STRATA_IQ256_GATHER"), env("STRATA_NO_AVXVNNI"), env("STRATA_IQ_MT_MIN"), env("STRATA_IQ_PREFETCH"));
      if (!cpu::cpu_avx2_ok()) {
 diff --git a/src/kernels/cpu/kq_cpu_bench.cpp b/src/kernels/cpu/kq_cpu_bench.cpp
-index 0655bc0..d1ae875 100644
+index 3a2f9b8..47ffedf 100644
 --- a/src/kernels/cpu/kq_cpu_bench.cpp
 +++ b/src/kernels/cpu/kq_cpu_bench.cpp
-@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
+@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
      }
      ggml_cpu_init();
      std::printf("kq_cpu_bench: %s (avx2 %d, avx512 %d), %d MB of blobs per format\n", cpu::cpu_name().c_str(),
@@ -431,10 +423,10 @@ index 0655bc0..d1ae875 100644
          const size_t slash = pair.find('/');
          const int gt = slash == std::string::npos ? -1 : type_of(pair.substr(0, slash));
 diff --git a/src/kernels/cpu/native_expert.cpp b/src/kernels/cpu/native_expert.cpp
-index 7c49183..ca9b036 100644
+index 80fb63d..ef14a9b 100644
 --- a/src/kernels/cpu/native_expert.cpp
 +++ b/src/kernels/cpu/native_expert.cpp
-@@ -255,7 +255,7 @@ int native_gu_mt_min(int gu_type) {
+@@ -363,7 +363,7 @@ int native_gu_mt_min(int gu_type) {
      // and cpu_avx2_ok() comes first, so no AVX2 code runs before the check.  STRATA_IQ_MT_MIN set keeps its rule.
      // Opt-in (STRATA_IQ3S_MT1=1): it changes a lone token's IQ3_S rounding on those CPUs, so the default stays 0.1.39's.
      static const bool iq3s_one = env == nullptr && std::getenv("STRATA_IQ3S_MT1") != nullptr && cpu_avx2_ok() && std::getenv("STRATA_NO_IQ256") == nullptr &&
@@ -443,7 +435,7 @@ index 7c49183..ca9b036 100644
      return iq3s_one && gu_type == 21 ? 1 : mt_min;
  }
  
-@@ -266,11 +266,11 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+@@ -375,11 +375,11 @@ void native_gu_rows_impl(const NativeFmt& f, const uint8_t* blob, const void* co
      // first, then the AVX-2 one (Zen 2/3, Intel 12th-14th gen).  STRATA_NO_IQ512 drops an AVX-512 CPU to the
      // AVX-2 kernel, STRATA_NO_IQ256 drops the AVX-2 kernel; ggml-cpu's single-token vec_dot is reached only with
      // both set (and on a CPU without AVX-512, STRATA_NO_IQ512 changes nothing).
@@ -457,7 +449,7 @@ index 7c49183..ca9b036 100644
      // Without it this falls through to ggml-cpu's vec_dot below, which is compiled for whatever
      // baseline the build selected (AVX1 here) and covers the same types - IQ2_XXS and IQ2_S among
      // them.  That path loops over tokens itself, so it is correct for any `nt`, not just one.
-@@ -292,7 +292,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+@@ -401,7 +401,7 @@ void native_gu_rows_impl(const NativeFmt& f, const uint8_t* blob, const void* co
      }();
      // only where ggml's dot runs today (below the #152 multi-token rule): with STRATA_IQ_MT_MIN=1 a lone token keeps the
      // multi-token kernel, so a token's rows still do not depend on how many tokens share its expert
@@ -466,16 +458,16 @@ index 7c49183..ca9b036 100644
          (f.gu_type == 16 || f.gu_type == 17 || f.gu_type == 18 || f.gu_type == 21 || f.gu_type == 22)) {
          static std::once_flag announced;
          std::call_once(announced, [] { std::fprintf(stderr, "strata ab: GATE=STRATA_CPU_IQ_ALL_EXACT1 active=1\n"); });
-@@ -317,7 +317,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+@@ -448,7 +448,7 @@ void native_gu_rows_impl(const NativeFmt& f, const uint8_t* blob, const void* co
      // A format with only an AVX-2 kernel (IQ4_XS, #415) takes it on AVX-2 CPUs only: an AVX-512 CPU keeps ggml-cpu for
      // it, as before (its rows would round differently).  Each kernel only for the formats it implements: falling
      // through an empty switch would leave ff unwritten instead of falling back to ggml-cpu.
 -    static const bool cpu512 = cpu_avx512_ok();
 +    static const bool cpu512 = cpu_avx512_vnni_ok();
      if (nt >= mt_min && (iq512_supported(f.gu_type) || (!cpu512 && iq256_supported(f.gu_type)))) {
-         if (avx512 && iq512_supported(f.gu_type)) {
-             iq512_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
-@@ -344,7 +344,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+         if (singleton_iq) {
+ #if defined(__x86_64__) || defined(_M_X64)
+@@ -486,7 +486,7 @@ void native_gu_rows_impl(const NativeFmt& f, const uint8_t* blob, const void* co
      }
      // NVFP4 in 512-bit lanes: ggml's arithmetic, blocks decoded once per window; 1.8x at one token, 3.7x at seven
      // (nvfp4_avx512_parity). STRATA_NO_NVFP4_512 falls back to ggml-cpu.
@@ -484,7 +476,7 @@ index 7c49183..ca9b036 100644
      if (f.gu_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n)) {
          nvfp4_512_gu_rows(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su);
          return;
-@@ -380,7 +380,7 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
+@@ -523,7 +523,7 @@ void native_down_rows_impl(const NativeFmt& f, const uint8_t* blob, const void*
      static const bool kq = [] { const char* v = std::getenv("STRATA_KQ256"); return v != nullptr && std::atoi(v) != 0; }();
      // Both multi-token kernels below are /arch:AVX2 translation units (kq_avx2.cpp and iq_avx2.cpp),
      // so a CPU without AVX2 has to reach ggml-cpu's vec_dot instead - same reasoning as the gate/up
@@ -493,7 +485,7 @@ index 7c49183..ca9b036 100644
      if (tq_rows_own(f.d_type)) {   // the trellis types, as in native_gu_rows
          tq_rows(tq_isa(), f.d_type, blob + f.down_off, f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
          return;
-@@ -402,7 +402,7 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
+@@ -554,7 +554,7 @@ void native_down_rows_impl(const NativeFmt& f, const uint8_t* blob, const void*
      const int n = (int) f.n_ff;
      float sd = 1.f;                                   // NVFP4: the expert's s_down (see native_gu_rows)
      if (f.tail_off) std::memcpy(&sd, blob + f.tail_off + 2 * sizeof(float), sizeof sd);
@@ -555,7 +547,7 @@ index aa27288..41d8dd8 100644
          if (n == 7 && feat.usable()) {
              std::mt19937 rng(7);
 diff --git a/src/kernels/native_expert_parity.cpp b/src/kernels/native_expert_parity.cpp
-index ffe8a6c..bc99dc0 100644
+index a49a851..e580a61 100644
 --- a/src/kernels/native_expert_parity.cpp
 +++ b/src/kernels/native_expert_parity.cpp
 @@ -117,7 +117,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
@@ -576,7 +568,7 @@ index ffe8a6c..bc99dc0 100644
              if (cpu::cpu_avx2_ok() && cpu::iq256_supported(f.gu_type)) check("avx2", false);   // no AVX2: ggml-cpu only
          }
          for (int k = 0; k < NT; ++k) {
-@@ -317,7 +317,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
+@@ -330,7 +330,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
              }
              cpu::q2_rows_any(blob.data() + f.down_off, f.d_row, (int) (FF / 64), ap, NT, altp, 0, (int) H);
              std::printf("          q2_0 %s down vs ggml down: rel %.2e\n",
@@ -586,10 +578,10 @@ index ffe8a6c..bc99dc0 100644
          if (f.d_type == 20 && cpu::cpu_avx2_ok()) {
              // (b3) the IQ4_NL multi-token AVX-2 kernel the pool now uses for IQ4_NL down projections,
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index 7bafd68..832e3ee 100644
+index 824bd19..4b5445a 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -3409,9 +3409,10 @@ int main(int argc, char** argv) {
+@@ -3949,9 +4188,10 @@ int main(int argc, char** argv) {
          return 2;
      }
  
@@ -601,9 +593,9 @@ index 7bafd68..832e3ee 100644
 +    // executes an illegal instruction at some unpredictable token.  Refusing at second zero is the whole point
 +    // of P2.S3's check.
      strata::kernels::cpu::expert_set_oracle_q8_0(o.cpu_oracle_q8_0);
+ #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) || defined(STRATA_GPU_METAL)
      // ... and nothing runs on a CPU without AVX2: every CPU expert kernel is AVX2 at least (the AVX-512 ones are
-     // chosen above it), and so is ggml-cpu in the release build, which the native pack's layout load initializes
-@@ -3627,8 +3628,8 @@ int main(int argc, char** argv) {
+@@ -4221,8 +4461,8 @@ int main(int argc, char** argv) {
                                       "(setup writes it; run setup again).\n");
          }
          strata::kernels::cpu::cpu_require_expert_support();
@@ -615,7 +607,7 @@ index 7bafd68..832e3ee 100644
                       !strata::kernels::cpu::cpu_avx2_ok()
                           ? (strata::kernels::cpu::cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr
 diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index 6f963d0..1caf735 100644
+index 6e817a7..7cc92f9 100644
 --- a/sycl/CMakeLists.txt
 +++ b/sycl/CMakeLists.txt
 @@ -141,8 +141,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
@@ -635,8 +627,8 @@ index 6f963d0..1caf735 100644
    target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
 +  # i-quant / NVFP4 are VBMI-free too (cpu_avx512_vnni_ok()); tq_avx512.cpp below keeps -mavx512vbmi.
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/iq_avx512.cpp ${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx512.cpp
--    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
-+    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
+-    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")   # (as the root CMakeLists.txt: iq_avx512.cpp uses pdep / pext / vpopcnt)
++    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")   # tiberius: no -mavx512vbmi (the VBMI-free tier), as the root CMakeLists.txt: iq_avx512.cpp uses pdep / pext / vpopcnt
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS

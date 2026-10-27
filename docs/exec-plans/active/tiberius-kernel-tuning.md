@@ -6,6 +6,12 @@ test arms were then removed from `hosts/tiberius.nix` (§4). What remains open i
 §9 and in the companion `tiberius-latency-tricks.md`. Labels: **[M]** measured, **[D]**
 derived arithmetic, **[E]** estimate, **[P]** pending.
 
+**Update 2026-10-28:** 0.2.7's residency-biased router (`STRATA_ROUTE_PRIOR`, now on in
+`profiles/nixos/strata.nix`) attacks the same wall from the routing side: decode cache hit
+77.8 -> 98.1% and decode 22.4 -> 56.1 tok/s on the 4.2k cell [M]. That is the
+"VRAM expert-cache hit rate" lever below, at a size the kernel arms never reached; see
+`strata-pack-restore.md`. The kernel conclusions here still hold.
+
 ## 1. Bottom line
 
 The kernel is a **second-order lever** for this workload, and the measurements say

@@ -278,6 +278,27 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
+        # 0.2.7's residency-biased router (upstream's STRATA_ROUTE_PRIOR): after the
+        # router, the top-k is picked again with a logit bonus for experts already
+        # on the card, which trades a little routing fidelity for far fewer Optane
+        # reads.  Upstream enables it by default only on a discrete CUDA card of
+        # 13 GiB or less; this 22 GiB card runs the same regime (6,276 of 24,576
+        # experts resident, the rest streamed), so it is forced on here.
+        # Measured 2026-10-28 on 0.1.52 / v0.2.7, one fresh engine per arm, same
+        # cells (real corpus, greedy, thinking off): decode 22.4 -> 56.1 tok/s
+        # (4,252-token prompt, 78/97 generated), 26.8 -> 62.4 (3,477-token),
+        # 29.6 -> 77.8 (26,134-token), expert-cache hit 77.8 -> 98.1% (91.8 ->
+        # 99.2% at 26k) and prompt reads unchanged (460/1266 tok/s).  Quality
+        # gates in docs/exec-plans/active/strata-pack-restore.md: needle recall
+        # over a 27.8k-token haystack 3/3 at depth 10/50/90 in both arms, and
+        # 9/10 against 10/10 on a 10-question arithmetic set (the miss: a
+        # two-line word problem answered 31 for 29).  Ten questions is a small
+        # sample; upstream's own 80-task run saw no copy or code errors and
+        # agent-task pass rates inside the run-to-run spread.
+        # It changes which experts run, so wording differs from the off arm by
+        # construction: STRATA_ROUTE_PRIOR=0 is the escape hatch (and 1.5 is
+        # upstream's own default on the small cards it ships for).
+        STRATA_ROUTE_PRIOR = "1.5";
         # The RTX 20 (sm_75) kernel series, opt-in upstream since 0.1.45
         # because nobody on the team has a Turing card.  It is bitwise on this
         # box: all four ab24 cells (4252 / 19407 / 26134 / 27720-token prompts)
@@ -613,10 +634,21 @@ in
         (2026-10-03, k8v4, fresh engine per cell): prefill is
         ~flat in prompt length (644-706 tok/s from 14K to 110K tokens), 131K
         decodes ~21 tok/s at 81% hit and 262K ~18 tok/s at 78%, and each extra
-        131K of window costs ~830 expert-cache slots.  Above 262K the model is
-        past its trained window (no --rope-scaling flag is passed, so the engine
-        follows the model file's rope keys) and the cache thrashes: 524K -> 14.5
-        tok/s / 70% hit, 786K -> 10.6 / 54%.
+        131K of window costs ~830 expert-cache slots.  Above 262K the prompt is
+        outside the model's native window: the card says 262,144 natively and
+        extensible to 1,000,000 with YaRN (rope_type yarn, factor 4.0, factor
+        2.0 recommended near 524K), the GGUF and the HF config both declare
+        262,144 with rope_type default, and no --rope-scale is passed, so the
+        engine extrapolates.  Measured 2026-10-29 at 524,288 (v0.2.7, route
+        prior on): the engine runs and a 478K prompt answered a mid-document
+        needle, but the cache shrank 6,257 -> 4,221 slots, the 128K cell lost 18%
+        decode (49.3 -> 40.3 tok/s) and hit fell 99.1 -> 90.8% - and that is the
+        regime the card recommends YaRN for.  A longer lane is CLI-only: the
+        engine implements YaRN (--rope-scaling yarn --rope-scale 4
+        --yarn-orig-ctx 262144) and the model file carries no rope.scaling
+        keys; the card's factor is 4.0 for 1M and 2.0 near 524K, and it warns
+        that static YaRN costs short-text quality.  Older cells without routing
+        thrashed harder: 524K -> 14.5 tok/s / 70% hit, 786K -> 10.6 / 54%.
       '';
     };
 
@@ -772,6 +804,16 @@ in
           RestartSec = "10s";
           ExecStartPre = [
             "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
+            # The pack's experts.bin is what puts the expert reads on the DAX
+            # Optane (6.8 GB/s).  A native pack built WITHOUT `iq_pack.py
+            # --experts-bin` is legal to the engine: it silently falls back to
+            # reading the model's GGUF shards in place.  This box keeps shard 1
+            # (54.8 GB) on the /data SATA pool (407 MB/s measured), where that
+            # fallback serves 1 tok/s decode and 28 tok/s prefill and says
+            # nothing worse than "the GGUF in place" in its log - measured
+            # 2026-10-28, see docs/exec-plans/active/strata-pack-restore.md.
+            # Fail the start instead of serving 20x slower.
+            "${pkgs.coreutils}/bin/test -f ${cfg.dataDir}/packs/${lane.pack}/experts.bin"
             # upstream's gguf_split_paths() demands every shard named by --native's
             # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
             # metadata too, so shard 1 cannot be passed alone or under a made-up
