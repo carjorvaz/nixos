@@ -247,18 +247,43 @@ Decode is **5.4–5.9 tok/s cold**; the 2 GB store adds <2% slots, and 15/20 tok
 would need ≥75–81% hit or ≥15 GB/s. No lossless flag changes that; the lane is a
 quality experiment, not the Qwen-speed replacement.
 
+## 8b. Speculative, DAX and lookup on tiberius, 2026-10-27
+
+**Clean baseline:** 5.80 tok/s decode on the regular pack (5.80 / 5.81 / 5.80 at
+4,056 prompt tokens), prefill 38.4–40.6 tok/s. The earlier 3.58 arm was the
+nondeterministic 0.9 GB hot-set preload, not a stable baseline; store flags are
+neutral (5.4–5.8).
+
+**DSpark/MTP** (the V4.1 MTP is DSpark; `pack-dspark`, 7.98 GB Unsloth Q8_0,
+`mtp.0-2`, 1,242 tensors): acceptance **3.17 tokens/round** (43.9% of 440 drafts;
+per position 79.5 / 59.1 / 37.5 / 26.1 / 17.0%) against a 3.3 break-even. Decode:
+none 3.59, `--dspark off` (drafter resident) 4.52, on block 3 4.71, on block 0
+2.51. The drafter arms are **below the clean 5.80 baseline**; drafting adds only
++4.2% inside a degraded store/VRAM state. The 8 GB drafter is a non-goal here.
+
+**DAX prefill port** (`x0fv…`, 6912 MiB, 41 layer windows): the 2.65 GB
+registration failed **out of memory**, leaving 290 experts / 2.0 GB from the
+window; 4K prefill **99.6 s**, decode 5.70. A 1 GiB budget fits no 2.65–3.33 GB
+layer (0 DAX bytes; 97.8 s, 5.75). The port is correct, but the host/pin budget
+cannot hold a layer in this process; no prefill gain. The documented 8192 chunk
+also regressed (272.8 s, 5.49, 1,743 VRAM experts) because its 2.5 GB pinned
+buffers did not allocate.
+
+**Lookup/suffix** (`nffx…`, zero-weight, lossless via the existing verify):
+chat/summarize off 5.63 vs on 5.68 (2 drafts, 0 accepted); verbatim copy 4K /
+128 tokens **off 4.54 vs on 5.73 (+26%)**, 78/78 drafts accepted, 2.61 tokens a
+round. The first lookup build crashed in `verify` because `d_ints` and
+`ring_bak` were allocated only when `n_mtp > 0`; the fix allocates them for
+non-drafter packs and caps drafts at `kWin-1`.
+
 ## 9. Next session
 
-1. Stop the staging-copy micro-patches; port the Qwen `STRATA_REGISTER_DAX`
-   window/direct DMA into `flow_pump`/`ds4_pool`, then test the resident serve path
-   at 4K/8K/17K with `--prefill-chunk 4096`. The simple `pread`/`map`/`mem` paths
-   all measure 1.00 GB/s or crash.
-2. Run the hindsight refresh job on the server; compare wall time and page quality
-   with Qwen's 283 s. The output-side decode is the wall; only a quality win makes
-   this lane worth keeping.
-3. To restore Qwen: remove the DeepSeek pack/backbone/Engram to free space,
-   re-download IQ3_S shard 1 + PLE + MTP (86.3 GB), rebuild the packs, and start
-   `tiberius-strata` (currently stopped but still enabled; disable it before a reboot
-   if the lane stays parked). The final state after the warm test: `dsv41-serve`
-   stopped, GPU free, `/optane` 9.9 GB and `/data` 11 GB free, the pack and the
-   base/skip/buf/map2/mem engine builds rooted under `/persist/dsv41`.
+1. Keep the lookup build as a copy/edit profile; test a 32K verbatim copy and a
+   real agent edit loop, and gate `--lookup auto` where copy-shaped. Do **not**
+   pursue DSpark/MTP or DAX on this 7.4 GB host: both measured negative.
+2. Prefill remains the 1.0 GB/s `pread` path. A DAX port needs a registered
+   window that fits a 2.65 GB layer (early registration, smaller host footprint,
+   more host RAM, or a different transport), not another flag.
+3. The resident serve 5.9 tok/s / 10.8 s warm-slot result stands; the Qwen
+   restore and page-quality decision remains. `pack-dspark` and the 8 GB drafter
+   can be deleted if space is needed; the original pack is untouched.

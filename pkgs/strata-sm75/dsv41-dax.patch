@@ -1,0 +1,371 @@
+# dsv41: the DeepSeek-V4.1 prefill's DAX window, against upstream dfa3f402 (v0.2.4.2, engine 0.1.49.2).
+#
+# The dsv41 engine's prefill is its own flow (src/dsv41/ds4_model.cu: flow_push / flow_spec / flow_pump), not the
+# Qwen engine's ExpertSource/Prefill, so tiberius.patch's STRATA_REGISTER_DAX window does not reach it.  Today every
+# streamed expert is O_DIRECT pread into pinned staging and then copied to VRAM: one read stream at 0.5-1.0 GB/s from
+# the fsdax /optane mount, with the 2080 Ti waiting 19-32 s per prompt.
+#
+# This patch adds the window to the flow, in that one file:
+#   * DaxWin: the page-rounded span of a layer's expert blocks that touch in one shard file - the GGUF holds w1, w3
+#     and w2 of every expert of a layer side by side (tensors.txt: layer 0 = 2.654 GB, layer 39 = 2.937 GB, the pack's
+#     largest 3.327 GB), so one window a layer here - registered cudaHostRegisterReadOnly|Mapped|Portable.  The driver
+#     caps a process's registered host memory at
+#     ~7 GiB (8192 MiB is refused with cudaErrorOutOfMemory, 6912 MiB is the documented-good single allocation), and
+#     a layer's experts are 2.65-3.33 GB, so the budget holds exactly two layer windows and the rotation is
+#     double-buffered: the previous window is released only when a third must be registered.  With a budget below
+#     twice the largest layer's span, every second layer reads from the files instead (logged once) - never a release
+#     of a window whose copies may still be queued.
+#   * dax_prepare(il) at the top of flow_spec, the prompt path's issue step (the initial call in run_dev_chunks and
+#     every subsequent (chunk, layer) pass through it).  Never from decode: a decode visits 40 layers a token.
+#     cudaStreamSynchronize runs on a release only - nothing may read a window after cudaHostUnregister, and the
+#     driver does not defend a use-after-unmap.  cudaGetLastError() consumes a refused registration (sticky error).
+#   * flow_push takes each matrix's address from pk.maps[file] + Layer::mx_off/mx_stride and, when the WHOLE item
+#     (all three matrices) is inside a registered window, sets src[] plus stage = -1 (the flow's existing "no read
+#     job, no staging slot" sentinel) and left = 0: flow_pump's read-job branch is skipped and its DMA copies
+#     straight out of the mapping.  All-or-nothing per item: a partly covered blob would be an H2D from pageable
+#     memory (2.3 GB/s) or a fault.
+#   * it_dax counts those items in the prompt stream's report (and its GB/s denominator) and in the flow-vs-windows
+#     picker, so the direct bytes are not read as a regression.
+#
+# Off by default: STRATA_REGISTER_DAX=1 (or DS4_REGISTER_DAX=1) turns it on, STRATA_REGISTER_DAX_MIB /
+# DS4_REGISTER_DAX_MIB sets the budget (default 6912).  Refused with a log line when the prompt path is not the flow,
+# when there is more than one GPU or tensor parallel is not 1, when DS4_STORE_ZC is on (the store's arena registers
+# from the same cap), or when the pack is not a GGUF read in place.  Engram stays unregistered (it lives on /data, not
+# DAX) and the drafter's mtp blocks are not windows.  Windows are unregistered in ~Impl, before Pack's mappings are
+# unmapped.
+#
+# Expect "ds4: DAX window: 6912 MiB budget, N layer windows ..." at load, then a prompt stream line whose "from the
+# DAX window" count is nearly every expert streamed and whose GB/s is ~6 instead of ~1.
+#
+# Anchor points (pin dfa3f402): Pack::map/at, Layer::mx_file/mx_off/mx_stride (expert_layout_mx), Chunk::Item and its
+# counters, flow_push/flow_spec/flow_pump, the flow setup in load(), the prompt stream report and the picker, and
+# ~Impl's teardown.  Regenerate against any new pin; `patch -p1`/`git apply` must apply cleanly or the build fails.
+
+--- a/src/dsv41/ds4_model.cu
++++ b/src/dsv41/ds4_model.cu
+@@ -54,6 +54,10 @@
+ #include <thread>
+ #include <unordered_map>
+ 
++#if !defined(_WIN32)
++#include <unistd.h>   // sysconf(_SC_PAGESIZE): the DAX windows' page rounding
++#endif
++
+ #if defined(_MSC_VER)
+ #define strtok_r strtok_s
+ #endif
+@@ -592,6 +596,7 @@
+     uint64_t n_batch = 0;
+     double wait_ms = 0;                      // the compute waiting for a read
+     uint64_t it_file = 0, it_ram = 0, it_spec = 0, it_spec_unused = 0;
++    uint64_t it_dax = 0;                     // (STRATA_REGISTER_DAX) the items DMA'd straight from a registered window
+     uint64_t io_d0 = 0, io_b0 = 0;           // io's unbuffered / buffered bytes when the run started
+     // layer-major (a run of several chunks, every layer on this device): the layers one after another, each through
+     // all the chunks; a chunk's state between its layers (h | pre | topk | cand, chunk k at k chunk_hand_bytes()) in
+@@ -1260,6 +1265,7 @@
+             if (t.joinable()) t.join();
+         if (ram_th.joinable()) ram_th.join();
+         for (size_t i = 0; i < ram_chunks.size(); ++i) os::anon_free(ram_chunks[i], ram_chunk_bytes[i]);
++        dax_close();   // (the registered windows, before Pack's mappings go: a window's pages must not be unmapped under it)
+         for (Dev& d : devs) {
+             cudaSetDevice(d.id);
+             for (void* p : d.allocs) cudaFree(p);
+@@ -2720,6 +2726,7 @@
+                 }
+             }
+         }
++        dax_init();   // (STRATA_REGISTER_DAX: the layer windows, planned once the flow's chunks are up; registered lazily)
+         {
+             void* m = nullptr;
+             if (cudaHostAlloc(&m, sizeof(Req) * kRing, cudaHostAllocMapped | cudaHostAllocPortable) != cudaSuccess) {
+@@ -3144,6 +3151,212 @@
+     // the flow's copies and the compute it queued between its waits are submitted at once (win_submit); elsewhere
+     // nothing.  (CUDA too since #303: two RTX 3080s hung before the first layer, one GPU spinning on the other's flow)
+     static void kick(cudaStream_t s) { win_submit(s); }
++    // ---- the prefill's DAX window (STRATA_REGISTER_DAX)
++    // The pack's shards are mmap'd (Pack::map): on /optane, an fsdax XFS mount, their pages are device memory, and a
++    // DMA out of the mapping runs at 6.2-6.9 GB/s, where the flow's read path (O_DIRECT pread into pinned staging,
++    // then a copy) is ~1 GB/s.  The driver registers only ~7 GiB of host memory per process (8192 MiB fails with
++    // cudaErrorOutOfMemory; 6912 MiB is the documented-good single allocation) and one layer's experts are 2.65-3.33 GB,
++    // so the budget holds two layer windows: the layer being streamed and the one after it (double-buffered: the
++    // previous window is released only when a third must be registered, and only that release synchronizes the copy
++    // stream).  A window is the page-rounded span of a layer's matrix blocks that touch in one shard file - the GGUF
++    // holds w1, w3 and w2 of every expert of a layer side by side, so one window a layer on this pack; blocks in
++    // different files, or apart in one, get a window each.  Registered ReadOnly|Mapped|Portable, so flow_pump's
++    // cudaMemcpyAsync reads it at the DAX rate.  Rotated only from flow_spec (the prompt path's issue step), never in
++    // decode (40 layers a token there).
++    // A window's END is rounded in, not out: two layers' tensors share a page in the GGUF, and an outward rounding would
++    // overlap the next layer's window (the driver does not like overlapping registrations).  The one expert whose bytes
++    // cross that page then fails dax_covers and takes the ordinary read path - all-or-nothing per item: a partly
++    // registered gate / up / down would DMA from pageable memory (2.3 GB/s) or fault.
++    struct DaxWin {
++        int file = -1;
++        uint64_t off = 0, bytes = 0;   // [off, off + bytes) of that file's mapping, page-aligned
++        uint64_t last = 0;             // the rotation clock when a layer last needed it (evicted oldest first)
++        bool reg = false;
++    };
++    std::vector<DaxWin> dax_wins;
++    std::vector<std::vector<int>> dax_need;   // layer -> the windows its experts lie in
++    uint64_t dax_budget = 0, dax_used = 0, dax_clock = 0;
++    bool dax_ok = false, dax_short = false;   // (short: the budget holds one layer, said once)
++    int dax_live = -1;                        // the layer flow_spec last prepared: its items may still be in flight
++    int64_t dax_reg = 0, dax_rot = 0;         // registrations, and windows released to make room
++    static size_t dax_page() {
++#if defined(_WIN32)
++        return 4096;                          // (no DAX there: the window never opens)
++#else
++        static const size_t p = (size_t) sysconf(_SC_PAGESIZE);
++        return p;
++#endif
++    }
++    void dax_init() {
++        const char* on = std::getenv("DS4_REGISTER_DAX");
++        if (on == nullptr) on = std::getenv("STRATA_REGISTER_DAX");
++        if (on == nullptr || std::atoi(on) == 0) return;
++        const char* mib = std::getenv("DS4_REGISTER_DAX_MIB");
++        if (mib == nullptr) mib = std::getenv("STRATA_REGISTER_DAX_MIB");
++        dax_budget = (uint64_t) std::max(0, mib != nullptr ? std::atoi(mib) : 6912) << 20;
++        auto off = [](const char* why) { std::fprintf(stderr, "ds4: DAX window: off (%s)\n", why); };
++        if (!pk.gguf || !file_experts) return off("not a GGUF pack read in place");
++        if (L.empty() || devs.size() != 1 || L[0].nm != 1) return off("one GPU and tensor parallel 1 only");
++        if (chunks.empty() || chunks[0] == nullptr || !chunks[0]->flow) return off("the prompt path is not the flow");
++        if (const char* zc = std::getenv("DS4_STORE_ZC"); zc != nullptr && std::atoi(zc) != 0)
++            return off("DS4_STORE_ZC registers the store's arena from the same ~7 GiB");
++        if (dax_budget == 0) return off("a budget of 0 MiB");
++        const uint64_t pg = dax_page(), mask = pg - 1;
++        dax_need.assign(L.size(), std::vector<int>{});
++        double worst = 0;
++        for (const Layer& l : L) {
++            if (l.mtp || l.il >= g.nl || l.lay.fmt != gg::kFmtMXFP4) continue;   // (the trunk's GGUF experts only: not Engram, not the drafter)
++            struct Run {
++                uint64_t lo, hi;
++                int file;
++            } run[3];
++            int nr = 0;
++            for (int r = 0; r < 3; ++r) {   // the GGUF's [n_exp][out][in] block of this layer's gate / up / down
++                const int f = l.mx_file[r];
++                if (f < 0 || (size_t) f >= pk.maps.size() || pk.maps[(size_t) f].first == nullptr) continue;
++                const uint64_t hi = l.mx_off[r] + (uint64_t) (l.n_exp - 1) * l.mx_stride[r] + mx_part_bytes(l, r);
++                run[nr++] = Run{l.mx_off[r], hi, f};
++            }
++            std::sort(run, run + nr, [](const Run& a, const Run& b) { return a.file < b.file || (a.file == b.file && a.lo < b.lo); });
++            double bytes = 0;
++            for (int i = 0; i < nr; ++i) {   // (the blocks that touch - w1 then w3 then w2 in the file - are one window)
++                int j = i;
++                uint64_t end = run[i].hi;
++                while (j + 1 < nr && run[j + 1].file == run[i].file && run[j + 1].lo <= end)
++                    end = std::max(end, run[++j].hi);
++                const uint64_t a = run[i].lo & ~mask, b = end & ~mask;
++                if (b > a) {
++                    dax_wins.push_back(DaxWin{run[i].file, a, b - a});
++                    dax_need[(size_t) l.il].push_back((int) dax_wins.size() - 1);
++                    bytes += (double) (b - a);
++                }
++                i = j;
++            }
++            worst = std::max(worst, bytes);
++        }
++        if (dax_wins.empty()) return off("no layer's experts in the pack's mappings");
++        dax_ok = true;
++        std::fprintf(stderr,
++                     "ds4: DAX window: %llu MiB budget, %zu windows (page %llu B), the worst layer %.2f GB%s\n",
++                     (unsigned long long) (dax_budget >> 20), dax_wins.size(), (unsigned long long) pg, worst / 1e9,
++                     2.0 * worst <= (double) dax_budget ? " (two fit: double-buffered)"
++                                                         : " (two do NOT fit: every second layer direct)");
++    }
++    bool dax_covers(const uint8_t* p, size_t n) const {   // (page-aligned windows: containment, not overlap)
++        const uintptr_t a = (uintptr_t) p, e = a + n;
++        for (const DaxWin& w : dax_wins)
++            if (w.reg) {
++                const uintptr_t b = (uintptr_t) pk.maps[(size_t) w.file].first + w.off;
++                if (a >= b && e <= b + w.bytes) return true;
++            }
++        return false;
++    }
++    bool dax_covers_item(const Layer& l, int e) const {   // every byte of expert e's gate / up / down
++        if (!dax_ok || l.nm != 1) return false;
++        for (int r = 0; r < 3; ++r) {
++            const int f = l.mx_file[r];
++            if (f < 0 || (size_t) f >= pk.maps.size() || pk.maps[(size_t) f].first == nullptr) return false;
++            if (!dax_covers(pk.at(f, l.mx_off[r] + (uint64_t) e * l.mx_stride[r]), mx_part_bytes(l, r))) return false;
++        }
++        return true;
++    }
++    void dax_release(int i, cudaStream_t cs) {
++        DaxWin& w = dax_wins[(size_t) i];
++        if (!w.reg) return;
++        // the one synchronize: a copy already queued reads the window, and the driver does not defend a use-after-unmap
++        if (cs != nullptr && cudaStreamSynchronize(cs) != cudaSuccess) (void) cudaGetLastError();
++        if (cudaHostUnregister((void*) (pk.maps[(size_t) w.file].first + w.off)) != cudaSuccess) (void) cudaGetLastError();
++        dax_used -= w.bytes;
++        w.reg = false;
++        ++dax_rot;
++    }
++    bool dax_register(int i) {
++        DaxWin& w = dax_wins[(size_t) i];
++        cudaSetDevice(devs[0].id);
++        const cudaError_t e =
++            cudaHostRegister((void*) (pk.maps[(size_t) w.file].first + w.off), (size_t) w.bytes,
++                             cudaHostRegisterReadOnly | cudaHostRegisterMapped | cudaHostRegisterPortable);
++        if (e != cudaSuccess) {
++            (void) cudaGetLastError();   // (sticky: unconsumed, the next CK would report this failure in its name)
++            std::fprintf(stderr,
++                         "ds4: DAX window: registering %.2f GB of %s at +%.3f GB failed: %s - the prompt path reads from "
++                         "the files as before\n",
++                         (double) w.bytes / 1e9, pk.files[(size_t) w.file].c_str(), (double) w.off / 1e9,
++                         cudaGetErrorString(e));
++            dax_ok = false;
++            return false;
++        }
++        w.reg = true;
++        w.last = ++dax_clock;
++        dax_used += w.bytes;
++        ++dax_reg;
++        return true;
++    }
++    void dax_prepare(Chunk& c, int il) {   // the layer's window, before any of its items is pushed
++        if (!dax_ok || il < 0 || (size_t) il >= dax_need.size()) return;
++        const std::vector<int>& need = dax_need[(size_t) il];
++        if (need.empty()) return;
++        uint64_t missing = 0;
++        for (int i : need)
++            if (!dax_wins[(size_t) i].reg) missing += dax_wins[(size_t) i].bytes;
++        auto held = [&](size_t i) {
++            for (int j : need)
++                if ((size_t) j == i) return true;
++            if (dax_live >= 0 && (size_t) dax_live < dax_need.size())
++                for (int j : dax_need[(size_t) dax_live])   // (the live layer's copies may be queued but not run)
++                    if ((size_t) j == i) return true;
++            return false;
++        };
++        while (dax_used + missing > dax_budget) {
++            int victim = -1;
++            uint64_t oldest = UINT64_MAX;
++            for (size_t i = 0; i < dax_wins.size(); ++i) {
++                const DaxWin& w = dax_wins[i];
++                if (!w.reg || held(i) || w.last > oldest) continue;
++                oldest = w.last;
++                victim = (int) i;
++            }
++            if (victim < 0) {   // (the budget holds one layer only: this one reads from the files, the next rotates)
++                if (!dax_short) {
++                    dax_short = true;
++                    std::fprintf(stderr,
++                                 "ds4: DAX window: layer %d needs %.2f GB beside %.2f of %.2f GB still in flight - every "
++                                 "second layer reads from the files\n",
++                                 il, (double) missing / 1e9, (double) dax_used / 1e9, (double) dax_budget / 1e9);
++                }
++                dax_live = il;   // (its items are the ones in flight; the windows of the layer before it are done)
++                return;
++            }
++            dax_release(victim, c.cs);
++        }
++        for (int i : need) {
++            if (!dax_wins[(size_t) i].reg && !dax_register(i)) return;
++            dax_wins[(size_t) i].last = ++dax_clock;
++        }
++        dax_live = il;
++    }
++    void dax_close() {   // (~Impl, threads joined, Pack's mappings still there)
++        if (dax_wins.empty()) return;
++        for (size_t di = 0; di < chunks.size(); ++di)
++            if (chunks[di] != nullptr && chunks[di]->cs != nullptr) {
++                cudaSetDevice(devs[di].id);
++                if (cudaStreamSynchronize(chunks[di]->cs) != cudaSuccess) (void) cudaGetLastError();
++            }
++        size_t n = 0;
++        for (DaxWin& w : dax_wins)
++            if (w.reg) {
++                if (cudaHostUnregister((void*) (pk.maps[(size_t) w.file].first + w.off)) != cudaSuccess)
++                    (void) cudaGetLastError();   // (the unmap that follows is the last word anyway)
++                else ++n;
++                w.reg = false;
++            }
++        if (dax_reg > 0)
++            std::fprintf(stderr, "ds4: DAX window: %zu of %lld registrations out (%lld rotations), %.2f GB registered\n", n,
++                         (long long) dax_reg, (long long) dax_rot, (double) dax_used / 1e9);
++        dax_used = 0;
++        dax_ok = false;
++        dax_live = -1;
++    }
+     size_t flow_region(int r) const {   // a part's room in a staging slot (read from its offset rounded down)
+         return ((flow_part[r] + os::kDirectAlign - 1) & ~(size_t) (os::kDirectAlign - 1)) + os::kDirectAlign;
+     }
+@@ -3174,6 +3387,13 @@
+         it.k = k;
+         it.e = e;
+         it.v = v;
++        if (dax_ok && l.nm == 1 && dax_covers_item(l, e)) {   // (STRATA_REGISTER_DAX: the mapping, registered: the DMA from where it lies)
++            for (int r = 0; r < 3; ++r) it.src[r] = pk.at(l.mx_file[r], l.mx_off[r] + (uint64_t) e * l.mx_stride[r]);
++            it.stage = -1;   // (the "no read job, no staging slot" sentinel: left 0, flow_pump DMAs src straight away)
++            it.left.store(0, std::memory_order_relaxed);
++            ++c.it_dax;
++            return;
++        }
+         bool in_ram = !l.ram.empty() && l.ram[(size_t) e] >= 0;
+         const uint8_t* store_blob = nullptr;   // (the RAM store holds it: copied into staging like a RAM-tier slot, no read)
+         if (!in_ram && store && l.nm == 1) {
+@@ -3237,6 +3457,7 @@
+     void flow_spec(Chunk& c, int k, int il, int T) {
+         static const double spec_q = std::getenv("DS4_SPEC_Q") ? std::atof(std::getenv("DS4_SPEC_Q")) : 0.9;
+         Layer& l = L[(size_t) il];
++        dax_prepare(c, il);   // (STRATA_REGISTER_DAX) the layer's window before its first item is pushed
+         const int mi = flow_mi(c, l);
+         int* vs = member(l, mi).vs_pin;
+         c.spec_k = k;
+@@ -3351,7 +3572,7 @@
+                 }
+                 if (wait) break;
+             }
+-            if (it.stage >= 0) {
++            if (it.stage >= 0) {   // (a DAX window's item has stage -1: no read job, its src is registered and flow_pump DMAs it)
+                 const int64_t prev = c.stage_item[(size_t) it.stage];
+                 if (prev >= 0) {
+                     if ((size_t) prev >= c.n_dma) break;
+@@ -7348,6 +7569,8 @@
+             c.spec_k = c.spec_il = -1;
+             c.wait_ms = 0;
+             c.it_file = c.it_ram = c.it_spec = c.it_spec_unused = c.it_lc = 0;
++            c.it_dax = 0;
++            dax_live = -1;   // (the streams are idle here: nothing of the run before still reads a window)
+             c.lc_il = -1;
+             c.lc_used = 0;
+             c.lc_first = c.lc_chk = 0;
+@@ -8090,6 +8313,7 @@
+                 const double db = (double) (c.io->direct_bytes() - c.io_d0) / 1e9;
+                 const double bb = (double) (c.io->buffered_bytes() - c.io_b0) / 1e9;
+                 const double fb = db + bb, rb = (double) c.it_ram * (double) L[0].blob / 1e9;   // (a member: its parts)
++                const double xb = (double) c.it_dax * (double) L[0].blob / 1e9;   // (the DAX window's: its bytes, no read)
+                 char lcs[160] = "";
+                 if (c.lm)
+                     std::snprintf(lcs, sizeof lcs, ", %llu again from the layer cache (layer-major, %d chunks, %.1f GB "
+@@ -8097,12 +8321,13 @@
+                 std::fprintf(stderr,
+                              "ds4 prompt stream, CUDA%d: %d tokens in %.0f ms; %llu experts streamed: %llu from the files "
+                              "(%.1f GB, %.2f GB/s: %.1f GB from the disk unbuffered, %.1f GB through the page cache), %llu "
+-                             "from RAM (%.1f GB)%s; %llu likely ones queued early, %llu of them unpicked; the compute waited "
+-                             "%.0f ms for reads\n",
+-                             devs[di].id, n, ms, (unsigned long long) (c.it_file + c.it_ram + c.it_lc),
+-                             (unsigned long long) c.it_file, fb, fb / std::max(1e-3, ms / 1000.0), db, bb,
+-                             (unsigned long long) c.it_ram, rb, lcs, (unsigned long long) c.it_spec,
+-                             (unsigned long long) c.it_spec_unused, c.wait_ms);
++                             "from RAM (%.1f GB)%s, %llu from the DAX window (%.1f GB); %llu likely ones queued early, %llu "
++                             "of them unpicked; the compute waited %.0f ms for reads\n",
++                             devs[di].id, n, ms,
++                             (unsigned long long) (c.it_file + c.it_ram + c.it_lc + c.it_dax),
++                             (unsigned long long) c.it_file, fb, (fb + xb) / std::max(1e-3, ms / 1000.0), db, bb,
++                             (unsigned long long) c.it_ram, rb, lcs, (unsigned long long) c.it_dax, xb,
++                             (unsigned long long) c.it_spec, (unsigned long long) c.it_spec_unused, c.wait_ms);
+             }
+         }
+         if (pm.on && run.T.size() == 1) {   // (the picks' spread for pick_path: the CPU-lane experts this run picked)
+@@ -8110,7 +8335,8 @@
+             for (const Layer& l : L) tp = tp || l.nm > 1;
+             double picked = 0;
+             for (const auto& cp : chunks)
+-                if (cp != nullptr && cp->flow) picked += (double) (cp->it_file + cp->it_ram) - (double) cp->it_spec_unused;
++                if (cp != nullptr && cp->flow)
++                    picked += (double) (cp->it_file + cp->it_ram + cp->it_dax) - (double) cp->it_spec_unused;
+             if (!tp) pm_learn(n, picked);
+         }
+         if (logits_all) n_logits = (T_last - 1) % kWin + 1;   // (sample() takes the last row of d.logits)
