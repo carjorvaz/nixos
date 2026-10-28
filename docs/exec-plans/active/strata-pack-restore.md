@@ -157,18 +157,22 @@ in 9.05 / 9.11 s and decodes **55.7 / 62.0 tok/s** (hit 98.1 / 98.4%), and the
 18-token warmup prompt reads in 414 ms against 876 ms before.  For reference, the
 historical maximum on this box was 29.5 / 34.5 tok/s (ab11, 0.1.43).
 
-### What the router does NOT fix: the per-turn prompt read
+### What the router does NOT fix: the read of a sub-chunk prompt
 
-An append-only agent turn still re-reads its whole prompt: a 2,127-token first
-request reads in 8.5 s, and the same prompt with one sentence appended reads in
-8.5 s again (`reused 0`).  A 2.1k-token prompt routes to essentially the whole
-pack, so the read is the pack, not the append.  `--prompt-cache-root 1024` was
-measured for exactly this case (omp/pi's ~2k boundary sits under the 2048
-default) and **did not change it**: the appended request reused 0 tokens at
-either root.  The cache's roots are not what an in-conversation append needs, so
-the flag is not carried.  The per-turn read is the remaining interactive cost;
-the levers that could touch it (a conversation cache that parks K/V between
-turns, or a smaller expert union per chunk) are engine work, not config.
+Prompt reuse is chunk-granular, so a prompt shorter than one 28,160-token prefill
+chunk has nothing reusable: a 2,127-token first request reads in 8.5 s (it routes
+to essentially the whole pack), and the same prompt with one sentence appended
+reads in 8.5 s again (`reused 0`).  `--prompt-cache-root 1024` was measured for
+exactly this case (omp/pi's ~2k boundary sits under the 2048 default) and **did
+not change it**: the appended request reused 0 tokens at either root, so the flag
+is not carried.  At long context the same mechanism pays off - a 239k prompt
+reuses its complete chunks (225,280 of 239,241 tokens, 14.5 s instead of 163 s;
+see "Long context, measured" below).  The cost that remains for interactive
+traffic is therefore the last partial chunk of every turn, which for a short
+prompt is the whole prompt.  Making that cheap needs a per-request chunk choice
+or finer cache checkpoints; a globally smaller `--prefill` would fix short turns
+but cut a 250k prompt into ~120 2k-token chunks, each reading a broad expert
+union, so it is engine work rather than a config flag.
 
 ### Other 0.2.7 findings
 
@@ -181,3 +185,51 @@ turns, or a smaller expert union per chunk) are engine work, not config.
   by taking ~400 cache slots, so it is not carried either; the routing hit rate
   keeps the card out of the #2065 paging regime.
 
+## Long context, measured (2026-10-29)
+
+Deployed config (route prior on, int8 KV, 262,144), cold prompt, one request per
+size, real corpus repeated into a haystack, a code word at 50% depth (found in
+every cell), greedy, thinking off:
+
+| prompt tokens | read | read rate | decode, 8-token reply | decode, 171-194 tokens | hit |
+| --- | --- | --- | --- | --- | --- |
+| 31,526 | 31.1 s | 1,015 tok/s | 80.2 | - | 99.1% |
+| 62,091 | 48.4 s | 1,282 | 47.4 | - | 99.3% |
+| 122,989 | 85.0 s | 1,447 | 49.3 | 58.1 | 98.6% |
+| 239,242 | 163.3 s | 1,465 | 53.5 | 69.2 | 99.3-99.5% |
+
+The 32k cell was the first request after a restart (cold graphs, cold page
+cache); from 64k up the read rate converges on the Optane/PCIe stream, so a
+250k prompt costs ~2.7 min of read and the decode rate holds at 55-70 tok/s to
+the end of the native window.
+
+**Cached turns at 250k.** The exact repeat reused 225,280 of 239,241 tokens and
+took **14.5 s** instead of 163 s; the append-only turn reused the same 225,280
+and took **14.9 s**. Reuse is chunk-prefix matching (28,160-token chunks; the
+final partial chunk is re-read), so append-only history is cheap but a prompt
+that diverges *inside* the document reused 0 and paid the full 163 s (measured
+on a summary request that dropped the needle line).
+
+**Past the native window.** The model card (`Qwen/Qwen3.8-Flash-Next`) states
+262,144 natively and extensible to 1,000,000 with YaRN (`rope_type: yarn`,
+`factor: 4.0`, `original_max_position_embeddings: 262144`; factor 2.0 is its
+recommendation for ~524k).  The GGUF and the HF config both declare 262,144 with
+`rope_type: default`, and the engine passes no rope scaling, so anything longer
+is extrapolated.  A second engine booted with `--max-context 524288`:
+
+| | 262,144 (deployed) | 524,288 |
+| --- | --- | --- |
+| expert-cache slots | 6,257 | 4,221 |
+| 128k read / decode / hit | 1,447 tok/s / 49.3 / 99.1% | 1,238 / 40.3 / 90.8% |
+| 478k read / decode / hit | - | 1,176 / 26.8 / 91.1% |
+
+A 478,493-token prompt read in 406.7 s and the needle at mid-document was still
+found, so the engine itself is stable there - but that cell is outside the native
+window and is exactly where the card recommends YaRN, and doubling the KV window
+costs 2,036 expert slots: hit 99.1 -> 90.8% and decode -18% at 128k.  The
+deployed lane stays at 262,144.  A 1M lane is a config change, not engine work:
+the engine implements YaRN (`--rope-scaling yarn --rope-scale 4 --yarn-orig-ctx
+262144`; the model file carries no `rope.scaling.*` keys, so it is CLI-only),
+and the card's own recipe is that plus a `factor` sized to the expected context
+(2.0 near 524k, 4.0 for 1M).  It is not deployed because of the slot cost above
+and because the card warns static YaRN degrades short-text quality.
