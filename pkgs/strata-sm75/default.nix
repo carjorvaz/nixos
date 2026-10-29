@@ -23,16 +23,20 @@
 let
   c = cudaPackages;
 
-  # 5e8a4cca: v0.2.7 (2026-10-27), the current release.  The engine inside it is
-  # 0.1.52.  Since the last pin (dfa3f402 = v0.2.4.2 / engine 0.1.49.2) the Qwen
-  # engine gained the 0.2.5 residency-biased router (STRATA_ROUTE_PRIOR, default on
-  # for a discrete CUDA card of 13 GiB or less), the deterministic prompt-path
-  # choice (>= 96 tokens always take the chunked pass) with a background warmup,
-  # the small-card chunk rule, the 0.2.7 Plan defaults for sm_80/sm_89 (not this
-  # card) and a conversation-cache fix (#1503: a conversation no longer reuses
-  # another's retained K/V).  v0.2.6 changed no Qwen file.  llama.cpp's pin is
+  # 870aedd9: v0.2.8 (2026-10-29), the current release.  The engine inside it is
+  # 0.1.54.  Since the last pin (5e8a4cca = v0.2.7 / engine 0.1.52) the Qwen
+  # engine gained the tool-call recovery by default (0.2.8: unreadable tool calls
+  # are parsed rather than dropped - 98.3% of 1,462 agent turns against 92.9%),
+  # the conversation-cache fix for a locked PLE table (#4518), the automatic
+  # expert cache honouring the reserve set (#4474), a new engine waiting for the
+  # old one to release its memory (#4051), and the measured decode gains 0.2.8
+  # reports on other cards (+5%/+3.8% on an A6000; prompts unchanged).  Upstream
+  # also turned the 0.2.7 residency-biased router back OFF by default on 12 GB
+  # cards (it "tied it to repeated text in long sessions", their note); this box
+  # sets STRATA_ROUTE_PRIOR explicitly, so it keeps the router - and the long-
+  # session repetition test is recorded in the exec plan.  llama.cpp's pin is
   # unchanged (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
-  revision = "5e8a4cca7d690ac60ca37eb09e7d0e010099ad6d";
+  revision = "870aedd9e1ebe1c91f94da93b59af17729f6c5c0";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -64,7 +68,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.52";
+  version = "0.1.54";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -101,7 +105,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-6Q0IM0EuRdvW0z0TW9xp4PeiWpjt24rVFG5nyVTg32s=";
+    hash = "sha256-+sF2dhxfVqshStCQoohzQVI5+GCT50ktNyL0ATf7zc8=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -115,6 +119,11 @@ stdenv.mkDerivation {
   # /tool-media/ at the top of the GET router and our 404 block now returns above it.
   # avx512-bw-tier.patch merged cleanly except the sycl flag list, which now mirrors
   # the root (no VBMI, upstream's vpopcntdq/bmi2 kept).
+  # The v0.2.8 bump (870aedd9) merged without hunk conflicts in tiberius.patch and
+  # no-web-ui.patch (0.2.8's expert-cache reserve and engine hand-over changes sit
+  # outside our regions); avx512-bw-tier.patch had one conflict in
+  # cpu_require_expert_support(), where 0.2.8 rewrote the message to explain a pack
+  # without native_experts.txt - upstream's structure with the VBMI-free ISA list.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
@@ -133,7 +142,7 @@ stdenv.mkDerivation {
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # All three were generated against the pin above and re-applied in order onto a
-  # pristine 5e8a4cca tree (bit-identical result) before this build.
+  # pristine 870aedd9 tree (bit-identical result) before this build.
   #
   # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent

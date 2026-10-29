@@ -278,27 +278,32 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
-        # 0.2.7's residency-biased router (upstream's STRATA_ROUTE_PRIOR): after the
-        # router, the top-k is picked again with a logit bonus for experts already
-        # on the card, which trades a little routing fidelity for far fewer Optane
-        # reads.  Upstream enables it by default only on a discrete CUDA card of
-        # 13 GiB or less; this 22 GiB card runs the same regime (6,276 of 24,576
-        # experts resident, the rest streamed), so it is forced on here.
-        # Measured 2026-10-28 on 0.1.52 / v0.2.7, one fresh engine per arm, same
-        # cells (real corpus, greedy, thinking off): decode 22.4 -> 56.1 tok/s
-        # (4,252-token prompt, 78/97 generated), 26.8 -> 62.4 (3,477-token),
-        # 29.6 -> 77.8 (26,134-token), expert-cache hit 77.8 -> 98.1% (91.8 ->
-        # 99.2% at 26k) and prompt reads unchanged (460/1266 tok/s).  Quality
-        # gates in docs/exec-plans/active/strata-pack-restore.md: needle recall
-        # over a 27.8k-token haystack 3/3 at depth 10/50/90 in both arms, and
-        # 9/10 against 10/10 on a 10-question arithmetic set (the miss: a
-        # two-line word problem answered 31 for 29).  Ten questions is a small
-        # sample; upstream's own 80-task run saw no copy or code errors and
-        # agent-task pass rates inside the run-to-run spread.
+        # 0.2.7's residency-biased router (upstream's STRATA_ROUTE_PRIOR): after
+        # the router, the top-k is picked again with a logit bonus for experts
+        # already on the card, which trades a little routing fidelity for far
+        # fewer Optane reads.  Upstream shipped it on by default for 12 GB cards
+        # in 0.2.7 and turned that default OFF again in 0.2.8, tying it to
+        # repeated text in long sessions; this box keeps it explicitly, at 1.2
+        # rather than the shipped 1.5, because the degeneration reproduces at 1.5
+        # here and not at 1.2.  All measured 2026-10-30 on the v0.2.8 engine:
+        #   * speed, fresh engine, greedy: decode 22.4 -> 54-56 tok/s on the
+        #     4,252-token cell (expert-cache hit 77.8 -> 98.0%), 26.8 -> 61.4 on
+        #     3,477, 29.6 -> 78 on 26,134; prompt reads unchanged (466 / 1,155
+        #     tok/s).  lambda 1.2 costs ~6% of that (the 80-task set runs in
+        #     53.3 s against 50.3 s) and is still ~2.3x the un-routed lane.
+        #   * quality, 80 exact-answer tasks (arithmetic, units, logic, Python
+        #     output, structured data): 61/80 off, 60/80 at 1.2, 56 and 58 in two
+        #     runs at 1.5 (sigma ~3.8, so 1.2 is indistinguishable from off).
+        #   * long sessions, a 9-turn continuation probe, two runs per arm: off
+        #     no identical turn, 1.2 none in either run, 1.5 one run clean and one
+        #     with FIVE identical 301-character answers in a row (60.8% cross-turn
+        #     8-gram repeats) - the 0.2.8 note's failure mode, reproduced.
+        #   * retrieval: a needle at 27.8k tokens, depth 10/50/90, found 3/3 in
+        #     both arms; the 26k decode is unchanged by the router.
         # It changes which experts run, so wording differs from the off arm by
-        # construction: STRATA_ROUTE_PRIOR=0 is the escape hatch (and 1.5 is
-        # upstream's own default on the small cards it ships for).
-        STRATA_ROUTE_PRIOR = "1.5";
+        # construction; STRATA_ROUTE_PRIOR=0 (or STRATA_DEFAULTS=026) is the
+        # escape hatch.
+        STRATA_ROUTE_PRIOR = "1.2";
         # The RTX 20 (sm_75) kernel series, opt-in upstream since 0.1.45
         # because nobody on the team has a Turing card.  It is bitwise on this
         # box: all four ab24 cells (4252 / 19407 / 26134 / 27720-token prompts)

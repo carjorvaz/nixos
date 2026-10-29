@@ -1,4 +1,8 @@
-# tiberius: the AVX-512 expert tier without VBMI, against upstream 5e8a4cca (v0.2.7, engine 0.1.52).
+# tiberius: the AVX-512 expert tier without VBMI, against upstream 870aedd9 (v0.2.8, engine 0.1.54).
+# REBASED 2026-10-30 onto 870aedd9 (v0.2.8).  One conflict: upstream rewrote
+# cpu_require_expert_support()'s message to explain a pack without
+# native_experts.txt.  The merge keeps upstream's structure and its accurate
+# ISA list (F/BW/VL + VNNI, no VBMI - this TU is the VBMI-free one).
 #
 # THE PROBLEM.  cpu_avx512_ok() is the one gate the AVX-512 expert kernels were selected through, and it
 # demanded AVX512-VBMI.  This box's CPU (Cascade Lake) has F/DQ/BW/VL/VNNI and BMI2 but no VBMI, so the VNNI
@@ -39,11 +43,12 @@
 # pool+plan per decode window, GPU wait and Optane reads unchanged, outputs numerically sound (parity 0
 # failures vs the ggml references) but NOT bit-identical to the AVX-2 tier on the long cells.
 # See docs/exec-plans/active/tiberius-kernel-tuning.md.
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 369d699..29fdae8 100644
+index ee7e9f1..4d40271 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1782,14 +1782,21 @@ else()
+@@ -1824,14 +1824,21 @@ else()
  endif()
  target_include_directories(strata_kernels_cpu PUBLIC include)
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
@@ -68,7 +73,7 @@ index 369d699..29fdae8 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -1915,12 +1922,16 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -1968,12 +1975,16 @@ if(STRATA_NATIVE_EXPERTS)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -166,7 +171,7 @@ index df505f0..0e306a9 100644
  void iq512x_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt,
                   float* const* out, int r0, int r1);
 diff --git a/src/dsv41/ds4_gg_cpu.cpp b/src/dsv41/ds4_gg_cpu.cpp
-index cede307..279eb95 100644
+index 72891fc..d2ff882 100644
 --- a/src/dsv41/ds4_gg_cpu.cpp
 +++ b/src/dsv41/ds4_gg_cpu.cpp
 @@ -176,13 +176,14 @@ static int amd_family() {
@@ -270,7 +275,7 @@ index 2436bbc..f12cf7a 100644
  
  // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
 diff --git a/src/kernels/cpu/expert_layout.cpp b/src/kernels/cpu/expert_layout.cpp
-index bca01c0..d12fb80 100644
+index f288c24..2e13887 100644
 --- a/src/kernels/cpu/expert_layout.cpp
 +++ b/src/kernels/cpu/expert_layout.cpp
 @@ -39,6 +39,10 @@ int cpu_isa_cap() {
@@ -350,16 +355,16 @@ index bca01c0..d12fb80 100644
      return buf;
  }
  
-@@ -390,7 +438,7 @@ void cpu_require_expert_support() {
-     if (f.usable()) return;
+@@ -391,7 +439,7 @@ void cpu_require_expert_support() {
      std::fprintf(stderr,
                   "strata: this CPU cannot run the expert kernel: %s.\n"
--                 "        The engine needs AVX512-VNNI and AVX512-VBMI (Intel Ice Lake / AMD Zen 4 or newer).\n"
-+                 "        The engine needs AVX512-F/BW/VL and AVX512-VNNI (Intel Cascade Lake / AMD Zen 4 or newer).\n"
+                  "        The pack in --pack is the AVX-512 Q2_0 pack (its folder has no native_experts.txt): its CPU kernel needs\n"
+-                 "        AVX512-VNNI and AVX512-VBMI (Intel Ice Lake / AMD Zen 4 or newer).\n"
++                 "        AVX512-F/BW/VL and AVX512-VNNI (Intel Cascade Lake / AMD Zen 4 or newer).\n"
+                  "        An i-quant (IQ3_XXS, IQ3_S, ...), NVFP4 or Unsloth pack has native_experts.txt in its folder and runs on an\n"
+                  "        AVX2 CPU as well: build that pack (setup does it on a CPU without AVX-512) and give its folder as --pack.\n"
                   "        The scalar fallback exists for tests only and is far too slow to decode with.\n",
-                  f.reason());
-     std::exit(1);
-@@ -398,20 +446,20 @@ void cpu_require_expert_support() {
+@@ -401,20 +449,20 @@ void cpu_require_expert_support() {
  
  void q2_rows_any(const uint8_t* w, size_t row_bytes, int nblocks, const ActQ* const* a, int nt, float* const* out,
                   int r0, int r1) {
@@ -578,10 +583,10 @@ index a49a851..e580a61 100644
          if (f.d_type == 20 && cpu::cpu_avx2_ok()) {
              // (b3) the IQ4_NL multi-token AVX-2 kernel the pool now uses for IQ4_NL down projections,
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index 824bd19..4b5445a 100644
+index 956d2c5..7b9fb71 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -3949,9 +4188,10 @@ int main(int argc, char** argv) {
+@@ -3958,9 +4197,10 @@ int main(int argc, char** argv) {
          return 2;
      }
  
@@ -595,7 +600,7 @@ index 824bd19..4b5445a 100644
      strata::kernels::cpu::expert_set_oracle_q8_0(o.cpu_oracle_q8_0);
  #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) || defined(STRATA_GPU_METAL)
      // ... and nothing runs on a CPU without AVX2: every CPU expert kernel is AVX2 at least (the AVX-512 ones are
-@@ -4221,8 +4461,8 @@ int main(int argc, char** argv) {
+@@ -4230,8 +4470,8 @@ int main(int argc, char** argv) {
                                       "(setup writes it; run setup again).\n");
          }
          strata::kernels::cpu::cpu_require_expert_support();
@@ -607,7 +612,7 @@ index 824bd19..4b5445a 100644
                       !strata::kernels::cpu::cpu_avx2_ok()
                           ? (strata::kernels::cpu::cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr
 diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index 6e817a7..7cc92f9 100644
+index dac1051..eaef33f 100644
 --- a/sycl/CMakeLists.txt
 +++ b/sycl/CMakeLists.txt
 @@ -141,8 +141,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)

@@ -5,12 +5,12 @@
 # would be written beside the read-only store config is never reached).  Upstream added
 # /tool-media/ to the same router in 0.2.5, so the 404 block sits above it and returns.
 #
-# Regenerated against 5e8a4cca (v0.2.7).
+# Regenerated against 870aedd9 (v0.2.8).
 diff --git a/serve/server.py b/serve/server.py
-index 8c5213b..67855d1 100644
+index 5614dbf..920b1b2 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -6786,6 +6786,10 @@ def make_handler(svc: Service):
+@@ -6830,6 +6830,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -21,7 +21,7 @@ index 8c5213b..67855d1 100644
              if path.startswith("/tool-media/"):
                  if not self._authorized():
                      return
-@@ -7177,6 +7181,9 @@ def make_handler(svc: Service):
+@@ -7221,6 +7225,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
              path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
@@ -31,7 +31,7 @@ index 8c5213b..67855d1 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -8060,6 +8067,11 @@ def _name_in(name: str, names) -> bool:
+@@ -8104,6 +8111,11 @@ def _name_in(name: str, names) -> bool:
      return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
  
  
