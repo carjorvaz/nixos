@@ -23,20 +23,20 @@
 let
   c = cudaPackages;
 
-  # 870aedd9: v0.2.8 (2026-10-29), the current release.  The engine inside it is
-  # 0.1.54.  Since the last pin (5e8a4cca = v0.2.7 / engine 0.1.52) the Qwen
-  # engine gained the tool-call recovery by default (0.2.8: unreadable tool calls
-  # are parsed rather than dropped - 98.3% of 1,462 agent turns against 92.9%),
-  # the conversation-cache fix for a locked PLE table (#4518), the automatic
-  # expert cache honouring the reserve set (#4474), a new engine waiting for the
-  # old one to release its memory (#4051), and the measured decode gains 0.2.8
-  # reports on other cards (+5%/+3.8% on an A6000; prompts unchanged).  Upstream
-  # also turned the 0.2.7 residency-biased router back OFF by default on 12 GB
-  # cards (it "tied it to repeated text in long sessions", their note); this box
-  # sets STRATA_ROUTE_PRIOR explicitly, so it keeps the router - and the long-
-  # session repetition test is recorded in the exec plan.  llama.cpp's pin is
-  # unchanged (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
-  revision = "870aedd9e1ebe1c91f94da93b59af17729f6c5c0";
+  # c62d5e3a: v0.2.9 (2026-10-31), the current release.  The engine inside it is
+  # 0.1.55.  Since the last pin (870aedd9 = v0.2.8 / engine 0.1.54) the Qwen
+  # engine gained the Gated DeltaNet prompt kernels on the tensor cores for Linux
+  # NVIDIA (upstream: 2.6-5.7% faster prompts on an A4000 / RTX PRO 5000, decode
+  # unchanged - this box measures whether sm_75 takes that path, see the exec
+  # plan), tool-call handling fixes (#4663: a tool the conversation already used
+  # counts as declared; #4702/#4703: fenced or indented calls are no longer run),
+  # a Qwen3.6 warm-up fix that could write past the KV cache (#4708), and a
+  # build-level change: a compiled engine now carries code for every usable
+  # NVIDIA card in the PC (#4662), not only the one setup picked.  Parallel
+  # requests and the GDN kernels are on by default only with --parallel/--batch
+  # 2 or more, which this lane does not use.  llama.cpp's pin is unchanged
+  # (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
+  revision = "c62d5e3a15b40ea51c96aae9e8d36928965f53ab";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -68,7 +68,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.54";
+  version = "0.1.55";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -105,7 +105,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-+sF2dhxfVqshStCQoohzQVI5+GCT50ktNyL0ATf7zc8=";
+    hash = "sha256-eFuyhZQQNoskUXGB/RkaPvBslg16PZjCS3c8xyl4oZk=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -124,6 +124,9 @@ stdenv.mkDerivation {
   # outside our regions); avx512-bw-tier.patch had one conflict in
   # cpu_require_expert_support(), where 0.2.8 rewrote the message to explain a pack
   # without native_experts.txt - upstream's structure with the VBMI-free ISA list.
+  # The v0.2.9 bump (c62d5e3a) merged with no hunk conflicts in any of the three
+  # patches: every file they touch moved only in line numbers, so the 0.2.8 delta
+  # carried over unchanged.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}

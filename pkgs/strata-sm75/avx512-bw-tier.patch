@@ -1,4 +1,4 @@
-# tiberius: the AVX-512 expert tier without VBMI, against upstream 870aedd9 (v0.2.8, engine 0.1.54).
+# tiberius: the AVX-512 expert tier without VBMI, against upstream c62d5e3a (v0.2.9, engine 0.1.55).
 # REBASED 2026-10-30 onto 870aedd9 (v0.2.8).  One conflict: upstream rewrote
 # cpu_require_expert_support()'s message to explain a pack without
 # native_experts.txt.  The merge keeps upstream's structure and its accurate
@@ -45,10 +45,10 @@
 # See docs/exec-plans/active/tiberius-kernel-tuning.md.
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ee7e9f1..4d40271 100644
+index 692484a..75b0ca7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1824,14 +1824,21 @@ else()
+@@ -1852,14 +1852,21 @@ else()
  endif()
  target_include_directories(strata_kernels_cpu PUBLIC include)
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
@@ -73,7 +73,7 @@ index ee7e9f1..4d40271 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -1968,12 +1975,16 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -1996,12 +2003,16 @@ if(STRATA_NATIVE_EXPERTS)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -583,10 +583,10 @@ index a49a851..e580a61 100644
          if (f.d_type == 20 && cpu::cpu_avx2_ok()) {
              // (b3) the IQ4_NL multi-token AVX-2 kernel the pool now uses for IQ4_NL down projections,
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index 956d2c5..7b9fb71 100644
+index ce44646..6677a09 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -3958,9 +4197,10 @@ int main(int argc, char** argv) {
+@@ -4025,9 +4264,10 @@ int main(int argc, char** argv) {
          return 2;
      }
  
@@ -600,7 +600,7 @@ index 956d2c5..7b9fb71 100644
      strata::kernels::cpu::expert_set_oracle_q8_0(o.cpu_oracle_q8_0);
  #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) || defined(STRATA_GPU_METAL)
      // ... and nothing runs on a CPU without AVX2: every CPU expert kernel is AVX2 at least (the AVX-512 ones are
-@@ -4230,8 +4470,8 @@ int main(int argc, char** argv) {
+@@ -4298,8 +4538,8 @@ int main(int argc, char** argv) {
                                       "(setup writes it; run setup again).\n");
          }
          strata::kernels::cpu::cpu_require_expert_support();
@@ -612,7 +612,7 @@ index 956d2c5..7b9fb71 100644
                       !strata::kernels::cpu::cpu_avx2_ok()
                           ? (strata::kernels::cpu::cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr
 diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index dac1051..eaef33f 100644
+index 895b9ac..67615ec 100644
 --- a/sycl/CMakeLists.txt
 +++ b/sycl/CMakeLists.txt
 @@ -141,8 +141,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
