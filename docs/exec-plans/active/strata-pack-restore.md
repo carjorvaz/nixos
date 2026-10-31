@@ -157,29 +157,98 @@ in 9.05 / 9.11 s and decodes **55.7 / 62.0 tok/s** (hit 98.1 / 98.4%), and the
 18-token warmup prompt reads in 414 ms against 876 ms before.  For reference, the
 historical maximum on this box was 29.5 / 34.5 tok/s (ab11, 0.1.43).
 
-### What the router does NOT fix: the read of a sub-chunk prompt
+### What the prompt cache reuses (corrected 2026-10-30)
 
-Prompt reuse is chunk-granular, so a prompt shorter than one 28,160-token prefill
-chunk has nothing reusable: a 2,127-token first request reads in 8.5 s (it routes
-to essentially the whole pack), and the same prompt with one sentence appended
-reads in 8.5 s again (`reused 0`).  `--prompt-cache-root 1024` was measured for
-exactly this case (omp/pi's ~2k boundary sits under the 2048 default) and **did
-not change it**: the appended request reused 0 tokens at either root, so the flag
-is not carried.  At long context the same mechanism pays off - a 239k prompt
-reuses its complete chunks (225,280 of 239,241 tokens, 14.5 s instead of 163 s;
-see "Long context, measured" below).  The cost that remains for interactive
-traffic is therefore the last partial chunk of every turn, which for a short
-prompt is the whole prompt.  Making that cheap needs a per-request chunk choice
-or finer cache checkpoints; a globally smaller `--prefill` would fix short turns
-but cut a 250k prompt into ~120 2k-token chunks, each reading a broad expert
-union, so it is engine work rather than a config flag.
+A chat turn reuses its turn boundary.  With a ~1.9k system block and a short user
+turn, the first request reads 2,399 tokens in 8.9 s; the next turn (same
+conversation, one assistant reply and a new user sentence appended) reports
+`2,392 reused + 51 read in 557 ms` and decodes at 51 tok/s.  At depth the same
+holds: a 239,195-token chat read in 190.5 s (1,255 tok/s) and its next turn
+reused **239,188** tokens and read 52 in **547 ms** (0.1.54, lambda 1.2, no other
+client).  `--prompt-cache-root 1024` changes nothing (the same 2,392 reused at
+either root): the mark a chat turn mounts is the turn-boundary checkpoint
+(`turn_at`, the last `<|im_start|>`), which is deeper than the root, so the root
+size - and `--prompt-cache-tail` / `--prompt-cache-spread` - have nothing to add
+for this shape.  The root only decides what a prompt with no turn boundary can
+reuse.  None of the three is carried.
+
+What does not reuse is text appended *inside the same user message*: a
+2,127-token prompt extended by one sentence re-reads all 2,138 tokens in 8.5 s
+(`reused 0`).  Reuse is prefix matching at a checkpoint (a turn boundary, or a
+complete 28,160-token prefill chunk: a 239k prompt reused 225,280 of 239,241 when
+the append was inside the message), and an in-message append shares no whole
+checkpoint with its predecessor.  An attempt to checkpoint the prompt's end
+(n-1) - the state a raw-prompt continuation needs - was built and measured: it
+helps only that shape and costs a 118 MB host checkpoint per short request, so it
+was reverted before the deploy.
+
+### Two clients on one engine: an uncached request wipes the chain
+
+Measured on the live service 2026-10-30: our turn 1 (2,399 tokens, 2
+checkpoints), then another client's uncached prompt (23,642 and 27,125 tokens,
+2,038 and 1,427 generated at ~84 tok/s), then our turn 2 (2,444) - `reused 0`,
+9.5 s again.  The same two turns on the same engine with no interleaved request
+reuse 2,392.  At 250k the live turn 2 reused 0 and re-read 188 s.
+
+The main session keeps ONE checkpoint chain (`checks`), pruned to the current
+request's prefix, and a request that resumes from 0 clears it, root included
+(`generate.cpp:14531-14544` in v0.2.8).  So on a busy engine the interactive
+reuse above is best-effort.  Mitigations, in order of cost: serialize background
+jobs against interactive turns; or run the clients in `--batch` slots
+(`--slots N`), which keep a chain per slot (`bs[].checks`) - a different decode
+path whose numbers here are unmeasured; or a per-conversation chain outside batch
+mode, which is engine work.  None of these is deployed: this box serves hindsight
+and interactive traffic on the same port.
+
+### v0.2.8 (engine 0.1.54) and the router at 1.2
+
+The pin moved to 870aedd9 (v0.2.8, engine 0.1.54).  The three-way merge against
+the v0.2.7 tree needed no hunk resolution in tiberius.patch or no-web-ui.patch
+(only line numbers moved); avx512-bw-tier.patch had one conflict in
+`cpu_require_expert_support()`, where 0.2.8 rewrote the message to explain a pack
+without native_experts.txt - the merge keeps upstream's structure and the
+VBMI-free ISA list.  Built on tiberius from the local flake; the regenerated
+patch set was re-applied to a pristine 870aedd9 tree and reproduced the merged
+tree byte for byte before the build.
+
+| cell (fresh engine, greedy) | 0.1.52 | 0.1.54 @1.5 | 0.1.54 @1.2 |
+| --- | --- | --- | --- |
+| 4,252 read / decode | 467 tok/s / 55.6 | 467 / 54.3 | 460 / 49.0 |
+| 3,477 read / decode | 382 / 61.6 | 388 / 61.4 | 381 / 51.0 |
+| 26,134 read | 1,254 | 1,155 | 1,156 |
+
+The 26k read spread is run-to-run (ab24 measured 1,153-1,278 across the same cell
+family); decode parity between the two engines matches 0.2.8's own note that its
+gains are measured on other cards.  Tool-call parsing measured 12/12 on both
+engines with a two-function, twelve-prompt set - too clean to exercise the 0.2.8
+recovery, so there is no local evidence for it beyond upstream's 1,462 turns.
+
+**The router at 1.2, not 1.5.**  0.2.8 turned the route prior OFF by default for
+12 GB cards, tying it to repeated text in long sessions; this box keeps it
+explicitly, and the failure mode reproduces here at 1.5:
+
+* a 9-turn continuation probe, two runs per arm: off no identical turn; 1.2 none
+  in either run; 1.5 one clean run and one with **five identical 301-character
+  answers in a row** and 60.8% cross-turn 8-gram repeats.
+* an 80-task exact-answer set (arithmetic, units, logic, Python output, structured
+  data): off 61/80, 1.2 60/80, 1.5 56 and 58 in two runs (sigma ~3.8).
+* cost: 1.5 is 10-17% faster on the 4.2k/3.5k cells; 1.2 is still 2.2x the
+  un-routed lane on the 4.2k cell (49.0 against 22.4 tok/s).
+
+**Rejected on measurement.**  The MTP draft vocabulary built from the engine's own
+sources (43,099 ids; English and code at 100%/99% coverage; Han 28 of 55,328):
+decode 52.8 / 62.5 against 54.3 / 61.4 - no gain, and CJK drafting dies, so it is
+not used.  `--prompt-cache-root 1024` and `--vram-reserve-mib 768`: no effect (the
+former) and a hit-rate cost for no decode (the latter).  The end-of-prompt
+checkpoint patch described above: dropped.
 
 ### Other 0.2.7 findings
 
-- `--mtp-draft-vocab` needs a base subset (`draft_vocab_en.bin`) that the Nix
-  package does not ship; `tools/draft_vocab.py` can extend one but not create it
-  from nothing, so the +2.7-3.1% English decode it reports on upstream's cards is
-  not reachable here without generating a base from a large corpus.
+- `--mtp-draft-vocab`: the base subset can be produced - `data/draft_vocab_en.bin`
+  ships in the upstream source tree, and `tools/draft_vocab.py --corpus` extends
+  it (43,099 ids from the engine's own sources at 0.995 coverage).  Measured
+  2026-10-30: no decode gain here (see below), and CJK drafting dies (Han 28 of
+  55,328 ids), so it is not used.
 - `--vram-reserve-mib 768` (upstream's answer to the 475 MiB-free warning)
   measured 22.0 tok/s against 22.1 on the 4.2k cell and cost 2 points of hit rate
   by taking ~400 cache slots, so it is not carried either; the routing hit rate
