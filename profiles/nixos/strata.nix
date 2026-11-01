@@ -868,6 +868,16 @@ in
             "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
+            # Disk sessions (POST /slots/0?action=save|restore).  A SAVE streams
+            # the K/V straight from the pools into the file ("without a full host
+            # capture", generate.cpp): a 250k conversation measured 3.89 GB in
+            # 5.1 s on 2026-11-01.  A RESTORE is NOT streamed - session_file_read
+            # fills a SavedConversation in host RAM first (3,727 MiB at 250k plus
+            # the 384 MiB floor, refused against 2,050 MiB available), so the disk
+            # path only restores conversations whose image fits free RAM (~50k and
+            # below) - and, unlike a park, it survives a background request and a
+            # restart.
+            "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}/sessions"
           ];
           ExecStart = lib.escapeShellArgs [
             "${python}/bin/python3"
@@ -878,6 +888,11 @@ in
             (toString strataJson)
             "--port"
             (toString cfg.port)
+            # enables POST /slots/0?action=save|restore; the directory holds the
+            # session files (a 250k-token one is ~4.3 GB, /optane has 40 GB free,
+            # and the default --session-min-free-mib 4096 leaves room)
+            "--slot-save-path"
+            "${cfg.dataDir}/sessions"
           ];
         };
       };
