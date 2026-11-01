@@ -1,5 +1,4 @@
 {
-  config,
   lib,
   pkgs,
   ...
@@ -28,35 +27,6 @@
     # Reduce firewall log noise.
     firewall.logRefusedConnections = lib.mkDefault false;
   };
-
-  # Baseline intrusion banning on every server. NixOS adds the sshd jail when
-  # openssh is enabled; mail/web jails stay in the edge profiles. Ignore
-  # internal links and the tailnet (IPv4 and IPv6) so a proxied request or a
-  # bad key on an internal host can never ban the bastion.
-  services.fail2ban = {
-    enable = lib.mkDefault true;
-
-    ignoreIP = [
-      "10.0.0.0/8" # pius LAN / unlock bridge
-      "192.168.0.0/16"
-      "100.64.0.0/10" # Tailscale IPv4
-      "fd7a:115c:a1e0::/48" # Tailscale IPv6
-    ];
-
-    bantime = lib.mkDefault "24h";
-    bantime-increment = {
-      enable = lib.mkDefault true;
-      formula = "ban.Time * math.exp(float(ban.Count+1)*banFactor)/math.exp(1*banFactor)";
-      maxtime = "168h";
-      overalljails = true;
-    };
-  };
-
-  # Keep bans and the increment state across the ZFS root rollback.
-  environment.persistence."/persist".directories = [
-    "/var/lib/fail2ban"
-    "/var/log/fail2ban"
-  ];
 
   # No documentation on headless servers. `documentation.enable = false`
   # gates documentation.nix, but man-db is imported unconditionally and gated
