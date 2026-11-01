@@ -50,6 +50,18 @@
 let
   cfg = config.services.tiberius-strata;
 
+  # The engine only ever listens here.  The two doorways clients use - 8080
+  # (interactive) and 8090 (background) - belong to the lease proxy below,
+  # which is what keeps a background request from evicting the interactive
+  # conversation.  Loopback only, so nothing reaches the engine around it.
+  upstreamPort = 8081;
+
+  # The lease front end (pkgs/strata-lease-proxy.py carries the design notes):
+  # a store path, so there is no copy under /persist to keep in sync.
+  leaseProxy = pkgs.writeText "strata-lease-proxy.py" (
+    builtins.readFile ../../pkgs/strata-lease-proxy.py
+  );
+
   python = pkgs.python312.withPackages (ps: [
     ps.regex
     ps.numpy
@@ -538,23 +550,30 @@ let
         # checkpoints never restore into each other - one cold re-prefill follows.
         STRATA_KV_ROT = "1";
       };
-      inherit (cfg) port;
+      port = upstreamPort;
       # upstream's serve layer checks the Host header on every request (the
       # DNS-rebinding fix, server.py parse_request): it answers to localhost and
-      # *.localhost, IP literals, the bind address and - because it listens
-      # beyond loopback - this PC's own hostname and hostname.local, and 403s
-      # anything else.  Verified on the deployed service: 127.0.0.1, localhost,
-      # 192.168.1.3, the tailnet IP, `tiberius` and `tiberius.local` are 200;
-      # the MagicDNS FQDN needs this list.  NOTE this key is read by the SERVER
-      # from the config JSON - the env dict above only reaches the engine, so
-      # STRATA_ALLOWED_HOSTS there does nothing (measured: the server logged no
-      # "also answers to" line and 403'd the FQDN).
-      allowed_hosts = [ "tiberius.tail01b8d.ts.net" ];
-      # The vLLM lane this replaced bound 0.0.0.0 (and the tailnet profile marks
-      # tailscale0 trusted), so clients reach the API as http://tiberius:8080/v1.
-      # server.py defaults to 127.0.0.1 when the key is absent, which silently
-      # broke remote access after the cutover (found in the 2026-10-01 audit).
-      host = "0.0.0.0";
+      # *.localhost, IP literals, the bind address and, when it listens beyond
+      # loopback, this PC's own hostname and hostname.local.  It is loopback-only
+      # now, while the lease proxy relays the client's Host unchanged, so the
+      # names clients actually send must be listed here: 127.0.0.1, localhost
+      # and every IP literal pass by themselves; `tiberius` and `tiberius.local`
+      # used to come from the bind address; the MagicDNS FQDN always needed this
+      # list.  NOTE this key is read by the SERVER from the config JSON - the env
+      # dict above only reaches the engine, so STRATA_ALLOWED_HOSTS there does
+      # nothing (measured: the server logged no "also answers to" line and 403'd
+      # the FQDN).
+      allowed_hosts = [
+        "tiberius"
+        "tiberius.local"
+        "tiberius.tail01b8d.ts.net"
+      ];
+      # Loopback only: the lease proxy is the sole way in (see
+      # tiberius-strata-lease below), and clients keep the URL they already use
+      # (http://tiberius:8080/v1).  --host is passed on the command line as well
+      # - it wins over this key (server.py: a.host = a.host or cfg.get("host")
+      # or "127.0.0.1") - so neither one alone can reopen the port.
+      host = "127.0.0.1";
     }
   );
 
@@ -740,6 +759,11 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 8080;
+      description = ''
+        The public interactive port (on 0.0.0.0), served by the lease proxy.
+        The background door is 8090; the engine itself listens on 127.0.0.1:8081
+        and is not reachable directly.
+      '';
     };
 
     mountOptane = lib.mkOption {
@@ -886,13 +910,79 @@ in
             "strata"
             "--config"
             (toString strataJson)
+            # Loopback only, on upstreamPort: the lease proxy owns the two
+            # public doors (8080 interactive, 8090 background) and is the only
+            # way in.  A background client that could reach the engine directly
+            # would bypass the lease - which is exactly the request pattern that
+            # clears the interactive conversation.
+            "--host"
+            "127.0.0.1"
             "--port"
-            (toString cfg.port)
+            (toString upstreamPort)
             # enables POST /slots/0?action=save|restore; the directory holds the
             # session files (a 250k-token one is ~4.3 GB, /optane has 40 GB free,
             # and the default --session-min-free-mib 4096 leaves room)
             "--slot-save-path"
             "${cfg.dataDir}/sessions"
+          ];
+        };
+      };
+
+      # The engine holds ONE live conversation, so a background prompt arriving
+      # between two of the user's turns (hindsight on pius: 19-36k tokens
+      # through http://tiberius:8080/v1) clears it and the next turn has to
+      # re-read the whole chain - 164 s at 250k tokens.  This front end leases
+      # the engine to the interactive door and holds background requests while
+      # it is leased; pkgs/strata-lease-proxy.py has the design notes.
+      tiberius-strata-lease = {
+        description = "Lease front end for Strata (interactive :${toString cfg.port}, background :8090)";
+        # Follows the engine's own activation: parking Strata is a one-line
+        # `wantedBy = lib.mkForce [ ]` in hosts/tiberius.nix, and the doors must
+        # go with it - the parked vLLM lanes bind ${toString cfg.port} too, so a
+        # proxy that stayed wanted would fight them for it on that boot.
+        wantedBy = config.systemd.services.tiberius-strata.wantedBy;
+        # Wants, not requires: restarting the engine must not take the doors
+        # down with it, and this unit coming up must not restart the engine.
+        # While the engine is away the proxy answers 502 instead of refusing.
+        wants = [ "tiberius-strata.service" ];
+        after = [
+          "tiberius-strata.service"
+          # The proxy resolves `pius` (MagicDNS, 100.121.87.116 on this box)
+          # before it can classify a request; order after the resolver instead
+          # of relying on the script's own 60 s retry.
+          "nss-lookup.target"
+        ];
+        serviceConfig = {
+          Type = "exec";
+          Restart = "on-failure";
+          RestartSec = "5s";
+          ExecStart = lib.escapeShellArgs [
+            "${python}/bin/python3"
+            "${leaseProxy}"
+            "--front"
+            "0.0.0.0:${toString cfg.port}"
+            "--back"
+            "0.0.0.0:8090"
+            "--upstream"
+            "127.0.0.1:${toString upstreamPort}"
+            # hindsight on pius keeps talking to :8080 (moving it to :8090
+            # needs a tailnet ACL entry, and that portal is off this machine),
+            # so its address - not its port - is what marks it as background.
+            "--background-host"
+            "pius"
+          ];
+          # Sockets and the journal, nothing else: the process writes no files.
+          # The lease (600 s) and the hold cap (500 s) are the script's
+          # defaults; STRATA_LEASE_SECONDS and STRATA_LEASE_HOLD_CAP override
+          # them for a test.
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+            "AF_UNIX"
           ];
         };
       };
