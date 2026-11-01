@@ -260,7 +260,11 @@ held - never forwarded - until the lease expires or a 500 s cap, then answered
 a background request between two interactive turns, so the live chain survives
 at any depth.  Measured: a background POST from pius during a 20 s test lease was
 held 3.0 s and refused (`503`), and the next interactive turn reused 180 of 185
-tokens in 326 ms.  The engine itself is no longer reachable from the tailnet
+tokens in 326 ms.  The lease also makes a chain probe trustworthy with hindsight
+left running: its POSTs are classified `src=background`, so the proxy log must
+show no admitted (`status=200`) background line *between* the probe's two turns
+(one before turn 1 is harmless - it cannot clear a chain that does not exist
+yet); the 503s are the mechanism working.  The engine itself is no longer reachable from the tailnet
 (`tiberius:8081` refuses; the server passes `--host 127.0.0.1`).  The trade-off is
 policy, not mechanics: a 600 s lease also keeps hindsight out for ten minutes
 after the last message, so its consolidation lives in the gaps and at night.
