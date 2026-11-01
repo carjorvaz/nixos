@@ -195,78 +195,48 @@ request's prefix, and a request that resumes from 0 clears it, root included
 (`generate.cpp:14531-14544` in v0.2.8).  So on a busy engine the interactive
 reuse above is best-effort.
 
-The engine has a parking mechanism for exactly this shape
-(`--conversation-cache-mib/-slots/-min-tokens`; this box pins the budget to 0,
-because 0.2.3's auto-sizing takes up to 8 GiB on a 7.4 GiB box).  It is **not
-sufficient on its own**: a checkpoint is the recurrent state (~118 MB of GDN,
-QSA indexer tails and PLE history) and "the KV cache itself is positional and
-stays where it is", so a parked conversation keeps its K/V only under
-`--kv-grow`, whose gate requires `!o.resident_cpu_experts` - i.e. dropping the
-1 GiB `--resident-budget-gib` host tier.  The elastic K/V also frees the cells a
-short conversation never reaches back to the expert cache.
+**What fixes it, measured: `--kv-grow` plus parked conversations.**  A
+checkpoint is the recurrent state only, and "the KV cache itself is positional
+and stays where it is", so a parked conversation can be restored only when the
+K/V moves with it.  `--kv-grow` maps only the cells a request reaches and lets
+the parked image be restored by token identity (`take_reuse_for` refuses another
+conversation's bytes).  kv-grow is refused while `--resident-budget-gib` is
+present (that flag sets `resident_cpu_experts`), so the 1 GiB host tier went;
+the elastic K/V then buys +27% expert slots (7,766 against 6,123) and, on the
+same harness cells at lambda 1.2:
 
-The alternatives and their measured or documented costs:
+| cell | before | after |
+| --- | --- | --- |
+| 4,252 read / decode / hit | 457.7 tok/s / 49.2 / 96.8% | 497.8 / 57.3 / 98.2% |
+| 3,477 read / decode / hit | 384.3 / 51.6 / 98.0% | 408.4 / 64.5 / 98.6% |
+| 26,134 read / decode / hit | 1,162.3 / 52.5 / 98.1% | 1,245.5 / 49.3 / 99.1% |
 
-* `--kv-grow` + parking (drop the host tier): the only configuration where a
-  parked conversation's K/V survives a foreign prompt ("the longest parked
-  conversation, in tokens (--kv-grow keeps the K/V that long while it could be
-  restored)").  One config, two variables to price: the tier loss (8% of the CPU
-  pool per window measured on pre-router misses; at 2% misses it should be much
-  less) and the elastic K/V itself.  Untested here.
-* serialising the clients: zero cost, works today, needs the background jobs to
-  yield to interactive turns.
-* `--slots N` (per-slot K/V and chain, `bs[].checks`): the batch path does not
-  run the MTP drafter unless `--batch-mtp` (opt-in) is also set, so a slot-served
-  turn would lose the ~1.7 tokens per step the decode numbers above depend on;
-  it also wants a second slot's K/V at 262k against ~475 MiB free.  Re-measure
-  both before considering it.
-* a per-conversation K/V outside the batch path: engine work, the last resort.
+Live on generation 88 the same cells read 490.2 / 59.0 / 99.2% and 404.9 / 62.5 /
+99.2%.  The isolation probe (one 2.4k conversation around a 19.4k foreign
+request):
 
-None of these is deployed: this box serves hindsight and interactive traffic on
-the same port, and the collision costs a turn its reuse (9.5 s at 2.4k, 188 s at
-250k) but nothing correctness-wise.
+| | parking off | parking on |
+| --- | --- | --- |
+| turn 2 reused / read | 0 of 2,443 / 9,325 ms | 2,392 / 1,238 ms |
 
-### v0.2.8 (engine 0.1.54) and the router at 1.2
+**What it does not fix.**  The image is ~12.7 KB per token at int8, so a 250k
+conversation needs a 4,276 MiB snapshot: refused against the 2,048 MiB budget
+("skip parking (snapshot 4276 MiB exceeds available budget)") and the 250k turn
+still re-reads 164 s when something interleaves.  Under RAM pressure a
+background conversation can itself be refused on the floor and overwrite ours -
+one of three live probes lost the prefix, two kept it (2,358 of 2,410 tokens,
+1,183 ms).  So this is best-effort isolation up to ~50k-token conversations; a
+busy box still wants the two clients serialised.
 
-The pin moved to 870aedd9 (v0.2.8, engine 0.1.54).  The three-way merge against
-the v0.2.7 tree needed no hunk resolution in tiberius.patch or no-web-ui.patch
-(only line numbers moved); avx512-bw-tier.patch had one conflict in
-`cpu_require_expert_support()`, where 0.2.8 rewrote the message to explain a pack
-without native_experts.txt - the merge keeps upstream's structure and the
-VBMI-free ISA list.  Built on tiberius from the local flake; the regenerated
-patch set was re-applied to a pristine 870aedd9 tree and reproduced the merged
-tree byte for byte before the build.
+Settings that mattered, each from a measurement: `--conversation-cache-min-free-mib
+384` (the 2,560 default refused: "need 373 MiB plus 2560 MiB floor, 1466 MiB
+available"; even 512 skipped at "need 728 MiB plus 384 MiB floor, 802 MiB
+available"); `--conversation-cache-slots 4` (with 2, a third conversation evicted
+the oldest - ours - one park after it was written); `--conversation-cache-min-tokens
+1536`; `--conversation-cache-park-gain 512`; `STRATA_KV_GROW_HOLD=1`.
 
-| cell (fresh engine, greedy) | 0.1.52 | 0.1.54 @1.5 | 0.1.54 @1.2 |
-| --- | --- | --- | --- |
-| 4,252 read / decode | 467 tok/s / 55.6 | 467 / 54.3 | 460 / 49.0 |
-| 3,477 read / decode | 382 / 61.6 | 388 / 61.4 | 381 / 51.0 |
-| 26,134 read | 1,254 | 1,155 | 1,156 |
-
-The 26k read spread is run-to-run (ab24 measured 1,153-1,278 across the same cell
-family); decode parity between the two engines matches 0.2.8's own note that its
-gains are measured on other cards.  Tool-call parsing measured 12/12 on both
-engines with a two-function, twelve-prompt set - too clean to exercise the 0.2.8
-recovery, so there is no local evidence for it beyond upstream's 1,462 turns.
-
-**The router at 1.2, not 1.5.**  0.2.8 turned the route prior OFF by default for
-12 GB cards, tying it to repeated text in long sessions; this box keeps it
-explicitly, and the failure mode reproduces here at 1.5:
-
-* a 9-turn continuation probe, two runs per arm: off no identical turn; 1.2 none
-  in either run; 1.5 one clean run and one with **five identical 301-character
-  answers in a row** and 60.8% cross-turn 8-gram repeats.
-* an 80-task exact-answer set (arithmetic, units, logic, Python output, structured
-  data): off 61/80, 1.2 60/80, 1.5 56 and 58 in two runs (sigma ~3.8).
-* cost: 1.5 is 10-17% faster on the 4.2k/3.5k cells; 1.2 is still 2.2x the
-  un-routed lane on the 4.2k cell (49.0 against 22.4 tok/s).
-
-**Rejected on measurement.**  The MTP draft vocabulary built from the engine's own
-sources (43,099 ids; English and code at 100%/99% coverage; Han 28 of 55,328):
-decode 52.8 / 62.5 against 54.3 / 61.4 - no gain, and CJK drafting dies, so it is
-not used.  `--prompt-cache-root 1024` and `--vram-reserve-mib 768`: no effect (the
-former) and a hit-rate cost for no decode (the latter).  The end-of-prompt
-checkpoint patch described above: dropped.
+**Side benefit for the background client**: hindsight's own multi-turn jobs now
+report `3309 reused + 1242 read` at 92-100 tok/s where they used to re-read.
 
 ### v0.2.9 (engine 0.1.55)
 
