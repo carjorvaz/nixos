@@ -236,6 +236,16 @@ The snapshot cost solves exactly as a line: 17,282 B per token plus ~349 MB
 (3 x ~116 MB of checkpoint/live state), so 391 MB at 2,433 tokens (K/V only 42
 MB of it), 652 MB at 19,496 and 4,276 MiB at 239,240 (K/V 92% of it).
 
+**Disk sessions measured (v0.2.9, `--slot-save-path` now set).**  `SAVE` streams
+the K/V from the pools into the file: 3.89 GB for the 250k conversation in 5.1 s
+(760 MB/s), with 354 MiB of live state plus the 384 MiB floor as its RAM need.
+`RESTORE` is not streamed - `session_file_read` fills a `SavedConversation` in
+host RAM before `conversation_snapshot_restore` pushes it - so the same file
+asked for 3,727 MiB plus the floor against 2,050 MiB available and was refused.
+The disk path therefore restores conversations whose image fits free RAM (~50k
+and below: 391 MB plus the floor) and survives both a background request and a
+restart, which parking does not, but it does not rescue 250k on this box.
+
 **Why a refusal destroys the copy (root cause, v0.2.9).**  `park_source`
 (`generate.cpp:10655-10694`) runs `drop_superseded`, then `make_room`, then the
 RAM loop `while (!admit() && ... conversations.evict_oldest()) ++evicted;` - so
