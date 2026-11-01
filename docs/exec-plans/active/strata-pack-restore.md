@@ -232,9 +232,22 @@ so it tracks how much RAM the box has free when the foreign request arrives.  So
 best-effort isolation up to ~50k-token conversations; a busy box still wants the
 two clients serialised.
 
-The snapshot cost is a fixed term plus the K/V: 391 MB at 2,433 tokens, 302 MB
-at 4,344, 652 MB at 19,496, 4,276 MiB at 239,240 - roughly 16-19 KB per token
-at int8 plus ~300-390 MB.  `--prompt-cache` is not the lever for that term:
+The snapshot cost solves exactly as a line: 17,282 B per token plus ~349 MB
+(3 x ~116 MB of checkpoint/live state), so 391 MB at 2,433 tokens (K/V only 42
+MB of it), 652 MB at 19,496 and 4,276 MiB at 239,240 (K/V 92% of it).
+
+**Why a refusal destroys the copy (root cause, v0.2.9).**  `park_source`
+(`generate.cpp:10655-10694`) runs `drop_superseded`, then `make_room`, then the
+RAM loop `while (!admit() && ... conversations.evict_oldest()) ++evicted;` - so
+a park that is then refused (`if (!admit()) ... skip parking ...`) has already
+evicted up to `slots()` parked conversations, pure LRU, and the main session's
+chain is cleared after the park (`14644-14652`, root included).  Parked copies
+live in host RAM only; a restart loses them.  The smallest engine-side fix is to
+make the park transactional (stash the evicted entries, roll back on every
+refusal, commit only after `put()`); a one-line stopgap drops the eviction loop
+so a refusal never evicts.  Neither helps 250k: its K/V alone is ~4.1 GB against
+863 MiB of available RAM and a 2,048 MiB budget - that needs a lease keeping
+background jobs out while an interactive session is live, or more RAM.  `--prompt-cache` is not the lever for that term:
 three checkpoints instead of six left the 2.4k image at 391 MB (2,433 tokens)
 against 391 MB at 2,435 with six, so the constant is elsewhere in the image.
 
