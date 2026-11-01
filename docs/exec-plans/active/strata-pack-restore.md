@@ -219,14 +219,24 @@ request):
 | --- | --- | --- |
 | turn 2 reused / read | 0 of 2,443 / 9,325 ms | 2,392 / 1,238 ms |
 
-**What it does not fix.**  The image is ~12.7 KB per token at int8, so a 250k
-conversation needs a 4,276 MiB snapshot: refused against the 2,048 MiB budget
+**What it does not fix.**  A 250k conversation needs a measured 4,276 MiB
+snapshot: refused against the 2,048 MiB budget
 ("skip parking (snapshot 4276 MiB exceeds available budget)") and the 250k turn
 still re-reads 164 s when something interleaves.  Under RAM pressure a
-background conversation can itself be refused on the floor and overwrite ours -
-one of three live probes lost the prefix, two kept it (2,358 of 2,410 tokens,
-1,183 ms).  So this is best-effort isolation up to ~50k-token conversations; a
-busy box still wants the two clients serialised.
+background conversation can itself be refused on the floor and overwrite ours:
+of five live probes on the deployed flags two kept the prefix (2,358 and 2,388
+of 2,410 tokens, 1,183 and 380 ms) and three lost it.  The failure is a RAM-floor
+refusal of the *background* snapshot, not an eviction ("skip parking (physical
+RAM admission; need 621 MiB plus 384 MiB floor, 842 MiB available; evicted 0)"),
+so it tracks how much RAM the box has free when the foreign request arrives.  So this is
+best-effort isolation up to ~50k-token conversations; a busy box still wants the
+two clients serialised.
+
+The snapshot cost is a fixed term plus the K/V: 391 MB at 2,433 tokens, 302 MB
+at 4,344, 652 MB at 19,496, 4,276 MiB at 239,240 - roughly 16-19 KB per token
+at int8 plus ~300-390 MB.  `--prompt-cache` is not the lever for that term:
+three checkpoints instead of six left the 2.4k image at 391 MB (2,433 tokens)
+against 391 MB at 2,435 with six, so the constant is elsewhere in the image.
 
 Settings that mattered, each from a measurement: `--conversation-cache-min-free-mib
 384` (the 2,560 default refused: "need 373 MiB plus 2560 MiB floor, 1466 MiB
