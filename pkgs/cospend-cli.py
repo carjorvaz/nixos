@@ -9,6 +9,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -44,8 +45,8 @@ def parse_amount(raw: str) -> Decimal:
     return value
 
 
-def canonical_token(record: dict[str, Any]) -> str:
-    canonical = {
+def canonical_payload(record: dict[str, Any]) -> dict[str, Any]:
+    return {
         "project": record["project"],
         "date": record["date"],
         "description": normalize_text(record["description"]),
@@ -56,8 +57,81 @@ def canonical_token(record: dict[str, Any]) -> str:
         "payment_mode_id": int(record["payment_mode_id"]),
         "user_comment": record.get("user_comment", "").strip(),
     }
-    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+
+
+def canonical_token(record: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        canonical_payload(record), sort_keys=True, separators=(",", ":")
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()[:20]
+
+
+def strip_idempotency_markers(comment: str) -> str:
+    pattern = rf"\[{re.escape(IDEMPOTENCY_PREFIX)}[0-9a-f]+\]"
+    return re.sub(pattern, "", comment).strip()
+
+
+def bill_record(project_id: str, bill: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a stored bill to the same shape as an add record."""
+    try:
+        amount = Decimal(str(bill["amount"])).quantize(CENT)
+        payer_id = int(bill["payer_id"])
+    except (InvalidOperation, KeyError, TypeError, ValueError) as exc:
+        raise CospendError(f"Bill {bill.get('id')} is malformed") from exc
+    if bill.get("ower_amounts") or bill.get("owerAmounts"):
+        raise CospendError(
+            f"Bill {bill.get('id')} uses custom ower amounts; edit is unsupported"
+        )
+    ower_ids = [int(value) for value in (bill.get("owerIds") or [])]
+    if not ower_ids:
+        ower_ids = [int(ower["id"]) for ower in bill.get("owers", [])]
+    if not ower_ids:
+        raise CospendError(f"Bill {bill.get('id')} has no participants")
+    return {
+        "project": project_id,
+        "date": str(bill.get("date") or ""),
+        "description": str(bill.get("what") or ""),
+        "amount": amount,
+        "payer_id": payer_id,
+        "ower_ids": sorted(ower_ids),
+        "category_id": int(bill.get("categoryid", bill.get("category_id", 0)) or 0),
+        "payment_mode_id": int(
+            bill.get("paymentmodeid", bill.get("payment_mode_id", 0)) or 0
+        ),
+        "user_comment": strip_idempotency_markers(str(bill.get("comment") or "")),
+    }
+
+
+def edit_token(bill_id: int, before: dict[str, Any], after: dict[str, Any]) -> str:
+    payload = {
+        "bill_id": int(bill_id),
+        "before": canonical_payload(before),
+        "after": canonical_payload(after),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()[:20]
+
+
+def changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    labels = (
+        ("date", "date"),
+        ("description", "description"),
+        ("amount", "amount"),
+        ("payer_id", "payer"),
+        ("ower_ids", "participants"),
+        ("category_id", "category"),
+        ("payment_mode_id", "payment_mode"),
+        ("user_comment", "comment"),
+    )
+    old, new = canonical_payload(before), canonical_payload(after)
+    return [label for key, label in labels if old[key] != new[key]]
+
+
+def parse_date(raw: str) -> str:
+    try:
+        return dt.date.fromisoformat(raw).isoformat()
+    except (TypeError, ValueError) as exc:
+        raise CospendError("Date must be a real ISO date (YYYY-MM-DD)") from exc
 
 
 def split_amount(amount: Decimal, members: list[dict[str, Any]]) -> list[Decimal]:
@@ -301,6 +375,16 @@ class CospendClient:
         quoted = urllib.parse.quote(project_id, safe="")
         return int(self.request("POST", f"/projects/{quoted}/bills", payload))
 
+    def update_bill(
+        self, project_id: str, bill_id: int, payload: dict[str, Any]
+    ) -> int:
+        quoted = urllib.parse.quote(project_id, safe="")
+        return int(
+            self.request(
+                "PUT", f"/projects/{quoted}/bills/{int(bill_id)}", payload
+            )
+        )
+
     def bill(self, project_id: str, bill_id: int) -> dict[str, Any]:
         quoted = urllib.parse.quote(project_id, safe="")
         return self.request("GET", f"/projects/{quoted}/bills/{bill_id}")
@@ -375,6 +459,40 @@ def check_bot_contract(project: dict[str, Any]) -> list[dict[str, Any]]:
     return active_members
 
 
+def connect(
+    args: argparse.Namespace,
+) -> tuple[CospendClient, dict[str, Any], list[dict[str, Any]]]:
+    password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
+    client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
+    project = choose_project(client.projects(), args.project)
+    return client, project, check_bot_contract(project)
+
+
+def record_view(
+    record: dict[str, Any], members_by_id: dict[int, dict[str, Any]]
+) -> dict[str, Any]:
+    missing = {
+        member_id
+        for member_id in [record["payer_id"], *record["ower_ids"]]
+        if member_id not in members_by_id
+    }
+    if missing:
+        raise CospendError(f"Bill references unknown members: {sorted(missing)}")
+    selected = [members_by_id[member_id] for member_id in record["ower_ids"]]
+    shares = split_amount(record["amount"], selected)
+    return {
+        "date": record["date"],
+        "description": record["description"],
+        "amount": format(record["amount"], ".2f"),
+        "payer": members_by_id[record["payer_id"]]["name"],
+        "split": [
+            {"member": member["name"], "amount": format(share, ".2f")}
+            for member, share in zip(selected, shares)
+        ],
+        "comment": record["user_comment"] or None,
+    }
+
+
 def run_balance(args: argparse.Namespace) -> int:
     password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
     client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
@@ -439,14 +557,19 @@ def run_balance(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Preview and safely add one Cospend expense, or report balances"
+        description=(
+            "Preview-first Cospend client: add or edit one expense, or report balances"
+        )
     )
     parser.add_argument(
         "mode",
         nargs="?",
-        choices=("add", "balance"),
+        choices=("add", "edit", "balance"),
         default="add",
-        help="add (default): record one expense; balance: read-only who-owes-whom report",
+        help=(
+            "add (default): record one expense; edit: change one bill; "
+            "balance: read-only who-owes-whom report"
+        ),
     )
     parser.add_argument("--description")
     parser.add_argument("--amount")
@@ -456,48 +579,189 @@ def build_parser() -> argparse.ArgumentParser:
         "--for",
         dest="owers",
         action="append",
-        help="Exact member name or user ID; repeat for each participant",
+        help=(
+            "Exact member name or user ID; repeat for each participant. "
+            "In edit mode the provided set replaces the current participants"
+        ),
     )
     parser.add_argument("--category")
     parser.add_argument("--payment-mode")
-    parser.add_argument("--comment", default="")
+    parser.add_argument(
+        "--comment",
+        default=None,
+        help="Omit to keep (edit) or leave empty (add); pass an empty string to clear",
+    )
+    parser.add_argument("--bill", type=int, help="Bill id to edit")
     parser.add_argument("--project")
     parser.add_argument("--commit", metavar="PREVIEW_TOKEN")
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def run_add(args: argparse.Namespace) -> int:
+    missing = [
+        flag
+        for flag, value in (
+            ("--description", args.description),
+            ("--amount", args.amount),
+            ("--date", args.date),
+            ("--payer", args.payer),
+            ("--for", args.owers),
+        )
+        if value is None
+    ]
+    if missing:
+        raise CospendError("Add mode requires " + ", ".join(missing))
+    amount = parse_amount(args.amount)
+    date = parse_date(args.date)
+    description = " ".join(args.description.split())
+    if not description:
+        raise CospendError("Description must not be empty")
+
+    client, project, active_members = connect(args)
+    payer = resolve_named(active_members, args.payer, "payer")
+    selected: list[dict[str, Any]] = []
+    for query in args.owers:
+        member = resolve_named(active_members, query, "participant")
+        if member["id"] not in {item["id"] for item in selected}:
+            selected.append(member)
+    if not selected:
+        raise CospendError("At least one participant is required")
+
+    category_id = resolve_optional(
+        values(project.get("categories")), args.category, "category"
+    )
+    payment_mode_id = resolve_optional(
+        values(project.get("paymentmodes")), args.payment_mode, "payment mode"
+    )
+    user_comment = args.comment or ""
+    record = {
+        "project": project["id"],
+        "date": date,
+        "description": description,
+        "amount": amount,
+        "payer_id": int(payer["id"]),
+        "ower_ids": sorted(int(member["id"]) for member in selected),
+        "category_id": category_id,
+        "payment_mode_id": payment_mode_id,
+        "user_comment": user_comment,
+    }
+    token = canonical_token(record)
+    marker = f"[{IDEMPOTENCY_PREFIX}{token}]"
+    comment = " ".join(part for part in [user_comment.strip(), marker] if part)
+    shares = split_amount(amount, selected)
+    if len(shares) != len(selected):
+        raise CospendError("Internal split/member length mismatch")
+    preview = {
+        "status": "preview" if args.commit is None else "ready-to-commit",
+        "confirmation_token": token,
+        "project": project["name"],
+        "date": date,
+        "description": description,
+        "amount": format(amount, ".2f"),
+        "payer": payer["name"],
+        "split": [
+            {"member": member["name"], "amount": format(share, ".2f")}
+            for member, share in zip(selected, shares)
+        ],
+        "category": args.category,
+        "payment_mode": args.payment_mode,
+        "comment": user_comment or None,
+    }
+
+    existing = find_existing_bill(client.recent_bills(project["id"]), record, token)
+    if existing:
+        kind, bill = existing
+        if kind == "same-request":
+            print(json.dumps({"status": "already-committed", "bill_id": bill["id"]}))
+            return 0
+        raise CospendError(
+            f"Duplicate guard: matching bill already exists (id={bill['id']})"
+        )
+
+    if args.commit is None:
+        print(json.dumps(preview, indent=2, ensure_ascii=False))
+        return 0
+    if args.commit != token:
+        raise CospendError("Commit token does not match the current canonical payload")
+
+    payload = {
+        "date": date,
+        "what": description,
+        "payer": int(payer["id"]),
+        "payedFor": ",".join(str(member_id) for member_id in record["ower_ids"]),
+        "amount": float(amount),
+        "repeat": "n",
+        "repeatAllActive": 0,
+        "categoryId": category_id,
+        "paymentModeId": payment_mode_id,
+        "comment": comment,
+    }
     try:
-        if args.mode == "balance":
-            return run_balance(args)
-        missing = [
-            flag
-            for flag, value in (
-                ("--description", args.description),
-                ("--amount", args.amount),
-                ("--date", args.date),
-                ("--payer", args.payer),
-                ("--for", args.owers),
+        bill_id = client.create_bill(project["id"], payload)
+    except CospendError:
+        recovered = find_existing_bill(
+            client.recent_bills(project["id"]), record, token
+        )
+        if recovered and recovered[0] == "same-request":
+            print(
+                json.dumps(
+                    {
+                        "status": "committed-after-ambiguous-response",
+                        "bill_id": recovered[1]["id"],
+                    }
+                )
             )
-            if value is None
-        ]
-        if missing:
-            raise CospendError("Add mode requires " + ", ".join(missing))
-        amount = parse_amount(args.amount)
-        try:
-            date = dt.date.fromisoformat(args.date).isoformat()
-        except ValueError as exc:
-            raise CospendError("Date must be a real ISO date (YYYY-MM-DD)") from exc
+            return 0
+        raise
+    created = client.bill(project["id"], bill_id)
+    if not bill_matches(created, record) or marker not in str(created.get("comment", "")):
+        raise CospendError(f"Created bill {bill_id} failed post-write verification")
+    print(json.dumps({"status": "committed", "bill_id": bill_id}))
+    return 0
+
+
+def run_edit(args: argparse.Namespace) -> int:
+    if args.bill is None:
+        raise CospendError("Edit mode requires --bill")
+    change_flags = (
+        args.description,
+        args.amount,
+        args.date,
+        args.payer,
+        args.owers,
+        args.category,
+        args.payment_mode,
+        args.comment,
+    )
+    if all(value is None for value in change_flags):
+        raise CospendError("Edit mode requires at least one change flag")
+
+    client, project, active_members = connect(args)
+    members_by_id = {
+        int(member["id"]): member for member in project.get("members", [])
+    }
+    bill = client.bill(project["id"], args.bill)
+    if int(bill.get("deleted") or 0) != 0:
+        raise CospendError(f"Bill {args.bill} is deleted")
+    if str(bill.get("repeat") or "n") not in ("", "n"):
+        raise CospendError(f"Bill {args.bill} is recurring; edit is unsupported")
+
+    before = bill_record(project["id"], bill)
+    after = dict(before)
+    if args.description is not None:
         description = " ".join(args.description.split())
         if not description:
             raise CospendError("Description must not be empty")
-
-        password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
-        client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
-        project = choose_project(client.projects(), args.project)
-        active_members = check_bot_contract(project)
-        payer = resolve_named(active_members, args.payer, "payer")
+        after["description"] = description
+    if args.amount is not None:
+        after["amount"] = parse_amount(args.amount)
+    if args.date is not None:
+        after["date"] = parse_date(args.date)
+    if args.payer is not None:
+        after["payer_id"] = int(
+            resolve_named(active_members, args.payer, "payer")["id"]
+        )
+    if args.owers:
         selected: list[dict[str, Any]] = []
         for query in args.owers:
             member = resolve_named(active_members, query, "participant")
@@ -505,97 +769,104 @@ def main(argv: list[str] | None = None) -> int:
                 selected.append(member)
         if not selected:
             raise CospendError("At least one participant is required")
-
-        category_id = resolve_optional(
+        after["ower_ids"] = sorted(int(member["id"]) for member in selected)
+    if args.category is not None:
+        after["category_id"] = resolve_optional(
             values(project.get("categories")), args.category, "category"
         )
-        payment_mode_id = resolve_optional(
+    if args.payment_mode is not None:
+        after["payment_mode_id"] = resolve_optional(
             values(project.get("paymentmodes")), args.payment_mode, "payment mode"
         )
-        record = {
-            "project": project["id"],
-            "date": date,
-            "description": description,
-            "amount": amount,
-            "payer_id": int(payer["id"]),
-            "ower_ids": sorted(int(member["id"]) for member in selected),
-            "category_id": category_id,
-            "payment_mode_id": payment_mode_id,
-            "user_comment": args.comment,
-        }
-        token = canonical_token(record)
-        marker = f"[{IDEMPOTENCY_PREFIX}{token}]"
-        comment = " ".join(part for part in [args.comment.strip(), marker] if part)
-        shares = split_amount(amount, selected)
-        if len(shares) != len(selected):
-            raise CospendError("Internal split/member length mismatch")
-        preview = {
-            "status": "preview" if args.commit is None else "ready-to-commit",
-            "confirmation_token": token,
-            "project": project["name"],
-            "date": date,
-            "description": description,
-            "amount": format(amount, ".2f"),
-            "payer": payer["name"],
-            "split": [
-                {"member": member["name"], "amount": format(share, ".2f")}
-                for member, share in zip(selected, shares)
-            ],
-            "category": args.category,
-            "payment_mode": args.payment_mode,
-            "comment": args.comment or None,
-        }
+    if args.comment is not None:
+        after["user_comment"] = args.comment.strip()
 
-        existing = find_existing_bill(client.recent_bills(project["id"]), record, token)
-        if existing:
-            kind, bill = existing
-            if kind == "same-request":
-                print(json.dumps({"status": "already-committed", "bill_id": bill["id"]}))
-                return 0
-            raise CospendError(
-                f"Duplicate guard: matching bill already exists (id={bill['id']})"
-            )
-
-        if args.commit is None:
-            print(json.dumps(preview, indent=2, ensure_ascii=False))
+    if canonical_payload(before) == canonical_payload(after):
+        applied_marker = f"[{IDEMPOTENCY_PREFIX}{args.commit}]" if args.commit else ""
+        if applied_marker and applied_marker in str(bill.get("comment") or ""):
+            print(json.dumps({"status": "already-applied", "bill_id": args.bill}))
             return 0
-        if args.commit != token:
-            raise CospendError("Commit token does not match the current canonical payload")
+        raise CospendError("Edit makes no changes")
 
-        payload = {
-            "date": date,
-            "what": description,
-            "payer": int(payer["id"]),
-            "payedFor": ",".join(str(member_id) for member_id in record["ower_ids"]),
-            "amount": float(amount),
-            "repeat": "n",
-            "repeatAllActive": 0,
-            "categoryId": category_id,
-            "paymentModeId": payment_mode_id,
-            "comment": comment,
-        }
-        try:
-            bill_id = client.create_bill(project["id"], payload)
-        except CospendError:
-            recovered = find_existing_bill(
-                client.recent_bills(project["id"]), record, token
-            )
-            if recovered and recovered[0] == "same-request":
-                print(
-                    json.dumps(
-                        {
-                            "status": "committed-after-ambiguous-response",
-                            "bill_id": recovered[1]["id"],
-                        }
-                    )
-                )
-                return 0
-            raise
-        created = client.bill(project["id"], bill_id)
-        if not bill_matches(created, record) or marker not in str(created.get("comment", "")):
-            raise CospendError(f"Created bill {bill_id} failed post-write verification")
-        print(json.dumps({"status": "committed", "bill_id": bill_id}))
+    token = edit_token(args.bill, before, after)
+    marker = f"[{IDEMPOTENCY_PREFIX}{token}]"
+    comment = " ".join(
+        part for part in [after["user_comment"].strip(), marker] if part
+    )
+    preview = {
+        "status": "preview" if args.commit is None else "ready-to-commit",
+        "confirmation_token": token,
+        "project": project["name"],
+        "bill_id": args.bill,
+        "changed": changed_fields(before, after),
+        "before": record_view(before, members_by_id),
+        "after": record_view(after, members_by_id),
+    }
+
+    if args.commit is None:
+        print(json.dumps(preview, indent=2, ensure_ascii=False))
         return 0
+    if args.commit != token:
+        raise CospendError("Commit token does not match the current canonical payload")
+
+    current_raw = client.bill(project["id"], args.bill)
+    current = bill_record(project["id"], current_raw)
+    if canonical_payload(current) == canonical_payload(after) and marker in str(
+        current_raw.get("comment") or ""
+    ):
+        print(json.dumps({"status": "already-applied", "bill_id": args.bill}))
+        return 0
+    if canonical_payload(current) != canonical_payload(before):
+        raise CospendError("Bill changed since preview; re-run the preview")
+
+    payload = {
+        "date": after["date"],
+        "what": after["description"],
+        "payer": after["payer_id"],
+        "payedFor": ",".join(str(member_id) for member_id in after["ower_ids"]),
+        "amount": float(after["amount"]),
+        "categoryId": after["category_id"],
+        "paymentModeId": after["payment_mode_id"],
+        "comment": comment,
+    }
+    try:
+        updated_id = client.update_bill(project["id"], args.bill, payload)
+    except CospendError:
+        recovered_raw = client.bill(project["id"], args.bill)
+        recovered = bill_record(project["id"], recovered_raw)
+        if canonical_payload(recovered) == canonical_payload(after) and marker in str(
+            recovered_raw.get("comment") or ""
+        ):
+            print(
+                json.dumps(
+                    {
+                        "status": "committed-after-ambiguous-response",
+                        "bill_id": args.bill,
+                    }
+                )
+            )
+            return 0
+        raise
+    if int(updated_id) != int(args.bill):
+        raise CospendError(f"Edit returned unexpected bill id {updated_id}")
+    verified_raw = client.bill(project["id"], args.bill)
+    verified = bill_record(project["id"], verified_raw)
+    if canonical_payload(verified) != canonical_payload(after) or marker not in str(
+        verified_raw.get("comment") or ""
+    ):
+        raise CospendError(f"Updated bill {args.bill} failed post-write verification")
+    print(json.dumps({"status": "committed", "bill_id": args.bill}))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.mode == "balance":
+            return run_balance(args)
+        if args.mode == "edit":
+            return run_edit(args)
+        return run_add(args)
     except CospendError as exc:
         print(f"cospendctl: {exc}", file=sys.stderr)
         return 2

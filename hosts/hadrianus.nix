@@ -70,6 +70,9 @@ in
       enableSystemSlice = true;
     };
 
+    # networkd is enabled below; do not let a down link hold boot.
+    network.wait-online.enable = false;
+
     # oomd monitors system.slice; keep DNS, the web edge and remote access out
     # of its victim pool. Mail units are marked in profiles/nixos/mail.nix.
     services = {
@@ -89,6 +92,10 @@ in
   networking = {
     hostName = "hadrianus";
     hostId = "ce9c10db";
+
+    # Static single-NIC Netcup VM; networkd owns the link. wait-online is off so
+    # a missing link cannot hold boot for 120s (srvos server default).
+    useNetworkd = true;
 
     interfaces.${networkInterface} = {
       useDHCP = false;

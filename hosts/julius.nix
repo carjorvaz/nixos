@@ -65,7 +65,11 @@
       ];
     };
 
-    defaultGateway = "192.168.1.254";
+    # networkd requires the default gateway to name its interface.
+    defaultGateway = {
+      address = "192.168.1.254";
+      interface = "enp0s31f6";
+    };
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

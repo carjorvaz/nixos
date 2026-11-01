@@ -315,6 +315,62 @@ in
     '';
   };
 
+  # Refuse to activate a closure on a machine whose running hostname does not
+  # match `networking.hostName`: `nixos-rebuild --target-host root@host` with
+  # the wrong `--flake .#host` would otherwise install another host's
+  # configuration without a warning. Skips installs (no /run/booted-system or
+  # the nixos-installer hostname) and accepts EXPECTED_HOSTNAME for automation.
+  # Adapted from numtide/srvos nixos/common/detect-hostname-change.nix.
+  system.preSwitchChecks.detectHostnameChange = ''
+    detectHostnameChange() {
+      local actual
+      actual="$(< /proc/sys/kernel/hostname)"
+
+      if [[ ! -e /run/booted-system || "$actual" == "nixos-installer" ]]; then
+        return
+      fi
+
+      desired="${config.networking.hostName}"
+
+      if [[ "$actual" == "$desired" ]]; then
+        return
+      fi
+
+      if [[ "''${EXPECTED_HOSTNAME:-}" == "$desired" ]]; then
+        return
+      fi
+
+      log() {
+        echo "$*" >&2
+      }
+
+      log "WARNING: machine hostname change detected from '$actual' to '$desired'"
+      log
+      log "Are you deploying on the right host?"
+      log
+      log "Type YES to continue:"
+      read -r reply
+      if [[ $reply != YES ]]; then
+        echo "aborting"
+        exit 1
+      fi
+    }
+    detectHostnameChange
+  '';
+
+  # Show package changes between the running and incoming system before
+  # switching. dix reads the Nix database directly; nvd would pull a Python
+  # closure, while dix is a cached 2.2 MB binary (glibc/gcc-lib refs only).
+  # Adapted from numtide/srvos (shared/common/update-diff.nix).
+  system.preSwitchChecks.update-diff = ''
+    incoming="''${1-}"
+    if [[ -e /run/current-system && -n "$incoming" ]]; then
+      echo "--- diff to current-system"
+      ${lib.getExe pkgs.dix} --force-correctness /run/current-system "$incoming" || true
+      echo "---"
+    fi
+  '';
+
   # Following section copied from: https://github.com/numtide/srvos/
   systemd = {
     oomd.enable = false;

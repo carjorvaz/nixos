@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 import contextlib
+import copy
 import importlib.util
 import io
+import json
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -33,6 +35,8 @@ class FakeClient:
         self.bills_responses = [[]]
         self.created_bill = None
         self.create_calls = []
+        self.bill_data = {}
+        self.update_calls = []
 
     def projects(self):
         return self.project_data
@@ -48,7 +52,25 @@ class FakeClient:
             raise self.created_bill
         return 77
 
+    def update_bill(self, project_id, bill_id, payload):
+        self.update_calls.append((project_id, bill_id, payload))
+        stored = copy.deepcopy(self.bill_data.get(bill_id, self.created_bill))
+        if stored is None:
+            raise MODULE.CospendError(f"No bill {bill_id}")
+        stored["date"] = payload["date"]
+        stored["what"] = payload["what"]
+        stored["payer_id"] = payload["payer"]
+        stored["owerIds"] = [int(value) for value in payload["payedFor"].split(",")]
+        stored["amount"] = payload["amount"]
+        stored["categoryid"] = payload["categoryId"]
+        stored["paymentmodeid"] = payload["paymentModeId"]
+        stored["comment"] = payload["comment"]
+        self.bill_data[bill_id] = stored
+        return bill_id
+
     def bill(self, project_id, bill_id):
+        if bill_id in self.bill_data:
+            return self.bill_data[bill_id]
         return self.created_bill
 
 
@@ -301,6 +323,133 @@ class CospendCliTests(unittest.TestCase):
         self.assertIn('"status": "balance"', stdout)
         self.assertIn('"suggested_transfers": []', stdout)
         self.assertIn('"books_balanced": true', stdout)
+
+    def stored_bill(self):
+        return {
+            "id": 217,
+            "date": "2026-10-20",
+            "what": "Didi",
+            "amount": 1.95,
+            "payer_id": 18,
+            "owerIds": [18, 19],
+            "comment": "Estimativa [cospendctl:aaaaaaaaaaaaaaaaaaaa]",
+            "repeat": "n",
+            "deleted": 0,
+            "categoryid": 0,
+            "paymentmodeid": 0,
+        }
+
+    def edit_invoke(self, fake, extra):
+        return self.invoke_with(fake, ["edit", "--bill", "217", *extra])
+
+    def edit_preview(self, fake, extra):
+        code, stdout, stderr = self.edit_invoke(fake, extra)
+        self.assertEqual(code, 0, stderr)
+        return json.loads(stdout)
+
+    def test_edit_preview_shows_before_and_after_without_put(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        preview = self.edit_preview(fake, ["--amount", "1.94"])
+        self.assertEqual(preview["status"], "preview")
+        self.assertEqual(preview["before"]["amount"], "1.95")
+        self.assertEqual(preview["after"]["amount"], "1.94")
+        self.assertEqual(preview["changed"], ["amount"])
+        self.assertEqual(fake.update_calls, [])
+        self.assertEqual(fake.bill_data[217]["amount"], 1.95)
+
+    def test_edit_commit_updates_bill_and_replaces_marker(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        token = self.edit_preview(fake, ["--amount", "1.94"])[
+            "confirmation_token"
+        ]
+        code, stdout, stderr = self.edit_invoke(
+            fake, ["--amount", "1.94", "--commit", token]
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertIn('"status": "committed"', stdout)
+        payload = fake.update_calls[0][2]
+        self.assertEqual(payload["amount"], 1.94)
+        self.assertIn(f"[{MODULE.IDEMPOTENCY_PREFIX}{token}]", payload["comment"])
+        self.assertNotIn("aaaaaaaaaaaaaaaaaaaa", payload["comment"])
+        self.assertEqual(fake.bill_data[217]["amount"], 1.94)
+        self.assertEqual(fake.bill_data[217]["owerIds"], [18, 19])
+
+    def test_edit_wrong_commit_token_never_puts(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        code, _, stderr = self.edit_invoke(
+            fake, ["--amount", "1.94", "--commit", "wrong"]
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("does not match", stderr)
+        self.assertEqual(fake.update_calls, [])
+
+    def test_edit_after_external_change_fails_closed(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        token = self.edit_preview(fake, ["--amount", "1.94"])[
+            "confirmation_token"
+        ]
+        fake.bill_data[217]["amount"] = 2.00
+        code, _, stderr = self.edit_invoke(
+            fake, ["--amount", "1.94", "--commit", token]
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("does not match", stderr)
+        self.assertEqual(fake.update_calls, [])
+
+    def test_edit_retry_after_success_reports_already_applied(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        token = self.edit_preview(fake, ["--amount", "1.94"])[
+            "confirmation_token"
+        ]
+        args = ["--amount", "1.94", "--commit", token]
+        code, _, _ = self.edit_invoke(fake, args)
+        self.assertEqual(code, 0)
+        code, stdout, _ = self.edit_invoke(fake, args)
+        self.assertEqual(code, 0)
+        self.assertIn('"status": "already-applied"', stdout)
+        self.assertEqual(len(fake.update_calls), 1)
+
+    def test_edit_noop_is_rejected(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        code, _, stderr = self.edit_invoke(fake, ["--amount", "1.95"])
+        self.assertEqual(code, 2)
+        self.assertIn("no changes", stderr)
+
+    def test_edit_rejects_custom_ower_amounts(self):
+        fake = FakeClient()
+        bill = self.stored_bill()
+        bill["ower_amounts"] = [{"ower_id": 19, "amount": "1.00"}]
+        fake.bill_data[217] = bill
+        code, _, stderr = self.edit_invoke(fake, ["--amount", "1.94"])
+        self.assertEqual(code, 2)
+        self.assertIn("custom ower amounts", stderr)
+        self.assertEqual(fake.update_calls, [])
+
+    def test_edit_requires_bill_and_a_change_flag(self):
+        fake = FakeClient()
+        code, _, stderr = self.invoke_with(fake, ["edit"])
+        self.assertEqual(code, 2)
+        self.assertIn("requires --bill", stderr)
+        code, _, stderr = self.invoke_with(fake, ["edit", "--bill", "217"])
+        self.assertEqual(code, 2)
+        self.assertIn("at least one change flag", stderr)
+
+    def test_edit_can_clear_comment(self):
+        fake = FakeClient()
+        fake.bill_data[217] = self.stored_bill()
+        token = self.edit_preview(fake, ["--comment", ""])["confirmation_token"]
+        code, _, stderr = self.edit_invoke(
+            fake, ["--comment", "", "--commit", token]
+        )
+        self.assertEqual(code, 0, stderr)
+        comment = fake.update_calls[0][2]["comment"]
+        self.assertEqual(comment, f"[{MODULE.IDEMPOTENCY_PREFIX}{token}]")
 
     def test_unbalanced_books_omit_transfers(self):
         fake = FakeClient()

@@ -15,6 +15,50 @@ let
     procps
     which
   ];
+
+  # PHP 8.4.26 is affected by CVE-2026-109618 / CVE-2026-109619 (critical
+  # unauthenticated RCE in FPM). The nixpkgs bump to 8.4.27 is still an open
+  # PR (NixOS/nixpkgs#576853, #576865), so pin the fixed source here and drop
+  # this override once the flake input carries 8.4.27.
+  #
+  # The source is patched, rather than only overriding `version`/`hash`,
+  # because PHP extensions inherit `php.unwrapped.src`; patching the source
+  # makes the test fixes reach every extension build.
+  phpSecuritySource = pkgs.applyPatches {
+    src = pkgs.fetchurl {
+      url = "https://www.php.net/distributions/php-8.4.27.tar.bz2";
+      hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
+    };
+    postPatch = ''
+      # Same fix as the nixpkgs bump: the new OOM tests invoke `php -n` and
+      # must load the shared extension explicitly.
+      substituteInPlace \
+        ext/filter/tests/oom_filter_input.phpt \
+        ext/filter/tests/oom_filter_input_array.phpt \
+        ext/filter/tests/oom_filter_default_encoded.phpt \
+        --replace-fail "'-n'," "'-n', '-d', 'extension=' . __DIR__ . '/../modules/filter.so',"
+
+      # bug68996 asserts warning formatting, not fileinfo behaviour, and is a
+      # known open failure on local builders (NixOS/nixpkgs#438882, also
+      # reproduced on php 8.3.25). Keep it skipped instead of failing the
+      # security build.
+      cat > ext/fileinfo/tests/bug68996.phpt <<'EOF'
+      --TEST--
+      Bug #68996 (Invalid free of CG(interned_empty_string))
+      --SKIPIF--
+      <?php die("skip known Nix sandbox failure; see NixOS/nixpkgs#438882"); ?>
+      --FILE--
+      <?php
+      ?>
+      --EXPECT--
+      EOF
+    '';
+  };
+
+  phpSecurityPatched = pkgs.php84.overrideAttrs (_: {
+    version = "8.4.27";
+    src = phpSecuritySource;
+  });
 in
 {
   # STATE: still requires running after deploying
@@ -29,6 +73,7 @@ in
   services.nextcloud = {
     enable = true;
     package = pkgs.nextcloud34; # Major upgrades require an app compatibility review.
+    phpPackage = phpSecurityPatched;
     hostName = domain;
     database.createLocally = true;
     configureRedis = true;

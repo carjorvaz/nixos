@@ -287,3 +287,48 @@ non-drafter packs and caps drafts at `kWin-1`.
 3. The resident serve 5.9 tok/s / 10.8 s warm-slot result stands; the Qwen
    restore and page-quality decision remains. `pack-dspark` and the 8 GB drafter
    can be deleted if space is needed; the original pack is untouched.
+
+## 10. 2026-11-01 — the lane was measured; the baseline moved; the gate is DRAM
+
+**The lane is not hypothetical, and §3's modelled band did not survive contact.**
+§8/§8b measured **5.4–5.9 tok/s decode** and **38–52 tok/s prefill** on the GSQ
+IQ1_M pack (48% hit, 1,871 VRAM experts, 1.0 GB/s `pread` prompt stream), with
+DSpark below the clean baseline (3.59–4.71 against 5.80) and the DAX port refusing
+a 2.65 GB layer out of memory. §3's 8–12 tok/s band assumed a prompt-seeded hit
+rate and a working store; neither appeared (store allocated 0 of 229 slots).
+
+**The comparison baseline moved the other way, by ~2.5×.** Since §8 was written the
+Qwen lane gained 0.2.7's residency-biased router (`STRATA_ROUTE_PRIOR=1.2`) and
+`--kv-grow`: decode 22–26 → **57.3 / 64.5 tok/s** on the 4.2K / 3.5K cells and 78 on
+the 26K cell, prefill 1,245 tok/s at 26K. The §8 comparison ("430 s cold against
+Qwen's 283 s") therefore understates the gap: the same 13.6K-in / 1K-out call is
+258.6 s prefill + ~170 s output ≈ **430 s** on DS4.1 against **~28 s now (~15×)**. A
+283 s refresh becomes ~4,300 s, breaching the 1800 s reflect wall clock by ~2.4×.
+The lane cannot take the boot slot at the measured rates, and no lossless flag
+changes that.
+
+**The binding term is the host, not the Optane module.** Prefill reads at 1.0 GB/s
+through `pread` — not 6.8 — because the DAX window cannot register a 2.65 GB layer
+on a 7.4 GiB host (§8b), and the store sizes from `available − 12 GB` so it is off.
+More DRAM fixes both at once: a 2.65 GB layer registers with room to spare, the
+store becomes real, and the page cache replaces the fsDAX `pread` path. A second
+DCPMM raises the module ceiling 6.8 → ~12–13 GB/s but fixes neither, so **it does
+not unlock the lane on its own**.
+
+With ≥128 GB DRAM the ~120 GB expert set fits in RAM; prefill then runs at the PCIe
+link's 12.2 GB/s against the 350–650 tok/s compute ceiling, and decode becomes
+VRAM-hit + PCIe-copy bound — the Xolotl-class 4090 + 90 GB operating point
+(25.7 tok/s), not the 5.8 measured here. Hardware on hand (user, 2026-11-01):
+6× 32 GB DDR4 that does not POST on this host, and 5 spare 128 GB DCPMM modules.
+
+**Re-entry criteria:** prefill ≥ 300 tok/s and decode ≥ 10 tok/s on a real refresh
+prompt, else the lane stays a quality experiment. Both need the DRAM population
+first; DCPMM interleave is the second step, and rebuilding an interleave set
+destroys the /optane namespace (Qwen packs: 86.3 GB re-download + ~7 min repack, §5).
+
+**Quant note (Unsloth v3.1, 2026-10-31):** `UD-IQ1_S` 233.0 GB and `UD-IQ1_M`
+250.4 GB both bundle the 110.6 GB Engram table, so the expert backbones are **122.4
+and 139.8 GB** against GSQ IQ1_M's 120.7 GB — IQ1_S is the byte-neutral pick (+1.4%)
+and still scores 83.53 against 81.78 on Unsloth's 6-task average (Aider 36.5 vs
+29.8). Upstream v0.2.9 reads Unsloth `UD-IQ1_S`/`UD-IQ1_M` and the 4-shard DeepSeek
+layout, so no fork is needed to load them.

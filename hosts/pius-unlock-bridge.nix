@@ -10,6 +10,7 @@
 {
   imports = [
     (modulesPath + "/installer/sd-card/sd-image-raspberrypi.nix")
+    "${self}/profiles/nixos/serial.nix"
   ];
 
   nixpkgs.hostPlatform = lib.mkDefault lib.systems.examples.raspberryPi;

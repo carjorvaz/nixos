@@ -196,6 +196,7 @@ in
     # "${self}/profiles/nixos/ninfer-qwen.nix"
     "${self}/profiles/nixos/cpu/intel.nix"
     "${self}/profiles/nixos/ssh.nix"
+    "${self}/profiles/nixos/serial.nix"
     "${self}/profiles/nixos/zramSwap.nix"
     # STATE: sudo tailscale up (first auth is manual)
     "${self}/profiles/nixos/tailscale.nix"
@@ -275,10 +276,18 @@ in
   networking = {
     hostName = "tiberius";
     hostId = "5eed08d7";
+    # Static single-NIC host (USB Ethernet). networkd owns the link; the BMC is
+    # the recovery path, not the NIC.
+    useNetworkd = true;
     # Global useDHCP defaults to true, which lets dhcpcd claim every interface
     # and silently ignores per-interface static addresses.
     useDHCP = false;
-    defaultGateway = "192.168.1.1";
+    # networkd requires the default gateway to name its interface; scripted
+    # networking accepts both forms.
+    defaultGateway = {
+      address = "192.168.1.1";
+      interface = iface;
+    };
     nameservers = [ "192.168.1.1" ];
     # Static in the low zone next to the remoteUnlock .2 precedent: the router
     # DHCP pool demonstrably covers .140-.217, so "next to trajanus" (.172)
@@ -294,6 +303,10 @@ in
       ];
     };
   };
+
+  # networkd owns the USB NIC; a missing link must not stall boot (BMC is the
+  # recovery path).
+  systemd.network.wait-online.enable = false;
 
   # Runtime generations, pinned checkpoints and JIT caches live directly on the
   # persistent filesystem; no mutable runtime is copied through the Nix store.
