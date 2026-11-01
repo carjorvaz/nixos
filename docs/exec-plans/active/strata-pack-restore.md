@@ -242,6 +242,36 @@ not used.  `--prompt-cache-root 1024` and `--vram-reserve-mib 768`: no effect (t
 former) and a hit-rate cost for no decode (the latter).  The end-of-prompt
 checkpoint patch described above: dropped.
 
+### v0.2.9 (engine 0.1.55)
+
+The pin moved to c62d5e3a (v0.2.9, engine 0.1.55).  All three local patches merged
+with no hunk conflicts - every region they own moved only in line numbers - and
+the regenerated set was re-applied to a pristine c62d5e3a tree and reproduced the
+merged tree byte for byte before the build.  Deployed as generation 86.
+
+| cell (fresh engine, lambda 1.2) | 0.1.54 | 0.1.55 |
+| --- | --- | --- |
+| 4,252 read / decode | 460 tok/s / 49.0 | 448 / 49.3 |
+| 3,477 read / decode | 381 / 51.0 | 376 / 51.1 |
+| 26,134 read / decode | 1,156 / 50.1 | 1,146 / 51.3 |
+| chat turn 2 (2,399 -> 2,443 tokens) | 2,392 reused, 557 ms | 2,392 reused, 561 ms |
+
+The reads are 1-2.4% slower and the decode equal to 2.4% faster, all inside this
+harness's spread; the chat turn's answer is the same sha as on 0.1.54.  Upstream's
+headline for Linux NVIDIA - the Gated DeltaNet prompt kernels on the tensor cores,
+2.6-5.7% faster prompts on an A4000 / RTX PRO 5000 - does not engage on this sm_75
+card.  The tool-call fixes (#4663: a tool the conversation already used counts as
+declared; #4702/#4703: fenced or indented calls are no longer run) are agent-side
+and not observable with the twelve-prompt set used here (12/12 before and after).
+The parallel-request defaults do not apply (this lane runs --batch 0), and the
+per-card engine code (#4662) does not either: the Nix build is explicitly sm_75.
+
+The bump is kept for the fixes, not for speed.  One operational trap found while
+measuring it: `nix build --no-link` outputs are collected by the box's daily
+`nix-gc.timer` within minutes, so the first 0.1.55 build vanished before it could
+be measured; deploys use `nixos-rebuild switch`, whose generation pins the
+closure.
+
 ### Other 0.2.7 findings
 
 - `--mtp-draft-vocab`: the base subset can be produced - `data/draft_vocab_en.bin`
