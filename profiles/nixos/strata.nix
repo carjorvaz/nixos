@@ -178,13 +178,48 @@ let
         (toString cfg.context)
         "--kv"
         cfg.kv
-        # v0.2.3 (#3493) sizes a parked-conversation cache from the free RAM
-        # when this is absent (up to 8 GiB, floor 2.5 GiB), where 0.1.43's
-        # default was 0.  This 7.4 GiB box runs a 1 GiB host tier and a 6 GiB
-        # DAX window; pin 0 so a future sizing rule cannot take RAM from the
-        # tier or start pinning ~118 MB checkpoints.
+        # --kv-grow: the K/V takes VRAM only for the cells the requests reach
+        # (16,384 of 262,144 mapped at start, 0.25 of 3.35 GiB) and the expert
+        # cache lends the rest, giving slots back as the context grows.  Measured
+        # 2026-11-01, fresh engine, lambda 1.2, same cells as the control:
+        # 7,766 expert slots against 6,123 (+27%), 4,252-token read 457.7 ->
+        # 497.8 tok/s (+8.8%) and decode 49.2 -> 57.3 (+16.5%), 3,477-token
+        # 384.3/51.6 -> 408.4/64.5, 26,134-token read 1,162.3 -> 1,245.5 (+7.2%)
+        # at a 99.1% hit.  It is refused when --resident-budget-gib is present
+        # (that flag sets resident_cpu_experts, which the kv-grow gate excludes),
+        # which is why hostTierGib below now defaults to 0.
+        "--kv-grow"
+        # Parked conversations: the only mechanism that keeps a conversation's
+        # prefix while another client's uncached request runs in between.  The
+        # engine parks the conversation's recurrent state AND its K/V image in
+        # host RAM (the elastic K/V above is what keeps the image restorable) and
+        # restores it by token identity, never another conversation's bytes.
+        # Measured 2026-11-01, one 2.4k conversation around a 19.4k foreign
+        # request: with parking off, turn 2 reused 0 of 2,443 tokens and re-read
+        # 9,325 ms; with these flags, 2,392 reused and 1,238 ms.  384 MiB is the
+        # RAM floor: the 2,560 default refuses on this box ("need 373 MiB plus
+        # 2560 MiB floor, 1466 MiB available") and even 512 skipped while a
+        # request held RAM ("need 728 MiB plus 384 MiB floor, 802 MiB
+        # available").  4 slots, not 2: on the live service a third conversation
+        # (a hindsight job beside ours and a probe's foreign prompt) evicted the
+        # oldest - ours - one park after it was written, so the cap must cover
+        # ours plus whatever background traffic interleaves.  The 1,536-token
+        # floor keeps short side requests from taking a slot, and park-gain 512
+        # avoids writing a whole snapshot for a turn that grew a few hundred
+        # tokens.  Under real RAM pressure a background conversation that is
+        # itself refused on the floor can still overwrite ours (measured: one of
+        # three live probes lost the prefix, two kept it), so this is best-effort
+        # isolation, not a guarantee.
         "--conversation-cache-mib"
-        "0"
+        "2048"
+        "--conversation-cache-slots"
+        "4"
+        "--conversation-cache-min-tokens"
+        "1536"
+        "--conversation-cache-min-free-mib"
+        "384"
+        "--conversation-cache-park-gain"
+        "512"
       ]
       # upstream has the resident host tier natively (0.1.35+): --resident-budget-gib N keeps
       # the N GiB of the GPU cache's complement that the expert profile ranks
@@ -316,23 +351,23 @@ let
         # added nothing on top of the series, and STRATA_ATTN_DAILY with
         # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
         STRATA_SM75_PERF = "1";
-        # upstream's --resident-budget-gib page-locks its copy by default
-        # (cudaHostAlloc / cudaHostRegister, reported as "mapped pinned").  The
-        # measured tier on this box is the PAGEABLE one (the deployed log reads
-        # "resident 1.00 GiB, pinned 0.00 GiB"), and 1 GiB of pinned host memory
-        # would also sit on the ~7 GiB per-process cudaHostRegister cap that the
-        # sliding DAX window already probes at ~6.2 GiB.  STRATA_RESIDENT_PIN=0 is
-        # upstream's own "the --resident-cpu-experts form" arm.
-        STRATA_RESIDENT_PIN = "0";
-        # The budget path clamps to (available RAM - this headroom - 256 MiB).
-        # The default headroom is 4 GiB, which exceeds what this 7.4 GiB box has
-        # available at engine start (~2 GiB) and would silently zero the tier;
-        # the old --resident-cpu-mib path had no clamp at all.  0 keeps 1 GiB
-        # (only the 256 MiB margin applies).
-        STRATA_RESIDENT_HEADROOM_GIB = "0";
+        # The 1 GiB resident host tier (--resident-budget-gib, STRATA_RESIDENT_PIN
+        # and STRATA_RESIDENT_HEADROOM_GIB with it) is gone with hostTierGib = 0:
+        # it is mutually exclusive with --kv-grow, and the elastic K/V above buys
+        # more (+1,643 slots, both reads and decode faster).  The variables are
+        # dropped rather than left set, so nothing here implies a tier that the
+        # engine is not running.
+        #
+        # STRATA_KV_GROW_HOLD=1: keep the longest parked conversation's K/V cells
+        # mapped while it is parked, instead of trimming the region to the current
+        # request and re-growing (which moves experts and costs a quiesce) on the
+        # restore.  Cost: those cells stay out of the expert cache while parked -
+        # ~17 slots for the 2.4k interactive conversation, so this is cheap at the
+        # size that matters here.
+        STRATA_KV_GROW_HOLD = "1";
         # v0.1.40 changed the file tier's default: on Linux the reads go unbuffered
         # when the file cache cannot keep the returning experts (#1194), and this box
-        # (7.4 GiB RAM with a 1 GiB RAM tier taken) is decided that way.  Unbuffered
+        # (7.4 GiB RAM, shared with whatever is parked) is decided that way.  Unbuffered
         # is 2x slower here: the same cell (28160 chunk, 27575-token prompt, 256 gen)
         # reads in 52,095 ms (529.5 tok/s) unbuffered against 26,282 ms (1049.5
         # tok/s, and 26,919 ms on the deployed 0.1.38 stack) with the page cache -
@@ -688,12 +723,17 @@ in
 
     hostTierGib = lib.mkOption {
       type = lib.types.float;
-      default = 1.0;
+      default = 0.0;
       description = ''
         GiB of the hottest profile-ranked experts the GPU cache does not hold kept
-        in ordinary RAM (upstream's --resident-budget-gib, a float so a lane
-        can ask for e.g. 0.5).  1.0 is the measured setting (the old
-        --resident-cpu-mib 1024, ~8% off the CPU pool); 0 keeps the pure mmap path.
+        in ordinary RAM (upstream's --resident-budget-gib, a float so a lane can
+        ask for e.g. 0.5).  0 (the default) keeps the plain mmap path, and it is
+        required for --kv-grow: the flag sets resident_cpu_experts, which the
+        kv-grow gate excludes.  1.0 was the setting until 2026-11-01 - the old
+        --resident-cpu-mib 1024, worth ~8% off the CPU pool on pre-router
+        traffic (22% misses).  With the route prior at 98% hit, the elastic K/V
+        that 0 enables measured +27% expert slots and +8.8% read / +16.5% decode
+        on the 4,252-token cell, so the tier loses.
       '';
     };
 
