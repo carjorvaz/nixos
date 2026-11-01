@@ -845,7 +845,17 @@ in
           "tiberius-qwen38-uncensored.service"
           "tiberius-ninfer.service"
         ];
-        unitConfig.RequiresMountsFor = [
+        # WantsMountsFor=, not RequiresMountsFor=: both of these mounts can
+        # legitimately appear after multi-user (/dev/pmem0 enumeration; the ZFS
+        # import of zdata).  A failed Requires= would cancel this unit's start
+        # job with result 'dependency' - systemd never retries that (Restart=
+        # covers only process failures, and OnFailure= never fires because the
+        # unit stays inactive rather than failed), so the lane would wait for a
+        # manual start.  Wants= keeps the pull-in and the After= ordering, but a
+        # late mount becomes an ordinary ExecStartPre failure that the bounded
+        # Restart= retries.  Requires systemd >= 256; tiberius runs 260.4
+        # (verified on-box with a systemd-analyze verify probe).
+        unitConfig.WantsMountsFor = [
           cfg.dataDir
           cfg.modelsRoot
         ];
@@ -856,8 +866,12 @@ in
         # [Unit] directives: in serviceConfig systemd accepts only the legacy
         # StartLimitBurst spelling and silently drops StartLimitIntervalSec, so
         # both live at the unit level, not in the [Service] block below.
-        startLimitIntervalSec = 300;
-        startLimitBurst = 3;
+        # 10 x RestartSec=10 s after the first failure: wider than the mounts'
+        # own failure windows (30 s pmem device timeout, 60 s ZFS import loop,
+        # 90 s systemd device default), still bounded so a permanently broken
+        # start is visible in systemctl --failed.
+        startLimitIntervalSec = 600;
+        startLimitBurst = 10;
         environment = {
           LD_LIBRARY_PATH = "${config.hardware.nvidia.package}/lib";
           # The bundled web app is off: serve/server.py 404s its pages, assets
@@ -883,6 +897,10 @@ in
             # 2026-10-28, see docs/exec-plans/active/strata-pack-restore.md.
             # Fail the start instead of serving 20x slower.
             "${pkgs.coreutils}/bin/test -f ${cfg.dataDir}/packs/${lane.pack}/experts.bin"
+            # /data can be late as well: without this gate a missing shard
+            # surfaces as a dangling symlink and the engine dies ~40 s into
+            # loading it, instead of as a clean, retryable start failure.
+            "${pkgs.coreutils}/bin/test -f ${cfg.modelsRoot}/${lane.models}/${lane.shard1}"
             # upstream's gguf_split_paths() demands every shard named by --native's
             # "-of-NNNNN" suffix beside it, and it validates the GGUF's own split
             # metadata too, so shard 1 cannot be passed alone or under a made-up

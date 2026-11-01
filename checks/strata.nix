@@ -64,12 +64,16 @@ let
 
   failures =
     lib.optional (
-      !(lib.hasInfix "StartLimitIntervalSec=300" unitSection)
-    ) "tiberius-strata.service [Unit] must set StartLimitIntervalSec=300"
+      !(lib.hasInfix "StartLimitIntervalSec=600" unitSection)
+    ) "tiberius-strata.service [Unit] must set StartLimitIntervalSec=600"
     ++ lib.optional (
-      !(lib.hasInfix "StartLimitBurst=3" unitSection)
-    ) "tiberius-strata.service [Unit] must set StartLimitBurst=3"
+      !(lib.hasInfix "StartLimitBurst=10" unitSection)
+    ) "tiberius-strata.service [Unit] must set StartLimitBurst=10"
     ++ lib.optional (lib.hasInfix "StartLimit" serviceSection) "tiberius-strata.service [Service] must not contain StartLimit* (keep them in unitConfig)"
+    ++ lib.optional (
+      !(lib.hasInfix "WantsMountsFor=" unitSection)
+    ) "tiberius-strata.service [Unit] must use WantsMountsFor= for late mounts"
+    ++ lib.optional (lib.hasInfix "RequiresMountsFor=" unitSection) "tiberius-strata.service [Unit] must not use RequiresMountsFor= (a failed mount fails the start job with result 'dependency', which Restart= never retries)"
     ++ lib.optional (
       !(lib.hasInfix "tiberius-qwen38.service" afterLine)
     ) "tiberius-strata.service [Unit] After= must order after tiberius-qwen38.service"
