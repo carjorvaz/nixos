@@ -241,8 +241,9 @@ MB of it), 652 MB at 19,496 and 4,276 MiB at 239,240 (K/V 92% of it).
 persistent mode as `/dev/pmem0` - 11 of 12 DIMM slots are free, the array
 supports 2 TB.  Every RAM-limited path above is therefore an 8 GB-of-DRAM
 problem, not a hardware limit: +32 GB of DDR4 (one RDIMM) exceeds the ~4.1 GiB
-that a 250k disk restore needs and the 4,276 MiB a 250k park needs, and one more
-module fills a channel.  Upstream (`github.com/NikolayS/Strata`) returned
+that a 250k disk restore needs and the 4,276 MiB a 250k park needs; one module in
+each of the six channels (P0_MC0/C1 _DIM_CH_A0/B0/C0/D0/E0/F0) fills the board's
+bandwidth, A1 being channel A's second slot.  Upstream (`github.com/NikolayS/Strata`) returned
 "Repository not found" on 2026-11-01 after serving the 0.2.9 tarball earlier the
 same day, so 0.2.9 is the last release retrievable and the unpacked trees under
 `/persist/strata-src` are the only source copies until access returns.
