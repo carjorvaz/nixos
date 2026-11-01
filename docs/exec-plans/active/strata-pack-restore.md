@@ -249,6 +249,24 @@ on 2026-11-01 `main` was `c62d5e3a` = v0.2.9 = this pin, so there are no newer
 commits to take: a park or restore fix has to be written here, and the unpacked
 trees under `/persist/strata-src` are a convenience, not a fallback.
 
+**Lease front end (deployed 2026-11-01, generation 94).**  `pkgs/strata-lease-proxy.py`
+now fronts the loopback engine (`127.0.0.1:8081`) with two doors - `:8080`
+interactive, `:8090` background - and treats every request from pius (MagicDNS,
+resolved at start: 100.121.87.116) as background on any door.  A POST to
+`/v1/chat/completions` or `/v1/messages` on the interactive door takes a 600 s
+lease (renewed when the response ends); a background POST while it is live is
+held - never forwarded - until the lease expires or a 500 s cap, then answered
+`503` with `Retry-After`.  GETs pass untouched.  The engine therefore never sees
+a background request between two interactive turns, so the live chain survives
+at any depth.  Measured: a background POST from pius during a 20 s test lease was
+held 3.0 s and refused (`503`), and the next interactive turn reused 180 of 185
+tokens in 326 ms.  The engine itself is no longer reachable from the tailnet
+(`tiberius:8081` refuses; the server passes `--host 127.0.0.1`).  The trade-off is
+policy, not mechanics: a 600 s lease also keeps hindsight out for ten minutes
+after the last message, so its consolidation lives in the gaps and at night.
+Parking and disk sessions remain the fallback for what the lease cannot cover (a
+restart, or a second interactive client).
+
 **Disk sessions measured (v0.2.9, `--slot-save-path` now set).**  `SAVE` streams
 the K/V from the pools into the file: 3.89 GB for the 250k conversation in 5.1 s
 (760 MB/s), with 354 MiB of live state plus the 384 MiB floor as its RAM need.
