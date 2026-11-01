@@ -236,6 +236,17 @@ The snapshot cost solves exactly as a line: 17,282 B per token plus ~349 MB
 (3 x ~116 MB of checkpoint/live state), so 391 MB at 2,433 tokens (K/V only 42
 MB of it), 652 MB at 19,496 and 4,276 MiB at 239,240 (K/V 92% of it).
 
+**The box (SMBIOS, 2026-11-01).**  8 GB of DRAM in one RDIMM (Micron
+18ASF1G72PZ, 2400 MT/s) plus a 128 GB Intel Optane DCPMM (NMA1XXD128GPS) in
+persistent mode as `/dev/pmem0` - 11 of 12 DIMM slots are free, the array
+supports 2 TB.  Every RAM-limited path above is therefore an 8 GB-of-DRAM
+problem, not a hardware limit: +32 GB of DDR4 (one RDIMM) exceeds the ~4.1 GiB
+that a 250k disk restore needs and the 4,276 MiB a 250k park needs, and one more
+module fills a channel.  Upstream (`github.com/NikolayS/Strata`) returned
+"Repository not found" on 2026-11-01 after serving the 0.2.9 tarball earlier the
+same day, so 0.2.9 is the last release retrievable and the unpacked trees under
+`/persist/strata-src` are the only source copies until access returns.
+
 **Disk sessions measured (v0.2.9, `--slot-save-path` now set).**  `SAVE` streams
 the K/V from the pools into the file: 3.89 GB for the 250k conversation in 5.1 s
 (760 MB/s), with 354 MiB of live state plus the 384 MiB floor as its RAM need.
