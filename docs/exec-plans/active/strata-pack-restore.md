@@ -193,12 +193,38 @@ reuse 2,392.  At 250k the live turn 2 reused 0 and re-read 188 s.
 The main session keeps ONE checkpoint chain (`checks`), pruned to the current
 request's prefix, and a request that resumes from 0 clears it, root included
 (`generate.cpp:14531-14544` in v0.2.8).  So on a busy engine the interactive
-reuse above is best-effort.  Mitigations, in order of cost: serialize background
-jobs against interactive turns; or run the clients in `--batch` slots
-(`--slots N`), which keep a chain per slot (`bs[].checks`) - a different decode
-path whose numbers here are unmeasured; or a per-conversation chain outside batch
-mode, which is engine work.  None of these is deployed: this box serves hindsight
-and interactive traffic on the same port.
+reuse above is best-effort.
+
+The engine has a parking mechanism for exactly this shape
+(`--conversation-cache-mib/-slots/-min-tokens`; this box pins the budget to 0,
+because 0.2.3's auto-sizing takes up to 8 GiB on a 7.4 GiB box).  It is **not
+sufficient on its own**: a checkpoint is the recurrent state (~118 MB of GDN,
+QSA indexer tails and PLE history) and "the KV cache itself is positional and
+stays where it is", so a parked conversation keeps its K/V only under
+`--kv-grow`, whose gate requires `!o.resident_cpu_experts` - i.e. dropping the
+1 GiB `--resident-budget-gib` host tier.  The elastic K/V also frees the cells a
+short conversation never reaches back to the expert cache.
+
+The alternatives and their measured or documented costs:
+
+* `--kv-grow` + parking (drop the host tier): the only configuration where a
+  parked conversation's K/V survives a foreign prompt ("the longest parked
+  conversation, in tokens (--kv-grow keeps the K/V that long while it could be
+  restored)").  One config, two variables to price: the tier loss (8% of the CPU
+  pool per window measured on pre-router misses; at 2% misses it should be much
+  less) and the elastic K/V itself.  Untested here.
+* serialising the clients: zero cost, works today, needs the background jobs to
+  yield to interactive turns.
+* `--slots N` (per-slot K/V and chain, `bs[].checks`): the batch path does not
+  run the MTP drafter unless `--batch-mtp` (opt-in) is also set, so a slot-served
+  turn would lose the ~1.7 tokens per step the decode numbers above depend on;
+  it also wants a second slot's K/V at 262k against ~475 MiB free.  Re-measure
+  both before considering it.
+* a per-conversation K/V outside the batch path: engine work, the last resort.
+
+None of these is deployed: this box serves hindsight and interactive traffic on
+the same port, and the collision costs a turn its reuse (9.5 s at 2.4k, 188 s at
+250k) but nothing correctness-wise.
 
 ### v0.2.8 (engine 0.1.54) and the router at 1.2
 
