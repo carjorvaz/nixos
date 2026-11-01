@@ -243,10 +243,11 @@ supports 2 TB.  Every RAM-limited path above is therefore an 8 GB-of-DRAM
 problem, not a hardware limit: +32 GB of DDR4 (one RDIMM) exceeds the ~4.1 GiB
 that a 250k disk restore needs and the 4,276 MiB a 250k park needs; one module in
 each of the six channels (P0_MC0/C1 _DIM_CH_A0/B0/C0/D0/E0/F0) fills the board's
-bandwidth, A1 being channel A's second slot.  Upstream (`github.com/NikolayS/Strata`) returned
-"Repository not found" on 2026-11-01 after serving the 0.2.9 tarball earlier the
-same day, so 0.2.9 is the last release retrievable and the unpacked trees under
-`/persist/strata-src` are the only source copies until access returns.
+bandwidth, A1 being channel A's second slot.  Upstream is
+`github.com/Niko1221/Strata` (the URL `serve/server.py` itself cites for #481);
+on 2026-11-01 `main` was `c62d5e3a` = v0.2.9 = this pin, so there are no newer
+commits to take: a park or restore fix has to be written here, and the unpacked
+trees under `/persist/strata-src` are a convenience, not a fallback.
 
 **Disk sessions measured (v0.2.9, `--slot-save-path` now set).**  `SAVE` streams
 the K/V from the pools into the file: 3.89 GB for the 250k conversation in 5.1 s
