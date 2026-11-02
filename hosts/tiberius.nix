@@ -200,6 +200,7 @@ in
     "${self}/profiles/nixos/zramSwap.nix"
     # STATE: sudo tailscale up (first auth is manual)
     "${self}/profiles/nixos/tailscale.nix"
+    "${self}/profiles/nixos/dns/blocky-doq.nix"
     # Strata (IQ3_S) on the Optane PMEM: engine from pkgs/strata-sm75, the
     # fsdax/XFS mount, and the server unit; conflicts with the vLLM lanes.
     "${self}/profiles/nixos/strata.nix"
@@ -304,9 +305,19 @@ in
     };
   };
 
-  # networkd owns the USB NIC; a missing link must not stall boot (BMC is the
-  # recovery path).
-  systemd.network.wait-online.enable = false;
+  # blocky needs working upstream routes; wait for the USB NIC but ignore
+  # tailscale0 so the wait cannot deadlock. The 60s cap keeps a missing NIC
+  # from holding boot indefinitely (the BMC is the recovery path).
+  systemd.network.wait-online = {
+    enable = true;
+    anyInterface = true;
+    ignoredInterfaces = [ "tailscale0" ];
+    timeout = 60;
+  };
+
+  # Start blocky only after the link is online, otherwise its first upstream
+  # probes fail with "network is unreachable".
+  systemd.services.blocky.after = [ "network-online.target" ];
 
   # Runtime generations, pinned checkpoints and JIT caches live directly on the
   # persistent filesystem; no mutable runtime is copied through the Nix store.
@@ -367,7 +378,9 @@ in
         RestartSec = "30s";
         ExecStart = pkgs.writeShellScript "tiberius-xid-watch" ''
           set -u
-          prev=0
+          # Baseline the ring-buffer count before watching: after a restart of
+          # this unit, Xid lines left over in dmesg are history, not a storm.
+          prev=$(${pkgs.util-linux}/bin/dmesg 2>/dev/null | ${pkgs.gnugrep}/bin/grep -c Xid || true)
           while true; do
             now=$(${pkgs.util-linux}/bin/dmesg 2>/dev/null | ${pkgs.gnugrep}/bin/grep -c Xid || true)
             if [ "$now" -lt "$prev" ]; then
