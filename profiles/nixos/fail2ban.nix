@@ -51,12 +51,13 @@ _:
       };
 
       # Access-log filters in 1.1.0 are file-backend-only: with journald the
-      # line is "host nginx[pid]: <access line>" and the date is supplied
+      # line is "host null[pid]: host nginx: <access line>" (journald prefix
+      # plus nginx's own syslog header) and the date is supplied
       # separately, so the shipped regexes match nothing. These two custom
       # filters allow the journal prefix and are scoped to scanner 404/400s.
       nginx-404-probe = {
         filter.Definition = {
-          failregex = ''^\s*(?:(?!\[)\S+ nginx\[\d+\]: )?<HOST> - \S+ \[[^\]]*\] "(?:GET|POST|HEAD) [^"]*(?:/\.env|/\.git|/\.aws|/wp-config\.php|/xmlrpc\.php|/vendor/phpunit|/server-status|/wp-login\.php|/wp-admin\.php|/wp-signup\.php|/phpmyadmin|/pma/|/myadmin|/cgi-bin/|/mysqladmin/|/(?:wp|wordpress|wp-json|site|news|cms|press)/)[^"]*" 404'';
+          failregex = ''^\s*(?:\S+ \S+\[\d+\]: )?(?:\S+ nginx: )?<HOST> - \S+ \[[^\]]*\] "(?:GET|POST|HEAD) [^"]*(?:/\.env|/\.git|/\.aws|/wp-config\.php|/xmlrpc\.php|/vendor/phpunit|/server-status|/wp-login\.php|/wp-admin\.php|/wp-signup\.php|/phpmyadmin|/pma/|/myadmin|/cgi-bin/|/mysqladmin/|/(?:wp|wordpress|wp-json|site|news|cms|press)/)[^"]*" 404'';
           journalmatch = "_SYSTEMD_UNIT=nginx.service + _COMM=nginx";
         };
         settings = {
@@ -70,7 +71,7 @@ _:
 
       nginx-bad-request-journal = {
         filter.Definition = {
-          failregex = ''^\s*(?:(?!\[)\S+ nginx\[\d+\]: )?<HOST> - \S+ \[[^\]]*\] "[^"]*" 400'';
+          failregex = ''^\s*(?:\S+ \S+\[\d+\]: )?(?:\S+ nginx: )?<HOST> - \S+ \[[^\]]*\] "[^"]*" 400'';
           journalmatch = "_SYSTEMD_UNIT=nginx.service + _COMM=nginx";
         };
         settings = {
