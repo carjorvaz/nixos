@@ -69,7 +69,7 @@
         };
       };
 
-      nginx-bad-request = {
+      nginx-400 = {
         filter.Definition = {
           failregex = ''^\s*(?:\S+ \S+\[\d+\]: )?(?:\S+ nginx: )?<HOST> - \S+ \[[^\]]*\] "[^"]*" 400'';
           journalmatch = "_SYSTEMD_UNIT=nginx.service + _COMM=nginx";
