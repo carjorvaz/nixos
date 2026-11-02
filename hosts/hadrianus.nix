@@ -70,13 +70,24 @@ in
       enableSystemSlice = true;
     };
 
-    # networkd is enabled below; do not let a down link hold boot.
-    network.wait-online.enable = false;
+    # One virtual NIC, always present. Wait for it so blocky does not start
+    # before the routes exist (its first upstream probes failed with "network
+    # is unreachable"). Ignore tailscale0 so the wait cannot deadlock against
+    # tailscaled; any-interface keeps a missing link from holding boot.
+    network.wait-online = {
+      enable = true;
+      anyInterface = true;
+      ignoredInterfaces = [ "tailscale0" ];
+      timeout = 60;
+    };
 
     # oomd monitors system.slice; keep DNS, the web edge and remote access out
     # of its victim pool. Mail units are marked in profiles/nixos/mail.nix.
     services = {
-      blocky.serviceConfig.ManagedOOMPreference = "avoid";
+      blocky = {
+        serviceConfig.ManagedOOMPreference = "avoid";
+        after = [ "network-online.target" ];
+      };
       unbound.serviceConfig.ManagedOOMPreference = "avoid";
       nginx.serviceConfig.ManagedOOMPreference = "avoid";
       tailscaled.serviceConfig.ManagedOOMPreference = "avoid";
