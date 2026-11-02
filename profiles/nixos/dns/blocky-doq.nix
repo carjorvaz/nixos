@@ -24,6 +24,10 @@ in
     };
   };
 
+  # Start blocky only after the link is online; otherwise its first upstream
+  # probes can run before routes exist and log "network is unreachable".
+  systemd.services.blocky.after = [ "network-online.target" ];
+
   services = {
     # Tailscale's accept-dns was installing tailscale0 as the default-route
     # resolver with the tailnet's AdGuard upstreams, so resolved sent every
