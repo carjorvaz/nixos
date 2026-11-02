@@ -1,4 +1,4 @@
-_:
+{ config, ... }:
 
 {
   # Imported only by the public edge (hadrianus). Servers that are not
@@ -89,4 +89,8 @@ _:
     "/var/lib/fail2ban"
     "/var/log/fail2ban"
   ];
+
+  # Filter files are not part of the service unit; without this, a filter-only
+  # change is installed but the running daemon keeps the old definitions.
+  systemd.services.fail2ban.restartTriggers = [ config.environment.etc."fail2ban/filter.d".source ];
 }
