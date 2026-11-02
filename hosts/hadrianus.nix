@@ -125,6 +125,16 @@ in
     };
   };
 
+  # networkd cannot infer an on-link link-local IPv6 gateway; without
+  # GatewayOnLink the static fe80::1 default route is not installed.
+  systemd.network.networks."40-ens3".routes = lib.mkForce [
+    { Gateway = "46.38.240.1"; }
+    {
+      Gateway = "fe80::1";
+      GatewayOnLink = true;
+    }
+  ];
+
   age.secrets = {
     # https://nixos.wiki/wiki/Agenix#Using_secrets_in_initrd
     hadrianusInitrdHostKey = {

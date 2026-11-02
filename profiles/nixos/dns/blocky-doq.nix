@@ -81,7 +81,10 @@ in
     resolved.settings.Resolve = {
       DNS = lib.mkForce localResolvers;
       DNSOverTLS = lib.mkForce false;
-      DNSSEC = lib.mkForce "allow-downgrade";
+      # Quad9 validates DNSSEC upstream; blocky forwards unsigned replies and
+      # resolved's allow-downgrade still rejects them as "no-signature".
+      # Disable the duplicate local validator (Quad9's forwarder guidance).
+      DNSSEC = lib.mkForce "false";
       LLMNR = lib.mkForce false;
       # ~. makes blocky the resolver for everything; the second entry keeps
       # single-label tailnet names working now that Tailscale no longer writes
@@ -99,7 +102,7 @@ in
   // lib.optionalAttrs (!hasResolvedSettings) {
     resolved = {
       dnsovertls = lib.mkForce "false";
-      dnssec = lib.mkForce "allow-downgrade";
+      dnssec = lib.mkForce "false";
       llmnr = lib.mkForce "false";
       domains = lib.mkForce [
         "~."
