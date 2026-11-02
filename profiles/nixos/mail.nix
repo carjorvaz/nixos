@@ -163,7 +163,7 @@ in
         dkim = {
           enable = true;
           defaults.keyLength = 2048;
-          domains = lib.genAttrs config.mailserver.domains (domain: {
+          domains = lib.genAttrs config.mailserver.domains (_: {
             selectors = {
               mail = { };
               "rsa-2026-10" = {
@@ -276,6 +276,18 @@ in
       };
     };
   };
+
+  # Postfix's SMTP client uses the system resolver, which is blocky (Quad9,
+  # no local DNSSEC validation). DANE needs validated answers, so give Postfix
+  # the local recursive Unbound resolver instead; the system stays on blocky.
+  environment.etc."postfix-resolv.conf".text = ''
+    nameserver 127.0.0.4
+    options edns0 trust-ad
+  '';
+
+  systemd.services.postfix.serviceConfig.BindReadOnlyPaths = [
+    "/etc/postfix-resolv.conf:/run/systemd/resolve/stub-resolv.conf"
+  ];
 
   systemd.services.rspamd = {
     after = [
