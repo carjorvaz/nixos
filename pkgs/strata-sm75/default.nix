@@ -23,20 +23,31 @@
 let
   c = cudaPackages;
 
-  # c62d5e3a: v0.2.9 (2026-10-31), the current release.  The engine inside it is
-  # 0.1.55.  Since the last pin (870aedd9 = v0.2.8 / engine 0.1.54) the Qwen
-  # engine gained the Gated DeltaNet prompt kernels on the tensor cores for Linux
-  # NVIDIA (upstream: 2.6-5.7% faster prompts on an A4000 / RTX PRO 5000, decode
-  # unchanged - this box measures whether sm_75 takes that path, see the exec
-  # plan), tool-call handling fixes (#4663: a tool the conversation already used
-  # counts as declared; #4702/#4703: fenced or indented calls are no longer run),
-  # a Qwen3.6 warm-up fix that could write past the KV cache (#4708), and a
-  # build-level change: a compiled engine now carries code for every usable
-  # NVIDIA card in the PC (#4662), not only the one setup picked.  Parallel
-  # requests and the GDN kernels are on by default only with --parallel/--batch
-  # 2 or more, which this lane does not use.  llama.cpp's pin is unchanged
-  # (third_party/ggml/VERSION.txt), so llamaRevision below still holds.
-  revision = "c62d5e3a15b40ea51c96aae9e8d36928965f53ab";
+  # ffa80d73: v0.2.10 (2026-11-02), the current release.  The engine inside it
+  # is 0.1.56.  Since the last pin (c62d5e3a = v0.2.9 / engine 0.1.55) upstream's
+  # headline changes are the DFlash2 drafter (the Auto choice for Qwen3.8 on CUDA
+  # compute capability 8.6/8.9/12.0/12.1 - sm_75 is NOT in that list, so this
+  # lane keeps the MTP layer it has), the all-cards split engine (Auto only for
+  # two 8.6/12.0 cards or four R9700s; one card keeps the layer split), the
+  # 128K-context walk for 8 GB cards, the ISTA-DAS Coder and DeepSeek pictures on
+  # a Mac.  None of those select for a single 22 GB sm_75 card; what does reach
+  # this lane is the 0.1.56 engine itself: the Qwen penalty window now counts
+  # only the reply's own tokens (#4590; the old whole-prompt window is
+  # STRATA_PENALTY_PROMPT=1 - a documented answer change, adopted), and the PLE
+  # lock path raises the memlock soft limit before locking (#4671) - not
+  # exercised here: --ple-io mmap leaves the table mapped and unlocked (only
+  # --ple-io ram or the residency policy sets pio.lock).  NOT this lane: #4677's
+  # stop-bound park fix is compiled only under STRATA_USE_HIP (generate.cpp
+  # defines `stop_bound` and both call sites inside the HIP guard), so this CUDA
+  # build carries neither the behaviour nor STRATA_SERVE_STOP_BOUND.  One new
+  # serve-layer trap: 0.2.10's
+  # vram_fit.fit_start runs on every engine start and on CUDA its only knob is
+  # --kv-resident; the engine turns --kv-grow off whenever a KV window is set,
+  # so a start the fitter calls short would silently drop the module's measured
+  # elastic-KV win - watch for the "KV window ..." line in the journal.
+  # llama.cpp's pin is unchanged (third_party/ggml/VERSION.txt = 3cf03257), so
+  # llamaRevision below still holds.
+  revision = "ffa80d73133ea5c548aefe57889a16e8085a938f";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -68,7 +79,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.55";
+  version = "0.1.56";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -105,7 +116,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-eFuyhZQQNoskUXGB/RkaPvBslg16PZjCS3c8xyl4oZk=";
+    hash = "sha256-cIBcdKRYVH78bu4sElF0XK/wedcLTK8tu12c0Alzlw8=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -127,6 +138,16 @@ stdenv.mkDerivation {
   # The v0.2.9 bump (c62d5e3a) merged with no hunk conflicts in any of the three
   # patches: every file they touch moved only in line numbers, so the 0.2.8 delta
   # carried over unchanged.
+  # The v0.2.10 bump (ffa80d73) needed two resolutions in generate.cpp, both
+  # "keep both": 0.2.10 added keep_sync() exactly at tiberius.patch's
+  # request-ending pin release (upstream's drafter-upkeep wait runs first, the
+  # pins are released after it), and the loop's `drafted` guard was renamed
+  # use_mtp -> draft_on upstream (upstream's variable with this patch's refill-
+  # timing join).  no-web-ui.patch and avx512-bw-tier.patch applied cleanly; the
+  # 0.2.10 expert_source changes (the ArenaExpertSource #4846 RAM fallback and
+  # the Windows standby-list release) sit outside the FileExpertSource region
+  # this patch owns, and the CMakeLists growth is new split/DFlash2 TUs and
+  # comments, not the kernel flag lists.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because they
   # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
@@ -145,7 +166,7 @@ stdenv.mkDerivation {
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # All three were generated against the pin above and re-applied in order onto a
-  # pristine 870aedd9 tree (bit-identical result) before this build.
+  # pristine ffa80d73 tree (bit-identical result) before this build.
   #
   # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent

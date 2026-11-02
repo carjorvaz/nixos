@@ -1,8 +1,9 @@
-# tiberius: the AVX-512 expert tier without VBMI, against upstream c62d5e3a (v0.2.9, engine 0.1.55).
-# REBASED 2026-10-30 onto 870aedd9 (v0.2.8).  One conflict: upstream rewrote
-# cpu_require_expert_support()'s message to explain a pack without
-# native_experts.txt.  The merge keeps upstream's structure and its accurate
-# ISA list (F/BW/VL + VNNI, no VBMI - this TU is the VBMI-free one).
+# tiberius: the AVX-512 expert tier without VBMI, against upstream ffa80d73 (v0.2.10, engine 0.1.56).
+# REBASED 2026-11-03 onto ffa80d73.  No hunk conflicts: upstream's 0.2.10 delta in the files this patch
+# touches is CMakeLists.txt growth (the split/DFlash2 TUs) plus comments; the expert, iq and nvfp4 kernel
+# bodies and the flag lists are unchanged, so the VBMI-free forms carried over as they were.  The
+# absence checks in the package's postPatch (no vpmultishiftqb in expert.cpp, no -mavx512vbmi on expert.cpp
+# or iq/nvfp4_avx512.cpp, VBMI still on tq_avx512.cpp) all pass on the merged tree.
 #
 # THE PROBLEM.  cpu_avx512_ok() is the one gate the AVX-512 expert kernels were selected through, and it
 # demanded AVX512-VBMI.  This box's CPU (Cascade Lake) has F/DQ/BW/VL/VNNI and BMI2 but no VBMI, so the VNNI
@@ -45,10 +46,10 @@
 # See docs/exec-plans/active/tiberius-kernel-tuning.md.
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 692484a..75b0ca7 100644
+index 8659bf89..c0534e41 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1852,14 +1852,21 @@ else()
+@@ -2001,14 +2001,21 @@ else()
  endif()
  target_include_directories(strata_kernels_cpu PUBLIC include)
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
@@ -73,7 +74,7 @@ index 692484a..75b0ca7 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -1996,12 +2003,16 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -2145,12 +2152,16 @@ if(STRATA_NATIVE_EXPERTS)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -93,7 +94,7 @@ index 692484a..75b0ca7 100644
      set_source_files_properties(src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS
                                  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512vnni;-mavx512vbmi;-mavx2;-mfma;-mf16c")
 diff --git a/include/strata/kernels/cpu/expert.hpp b/include/strata/kernels/cpu/expert.hpp
-index 16dcabd..940ec11 100644
+index 16dcabd5..940ec115 100644
 --- a/include/strata/kernels/cpu/expert.hpp
 +++ b/include/strata/kernels/cpu/expert.hpp
 @@ -12,9 +12,12 @@
@@ -136,7 +137,7 @@ index 16dcabd..940ec11 100644
      const char* reason() const;
  };
 diff --git a/include/strata/kernels/cpu/expert_layout.hpp b/include/strata/kernels/cpu/expert_layout.hpp
-index b78528c..1cdd18d 100644
+index b78528c7..1cdd18d6 100644
 --- a/include/strata/kernels/cpu/expert_layout.hpp
 +++ b/include/strata/kernels/cpu/expert_layout.hpp
 @@ -41,9 +41,15 @@ struct ExpertLayout {
@@ -158,7 +159,7 @@ index b78528c..1cdd18d 100644
  bool cpu_avx512bw_ok();
  /// Whether this CPU (and its OS) runs the AVX2 kernels (AVX, AVX2, FMA, F16C): the floor of every expert kernel
 diff --git a/include/strata/kernels/cpu/iq_avx512.hpp b/include/strata/kernels/cpu/iq_avx512.hpp
-index df505f0..0e306a9 100644
+index df505f0a..0e306a9d 100644
 --- a/include/strata/kernels/cpu/iq_avx512.hpp
 +++ b/include/strata/kernels/cpu/iq_avx512.hpp
 @@ -20,7 +20,7 @@ void iq512_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const
@@ -171,7 +172,7 @@ index df505f0..0e306a9 100644
  void iq512x_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt,
                   float* const* out, int r0, int r1);
 diff --git a/src/dsv41/ds4_gg_cpu.cpp b/src/dsv41/ds4_gg_cpu.cpp
-index 72891fc..d2ff882 100644
+index 72891fc6..d2ff8820 100644
 --- a/src/dsv41/ds4_gg_cpu.cpp
 +++ b/src/dsv41/ds4_gg_cpu.cpp
 @@ -176,13 +176,14 @@ static int amd_family() {
@@ -192,7 +193,7 @@ index 72891fc..d2ff882 100644
      if (g_iq512 == 0 || !strata::kernels::cpu::iq512x_supported(type)) return false;
      if (g_iq512 == 1) return true;
 diff --git a/src/kernels/cpu/expert.cpp b/src/kernels/cpu/expert.cpp
-index 2436bbc..f12cf7a 100644
+index 2436bbc9..f12cf7a1 100644
 --- a/src/kernels/cpu/expert.cpp
 +++ b/src/kernels/cpu/expert.cpp
 @@ -110,21 +110,36 @@ void quantize_oracle_q8_0(const float* x, int n, ActQ& a) {
@@ -275,7 +276,7 @@ index 2436bbc..f12cf7a 100644
  
  // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
 diff --git a/src/kernels/cpu/expert_layout.cpp b/src/kernels/cpu/expert_layout.cpp
-index f288c24..2e13887 100644
+index f288c246..2e138872 100644
 --- a/src/kernels/cpu/expert_layout.cpp
 +++ b/src/kernels/cpu/expert_layout.cpp
 @@ -39,6 +39,10 @@ int cpu_isa_cap() {
@@ -389,7 +390,7 @@ index f288c24..2e13887 100644
      else act_quant_q8_1_avx1(x, n, a);   // issue #1699
  }
 diff --git a/src/kernels/cpu/expert_parity.cpp b/src/kernels/cpu/expert_parity.cpp
-index 39f24a1..e70ebf5 100644
+index 39f24a1c..e70ebf50 100644
 --- a/src/kernels/cpu/expert_parity.cpp
 +++ b/src/kernels/cpu/expert_parity.cpp
 @@ -96,7 +96,7 @@ int main(int argc, char** argv) {
@@ -402,7 +403,7 @@ index 39f24a1..e70ebf5 100644
      if (!feat.usable()) {
          std::printf("      the VNNI path cannot run here; only the scalar oracle can be exercised.\n");
 diff --git a/src/kernels/cpu/iq_avx2_parity.cpp b/src/kernels/cpu/iq_avx2_parity.cpp
-index 67544c9..a76c75c 100644
+index 67544c9d..a76c75c6 100644
 --- a/src/kernels/cpu/iq_avx2_parity.cpp
 +++ b/src/kernels/cpu/iq_avx2_parity.cpp
 @@ -554,7 +554,7 @@ int main(int argc, char** argv) {
@@ -415,7 +416,7 @@ index 67544c9..a76c75c 100644
                  env("STRATA_IQ256_GATHER"), env("STRATA_NO_AVXVNNI"), env("STRATA_IQ_MT_MIN"), env("STRATA_IQ_PREFETCH"));
      if (!cpu::cpu_avx2_ok()) {
 diff --git a/src/kernels/cpu/kq_cpu_bench.cpp b/src/kernels/cpu/kq_cpu_bench.cpp
-index 3a2f9b8..47ffedf 100644
+index 3a2f9b8d..47ffedf8 100644
 --- a/src/kernels/cpu/kq_cpu_bench.cpp
 +++ b/src/kernels/cpu/kq_cpu_bench.cpp
 @@ -98,7 +98,7 @@ int main(int argc, char** argv) {
@@ -428,7 +429,7 @@ index 3a2f9b8..47ffedf 100644
          const size_t slash = pair.find('/');
          const int gt = slash == std::string::npos ? -1 : type_of(pair.substr(0, slash));
 diff --git a/src/kernels/cpu/native_expert.cpp b/src/kernels/cpu/native_expert.cpp
-index 80fb63d..ef14a9b 100644
+index 80fb63de..ef14a9b2 100644
 --- a/src/kernels/cpu/native_expert.cpp
 +++ b/src/kernels/cpu/native_expert.cpp
 @@ -363,7 +363,7 @@ int native_gu_mt_min(int gu_type) {
@@ -500,7 +501,7 @@ index 80fb63d..ef14a9b 100644
          nvfp4_512_rows(blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
          return;
 diff --git a/src/kernels/cpu/nvfp4_avx512.cpp b/src/kernels/cpu/nvfp4_avx512.cpp
-index 3353c2a..9c7730d 100644
+index 3353c2ad..9c7730d2 100644
 --- a/src/kernels/cpu/nvfp4_avx512.cpp
 +++ b/src/kernels/cpu/nvfp4_avx512.cpp
 @@ -6,7 +6,8 @@
@@ -514,7 +515,7 @@ index 3353c2a..9c7730d 100644
  
  #define GGML_COMMON_DECL_CPP
 diff --git a/src/kernels/cpu/nvfp4_avx512_parity.cpp b/src/kernels/cpu/nvfp4_avx512_parity.cpp
-index 1042967..5ddf62e 100644
+index 1042967c..5ddf62ed 100644
 --- a/src/kernels/cpu/nvfp4_avx512_parity.cpp
 +++ b/src/kernels/cpu/nvfp4_avx512_parity.cpp
 @@ -290,7 +290,7 @@ int expert_e2e(const char* path, int layer, int e) {
@@ -536,7 +537,7 @@ index 1042967..5ddf62e 100644
          const std::string how = argc >= 5 ? argv[4] : "";
          return bandwidth(std::atoi(argv[2]), std::atoi(argv[3]), how == "ggml", how == "avx2" || !has512 ? k256 : k512);
 diff --git a/src/kernels/cpu/pool_tasks_test.cpp b/src/kernels/cpu/pool_tasks_test.cpp
-index aa27288..41d8dd8 100644
+index aa272880..41d8dd8a 100644
 --- a/src/kernels/cpu/pool_tasks_test.cpp
 +++ b/src/kernels/cpu/pool_tasks_test.cpp
 @@ -146,9 +146,8 @@ int main(int argc, char** argv) {
@@ -552,7 +553,7 @@ index aa27288..41d8dd8 100644
          if (n == 7 && feat.usable()) {
              std::mt19937 rng(7);
 diff --git a/src/kernels/native_expert_parity.cpp b/src/kernels/native_expert_parity.cpp
-index a49a851..e580a61 100644
+index a49a8515..e580a61e 100644
 --- a/src/kernels/native_expert_parity.cpp
 +++ b/src/kernels/native_expert_parity.cpp
 @@ -117,7 +117,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
@@ -583,10 +584,10 @@ index a49a851..e580a61 100644
          if (f.d_type == 20 && cpu::cpu_avx2_ok()) {
              // (b3) the IQ4_NL multi-token AVX-2 kernel the pool now uses for IQ4_NL down projections,
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index ce44646..6677a09 100644
+index d9415082..3ac31a25 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -4025,9 +4264,10 @@ int main(int argc, char** argv) {
+@@ -4605,9 +4605,10 @@ int main(int argc, char** argv) {
          return 2;
      }
  
@@ -600,7 +601,7 @@ index ce44646..6677a09 100644
      strata::kernels::cpu::expert_set_oracle_q8_0(o.cpu_oracle_q8_0);
  #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) || defined(STRATA_GPU_METAL)
      // ... and nothing runs on a CPU without AVX2: every CPU expert kernel is AVX2 at least (the AVX-512 ones are
-@@ -4298,8 +4538,8 @@ int main(int argc, char** argv) {
+@@ -4878,8 +4879,8 @@ int main(int argc, char** argv) {
                                       "(setup writes it; run setup again).\n");
          }
          strata::kernels::cpu::cpu_require_expert_support();
@@ -612,10 +613,10 @@ index ce44646..6677a09 100644
                       !strata::kernels::cpu::cpu_avx2_ok()
                           ? (strata::kernels::cpu::cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr
 diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index 895b9ac..67615ec 100644
+index dcd47c4f..b108c3af 100644
 --- a/sycl/CMakeLists.txt
 +++ b/sycl/CMakeLists.txt
-@@ -141,8 +141,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
+@@ -149,8 +149,9 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
  strata_resolve(_cpu src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp src/kernels/cpu/expert_layout.cpp
                      src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)   # hadamard.cpp: expert_layout.cpp reads hadamard.txt
  add_library(strata_kernels_cpu STATIC ${_cpu})
@@ -626,7 +627,7 @@ index 895b9ac..67615ec 100644
  set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  # AVX-VNNI copies of the AVX-2 expert kernels (q2_avx2.cpp, iq_avx2.cpp), taken at run time where the CPU has them
  include(CheckCXXSourceCompiles)
-@@ -207,8 +208,9 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -215,8 +216,9 @@ if(STRATA_NATIVE_EXPERTS)
                               src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp src/kernels/cpu/tq_avx512.cpp)   # Gyro trellis CPU rows (native_expert.cpp calls them; the SYCL GPU path does not run these types)
    target_sources(strata_kernels_cpu PRIVATE ${_cpu_native})
    target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)

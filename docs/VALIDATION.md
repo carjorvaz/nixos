@@ -152,27 +152,68 @@ slot on 2026-10-11 until an on-box A/B of hindsight's refresh job put the two
 lanes in the same envelope - 283 s on strata against 67-617 s on the 27B, with
 a richer page from strata; the 27B stays installed as the parked fast and
 interactive lane). It builds upstream Strata at pin
-`dfa3f402` (v0.2.4.2, engine 0.1.49.2; v0.2.4 is `96ca4383`) with three patches:
+`ffa80d73` (v0.2.10, engine 0.1.56; the v0.2.4.2 record is `dfa3f402`, engine
+0.1.49.2) with three patches:
 `tiberius.patch` (a sliding DAX register window, decode-time refill pinning with
 its straddle guard), `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
 web app, its pages/assets and `/settings`; the OpenAI-compatible API is
 untouched) and `avx512-bw-tier.patch` (the VBMI-free AVX-512 expert tier and the
-split run-time gate).  At the v0.2.4.2 bump upstream's refill loops are
-single-pass again (no resolve/plans pass in either), so the local two-pass pin
-delta stays ours and keeps upstream's `fenced_slots` / `pin_blobs_on` blocks,
-the batched `cp_*` copies and the #2188 stream query.  The overlap gate's
+split run-time gate).  Upstream's refill is the resolve/plans pass (a window's
+swaps are resolved first and issued as one batch); the patch's pin
+classification (`BlobClass`), page-rounded merged span registration and
+straddle guard live inside it, and upstream's `fenced_slots` / `pin_blobs_on`
+blocks, the batched `cp_*` copies, `adapt_copy_h2d`, `blob_stable`,
+`STRATA_DMA_BATCH` and the #2188 stream query are kept.  The overlap gate's
 landing signal is upstream's D2H `cudaMemcpyAsync` into `agate.hland` when that
 buffer exists (a host function otherwise), and the local copy loop takes both
-arms with the plan's layer.  Upstream's new serve-loop `STRATA_RAM_ADAPT` /
+arms with the plan's layer.  Upstream's serve-loop `STRATA_RAM_ADAPT` /
 `ram_adapt2` block, its `dt_adapt_join` timer and the `res_checking` summary are
-kept; the local refill timing folds into that timer (one join per window, never
-a second one).  `carry-1283.patch` was retired at the v0.1.42 bump: upstream
+kept; the local refill timing folds its join time into that timer rather than
+adding a second join.  `carry-1283.patch` was retired at the v0.1.42 bump: upstream
 took PR #1283 (commit `a26fcbcd`, the same change).  The dense-FP16 tensor-core
 change that `tiberius.patch` used to carry was retired at the v0.1.40.2 bump:
 upstream 0.1.39+ has the same path natively (`bf16_path()`, #540/#655) and the
 module selects it with upstream's `STRATA_BF16_TC=1` (opt-in on the RTX 20's
 compute capability 7.5). Build-time greps fail the derivation if a flag or
 environment variable the module sets disappears on a rebase.
+
+At the v0.2.10 bump (2026-11-03) two hunk conflicts in `generate.cpp` were
+resolved by keeping both sides: 0.2.10 added `keep_sync()` at the request-ending
+pin release (upstream's drafter-upkeep wait runs first, the pins are released
+after it), and the `drafted` guard's `use_mtp` was renamed `draft_on` upstream
+(the refill-timing join is kept around upstream's variable). `no-web-ui.patch`
+and `avx512-bw-tier.patch` applied cleanly: the 0.2.10 `expert_source` changes
+(the `ArenaExpertSource` #4846 RAM fallback and the Windows standby-list
+release) sit outside the `FileExpertSource` region the patch owns, and the
+CMakeLists growth is new split/DFlash2 translation units and comments, not the
+kernel flag lists; ggml's pin is unchanged (`3cf03257`).  What reaches this lane
+from engine 0.1.56 is the Qwen penalty window counting only the reply's own
+tokens (#4590; `STRATA_PENALTY_PROMPT=1` restores the old window - adopted, not
+pinned) and the PLE table raising the memlock soft limit to the hard one before
+locking (#4671, `kernels/ngram.cpp`).  #4677's stop-bound park fix does NOT: its
+`stop_bound` definition and both call sites in `generate.cpp` sit inside
+`#if defined(STRATA_USE_HIP)`, so this CUDA build has neither the behaviour nor
+`STRATA_SERVE_STOP_BOUND`, and the local park/restore workaround stands.  DFlash2
+(CUDA 8.6+) and the all-cards split engine (two or more cards) do not select for
+this box.  New in 0.2.10's serve layer: `vram_fit.fit_start` runs on every engine
+start and on CUDA its only knob is `--kv-resident`; the engine turns `--kv-grow`
+off whenever a KV window is set, so a start the fitter calls short would silently
+drop the module's measured elastic-KV win - check the journal's `KV window ...`
+line after deploy.  On this lane the engine is flat and its answers move:
+measured 2026-11-03 (production config, three counterbalanced fresh-engine runs
+per arm, ab26), reads -0.2% / -1.0% / -0.1% at 4,252 / 3,477 / 26,134 tokens;
+greedy answers are bit-identical within each build but differ between 0.1.55
+and 0.1.56 on the two short cells (the 26,134 cell's 8 tokens match), matching
+the upstream CUDA verify/expert-grouped/gemm rewrites with an unchanged
+`flake.lock`; eval80 scores 61/80 against 58/80, inside that set's binomial
+noise.  The bump is taken for the serve-layer tool-call fixes (#4701,
+#4663/#4700, #4751) and for #4590 when clients send penalties, not for speed.
+Verified 2026-11-03: the Nix fetch hash matches, the three patches apply in
+order to the fetched tree (`patch -p1`) and produce a tree identical to the
+rebased upstream tree, a tiberius-native build succeeds
+(`/nix/store/8lzw2q057hgghz75agz0dldk7hb0gshn-strata-engine-0.1.56`), and the
+built binary reports `strata 0.1.56` with the DAX window, refill-pin and SM75
+series markers and the `--resident-budget-gib` / `--prefill` flags present.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last

@@ -245,9 +245,14 @@ that a 250k disk restore needs and the 4,276 MiB a 250k park needs; one module i
 each of the six channels (P0_MC0/C1 _DIM_CH_A0/B0/C0/D0/E0/F0) fills the board's
 bandwidth, A1 being channel A's second slot.  Upstream is
 `github.com/Niko1221/Strata` (the URL `serve/server.py` itself cites for #481);
-on 2026-11-01 `main` was `c62d5e3a` = v0.2.9 = this pin, so there are no newer
-commits to take: a park or restore fix has to be written here, and the unpacked
-trees under `/persist/strata-src` are a convenience, not a fallback.
+on 2026-11-01 `main` was `c62d5e3a` = v0.2.9, and on 2026-11-03 the pin moved to
+`ffa80d73` = v0.2.10 (engine 0.1.56, built and smoke-tested, not yet deployed).
+0.2.10's #4677 (a parked conversation refused on the next turn, ~6% of the
+prompt re-read) is HIP-only: `stop_bound` and both call sites in `generate.cpp`
+sit inside `#if defined(STRATA_USE_HIP)`, so this CUDA build has no upstream
+park fix and the conclusion stands - a park/restore fix has to be written here.
+The unpacked trees under `/persist/strata-src` are a convenience, not a
+fallback.
 
 **Lease front end (deployed 2026-11-01, generation 94).**  `pkgs/strata-lease-proxy.py`
 now fronts the loopback engine (`127.0.0.1:8081`) with two doors - `:8080`
@@ -335,6 +340,54 @@ measuring it: `nix build --no-link` outputs are collected by the box's daily
 `nix-gc.timer` within minutes, so the first 0.1.55 build vanished before it could
 be measured; deploys use `nixos-rebuild switch`, whose generation pins the
 closure.
+
+### v0.2.10 (engine 0.1.56)
+
+The pin moved to `ffa80d73` (v0.2.10, engine 0.1.56) on 2026-11-03.  The rebase
+needed two keep-both resolutions in `generate.cpp` (0.2.10's new `keep_sync()`
+at the request-ending pin release, and the `use_mtp` -> `draft_on` rename in the
+`drafted` guard); `no-web-ui.patch` and `avx512-bw-tier.patch` applied cleanly,
+and the regenerated set applied to the fetched tree reproduces the merged tree
+byte for byte.  A tiberius-native build succeeded and the binary reports 0.1.56
+with the DAX-window, refill-pin and SM75-series markers.  Measured 2026-11-03
+(`ab26`: production config, three counterbalanced fresh-engine runs per arm, the
+ab25 cells; read in tok/s, decode in tok/s):
+
+| cell | 0.1.55 (A) | 0.1.56 (B) |
+| --- | --- | --- |
+| 4,252 read / decode | 491.2 [482.1-498.2] / 56.93 [56.70-57.20] | 490.4 [487.6-492.0] / 58.77 [58.60-59.00] |
+| 3,477 read / decode | 405.7 [403.1-408.4] / 64.40 [63.90-64.90] | 401.8 [393.8-407.7] / 62.07 [61.90-62.30] |
+| 26,134 read / 8 gen | 1,250.8 [1,248.6-1,254.1] / 47.47 | 1,249.4 [1,246.2-1,253.0] / 49.57 |
+
+Reads are flat: -0.2% / -1.0% / -0.1%, and the 3,477 B spread overlaps A.  No
+decode claim is made: the generated content differs between arms (below), and
+the draft acceptance moves with it (P1 49/76 vs 49/72, P2 45/68 vs 34/50).
+Answers are bit-identical within an arm across its three runs, but differ
+between arms on the 4,252 and 3,477 cells (the 26,134 cell's 8 generated tokens
+match): 0.1.56 rewrites the CUDA verify/expert-grouped/gemm kernels upstream
+(`verify_kernels.cu`, `s2_expert_grouped.cu`, `shared_expert.cu`,
+`quantize_act.cu`, `gemm.cu`), while `flake.lock` and the toolchain are
+unchanged since the 0.1.55 build.  Quality: the eval80 exact-answer set scores
+61/80 (A) against 58/80 (B) - arithmetic 19 vs 17, logic 10 vs 9, the other
+categories equal - a 3-task gap inside the set's binomial noise (1 sigma about
+5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
+the serve-layer tool-call fixes and #4590, with the deterministic answer change
+recorded.  #4677 does not touch these cells: the stop-bound park fix is HIP-only
+(see the box note above), so the local park/restore work still has no upstream
+counterpart.  The
+0.1.56 change that does reach them is #4590 (the Qwen penalty window now counts
+the reply's own tokens; adopted, `STRATA_PENALTY_PROMPT=1` is the old window).
+DFlash2 (CUDA 8.6+) and the all-cards split engine (two or more cards) do not
+select for this card.  Two start-time checks on deploy: 0.2.10's serve runs
+`drafting.apply` (Auto must resolve to the MTP layer on sm_75) and
+`vram_fit.fit_start`, whose only CUDA knob is `--kv-resident` - a KV window
+turns `--kv-grow` off in the engine, so if the journal prints `KV window ...`
+the 262144 start lost the module's elastic-KV win and the fitter's estimate
+needs a look.  The `KV window ...` line is new (fit_start did not exist in
+0.1.55); the `drafting` line already ran on 0.1.55, so only its resolution is
+worth re-checking.  Both were pre-checked offline against the production
+config: 0.1.56's `engine_args()` returns the production args byte-identical
+(no `--kv-resident`; drafting resolves to MTP).
 
 ### Other 0.2.7 findings
 
