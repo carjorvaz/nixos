@@ -16,10 +16,7 @@ let
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
-  broadHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 80 --offset 0 --strategy focus --candidates-per-channel 3 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6 --rotate-daily";
-  priorityHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact 'sport tv 5' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
-  priorityBenficaHealthSampleCommand = "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-priority-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact 'benfica tv' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
-  sportFamilyChannels = [
+  watchlistChannels = [
     "sport tv 1"
     "sport tv 2"
     "sport tv 3"
@@ -28,14 +25,30 @@ let
     "sport tv 6"
     "sport tv 7"
     "dazn 1"
-    "dazn 2"
+    "pt - dazn 2"
     "dazn 3"
     "dazn 4"
     "dazn 5"
+    "benfica tv"
   ];
-  widePriorityHealthSampleCommand =
-    channel:
-    "${ottRs} health-sample --input ${auditDir}/channel-selection.json --output ${healthDir}/health-wide-sample.json --state-input ${healthStatePath} --state-output ${healthStatePath} --state-lock ${healthStateLockPath} --playback-forward-all-headers --limit 1 --offset 0 --strategy focus --channel-exact '${channel}' --candidates-per-channel 5 --selected-failure-threshold 2 --replacement-alive-threshold 2 --timeout 8 --read-seconds 6";
+  watchlistHealthSampleCommand = pkgs.writeShellScript "ott-rs-watchlist-health" ''
+    set -u
+    for channel in ${lib.concatMapStringsSep " " lib.escapeShellArg watchlistChannels}; do
+      ${ottRs} health-sample \
+        --input ${auditDir}/channel-selection.json \
+        --output ${healthDir}/health-sample.json \
+        --state-input ${healthStatePath} \
+        --state-output ${healthStatePath} \
+        --state-lock ${healthStateLockPath} \
+        --playback-forward-all-headers \
+        --limit 1 --offset 0 --strategy focus \
+        --channel-exact "$channel" \
+        --candidates-per-channel 3 \
+        --selected-failure-threshold 2 \
+        --replacement-alive-threshold 2 \
+        --timeout 8 --read-seconds 6
+    done
+  '';
 in
 {
   users = {
@@ -74,32 +87,28 @@ in
     rawSourcesPath = "/var/lib/ott-rs/audit/raw-sources.json";
     sourceInventoryPath = "/var/lib/ott-rs/audit/source-inventory.json";
     channelSelectionPath = "/var/lib/ott-rs/audit/channel-selection.json";
-    rankAuditPath = "/var/lib/ott-rs/audit/rank-audit.json";
-    groupCatalogPath = "/var/lib/ott-rs/audit/group-catalog.json";
+    rankAuditPath = null;
+    groupCatalogPath = null;
 
     guide.xmltvUrl = "https://github.com/LITUATUI/M3UPT/raw/main/EPG/epg-m3upt.xml.xz";
 
     health = {
       statePath = healthStatePath;
-      planPath = "/var/lib/ott-rs/health/health-plan.json";
-      statusPath = "/var/lib/ott-rs/health/health-status.json";
-      staleAfterHours = 36;
+      planPath = null;
+      statusPath = null;
     };
 
     healthSample = {
       enable = true;
       stateInputPath = healthStatePath;
       stateOutputPath = healthStatePath;
-      limit = 80;
-      candidatesPerChannel = 5;
-      timeoutSeconds = 8;
-      readSeconds = 6;
+      interval = "*-*-* *:00/30:00";
+      randomizedDelaySec = "1m";
+      unitStartTimeout = "20min";
     };
 
     doctor = {
-      enable = true;
-      outputPath = "/var/lib/ott-rs/audit/doctor.json";
-      staleAfterHours = 36;
+      enable = false;
     };
 
     clientApi = {
@@ -141,125 +150,14 @@ in
   systemd = {
     services = {
       ott-rs = {
-        unitConfig.OnSuccess = [
-          "ott-rs-health-sample.service"
-          "ott-rs-health-priority.service"
-        ];
+        unitConfig.OnSuccess = [ "ott-rs-health-sample.service" ];
         serviceConfig = {
           Restart = "on-failure";
           RestartSec = "5min";
         };
       };
 
-      ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce broadHealthSampleCommand;
-
-      ott-rs-health-priority = {
-        description = "Confirm priority ott-rs playback health";
-        after = [
-          "network-online.target"
-          "ott-rs.service"
-        ];
-        wants = [ "network-online.target" ];
-        path = [ config.services.ott-rs.ffmpegPackage ];
-        unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
-        serviceConfig = {
-          Type = "oneshot";
-          User = "ott-rs";
-          Group = "ott-rs";
-          UMask = "0027";
-          StateDirectory = "ott-rs";
-          StateDirectoryMode = "0700";
-          ReadWritePaths = [ healthDir ];
-          LockPersonality = true;
-          MemoryDenyWriteExecute = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectClock = true;
-          ProtectControlGroups = true;
-          ProtectHome = true;
-          ProtectHostname = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_UNIX"
-            "AF_INET"
-            "AF_INET6"
-          ];
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          SystemCallArchitectures = "native";
-        };
-        script = ''
-          ${priorityHealthSampleCommand}
-          ${priorityBenficaHealthSampleCommand}
-        '';
-      };
-      ott-rs-health-wide = {
-        description = "Wide sport-family ott-rs playback health";
-        after = [
-          "network-online.target"
-          "ott-rs.service"
-        ];
-        wants = [ "network-online.target" ];
-        path = [ config.services.ott-rs.ffmpegPackage ];
-        unitConfig.ConditionPathExists = "${auditDir}/channel-selection.json";
-        serviceConfig = {
-          Type = "oneshot";
-          User = "ott-rs";
-          Group = "ott-rs";
-          UMask = "0027";
-          StateDirectory = "ott-rs";
-          StateDirectoryMode = "0700";
-          ReadWritePaths = [ healthDir ];
-          LockPersonality = true;
-          MemoryDenyWriteExecute = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectClock = true;
-          ProtectControlGroups = true;
-          ProtectHome = true;
-          ProtectHostname = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_UNIX"
-            "AF_INET"
-            "AF_INET6"
-          ];
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          SystemCallArchitectures = "native";
-        };
-        script = lib.concatMapStringsSep "\n" widePriorityHealthSampleCommand sportFamilyChannels;
-      };
-    };
-
-    timers.ott-rs-health-wide = {
-      description = "Refresh wide sport-family ott-rs playback health";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* *:05/20:00";
-        Persistent = true;
-        RandomizedDelaySec = "1m";
-        Unit = "ott-rs-health-wide.service";
-      };
-    };
-
-    timers.ott-rs-health-priority = {
-      description = "Refresh priority ott-rs playback health";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* *:00/4:00";
-        Persistent = true;
-        RandomizedDelaySec = "30s";
-        Unit = "ott-rs-health-priority.service";
-      };
+      ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce "${watchlistHealthSampleCommand}";
     };
   };
 
