@@ -54,10 +54,10 @@
       # line is "host null[pid]: host nginx: <access line>" (journald prefix
       # plus nginx's own syslog header) and the date is supplied
       # separately, so the shipped regexes match nothing. These two custom
-      # filters allow the journal prefix and are scoped to scanner 404/400s.
-      nginx-404-probe = {
+      # filters allow the journal prefix and are scoped to scanner 301/403/404 and 400s.
+      nginx-probe = {
         filter.Definition = {
-          failregex = ''^\s*(?:\S+ \S+\[\d+\]: )?(?:\S+ nginx: )?<HOST> - \S+ \[[^\]]*\] "(?:GET|POST|HEAD) [^"]*(?:/\.env|/\.git|/\.aws|/wp-config\.php|/xmlrpc\.php|/vendor/phpunit|/server-status|/wp-login\.php|/wp-admin\.php|/wp-signup\.php|/phpmyadmin|/pma/|/myadmin|/cgi-bin/|/mysqladmin/|/(?:wp|wordpress|wp-json|site|news|cms|press)/)[^"]*" 404'';
+          failregex = ''^\s*(?:\S+ \S+\[\d+\]: )?(?:\S+ nginx: )?<HOST> - \S+ \[[^\]]*\] "(?:GET|POST|HEAD) [^"]*(?:/\.env|/\.git|/\.aws|/wp-config\.php|/xmlrpc\.php|/vendor/phpunit|/server-status|/wp-login\.php|/wp-admin\.php|/wp-signup\.php|/phpmyadmin|/pma/|/myadmin|/cgi-bin/|/mysqladmin/|/(?:wp|wordpress|wp-json|site|news|cms|press)/)[^"]*" (?:301|403|404)'';
           journalmatch = "_SYSTEMD_UNIT=nginx.service + _COMM=nginx";
         };
         settings = {
@@ -92,5 +92,8 @@
 
   # Filter files are not part of the service unit; without this, a filter-only
   # change is installed but the running daemon keeps the old definitions.
-  systemd.services.fail2ban.restartTriggers = [ config.environment.etc."fail2ban/filter.d".source ];
+  systemd.services.fail2ban.restartTriggers = [
+    config.environment.etc."fail2ban/filter.d/nginx-probe.conf".source
+    config.environment.etc."fail2ban/filter.d/nginx-400.conf".source
+  ];
 }
