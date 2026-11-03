@@ -310,6 +310,17 @@ let
       # printer runs, so the flag is dead in this config; the per-request
       # figures come from serve's own stderr lines and STRATA_SPLIT_TIMING=1.
       ;
+      # 0.2.10's serve layer runs vram_fit.fit_start on every engine start; on
+      # CUDA its only knob is --kv-resident.  Its estimate does not model
+      # --kv-grow, so the first 0.1.56 start (2026-11-03) declared this card
+      # short and injected `--kv-resident 4096`: --kv-grow is off whenever a KV
+      # window is set, and the DAX window fell from 5.52 to 2.70 GiB.
+      # `--kv-resident 0` is the engine's unset value (kv_grow stays allowed),
+      # and as a user_arg it makes fit_start's kv_fixed skip the knob.
+      user_args = [
+        "--kv-resident"
+        "0"
+      ];
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
       model_name = lane.modelName;

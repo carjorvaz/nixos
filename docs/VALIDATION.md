@@ -198,16 +198,28 @@ locking (#4671, `kernels/ngram.cpp`).  #4677's stop-bound park fix does NOT: its
 this box.  New in 0.2.10's serve layer: `vram_fit.fit_start` runs on every engine
 start and on CUDA its only knob is `--kv-resident`; the engine turns `--kv-grow`
 off whenever a KV window is set, so a start the fitter calls short would silently
-drop the module's measured elastic-KV win - check the journal's `KV window ...`
-line after deploy.  On this lane the engine is flat and its answers move:
-measured 2026-11-03 (production config, three counterbalanced fresh-engine runs
-per arm, ab26), reads -0.2% / -1.0% / -0.1% at 4,252 / 3,477 / 26,134 tokens;
-greedy answers are bit-identical within each build but differ between 0.1.55
-and 0.1.56 on the two short cells (the 26,134 cell's 8 tokens match), matching
-the upstream CUDA verify/expert-grouped/gemm rewrites with an unchanged
-`flake.lock`; eval80 scores 61/80 against 58/80, inside that set's binomial
-noise.  The bump is taken for the serve-layer tool-call fixes (#4701,
-#4663/#4700, #4751) and for #4590 when clients send penalties, not for speed.
+drop the module's measured elastic-KV win.  That is not hypothetical: the first
+0.1.56 start (generation 97) had `fit_start` inject `--kv-resident 4096`, which
+turned `--kv-grow` off and shrank the DAX window from 5.52 to 2.70 GiB, and a
+restart reproduced it.  The module now pins the knob with
+`user_args = [ "--kv-resident" "0" ]` (the engine's unset value, and a value the
+fitter treats as the person's, so its `kv_fixed` skips the knob); generation 98
+starts with `--kv-grow` and `--kv-resident 0`, logs `elastic K/V: 16384 of
+262144`, and registers the 5.52 GiB window.  The fitter still prints its
+`short of GPU memory` line although nothing changes.  On this lane the engine is
+flat and its answers move.  Measured 2026-11-03 (production config, three
+counterbalanced fresh-engine runs per arm, ab26): reads -0.2% / -1.0% / -0.1% at
+4,252 / 3,477 / 26,134 tokens.  Greedy answers are bit-identical within each
+build but differ between 0.1.55 and 0.1.56 on the two short cells (the 26,134
+cell's 8 tokens match).  The cause is not a single change:
+`data/expert-profile.bin` is byte-identical across the packages, and 0.1.56 with
+`STRATA_PENALTY_PROMPT=1` (the old window) does not reproduce 0.1.55 - it keeps
+B's 4,252 answer, gives a third 3,477 answer, and differs from B on 3,477 and
+26,134 - so #4590, which is live because the qwen4exp card puts
+`presence_penalty 1.5` on non-thinking requests while the config pins only
+temperature, and other 0.1.56 engine changes both move logits.  eval80 scores
+61/80 against 58/80, inside that set's binomial noise.  The bump is taken for the
+serve-layer tool-call fixes (#4701, #4663/#4700, #4751) and #4590, not for speed.
 Verified 2026-11-03: the Nix fetch hash matches, the three patches apply in
 order to the fetched tree (`patch -p1`) and produce a tree identical to the
 rebased upstream tree, a tiberius-native build succeeds

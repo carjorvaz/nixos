@@ -325,6 +325,13 @@ merged tree byte for byte before the build.  Deployed as generation 86.
 | 26,134 read / decode | 1,156 / 50.1 | 1,146 / 51.3 |
 | chat turn 2 (2,399 -> 2,443 tokens) | 2,392 reused, 557 ms | 2,392 reused, 561 ms |
 
+That 0.1.55 column predates the 2026-11-01 `--kv-grow` config; the current
+baseline is the ab26 0.1.55 arm below (491.2 / 56.9, 405.7 / 64.4, 1,250.8),
+which matches the kv-grow figures in `profiles/nixos/strata.nix`.  ("Greedy"
+in these rows is temperature 0 plus the server's qwen4exp model-card defaults -
+a non-thinking request also gets `presence_penalty 1.5`, because the run
+config's `sampling` block pins only temperature.)
+
 The reads are 1-2.4% slower and the decode equal to 2.4% faster, all inside this
 harness's spread; the chat turn's answer is the same sha as on 0.1.54.  Upstream's
 headline for Linux NVIDIA - the Gated DeltaNet prompt kernels on the tensor cores,
@@ -364,30 +371,48 @@ decode claim is made: the generated content differs between arms (below), and
 the draft acceptance moves with it (P1 49/76 vs 49/72, P2 45/68 vs 34/50).
 Answers are bit-identical within an arm across its three runs, but differ
 between arms on the 4,252 and 3,477 cells (the 26,134 cell's 8 generated tokens
-match): 0.1.56 rewrites the CUDA verify/expert-grouped/gemm kernels upstream
-(`verify_kernels.cu`, `s2_expert_grouped.cu`, `shared_expert.cu`,
-`quantize_act.cu`, `gemm.cu`), while `flake.lock` and the toolchain are
-unchanged since the 0.1.55 build.  Quality: the eval80 exact-answer set scores
+match).  Two controls bound the cause, and it is not one change:
+`data/expert-profile.bin` is byte-identical in the two packages
+(`8f59b4aa...`), so the routing input is not it; and 0.1.56 with
+`STRATA_PENALTY_PROMPT=1` (the old penalty window) does not reproduce 0.1.55 -
+it keeps B's 4,252 answer (`9c40d17d...`, 84 tokens), gives a third 3,477 answer
+(`034405e6...`, 86 tokens), and differs from B on 3,477 and 26,134.  The server
+does apply the qwen4exp model card's `presence_penalty 1.5` to a non-thinking
+request (the run config's `sampling` block only pins temperature; all three
+server versions default the family to qwen4exp), so #4590 does move tokens (the
+control differs from B), and upstream's other 0.1.56 engine changes - the
+verify/expert-grouped/gemm rewrites among them - move them too.  The divergence
+is accepted with the bump; `STRATA_PENALTY_PROMPT=1` is the documented window
+escape, not a parity switch.  Quality: the eval80 exact-answer set scores
 61/80 (A) against 58/80 (B) - arithmetic 19 vs 17, logic 10 vs 9, the other
 categories equal - a 3-task gap inside the set's binomial noise (1 sigma about
 5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
 the serve-layer tool-call fixes and #4590, with the deterministic answer change
 recorded.  #4677 does not touch these cells: the stop-bound park fix is HIP-only
 (see the box note above), so the local park/restore work still has no upstream
-counterpart.  The
-0.1.56 change that does reach them is #4590 (the Qwen penalty window now counts
-the reply's own tokens; adopted, `STRATA_PENALTY_PROMPT=1` is the old window).
+counterpart.
 DFlash2 (CUDA 8.6+) and the all-cards split engine (two or more cards) do not
 select for this card.  Two start-time checks on deploy: 0.2.10's serve runs
 `drafting.apply` (Auto must resolve to the MTP layer on sm_75) and
 `vram_fit.fit_start`, whose only CUDA knob is `--kv-resident` - a KV window
 turns `--kv-grow` off in the engine, so if the journal prints `KV window ...`
 the 262144 start lost the module's elastic-KV win and the fitter's estimate
-needs a look.  The `KV window ...` line is new (fit_start did not exist in
-0.1.55); the `drafting` line already ran on 0.1.55, so only its resolution is
-worth re-checking.  Both were pre-checked offline against the production
-config: 0.1.56's `engine_args()` returns the production args byte-identical
-(no `--kv-resident`; drafting resolves to MTP).
+needs a look.  An offline pre-check of 0.1.56's `engine_args()` returned the
+production args byte-identical (no `--kv-resident`; drafting resolves to MTP),
+but that is not what a real start does: `fit_start` prices the card with the GPU
+idle and its `drafting_vram_mib()` then sees memory the offline check did not.
+The first 0.1.56 start (generation 97) printed `short of GPU memory ... (KV
+window 4096 tokens in VRAM)` and ran with `--kv-resident 4096`: `--kv-grow` was
+off (the engine logged it) and the DAX window fell to 2.70 GiB (the register
+call shrank 5.52 -> 4.58 -> 3.64 -> 2.70).  A restart reproduced it.  Fixed by
+pinning the fitter off this knob with `user_args = [ "--kv-resident" "0" ]` in
+the run config: the fitter treats a `user_args` value as the person's, and 0 is
+the engine's unset value (`o.kv_resident <= 0` keeps `--kv-grow` allowed).
+Verified on generation 98: the engine args carry `--kv-grow` and
+`--kv-resident 0`, the log prints `elastic K/V: 16384 of 262144` and no
+`--kv-grow is off`, and the DAX window is back to layers 0..5 / 5.52 GiB.  The
+fitter still prints its `short of GPU memory` line although it changes nothing -
+cosmetic.
 
 ### Other 0.2.7 findings
 
