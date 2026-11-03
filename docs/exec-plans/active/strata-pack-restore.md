@@ -414,6 +414,62 @@ Verified on generation 98: the engine args carry `--kv-grow` and
 fitter still prints its `short of GPU memory` line although it changes nothing -
 cosmetic.
 
+### Post-bump experiments (2026-11-04)
+
+**DFlash2 on sm_75 (adopted).**  Upstream's table calls sm_75 "untested"
+(`hardware_support` still answers can_run) and the engine carries the code
+(`STRATA_HAVE_DFLASH2`), but the Nix package does not ship
+`data/draft_vocab*.bin`, so the feature was inert here.  Built the drafter from
+the pinned source: incoai/Qwen3.8-Flash-Next-DFlash2 revision a22a1744,
+`model.safetensors` 1,206,140,008 B sha `d6723f2a...`; `tools/dflash2_pack.py
+--q4_0` produced 522,458,112 B sha `cda40d62...` and `--convert-selector`
+339,694,592 B sha `4a42b98...`; the English draft vocabulary sits beside them.
+The files live in `/optane/strata-data/dflash2/` (runtime data, like the MTP
+layer), and the module sets `drafting = "dflash2"`.
+
+3+3 counterbalanced (production config, the same 0.1.56 server, DFlash2 against
+the MTP; read tok/s, decode tok/s):
+
+| cell | MTP | DFlash2 |
+| --- | --- | --- |
+| 4,252 read / decode | 493.8 / 57.1 | 495.4 / 59.9 |
+| 3,477 read / decode | 402.9 / 59.6 | 397.6 / 62.4 |
+| 26,134 read / 8 gen | 1,252.9 / 51.7 | 1,251.4 / 53.7 |
+
+Prompts flat (+0.3% / -1.3% / -0.1%), decode +4.8% / +4.7% / +3.9%; DFlash2
+accepts far more drafts (P1 52/67 against 49/72, P2 32/35 against 30/49) and
+frees the MTP layer's VRAM (7,859 expert slots against 7,762; drafter 492 MiB).
+eval80: 58/80 against the MTP's 59/80, inside the set's noise.  It serves one
+request at a time (the lane runs no `--batch`), and a missing pack falls back
+to the MTP with a line.
+
+**Sampling: the model card's defaults (adopted).**  The lane had pinned
+temperature 0, but the serve layer still merged the qwen4exp card's
+`presence_penalty 1.5` (and top_p/top_k) for a non-thinking request, so
+"greedy" was the argmax of penalized logits, not the model's.  Removed the pin:
+requests that name no sampling get the card's values (non-thinking
+0.7 / 0.8 / 20 / 1.5, thinking 1.0 / 0.95 / 20).  One engine start, four
+request-level arms, eval80: greedy+penalty (the old default) 58/80, pure greedy
+(presence 0) 59/80, card 59/80, card without penalty 60/80 - all inside the
+set's binomial noise (1 sigma about 5.4), the repetition probe flat.  Campaigns
+that need determinism send `temperature: 0` per request (`/data/ab25.py` now
+does).
+
+**Other levers screened.**  The Turing opt-ins outside `STRATA_SM75_PERF`:
+`STRATA_PF_FUSED_SM75=1` (fused int8 prompt experts) is adopted - 2 runs an
+arm: 4,252 read 496.9 against 486.0 tok/s (+2.2%, ranges 495.1-498.6 against
+483.5-488.5), +0.8% on the other two cells, answers bit-identical.
+`STRATA_PA_V2T=1` and `STRATA_SELECT_SIMT=2` changed the answers and showed no
+consistent win in one run each, so they stay off; `--lookup-max-t 16` (default
+12) is flat.  Not applicable on this card: the all-cards split engine (2+
+cards), the parallel-request stack (`--batch`/`--parallel` >= 2; the lane
+serves one request), the 0.2.9 GDN tensor-core prompt kernels (`GDN_TC` is
+gated at compute capability 8+ in the engine; `GDN_CONVL2=2` is applied by the
+serve layer already), the 8 GB/128K ladder (22 GB card), and the
+Windows/AMD/Mac paths.  Already on: the Turing series, the residency router
+(1.2 here), BF16 tensor-core GEMMs, `--kv-grow`, `STRATA_KV_ROT`, the DAX
+window and the refill pin.
+
 ### Other 0.2.7 findings
 
 - `--mtp-draft-vocab`: the base subset can be produced - `data/draft_vocab_en.bin`

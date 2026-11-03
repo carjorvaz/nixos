@@ -324,14 +324,30 @@ let
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
       model_name = lane.modelName;
-      # v0.1.45 changed the default sampling of a request that names none: a
-      # config without a "sampling" block now gets the model card's values
-      # (thinking 1.0/0.95, instruct 0.7/0.8) instead of greedy.  The lane's
-      # clients and every measured campaign here were greedy, so pin it
-      # explicitly; a client that sends sampling keys still overrides this.
-      sampling = {
-        temperature = 0;
-      };
+      # DFlash2 is the drafter on this card (measured 2026-11-04): engine 0.1.56
+      # runs it on sm_75, where upstream's table says "untested".  The pack was
+      # converted here from the pinned source (incoai/Qwen3.8-Flash-Next-DFlash2
+      # revision a22a1744; Q4_0 pack sha cda40d62..., selector pack
+      # 4a42b98...) and lives in ${cfg.dataDir}/dflash2 beside draft_vocab.bin,
+      # the English subset.  Against the MTP, 3+3 counterbalanced: prompts flat
+      # (-1.3% / -0.1% at 3.5K / 26K, +0.3% at 4.2K), decode +4.8% / +4.7% /
+      # +3.9%, expert cache 7,859 vs 7,762 slots, eval80 58/80 vs 59/80 (the
+      # set's noise).  DFlash2 serves one request at a time (no --batch, which
+      # this lane does not use); a missing pack falls back to the MTP with a
+      # line in the log.
+      drafting = "dflash2";
+      # The served default is the model card's sampling (owner decision,
+      # 2026-11-04): a request that names no sampling gets Qwen3.8's card
+      # values - non-thinking 0.7 / top_p 0.8 / top_k 20 / presence_penalty 1.5,
+      # thinking 1.0 / 0.95 / 20 - as upstream's serve layer implements them
+      # (`MODEL_CARD_SAMPLING`, and the family defaults to qwen4exp when the
+      # config names none).  The old pin here was temperature 0, which made the
+      # lane greedy; measured 2026-11-04 (eval80, one engine start, request
+      # sampling overrides): greedy+penalty 58/80, pure greedy 59, card 59, card
+      # without penalty 60 - all inside the set's binomial noise (1 sigma about
+      # 5.4), and the repetition probe showed no cost.  A client that sends
+      # sampling keys still wins; campaigns that need determinism send
+      # temperature 0 per request.
       log = "${cfg.stateDir}/strata-${cfg.model}.log";
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
@@ -374,6 +390,15 @@ let
         # added nothing on top of the series, and STRATA_ATTN_DAILY with
         # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
         STRATA_SM75_PERF = "1";
+        # The one numerics-changing Turing option that paid and stayed exact
+        # (measured 2026-11-04 with DFlash2 on, 2 runs an arm, alternating):
+        # the fused int8 prompt experts.  Prompt read at 4,252 tokens: 496.9
+        # against 486.0 tok/s (+2.2%; the arms' ranges 495.1-498.6 against
+        # 483.5-488.5); 3,477 and 26,134: +0.8% each; the answers are
+        # bit-identical on all three cells.  The other opt-ins outside the
+        # series (STRATA_PA_V2T, STRATA_SELECT_SIMT) changed the answers and
+        # showed no consistent win in the screen, so they stay off.
+        STRATA_PF_FUSED_SM75 = "1";
         # The 1 GiB resident host tier (--resident-budget-gib, STRATA_RESIDENT_PIN
         # and STRATA_RESIDENT_HEADROOM_GIB with it) is gone with hostTierGib = 0:
         # it is mutually exclusive with --kv-grow, and the elastic K/V above buys

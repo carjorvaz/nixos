@@ -227,6 +227,20 @@ rebased upstream tree, a tiberius-native build succeeds
 built binary reports `strata 0.1.56` with the DAX window, refill-pin and SM75
 series markers and the `--resident-budget-gib` / `--prefill` flags present.
 
+Post-bump experiments (2026-11-04, engine 0.1.56).  DFlash2 runs on sm_75
+(upstream's table calls it untested) and is adopted: the pack was converted here
+from the pinned source and checked against its pinned SHA-256, and 3+3
+counterbalanced runs against the MTP keep prompts flat (+0.3% / -1.3% / -0.1%)
+while decode gains 4.8% / 4.7% / 3.9%; expert slots 7,859 against 7,762 and
+eval80 58/80 against 59/80.  The model card's sampling replaced the
+temperature-0 pin (eval80 58/59/59/60 over the four request-level arms, inside
+the set's noise); campaigns send `temperature: 0` per request.  Of the Turing
+opt-ins outside `STRATA_SM75_PERF`, `STRATA_PF_FUSED_SM75=1` is adopted (+2.2%
+at 4,252 tokens, answers bit-identical), while `STRATA_PA_V2T` and
+`STRATA_SELECT_SIMT` changed answers with no consistent win and stay off;
+`--lookup-max-t 16` is flat.  Details and provenance:
+`docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is
