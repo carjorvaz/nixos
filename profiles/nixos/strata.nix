@@ -178,7 +178,16 @@ let
         # The boundary moves with the expert cache and the borrow accounting, so
         # re-measure it whenever the KV, context or engine changes - and read the
         # engine's own `prompt chunk X -> Y` line rather than assuming the value you
-        # asked for is the value in force.
+        # asked for is the value in force.  Re-screened 2026-11-04 on the current
+        # 0.1.56/DFlash2 stack (fresh engine per arm, P1/P2/P27): 16384 costs
+        # +2.9/+3.3/+10.3% read, 8192 costs +1.5/+4.9/+56.3%, and reserving the prompt
+        # buffers (--no-prefill-borrow) frees no intercept while collapsing the expert
+        # cache 7,859 -> 4,959 slots (-37%, P27 read +52%); 28160 with the borrow stays.
+        # A fresh-prompt sweep puts the fixed cost at ~5.1 s + 0.60 ms/token
+        # (1,672 tok/s), and STRATA_PREFILL_TIMING attributes 37% of a 4.2k prompt's
+        # GPU timeline to `wait copy` (the DAX pack stream), so the remaining win is
+        # rotation/copy overlap, not a chunk flag.  Evidence:
+        # docs/exec-plans/active/strata-tuning-next.md "Round 2 campaign results".
         "28160"
         "--spec"
         "4"
@@ -317,6 +326,14 @@ let
       # window is set, and the DAX window fell from 5.52 to 2.70 GiB.
       # `--kv-resident 0` is the engine's unset value (kv_grow stays allowed),
       # and as a user_arg it makes fit_start's kv_fixed skip the knob.
+      # Screened on the same stack 2026-11-04 and NOT carried: --spec 8 (-2.9% L-live
+      # decode: more tokens/verify-window but slower windows), --lookup-max-t 8 (a
+      # no-op - the verify window stays 8) and 12 (-1.4%), finer --draft-conf, and
+      # --draft-cap (the serve layer strips it; the cap follows --spec).  k8v4 on the
+      # 26k long-context cell was +2.6% decode (below the 3% gate), -10.7% on L-live,
+      # +10.5% P27 read, with answers drifting, so int8 stays.  Model-card sampling
+      # beat card0 (presence_penalty 0) 58.67 vs 58.00 over 3 eval80 passes; keep the
+      # card.  Evidence: docs/exec-plans/active/strata-tuning-next.md results section.
       user_args = [
         "--kv-resident"
         "0"
@@ -428,6 +445,11 @@ let
         # measured 26564 ms (1038.4 tok/s) against 26282 ms (1049.5) with 4
         # (2026-10-08, 2 runs/arm).  Kept at 4.
         STRATA_STAGER_RING = "4";
+        # STRATA_PREFILL_ROUTED_STREAM was screened 2026-11-04 and is NOT carried: it is
+        # active on this build (its own log line) but costs +39..+88% prompt read on
+        # >=1k-token chunks and +38% at 26,134 (both depths), i.e. it serialises the
+        # copies the ordinary DAX walk overlaps.  Evidence: strata-tuning-next.md,
+        # "Round 2 campaign results" (block A).
         # tiberius: the routed-only staging override is RETIRED as of the v0.1.40.2
         # bump.  It pinned the streamed ring to 8 slots (STAGE) for every chunk
         # size, which won 19% fewer streamed bytes at v0.1.38 (2026-09-30: 2409 tok

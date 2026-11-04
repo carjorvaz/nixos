@@ -247,15 +247,37 @@ both set the reads were -2.5% / -0.9% / -0.3% with no fused-path line;
 and stay off.  The NVIDIA sm_86/sm_121 default tables never load on sm_75; their generic
 switches were screened and none is carried (ADAPT_NOWAIT/LAG changed the
 answers, the rest sat inside the base spread, SPEC_COST is MTP-only).  Suffix
-drafting is on by default (`suffix_draft` 3, `--lookup-max-t` 12) and active
-in the DFlash2 runs; 16 is flat.  The serve layer's `--draft-conf 0.8` was
-tested against 0.5 and 0.65 (2 runs each): no consistent read gain, mixed
-per-token decode, different answers - 0.8 stays.  Details and provenance:
-`docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
+drafting is on: `suffix_draft` defaults to 3 and the DFlash2 runs log suffix
+drafts.  Wide lookup windows do NOT run: `default_lookup_max_t`
+returns 0 when dflash2 is set
+(`include/strata/core/lookup_default.hpp:23-30`), the deployed start passes no
+`--lookup-max-t`, and there is no `--lookup-max-t 12` startup line - the "16 is
+flat" measurement is the MTP-era result, not a DFlash2 one.  An explicit
+`--lookup-max-t` is now a campaign arm (an explicit N also raises `--spec` to
+min(N,16); the window is up to 8 tokens today).  The serve layer's
+`--draft-conf 0.8` was tested against 0.5 and 0.65 (2 runs each): no consistent
+read gain, mixed per-token decode, different answers - 0.8 stays.  Details and
+provenance: `docs/exec-plans/active/strata-pack-restore.md`, "Post-bump
+experiments", and `docs/exec-plans/active/strata-tuning-next.md` for the
+pending window arms.
 Deployed as generation 100 on 2026-11-04: DFlash2 on the selector pack (no MTP
 layer), 7,859 expert slots, `elastic K/V: 16384 of 262144`, DAX 5.52 GiB, no
 `--kv-resident` injected; the config carries no `sampling` block and two
 identical creative requests returned different text.
+
+Generation 101 (2026-11-04) is the same run config with the local
+transactional-park fix in `tiberius.patch` (engine
+`3qla1qfa09rsf6rqmcnnndk04hrqvb0y-strata-engine-0.1.56`): a park the physical-RAM
+admission gate cannot admit now skips with "nothing evicted, N still parked" and
+hands the retained-K/V donor back, instead of evicting up to `slots()` parked
+conversations before the refusal. The isolated port-8099 probe (a forced refusal
+under a measured mlock hog) measured the pre-fix binary "evicted 2, 0 still
+parked" with the next prompt re-reading 1,745 tokens from zero, and the patched
+binary "nothing evicted, 2 still parked" with 1,738 tokens restored; normal
+park/restore is unchanged and six answer shas matched. The same-day round-2
+config screen (routed stream, prefill chunks, `--spec 8`, `--lookup-max-t`,
+k8v4, sampling card0) adopted nothing; the results are in
+`docs/exec-plans/active/strata-tuning-next.md`, "Round 2 campaign results".
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
@@ -319,13 +341,17 @@ and `/metrics`).
 The 0.2.x line also changed two serve defaults that would move this lane without
 touching a performance knob.  Since 0.1.45 a request that names no sampling keys
 gets the model card's values (thinking 1.0/0.95, instruct 0.7/0.8) where 0.1.43
-was greedy; the module now pins `sampling.temperature = 0` so the lane's clients
-and the campaign comparisons stay greedy (a client that sends sampling keys still
-overrides it).  Since 0.2.3 (#3493) `--serve` sizes a parked-conversation cache
-from the free RAM when `--conversation-cache-mib` is absent (up to 8 GiB, floor
-~2.5 GiB); the module pins `--conversation-cache-mib 0`, the 0.1.43 default, so
-the 7.4 GiB box cannot pin ~118 MB checkpoints or take RAM from the 1 GiB host
-tier.  Both pins were checked on the 0.1.49.2 build (`/data/ab24*`).
+was greedy; the module no longer pins `sampling.temperature` - the model-card
+sampling was adopted on 2026-11-04 (the gen-100 config has no `sampling` block:
+non-thinking 0.7 / top-p 0.8 / top-k 20 / presence_penalty 1.5, thinking
+1.0 / 0.95 / 20), and campaigns that need determinism send `temperature: 0` per
+request (`profiles/nixos/strata.nix:340-350`).  Since 0.2.3 (#3493) `--serve`
+sizes a parked-conversation cache from the free RAM when `--conversation-cache-mib`
+is absent (up to 8 GiB, floor ~2.5 GiB); the module pins the cache explicitly -
+`--conversation-cache-mib 2048`, 4 slots, a 1,536-token floor, a 384 MiB min-free
+and a 512 park gain, sized against this box's RAM pressure, not the 0.1.43
+default (`profiles/nixos/strata.nix:225-234`).  The live gen-100 config matches
+the module; the old pins were checked on the 0.1.49.2 build (`/data/ab24*`).
 
 The 0.1.45 RTX 20 kernel series (`STRATA_SM75_PERF=1`) is adopted.  It is bitwise
 here: every arm in the campaign returned the same answer sha on all four cells.

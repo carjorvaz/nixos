@@ -64,7 +64,9 @@ Measured: 46.84 GiB written in **under five minutes** (2026-10-28 12:53-12:57,
 
 ## Measured after the fix (0.1.49.2 / v0.2.4.2, production config)
 
-Same cells as the ab11/ab24 campaigns (real corpus, greedy, thinking off):
+Same cells as the ab11/ab24 campaigns (real corpus, greedy, thinking off).
+Multi-run cells in this document's tables are means over the stated runs, with
+[min-max] where a spread is shown - not medians.
 
 | cell | before | after |
 | --- | --- | --- |
@@ -384,8 +386,9 @@ control differs from B), and upstream's other 0.1.56 engine changes - the
 verify/expert-grouped/gemm rewrites among them - move them too.  The divergence
 is accepted with the bump; `STRATA_PENALTY_PROMPT=1` is the documented window
 escape, not a parity switch.  Quality: eval80 scores 61/80 (A) against 59/80
-(B, the fit-pinned MTP arm; the earlier 58/80 was measured before the fit pin,
-on a start with `--kv-resident 4096` and `--kv-grow` off) - arithmetic 19 vs 16
+(B; the 59 is the later fit-pinned MTP start, `/data/ab32-eval-M.log`, while
+`/data/ab26-eval-B.log` scored 58/80 on the pre-fit-pin start with
+`--kv-resident 4096` and `--kv-grow` off) - arithmetic 19 vs 16
 and logic 10 vs 11 in that pair - 2 tasks, inside the set's binomial noise
 (1 sigma about 5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
 the serve-layer tool-call fixes and #4590, with the deterministic answer change
@@ -490,9 +493,12 @@ spread (P1 484.7-498.8, P2 399.0-405.8) with the answers identical, while
 `STRATA_ADAPT_NOWAIT=1 STRATA_ADAPT_LAG=2` changed the answers on all three
 cells - none is carried.  `STRATA_SPEC_COST=1` is MTP-only
 (`if (spec_cost && use_mtp)`) and inert with DFlash2.  Suffix drafting is
-already on: `suffix_draft` defaults to 3 and `--lookup-max-t` to 12 in this
-one-GPU 8-row CUDA build (the DFlash2 runs log `suffix drafts`); 16 measured
-flat.  The serve layer picks `--draft-conf 0.8` from its slot estimate for
+already on: `suffix_draft` defaults to 3 (the DFlash2 runs log `suffix drafts`),
+but wide lookup windows are OFF: `default_lookup_max_t` returns 0 when dflash2
+is set (`include/strata/core/lookup_default.hpp:23-30`), the deployed start
+passes no `--lookup-max-t`, and the "16 measured flat" result is the MTP-era
+measurement.  An explicit `--lookup-max-t` is a new campaign arm.  The serve
+layer picks `--draft-conf 0.8` from its slot estimate for
 this card; upstream's own slot table puts ~7.9k slots nearer 0.5, so 0.5 and
 0.65 were tested (2 runs each, alternating): reads within +0.7 / +0.3 / +0.3%
 and -0.3 / -1.6 / -0.1% (P1 / P2 / 26,134), per-token decode mixed (P1

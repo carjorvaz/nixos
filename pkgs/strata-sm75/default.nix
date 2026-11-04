@@ -149,13 +149,33 @@ stdenv.mkDerivation {
   # this patch owns, and the CMakeLists growth is new split/DFlash2 TUs and
   # comments, not the kernel flag lists.
   #
-  # tiberius.patch is tiberius's local engine changes, in one patch because they
-  # interleave in the same regions of expert_source.{hpp,cpp}, prefill.{hpp,cpp}
-  # and generate.cpp:
+  # tiberius.patch is tiberius's local engine changes, in one patch because the
+  # first two interleave in the same regions of expert_source.{hpp,cpp},
+  # prefill.{hpp,cpp} and generate.cpp (the third is independent: one park_source
+  # hunk in generate.cpp and two methods in conversation_cache.hpp):
   #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill is
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
   #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources,
-  #     with its straddle guard.
+  #     with its straddle guard;
+  #   * the transactional park (added 2026-11-04): a park the physical-RAM admission
+  #     gate cannot admit used to evict up to slots() parked conversations before the
+  #     refusal and consumed the retained-K/V donor on the way (live: "need 994 MiB
+  #     plus 384 MiB floor, 1102 MiB available; evicted 2, 0 still parked").  The gate
+  #     is now pre-checked before make_room() and before any eviction, against
+  #     available plus every evictable parked conversation's bytes; a park that could
+  #     not fit over an empty cache skips with "nothing evicted, N still parked" and
+  #     gives the donor back.  A park that can fit takes the old path unchanged; no
+  #     upstream counterpart (#4677 is a different, HIP-only stop-bound park fix).
+  #     Built 2026-11-04 on tiberius (/nix/store/3qla1qfa09rsf6rqmcnnndk04hrqvb0y-strata-
+  #     engine-0.1.56, 7 min) and probed against the deployed pre-fix binary in an
+  #     isolated window: pre-fix "evicted 2, 0 still parked" and the next request
+  #     re-read the prompt the destroyed copy held; patched "nothing evicted, 2 still
+  #     parked", both copies still restorable (1738 tokens restored, reused=1738),
+  #     normal parks unchanged and all six answer shas identical.  Deployed as
+  #     generation 101 on 2026-11-04 (system
+  #     07pr3sndmbszvsyq8jayd334ak0nwf59, the engine store path above); the patch file
+  #     is unchanged since that build, so the switch reused it.  See
+  #     /tmp/strata-tune/park-patch.md.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
@@ -166,7 +186,9 @@ stdenv.mkDerivation {
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # All three were generated against the pin above and re-applied in order onto a
-  # pristine ffa80d73 tree (bit-identical result) before this build.
+  # pristine ffa80d73 tree (bit-identical result) before this build.  tiberius.patch
+  # was regenerated again on 2026-11-04 for the transactional-park addition and
+  # re-verified the same way (the deployed generation predates it).
   #
   # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent
@@ -256,6 +278,17 @@ stdenv.mkDerivation {
     }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
       echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
+      exit 1
+    }
+    # tiberius.patch's transactional park: the distinct refusal line is its marker (no upstream line has
+    # these words).  A rebase that drops the pre-check but keeps the old eviction loop must fail the build
+    # here rather than silently bring back the destructive refusal.
+    grep -q 'nothing evicted' src/program/generate.cpp || {
+      echo "tiberius.patch lost the transactional-park pre-check in park_source()" >&2
+      exit 1
+    }
+    grep -q 'evictable_bytes' include/strata/core/conversation_cache.hpp || {
+      echo "tiberius.patch lost the ConversationCache::evictable_bytes() pre-check helper" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`

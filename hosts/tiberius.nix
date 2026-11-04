@@ -919,6 +919,11 @@ in
     # rotation, which with the expert set pinned cuts the near-tie KL against
     # fp16 6.6x (0.524 -> 0.0798) and restores its top-1 where unrotated int8
     # flips, for zero capacity and ~1% decode (measured 2026-10-03, /data/kvrot).
+    # Re-screened 2026-11-04 on engine 0.1.56 + DFlash2 (fresh engine per arm, L-live
+    # 768-token cell and a 26k long-context cell): k8v4 was +2.6% decode on the long
+    # cell (below the 3% adoption gate), -10.7% on L-live and +10.5% P27 read, with the
+    # answers drifting on every cell; int8 stays.  Evidence:
+    # docs/exec-plans/active/strata-tuning-next.md, "Round 2 campaign results".
     # fp16 is the absolute ceiling
     # and is priced too: 4607 slots and ~-23% decode at 262144, or - with no
     # speed cost at all - 6464 slots and the full chunk at 131072; not taken here.

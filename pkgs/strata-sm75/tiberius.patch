@@ -7,9 +7,18 @@
 # Windows standby-list release) sit outside this patch's FileExpertSource region, and the ggml pin is
 # unchanged (third_party/ggml/VERSION.txt), so nothing under third_party/ggml moved.
 #
-# Two changes, in one patch because they interleave in the same regions of
-# expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp.  Both are local and
-# opt-in through their own env var; nothing here runs unless the module sets it.
+# ADDED 2026-11-04: change 3 (the transactional park) was written on top of that rebase; park_source()
+# and conversation_cache.hpp are outside every region changes 1-2 touch (the cache header was not in
+# this patch before it), so it needs no merge.  The whole patch was regenerated against ffa80d73 and
+# re-applied in order onto a pristine tree (byte-identical result; transcript in
+# /tmp/strata-tune/park-patch.md).  Code-only so far: the build and the isolated-harness probe are
+# task-7, not run yet.
+#
+# Three changes, in one patch because changes 1-2 interleave in the same regions of
+# expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; change 3 is independent (one function in
+# generate.cpp, two methods in conversation_cache.hpp).  Changes 1-2 are local and opt-in through their
+# own env var - nothing they add runs unless the module sets it.  Change 3 is always on and only changes
+# what a REFUSED park does: an admitted park behaves exactly as before.
 #
 # 1. STRATA_REGISTER_DAX, the sliding DAX window.  cudaHostRegister cannot pin
 #    the 46.84 GiB pack (the driver caps a process's total registered host memory
@@ -28,6 +37,18 @@
 #    Portable) and releases them once the batch's event has landed.  Measured
 #    2026-10-02, counterbalanced, 8 runs/arm: decode +12.2% / +7.1% / +5.9% on
 #    three cells, refill join 18.04 -> 1.46 ms per window.
+# 3. The transactional park (park_source, generate.cpp).  The physical-RAM admission gate used to run
+#    `while (!admit() && ... evict_oldest())` BEFORE it knew whether the park could be admitted, so a
+#    REFUSED park had already evicted up to slots() parked conversations (production: "need 994 MiB plus
+#    384 MiB floor, 1102 MiB available; evicted 2, 0 still parked" - two good conversations destroyed by
+#    a park that never happened; 126 refusals in one 8 h run, 893 in the log), and the retained-K/V donor
+#    (take_reuse_for) was consumed by the same refusal.  Now the gate is checked ONCE before make_room()
+#    and before any eviction, against available + the bytes every evictable parked conversation would
+#    return (ConversationCache::evictable_bytes); a park that could not fit even with the cache emptied
+#    is skipped with "nothing evicted, N still parked" and the donor is handed back
+#    (ConversationCache::give_reuse).  A park that CAN fit takes the old eviction loop unchanged; its
+#    refusal is now reachable only when RAM changed between the pre-check and the loop.  No upstream
+#    counterpart: #4677 fixes a different, HIP-only stop-bound park bug (see default.nix).
 #
 # Two hardening pieces ride with the pin, both needed by this box:
 #   * the straddle guard: a span that PARTLY overlaps an existing registration is
@@ -43,8 +64,47 @@
 # (BlobClass) and the batch registration, and upstream's nib guard is kept inside
 # our loop.  The serve path and the generate path each carry a copy, as before.
 
+diff --git a/include/strata/core/conversation_cache.hpp b/include/strata/core/conversation_cache.hpp
+index 78ff9f1..61bb29f 100644
+--- a/include/strata/core/conversation_cache.hpp
++++ b/include/strata/core/conversation_cache.hpp
+@@ -281,6 +281,16 @@ public:
+         if (reuse_.unchanged_tokens <= 0) reuse_ = {};
+     }
+     ConversationKvReuse take_reuse() { return std::exchange(reuse_, {}); }
++    // tiberius (transactional park): put a donor taken by take_reuse_for() back when the park it was taken for is
++    // refused before the capture.  The object is the same the take returned - captured extent and ids intact, so
++    // conversation_snapshot_capture_bytes() validates it as before; only unchanged_tokens was limited by the take,
++    // which is what limit_reuse() does on the normal path.  It fit the budget before the take and nothing here
++    // allocates, so the only way this declines is a make_room() that already spent the room on the incoming image
++    // (the donor is then dropped as before).
++    void give_reuse(ConversationKvReuse&& r) {
++        if (!enabled() || r.kv.empty() || bytes_ > budget_ || r.bytes() > budget_ - bytes_) return;
++        reuse_ = std::move(r);
++    }
+     // The retained K/V for parking `live`: limited to the prefix `live` shares with the conversation it was captured
+     // from, and nothing when they share none.  Without this a park after a batch slot gave its conversation back to the
+     // main session wrote the RESTORED conversation's K/V into the new one's image (#1503, a cross-conversation leak).
+@@ -400,6 +410,17 @@ public:
+         return true;
+     }
+ 
++    // tiberius (transactional park): the bytes evict_oldest() could still free - every parked entry that is
++    // neither a pinned shared prefix nor the guarded (borrowed) donor.  The physical-RAM admission gate in
++    // generate.cpp checks this against its need before it evicts anything, so a park that cannot be admitted
++    // over an empty cache is refused with the cache untouched instead of evicting all of them for nothing.
++    size_t evictable_bytes() const {
++        size_t n = 0;
++        for (size_t i = 0; i < entries_.size(); ++i)
++            if (!entries_[i].pinned() && (guarded_ == 0 || serials_[i] != guarded_)) n += entries_[i].bytes();
++        return n;
++    }
++
+     // The parked conversation that has gone unused the longest.  This is make_room()'s loop body, so
+     // the parking path can also free RAM one entry at a time on demand (see the physical-RAM admission
+     // gate in generate.cpp).  A ConversationBuffer is a list of 16 MiB segments and each segment is its
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
-index ca325ae2..45073363 100644
+index ca325ae..4507336 100644
 --- a/include/strata/core/expert_source.hpp
 +++ b/include/strata/core/expert_source.hpp
 @@ -217,9 +217,50 @@ public:
@@ -195,7 +255,7 @@ index ca325ae2..45073363 100644
      /// Prefix pinning: the old rule (device_alias(layer, 0)); pin by need: at least one pinned range in the layer.
      bool pcie_layer(int64_t layer) const override;
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
-index 4a872e8c..9426f6ae 100644
+index 4a872e8..9426f6a 100644
 --- a/src/core/expert_source.cpp
 +++ b/src/core/expert_source.cpp
 @@ -1563,6 +1563,79 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
@@ -692,7 +752,7 @@ index 4a872e8c..9426f6ae 100644
      if (ranges_) {   // pin by need: the range's device base + the blob's offset inside it
          if (base_ == nullptr || layer < 0 || expert < 0 || expert >= n_expert_) return nullptr;
 diff --git a/src/prefill/prefill.cpp b/src/prefill/prefill.cpp
-index 0f2c410c..56edcaea 100644
+index 0f2c410..56edcae 100644
 --- a/src/prefill/prefill.cpp
 +++ b/src/prefill/prefill.cpp
 @@ -3568,6 +3568,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
@@ -748,7 +808,7 @@ index 0f2c410c..56edcaea 100644
                              for (size_t j = 0; j < order.size(); ++j) {
                                  const int32_t e = order[j];
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index e2657ae2..d9415082 100644
+index e2657ae..ecfb6f3 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
 @@ -170,6 +170,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
@@ -1049,7 +1109,86 @@ index e2657ae2..d9415082 100644
              }
          double share = total ? (double) pinned / (double) total : 1.0;
          if (const char* t = std::getenv("STRATA_TEST_PINNED_SHARE")) share = std::atof(t);   // tests: the Windows-like ring rule
-@@ -12277,6 +12520,23 @@ int main(int argc, char** argv) {
+@@ -11652,6 +11895,34 @@ int main(int argc, char** argv) {
+                 err.clear();
+             }
+             estimate += stage_estimate;
++            const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib * 1024 * 1024;
++            const size_t retained = reuse.bytes() + stage_retained;
++            const size_t additional = estimate > retained ? estimate - retained : 0;
++            // tiberius: the physical-RAM gate is pre-checked BEFORE make_room() evicts anything, because a park it
++            // cannot admit must not destroy parked copies.  The gate below evicts least-recently-active parked
++            // conversations one at a time before the admission is known, so its own refusal ran with the cache
++            // empty ("... evicted 2, 0 still parked": two good conversations destroyed by a park that never
++            // happened - 126 times in one 8 h run, 893 in the log).  What an eviction could still buy is the parked
++            // images' own bytes: each is a list of 16 MiB segments, its own allocations, back with the kernel as
++            // soon as the entry goes.  So check once against available + every evictable parked conversation; if
++            // even evicting all of them does not fit, skip here, the cache untouched and the retained-K/V donor put
++            // back for the next park.  A refusal on the POST-capture floor below is a different sample (the
++            // capture's own allocation moved the RAM) and is left as it is: keeping that image is unsafe, and
++            // evicting for it after the capture is what this pre-check is here to avoid.
++            {
++                const auto mem_pre = strata::core::sample_host_memory();
++                const size_t reclaimable = conversations.evictable_bytes();
++                if (!strata::core::conversation_memory_admit(
++                        mem_pre ? std::optional<uint64_t>(mem_pre->available + reclaimable) : std::nullopt,
++                        additional, floor)) {
++                    std::fprintf(stderr, "strata serve: conversation cache: skip parking (physical RAM admission: need %zu MiB plus %lld MiB floor, %s + %zu MiB reclaimable; nothing evicted, %zu still parked)\n",
++                                 additional >> 20, (long long) o.conversation_cache_min_free_mib,
++                                 ram_note(mem_pre).c_str(), reclaimable >> 20, conversations.size());
++                    reuse.stages = std::move(stage_reuse);
++                    conversations.give_reuse(std::move(reuse));
++                    return true;
++                }
++            }
+             // A park carrying its own retained K/V replaces memory the cache
+             // already held, so capacity is make_room's call - it runs next either
+             // way, and put()'s accounting still bounds the budget. The with-reuse
+@@ -11661,23 +11932,25 @@ int main(int argc, char** argv) {
+             if (!conversations.make_room(estimate, held)) {
+                 std::fprintf(stderr, "strata serve: conversation cache: skip parking (snapshot %zu MiB exceeds available budget)\n",
+                              estimate >> 20);
++                reuse.stages = std::move(stage_reuse);
++                conversations.give_reuse(std::move(reuse));
+                 return true;
+             }
+             const auto t0 = Clock::now();
+             try {
+-                const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib * 1024 * 1024;
+-                const size_t retained = reuse.bytes() + stage_retained;
+-                const size_t additional = estimate > retained ? estimate - retained : 0;
+                 // The physical-RAM gate: the incoming snapshot has to fit beside the floor.  make_room()
+                 // above only balanced the cache's own budget, so a full cache leaves this one short even
+                 // though every parked conversation could give its RAM back - and refusing here throws
+                 // away the whole prompt read that produced this snapshot (measured: 270k tokens, 96 s).
+-                // Evict the least recently active parked conversations until it fits, or until none are
+-                // left.  Each ConversationBuffer is a list of 16 MiB segments, each segment its own
+-                // allocation, so an evicted entry is back with the kernel before the next check reads
+-                // /proc/meminfo; no waiting is needed.  slots() bounds the loop, and the two lines
+-                // below say what it did either way.  The reading is the guard's (MemAvailable, the cgroup
+-                // limits above the engine, --memory-limit-mib); `mem` keeps the last one for the refusal line.
++                // The pre-check above says evicting every parked conversation can still fit this one:
++                // evict the least recently active ones until it does, or until none are left.  Each
++                // ConversationBuffer is a list of 16 MiB segments, each segment its own allocation, so an
++                // evicted entry is back with the kernel before the next check reads /proc/meminfo; no
++                // waiting is needed.  slots() bounds the loop, and the two lines below say what it did
++                // either way.  The reading is the guard's (MemAvailable, the cgroup limits above the
++                // engine, --memory-limit-mib); `mem` keeps the last one for the refusal line.  This refusal
++                // is now reachable only when RAM changed between the pre-check and the loop (its assumed
++                // reclaimable bytes did not survive another process's allocation).
+                 size_t evicted = 0;
+                 std::optional<strata::core::HostMemoryReading> mem;
+                 auto admit = [&] {
+@@ -11692,6 +11965,8 @@ int main(int argc, char** argv) {
+                     std::fprintf(stderr, "strata serve: conversation cache: skip parking (physical RAM admission; need %zu MiB plus %lld MiB floor, %s; evicted %zu, %zu still parked)\n",
+                                  additional >> 20, (long long) o.conversation_cache_min_free_mib, ram_note(mem).c_str(),
+                                  evicted, conversations.size());
++                    reuse.stages = std::move(stage_reuse);
++                    conversations.give_reuse(std::move(reuse));
+                     return true;
+                 }
+                 if (evicted)
+@@ -12277,6 +12552,23 @@ int main(int argc, char** argv) {
          std::vector<void*> pin_live;   // the swaps' locked arena pages (pin_blob), unlocked once they have landed
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
@@ -1073,7 +1212,7 @@ index e2657ae2..d9415082 100644
          // 0.1.43 STRATA_ADAPT_OVERLAP=1 (adapt_overlap above): the single-GPU, plain-RAM-arena decode loop only
          strata::core::AdaptGate agate;
          bool aflipped = false;   // the pending swaps are in the tables and their copies may still be landing
-@@ -12358,7 +12618,10 @@ int main(int argc, char** argv) {
+@@ -12358,7 +12650,10 @@ int main(int argc, char** argv) {
              if (peer.valid()) peer.apply_pending(wait);
              if (pending.empty()) return;
              if (wait) cudaEventSynchronize(adapt_ev);
@@ -1085,7 +1224,7 @@ index e2657ae2..d9415082 100644
              for (auto& st : stages)
                  if (st->adapt_live) {
                      if (wait) cudaEventSynchronize(st->adapt_ev);
-@@ -12366,6 +12629,7 @@ int main(int argc, char** argv) {
+@@ -12366,6 +12661,7 @@ int main(int argc, char** argv) {
                  }
              for (auto& st : stages) st->adapt_live = false;
              unpin_blobs(pin_live);
@@ -1093,7 +1232,7 @@ index e2657ae2..d9415082 100644
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
              for (const auto& [i, slot] : pending) {
                  host_res[(size_t) i] = slot;
-@@ -12555,11 +12819,25 @@ int main(int argc, char** argv) {
+@@ -12555,11 +12851,25 @@ int main(int argc, char** argv) {
                  adapt_fence();
              }
              bool main_live = false;
@@ -1119,7 +1258,7 @@ index e2657ae2..d9415082 100644
              for (size_t si = 0; si < swaps.size(); ++si) {
                  const Swap& s = swaps[si];
                  if (aov && (si == 0 || swaps[si - 1].layer != s.layer)) {
-@@ -12575,38 +12853,172 @@ int main(int argc, char** argv) {
+@@ -12575,38 +12885,172 @@ int main(int argc, char** argv) {
                  nib::guard_raw(s.layer, "the adaptive tier's copy in");
                  const int stn = multi_gpu ? stage_of(s.layer) : 0;   // the swap stays in the layer's own cache
                  GpuStage* gs = stn > 0 ? stages[(size_t) stn - 1].get() : nullptr;
@@ -1316,7 +1455,7 @@ index e2657ae2..d9415082 100644
                      (void) cudaGetLastError();
                      cudaStreamSynchronize(adapt_stream);   // no callback: wait here, the gate opens at once
                      agate.landed.store((int32_t) g.n_layers, std::memory_order_release);
-@@ -12616,6 +13028,16 @@ int main(int argc, char** argv) {
+@@ -12616,6 +13060,16 @@ int main(int argc, char** argv) {
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
                  drive.d.res_dirty = true;
              }
@@ -1333,7 +1472,7 @@ index e2657ae2..d9415082 100644
              if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
                                                              adapt_stream, dma_mode) != cudaSuccess) {
                  std::fprintf(stderr, "strata serve: adaptive swap copy failed (batched): %s\n",
-@@ -17449,6 +17871,7 @@ int main(int argc, char** argv) {
+@@ -17449,6 +17903,7 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -1341,7 +1480,7 @@ index e2657ae2..d9415082 100644
              double dt_run = 0, dt_commit = 0, dt_draft = 0;
              double dt_adapt_wait = 0, dt_adapt_join = 0;   // the tier's wait before a window / join after the draft (ms, summed)
              const int64_t dt_sw0 = ajob ? a_swapped : adapt_nswaps;
-@@ -18433,6 +18856,7 @@ int main(int argc, char** argv) {
+@@ -18433,6 +18888,7 @@ int main(int argc, char** argv) {
                          if (file_left > 0) { --file_left; src.replace_resident(x.layer, x.in, x.out); }
                      }
                  }
@@ -1349,7 +1488,7 @@ index e2657ae2..d9415082 100644
                  if (!adapt_tick(false)) {   // --adapt-async: the round in flight moves on a step when it can
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18599,7 +19023,9 @@ int main(int argc, char** argv) {
+@@ -18599,7 +19055,9 @@ int main(int argc, char** argv) {
                      const double asw_join = std::chrono::duration<double, std::milli>(Clock::now() - taj0).count();
                      dt_adapt_join += asw_join;
                      asw_wait_ms += asw_join;
@@ -1359,7 +1498,7 @@ index e2657ae2..d9415082 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18662,6 +19088,17 @@ int main(int argc, char** argv) {
+@@ -18662,6 +19120,17 @@ int main(int argc, char** argv) {
                  p += a + 1;
              }
              if (!keep_sync()) { std::printf("ERR %s\n", err.c_str()); return 1; }
@@ -1377,7 +1516,7 @@ index e2657ae2..d9415082 100644
              const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
              if (use_df2 && o.draft_auto && bandit_key != 0 && produced_n >= 48 && decode_ms > 0.0) {
                  DraftBandit& b = bandit[bandit_key];
-@@ -18721,6 +19158,7 @@ int main(int argc, char** argv) {
+@@ -18721,6 +19190,7 @@ int main(int argc, char** argv) {
                  }
              }
              if (drive.d.fs) std::fprintf(stderr, "strata serve: %s\n", drive.d.fs->report().c_str());
@@ -1385,7 +1524,7 @@ index e2657ae2..d9415082 100644
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -19806,17 +20244,33 @@ int main(int argc, char** argv) {
+@@ -19806,17 +20276,33 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
          int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
@@ -1419,7 +1558,7 @@ index e2657ae2..d9415082 100644
              if (trace_pending)
                  std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
              unpin_blobs(pin_live);
-@@ -19896,28 +20350,163 @@ int main(int argc, char** argv) {
+@@ -19896,28 +20382,163 @@ int main(int argc, char** argv) {
              std::vector<void*> cp_dst;
              std::vector<const void*> cp_src;
              std::vector<size_t> cp_bytes;
@@ -1594,7 +1733,7 @@ index e2657ae2..d9415082 100644
              }
              if (drive.d.evict_sync && !swaps.empty()) {   // the evicted ones are misses now (see the pre-launch hook)
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
-@@ -20235,6 +20824,7 @@ int main(int argc, char** argv) {
+@@ -20235,6 +20856,7 @@ int main(int argc, char** argv) {
              // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
              if (adapt_nowait()) apply_pending(false);
                  else if (pending.empty() || ++pending_age >= adapt_lag()) apply_pending(true);
@@ -1602,7 +1741,7 @@ index e2657ae2..d9415082 100644
              if (gated_proposal) ver.set_spec_proposal(proposal.n_q ? proposal.mu.data() : nullptr, proposal.n_q);
              // the MTP's q lists judge only candidates the MTP drew: DFlash2's are a deterministic pick (exact-match path)
              else if (strata::spec::mtp_q_applies(use_mtp, spec_uses_df2, use_mtp && mtp.prob(), from_sfx, first_window, T_mtp) && o.spec_corrupt <= 0)
-@@ -20328,7 +20918,11 @@ int main(int argc, char** argv) {
+@@ -20328,7 +20950,11 @@ int main(int argc, char** argv) {
              generation = {};
              const GatedDraftLimit draft_limit(mtp, gated_proposal, S_mtp, p + a + 1, o.max_context);
              const bool drafted = !draft_on || (int64_t) produced.size() >= max_new || draft_next(T, a);
@@ -1615,7 +1754,7 @@ index e2657ae2..d9415082 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -20428,6 +21022,7 @@ int main(int argc, char** argv) {
+@@ -20428,6 +21054,7 @@ int main(int argc, char** argv) {
              std::printf("%-24s %lld windows, %lld with mismatches (%lld entries), %lld layer-windows with CPU experts and "
                          "no activation published\n", "residency check", (long long) res_windows,
                          (long long) res_bad_windows, (long long) res_bad, (long long) drive.d.stale_x);
