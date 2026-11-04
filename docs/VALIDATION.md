@@ -306,6 +306,21 @@ session RESTORE, designed against the pin: two passes over the session file, no 
 the DFlash2 drafter after a rewind) is a separable two-line fix to land first. Details and evidence
 pointers: `docs/exec-plans/active/strata-tuning-next.md`, "Round 4 results".
 
+Generation 103 (2026-11-04) lands the round-5 disk-session work: streamed RESTORE (two passes over
+the session file, no format change; host peak ~270 MiB instead of 3,727 MiB, so a 250k restore now
+fits the 8 GB box: measured 5,240 ms, VmHWM +259 MiB, identical greedy continuation sha, 50k and
+old-writer MTP-lane files restorably sha-equal, corrupt/truncated/header refused before any device
+write, copy-failure seams kept) plus a pre-existing SAVE bug fixed - SAVE had never worked on the
+deployed DFlash2-alone lane because it unconditionally passed `mtp.kv_state()` (an empty QsaState
+without `--mtp`); SAVE/RESTORE now make the draft layer optional (`layers + (use_mtp ? 1 : 0)`;
+MTP-lane files stay byte-identical, DFlash2 files are layers-only, mismatched files are refused)
+and RESTORE invalidates the DFlash2 drafter before the session goes live. Engine
+`/nix/store/gv3vlx7ah6f37a13wyzhrz01b2gjcn4c-strata-engine-0.1.56`, system
+`/nix/store/56fx2bkqqbpq5bc7z973z288n8d9f517-...`; service healthy, smoke answered, telemetry timer
+active, start line unchanged (7,859 slots / elastic K/V / DFlash2 / 5.52 GiB DAX). The round-1
+"Disk sessions measured" numbers in `strata-pack-restore.md` were MTP-lane measurements and are
+annotated there.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

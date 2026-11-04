@@ -1,11 +1,13 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, rounds 2-4 - campaign, park fix, measurement/telemetry and the flag-cleanup
-round done 2026-11-04** (generation 102; round 4 adopted nothing, so the run config is unchanged).
-Closed this round: route-prior (1.2 stays), tail-skip (7 stays) and conversation/prompt-cache
-sizing (deployed settings stay). Open: experiment row 9 (reserve geometry), patch roadmap items
-3-5 (streamed RESTORE is designed and next, pmem spill deferred, CUDA #4677) and the per-window
-counters. DAX rotation pipelining was measured and rejected, with its log-only timing seam kept.
+Status: **active, rounds 2-5 - campaign, park fix, measurement/telemetry, flag cleanup and the
+streamed session RESTORE round done 2026-11-04** (generation 103). Round 4 adopted nothing (run
+config unchanged); round 5 landed the streamed RESTORE + draft-optional SAVE/RESTORE + DFlash2
+drafter reset and found/fixed a pre-existing SAVE bug on the deployed lane. Open: experiment row 9
+(reserve geometry), patch roadmap items 4-5 (pmem spill deferred, CUDA #4677), per-window counters,
+and the two accepted NITs from the round-5 patch (over-read guards + final newline to restore on
+the next regeneration). DAX rotation pipelining was measured and rejected, with its log-only
+timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
@@ -305,6 +307,47 @@ Rows 6, 7 and 8 of the matrix are closed by measurement; only row 9 (reserve geo
 a flag row. Next round is the streamed RESTORE patch (with the DFlash2 reset fix first), then
 pmem park spill stays deferred.
 
+## Round 5 results (2026-11-04)
+
+Goal: make disk sessions usable on this box (streamed RESTORE, so a 250k session no longer needs
+its 3.7 GiB image in host RAM) and fix the adjacent DFlash2 drafter shadow on restore. Implemented
+as a fourth local change in `tiberius.patch` (11 file sections; ~750 lines + host-only tests), with
+`df2.reset()` after a successful restore. Two independent code reviews before the live runs caught
+a critical pass-1 validation bug and, in the delta pass, a park-snapshot validator regression - both
+fixed; the final patch sha `829b20ec` was reviewer-cleared before the successful window.
+
+Two validation windows exposed a pre-existing bug: **SAVE had never worked on the deployed
+DFlash2-alone lane.** `conversation_snapshot_sources` passed `mtp.kv_state()` unconditionally; with
+no `--mtp` bound that is an empty QsaState, so `valid_extent()` refused every save with
+"invalid K/V extent" (the empty sessions directory was the symptom; the 2026-11-01 SAVE numbers in
+the round-1 plan were measured on the MTP lane). SAVE/RESTORE now make the draft layer optional in
+both directions (MTP files unchanged; DFlash2 files layers-only; mismatched files refused), which
+is the half of this round that makes the feature usable at all.
+
+Validated on the isolated port-8099 harness (patched build
+`/nix/store/gv3vlx7ah...-strata-engine-0.1.56` vs deployed gen-102):
+
+| check | result |
+|---|---|
+| DFlash2 SAVE, 240k | SAVED 239,200 tok, kept 1 of 6 checkpoints, 3,636,601,128 B, 4,758 ms |
+| streamed RESTORE, fresh engine | 239,200 tok / 3,636,601,128 B in 5,240 ms (<=10 s); VmHWM +259 MiB (<=400); no refusal |
+| continuation after restore | greedy sha `c5353fcf...` == pre-save (240k); 50k `3cb3fa1d...` == pre-save |
+| 50k round trip | restore 1,409 ms, RESTORE->GEN->SAVE->RESTORE sha equal |
+| old-writer compat | gen-102 MTP-lane 50k file (1,001,743,772 B) restored streamed in 1,519 ms, sha equal |
+| cross-lane file | HTTP 400 invalid "saved with another model (fingerprint differs)", same pid, next GEN ok |
+| corrupt / truncated / header | HTTP 400 invalid, same pid, no restart, next GEN ok |
+| park regression | restored/borrowed reused=1,738 > 0, zero "discard invalid snapshot"/"cannot borrow" lines |
+| copy-failure seam | `=1` HTTP 500 io (engine alive, next GEN ok); `=2` FATAL, engine exits, next request restarts it, no partial answer |
+
+The two probe OOMs seen en route were probe-host pressure (a restored multi-GB conversation parked
+plus three 0.95 GB corrupt copies in RAM on the 8 GB box), not engine contract violations - fixed in
+the probe (streamed copies, 50k-only format engine) and no partial answer was served. **Deployed as
+generation 103** (system `/nix/store/56fx2bkqqbpq5bc7z973z288n8d9f517-...`, engine
+`/nix/store/gv3vlx7ah...`); start line unchanged (7,859 slots, elastic K/V, DFlash2, 5.52 GiB DAX),
+`/health` ok on both doors and a smoke completion answered. Follow-ups for the next regeneration of
+the patch: restore the four "payload ends early" over-read guards and the missing final newline
+from `conversation_file.cpp` (hardening/style only; over-reads still refuse via `left != 0`/IO).
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -340,22 +383,29 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    ~440-520; overlap rules ~125-200). The log-only `STRATA_DAX_TIMING` seam (patch sha256
    `cd67094e...`) is kept and deployed in generation 102 for any future attempt; probe evidence:
    `/data/dax-ab/` and `/tmp/strata-tune/dax-ab/`.
-3. **Streamed session RESTORE - designed, next patch round (250k on 8 GB).** SAVE streams K/V from
-   the pools (3.89 GB in 5.1 s, 760 MB/s at 250k), but RESTORE materialises the whole payload in a
-   host-RAM `SavedConversation` first; the design (verified against pristine `ffa80d73`) is two
-   passes over one fd - pass 1 validates the v1 header/trailer/payload hash with metadata only,
-   pass 2 re-parses and streams each K/V section into the session pools via one 16 MiB pinned
-   block - with the RAM gate moved after pass 1 to the exact metadata-derived peak. Peak host RAM
-   at 250k: 3,727 MiB -> ~260 MB, no file-format change. Pointers:
-   `src/core/conversation_file.cpp` `read_impl`/`get_payload` (~1200-1245, format at ~689-708),
-   RAM gate `generate.cpp:15005-15016`, save at ~14968-14983. Estimated patch ~700-750 lines over
-   5 engine files + ~150 test lines; validation window 15-20 min. Adjacent separable bug: RESTORE
-   never calls `df2.reset()` after a successful restore, so a rewound conversation leaves the
-   DFlash2 drafter's slot shadow stale (acceptance collapses; answers stay verified) - land the
-   ~2-line fix first. mmap-on-DAX rejected (same 236 MB state floor, non-owning buffer needed,
-   SIGBUS). Design: `/tmp/strata-tune/stream-restore-design.md`. Probe: 250k SAVE -> restart ->
-   RESTORE succeeds, VmHWM delta <=400 MB, restore <=10 s, continuation sha equal, 50k regression,
-   corrupt-file refusal, normal-park regression.
+3. **Streamed session RESTORE - landed and deployed (generation 103, 2026-11-04).** Two passes over
+   the same fd: pass 1 validates the v1 header/trailer/payload hash with metadata only; pass 2
+   re-parses and streams each K/V section into the session pools through a 16 MiB pinned staging
+   block, with the RAM gate moved after pass 1 to the exact metadata-derived peak (~270 MiB at
+   250k; old path 3,727 MiB). No file-format change; corrupt/truncated files are refused in pass 1
+   before any device write, and a failure after the first write keeps the FATAL contract. The same
+   patch fixes a pre-existing bug the first window exposed: SAVE unconditionally passed
+   `mtp.kv_state()`, which is an empty QsaState on the deployed DFlash2-alone lane (no `--mtp`), so
+   every SAVE there failed with "invalid K/V extent" - disk sessions had never worked on this lane
+   (the 2026-11-01 SAVE/RESTORE numbers in the round-1 plan were measured on the MTP lane). SAVE
+   and RESTORE now make the draft layer optional (`layers + (use_mtp ? 1 : 0)`; MTP-lane files stay
+   byte-identical, DFlash2-lane files are layers-only, a mismatched file is refused), and RESTORE
+   invalidates the DFlash2 drafter before the session goes live. Measured: 240k restore 5,240 ms
+   with VmHWM +259 MiB and an identical greedy continuation sha; 50k restore 1,409 ms, sha equal;
+   old-writer MTP file restores; cross-lane file refused; corrupt/truncated/header all SERR
+   invalid with the same pid and a working next request; RESTORE->GEN->SAVE->RESTORE and the
+   park regression clean; `STRATA_TEST_COPY_FAIL_AT=1` SERR io (engine alive) and `=2` FATAL
+   (engine restarts on the next request, no partial answer). Build
+   `/nix/store/gv3vlx7ah...-strata-engine-0.1.56`; two independent reviews (one critical
+   metadata-validation bug and one park-validator regression were caught and fixed before the
+   window). Accepted follow-ups on the next regeneration: restore the four "payload ends early"
+   over-read guards and `conversation_file.cpp`'s final newline. Design/results:
+   `/tmp/strata-tune/stream-restore-design.md`, `stream-restore-results.md`.
 4. **pmem park spill - deferred, high complexity.** Parks are RAM-only by design (404 MiB for 2.4k,
    4,276 MiB at 250k); a pmem-backed image on `/optane` (40 GB free, DAX-speed restore) would end
    RAM-gated admission and survive a restart. Complexity: snapshot format/identity, mmap lifecycle,
@@ -488,5 +538,14 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
 - **2026-11-04, round 4 / design**: streamed session RESTORE design completed - two-pass, no
   format change, 250k peak host RAM 3,727 MiB -> ~260 MB, ~700-750 lines over 5 files; adjacent
   DFlash2 drafter-reset bug on restore found and separable. Next patch round.
+- **2026-11-04, round 5 / streamed RESTORE**: implemented the two-pass streamed restore (~270 MiB
+  peak at 250k vs 3,727 MiB) plus `df2.reset()` after restore and draft-optional SAVE/RESTORE
+  (fixing a pre-existing bug: SAVE had never worked on the deployed DFlash2-alone lane). Two
+  independent reviews (critical pass-1 validation bug; park-validator regression) fixed before the
+  successful window. Validated: 240k restore 5.24 s / +259 MiB / identical sha; 50k, old-writer
+  MTP, cross-lane refusal, corrupt/truncated/header, round-trip, park regression, copy-failure
+  seams all pass. Deployed as generation 103 at 21:44; service healthy, smoke answered, telemetry
+  timer active. Accepted follow-ups: over-read guards + final newline next regeneration.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
-  `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`).
+  `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
+  `stream-restore-results.md`).

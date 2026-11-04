@@ -33,11 +33,40 @@
 # rotations hide under the compute-bound timeline) but its answer sha changed with the arm (the frozen
 # window's size moves the decode's PCIe grouping).  Only the log-only timing is kept.
 #
-# Three changes, in one patch because changes 1-2 interleave in the same regions of
-# expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; change 3 is independent (one function in
-# generate.cpp, two methods in conversation_cache.hpp).  Changes 1-2 are local and opt-in through their
-# own env var - nothing they add runs unless the module sets it.  Change 3 is always on and only changes
-# what a REFUSED park does: an admitted park behaves exactly as before.
+#
+# ADDED 2026-11-04 (third addition, round 5): the streamed session RESTORE and the DFlash2 invalidate-after-restore.
+#   * `session_file_restore_streamed` (conversation_file.{hpp,cpp}): pass 1 validates the file (header, identity,
+#     bounds, whole payload hash) and parses only its metadata; pass 2 re-reads the same fd and streams every K/V
+#     part straight into its pool through a SessionKvSink, materialising only the two running-state copies.  The
+#     restore's host peak at 250k tokens drops from 3,727 MiB (the whole image) to ~270-276 MiB (session_stream_peak_bytes:
+#     two state copies + two 16 MiB read blocks + ~2 MiB of transient metadata), so the 250k
+#     conversation can be restored on this 8 GB box at all (the RAM preflight refused it before).  Format v1 is
+#     untouched - additive API only: old files parse identically, old engines read files this engine writes.
+#     A refusal in pass 1 (or from the caller's prepare step) leaves the device untouched; a failure after the
+#     first sink write reports SessionStatus::touched and the caller exits the engine (never decode a partial state).
+#   * the DFlash2 drafter is invalidated after a successful RESTORE, before live_ok = true: the file's K/V is not
+#     the drafter's lineage log and a restore can rewind a conversation it has seen, so its position/tags are
+#     stale (answers stay verified either way; without it acceptance collapses after a rewind).
+#   Unit tests (conversation_file_test: streamed image == session_file_read, corrupt/truncated refused in pass 1
+#   before any sink, injected sink failure -> touched, the exact peak formula, a layers-only draft-optional file) pass;
+#   design and validation matrix: /tmp/strata-tune/stream-restore-design.md.
+#   * SAVE and RESTORE are draft-optional (found in the first validation window): the deployed lane runs DFlash2 with
+#   NO --mtp, so SAVE's unconditional mtp.kv_state() was an empty state and every SAVE was refused with
+#   "conversation snapshot: invalid K/V extent" - disk sessions had never worked on this lane (the empty sessions
+#   directory was the symptom).  SAVE now records the QSA layers only when no MTP draft layer is loaded (nullable
+#   draft through conversation_snapshot_sources), and RESTORE reads layers-only files through nullable draft in
+#   conversation_session_read_limits/validate_meta/stream_sinks/stream_finish.  A lane with the MTP layer keeps the
+#   layers+1 format byte-identical; a file with the other layer count is refused (config identity already separates
+#   the lanes).  Format v1 untouched.
+#
+# Four changes, in one patch because the first two interleave in the same regions of
+# expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; changes 3-4 are independent (the park fix:
+# one function in generate.cpp + two methods in conversation_cache.hpp; the streamed restore:
+# conversation_file.{hpp,cpp}, conversation_snapshot.{hpp,cpp}, conversation_state.cpp, the restore block in
+# generate.cpp, and conversation_file_test.cpp).  Changes 1-2 are local and opt-in through their own env var -
+# nothing they add runs unless the module sets it.  Change 3 is always on and only changes what a REFUSED park
+# does: an admitted park behaves exactly as before.  Change 4 is always on and only changes the RESTORE path
+# (plus the drafter invalidation after it): SAVE, served requests and an admitted park are the old code.
 #
 # 1. STRATA_REGISTER_DAX, the sliding DAX window.  cudaHostRegister cannot pin
 #    the 46.84 GiB pack (the driver caps a process's total registered host memory
@@ -122,6 +151,156 @@ index 78ff9f1..61bb29f 100644
      // The parked conversation that has gone unused the longest.  This is make_room()'s loop body, so
      // the parking path can also free RAM one entry at a time on demand (see the physical-RAM admission
      // gate in generate.cpp).  A ConversationBuffer is a list of 16 MiB segments and each segment is its
+diff --git a/include/strata/core/conversation_file.hpp b/include/strata/core/conversation_file.hpp
+index 069ca24..dfb4236 100644
+--- a/include/strata/core/conversation_file.hpp
++++ b/include/strata/core/conversation_file.hpp
+@@ -124,6 +124,9 @@ struct SessionStatus {
+     bool published = false;
+     // write (POSIX): this filesystem cannot flush a folder (fsync EINVAL); the save succeeded without that flush
+     bool dir_flush_unsupported = false;
++    // streamed restore only: a sink has written into the destination.  From then on a failure must not be followed by
++    // inference from the partially restored session (the caller exits the engine); before it, nothing was touched.
++    bool touched = false;
+ };
+ 
+ // Progress of a file transfer: (bytes done, bytes in the file).  A write reports once when its temporary file is
+@@ -174,6 +177,7 @@ struct SessionKvSource {
+     std::function<bool(size_t part, size_t offset, void* dst, size_t n)> read;
+     std::function<std::string()> error;
+ };
++
+ // `meta` carries everything but the K/V (meta.kv must be empty); `kv` supplies the layers in order.
+ bool session_file_write(const std::string& path, const SavedConversation& meta, const std::vector<SessionKvSource>& kv,
+                         const SessionFileIdentity& id, size_t& bytes, std::string& error,
+@@ -219,8 +223,12 @@ struct SessionReadLimits {
+     // A layer past the end of the list is bounded by the payload only.
+     std::vector<std::array<uint64_t, 5>> max_kv_bytes;
+     // the RAM PREFLIGHT: asked once the header and identity match and before any payload allocation, with what the
+-    // parse holds at its peak (session_read_peak_bytes); false refuses the file.  Not a reservation.
++    // parse holds at its peak (session_read_peak_bytes; session_stream_peak_bytes for the streamed restore); false
++    // refuses the file.  Not a reservation.
+     std::function<bool(uint64_t need_bytes, std::string& why)> admit;
++    // streamed restore only: announced before pass 2 (the device transfer), as session_file_write announces its
++    // blocking steps; the bytes are the file size.
++    SessionPhase phase;
+     SessionProgress progress;
+ };
+ // The largest file these limits admit (UINT64_MAX when one of them is open); session_file_read applies it.
+@@ -228,6 +236,56 @@ uint64_t session_read_max_file_bytes(const SessionReadLimits& limits);
+ // What the RAM preflight is asked for a file of `file_bytes`: the parsed image (about the payload), the 16 MiB read
+ // buffer, and the per-allocation overhead of its arrays (a page per 16 MiB segment plus the small vectors).
+ uint64_t session_read_peak_bytes(uint64_t file_bytes);
++
++// ---- streamed restore (the read-side mirror of SessionKvSource): the K/V of a session file goes file -> destination
++// pool one 16 MiB block at a time, so a 3.9 GB session no longer needs a 3.7 GiB host copy.  The file format is
++// unchanged; the two passes read the same descriptor (no name-swap race between validation and load).
++//
++// Pass 1 of a streamed restore: the file's metadata without its running-state arrays.  The live and checkpoint
++// token/image lists, `used`, geometry, layer range and cvec are filled in; the five state arrays of each checkpoint
++// are NOT allocated - only their byte sizes are recorded, so the RAM preflight can ask for the exact streamed peak
++// (session_stream_peak_bytes) before anything large is allocated.
++struct SessionStreamMeta {
++    SavedConversation image;     // .live/.checkpoints: ids, images, used; their state arrays are empty here
++    std::array<uint64_t, 5> live_state_bytes{};
++    std::vector<std::array<uint64_t, 5>> checkpoint_state_bytes;
++    std::vector<std::array<uint64_t, 5>> kv_part_bytes;   // one per layer, file order
++};
++// The peak host RAM the streamed restore takes: the state copies it materialises (the live one and the one checkpoint
++// the engine writes), their token/image lists, the K/V headers, a 16 MiB staging block and 1 MiB of small vectors.
++// Exact from the parsed metadata; saturating.
++uint64_t session_stream_peak_bytes(const SessionStreamMeta& meta);
++
++// The destination of one K/V layer of a streamed restore (read-side mirror of SessionKvSource).  `write` copies bytes
++// [offset, offset+n) of `part` (0..4 = k, v, k_scale, v_scale, pooled) into the layer's authoritative pool; after a
++// failed write `error()` (optional) says why.
++struct SessionKvSink {
++    int format = 0;
++    int64_t cells = 0, heads = 0, head_dim = 0, page_size = 0, pooled_rows = 0, idx_dim = 0;
++    std::array<size_t, 5> sizes{};
++    std::function<bool(size_t part, size_t offset, const void* src, size_t n)> write;
++    std::function<std::string()> error;
++};
++// What a streamed restore hands the file to: one sink per K/V layer and the two steps around pass 2.
++//  * prepare runs after pass 1 (the file is fully validated, only ~2-3 MB of metadata is allocated) and before any
++//    device write: metadata-vs-runtime validation, --kv-grow remap, the sinks built from the remapped pools (exact
++//    header and part-size compare), then the outgoing retained K/V dropped and the live session declared lost.
++//  * finish runs after pass 2's last sink write: validate the destinations and rebuild each streamed state's residency.
++// A false return keeps the device untouched unless a sink already wrote (SessionStatus::touched says so).
++struct SessionStreamTarget {
++    std::vector<SessionKvSink> kv;
++    std::function<bool(const SessionStreamMeta& meta, std::string& why)> prepare;
++    std::function<bool(std::string& why)> finish;
++};
++// Streamed restore: header/identity/bounds checks, pass 1 (validate the whole payload hash, parse metadata only),
++// limits.admit(session_stream_peak_bytes(meta)), target.prepare, pass 2 (re-read the header on the same fd, materialise
++// the live/checkpoint state arrays, stream each K/V part into its sink, verify the payload hash again), target.finish.
++// On success `meta.image` holds the state arrays the caller restores into the session.  status->touched is set once a
++// sink has written.  The caller must not infer from the session unless this returns true or touched is false.
++bool session_file_restore_streamed(const std::string& path, const SessionFileIdentity& id,
++                                   const SessionStreamTarget& target, SessionStreamMeta& meta, size_t& bytes,
++                                   std::string& error, const SessionReadLimits& limits = {},
++                                   SessionStatus* status = nullptr);
+ // Full validation (a regular file with one link, size, header, identity, bounded parse, payload hash) before `image`
+ // is replaced.  The file is opened without following a symbolic link (or a reparse point) at its name, and the checks
+ // are made on the opened handle.  On failure `image` is unchanged and `status->error` says what kind of failure.
+diff --git a/include/strata/core/conversation_snapshot.hpp b/include/strata/core/conversation_snapshot.hpp
+index 27ba8c9..08ca7fc 100644
+--- a/include/strata/core/conversation_snapshot.hpp
++++ b/include/strata/core/conversation_snapshot.hpp
+@@ -49,12 +49,41 @@ bool conversation_kv_source(SessionKvSource& source, const QsaState& state, cons
+ // The bytes of each K/V part (k, v, k_scale, v_scale, pooled) a snapshot of `upto` tokens holds: no state read.
+ bool conversation_kv_part_sizes(const QsaState& state, const ModelGeometry& g, int64_t upto, bool include_index,
+                                 std::array<uint64_t, 5>& sizes, std::string& error);
++// ---- streamed session RESTORE (see conversation_file.hpp's SessionKvSink/SessionStreamMeta): the K/V of a session
++// file is streamed straight from the file into the authoritative pools, so the restore's host peak is the two running
++// state copies (~260 MB at 250k) instead of the whole 3.7 GiB image.  These build the read-side mirrors of
++// conversation_kv_source / conversation_snapshot_sources and are only used by session_file_restore_streamed.
++// One sink per K/V layer, from the runtime's layout and pools; `write` copies bytes into the pool at `offset`.
++bool conversation_kv_sink(SessionKvSink& sink, const QsaState& state, const ModelGeometry& g, int64_t upto,
++                          bool include_index, std::string& error);
++// After a streamed restore's last write: re-validate the destination against the state's layout and rebuild a
++// streamed state's residency (the same refresh conversation_kv_restore ends with).
++bool conversation_kv_sink_finish(const SessionKvSink& sink, const QsaState& state, const ModelGeometry& g,
++                                 int64_t upto, bool include_index, std::string& error);
++// The whole image against this engine with no state buffers present: geometry, layer range, the conversation view
++// (ids/images/checkpoints), the exact running-state byte sizes and the checkpoint-prefix rule, K/V layer count.
++bool conversation_snapshot_validate_meta(const SessionStreamMeta& meta, const SessionState& session,
++                                         const ModelGeometry& g, const QsaState* draft, std::string& error);
++// Build one sink per layer (the QSA layers, then the draft), comparing the file's exact K/V header and part sizes
++// with this engine's.  Must run after --kv-grow has remapped the pools (the sinks point into them).
++bool conversation_snapshot_stream_sinks(std::vector<SessionKvSink>& sinks, const SessionStreamMeta& meta,
++                                        const SessionState& session, const ModelGeometry& g, const QsaState* draft,
++                                        std::string& error);
++// After a streamed restore loaded every layer: validate each destination and refresh every streamed state's residency.
++bool conversation_snapshot_stream_finish(const std::vector<SessionKvSink>& sinks, const SessionState& session,
++                                         const ModelGeometry& g, const QsaState* draft, int64_t upto,
++                                         std::string& error);
+ // Disk sessions: the read limits this session can ever restore - its geometry and layer range, at most
+ // min(max_tokens, its cells) tokens, `max_checkpoints` checkpoints, the exact running-state sizes and the K/V part
+ // sizes at that many tokens - so session_file_read refuses an oversized or foreign file before it allocates.
+ bool conversation_session_read_limits(SessionReadLimits& limits, const SessionState& session, const ModelGeometry& g,
+                                       const QsaState& draft, uint64_t max_tokens, uint64_t max_checkpoints,
+                                       std::string& error);
++// The same with `draft == nullptr`: the lane runs without the MTP draft layer (the deployed DFlash2 lane passes no
++// --mtp), so a session file holds the QSA layers only.  SAVE and the streamed RESTORE both use this form there.
++bool conversation_session_read_limits(SessionReadLimits& limits, const SessionState& session, const ModelGeometry& g,
++                                      const QsaState* draft, uint64_t max_tokens, uint64_t max_checkpoints,
++                                      std::string& error);
+ 
+ struct ConversationStateSizes {
+     size_t gdn = 0, ple = 0, tail = 0, dead = 0, block_pos = 0;
+@@ -139,6 +168,10 @@ bool conversation_snapshot_save(SavedConversation& image, const ConversationView
+ bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionKvSource>& sources,
+                                    const ConversationView& view, const SessionState& session,
+                                    const ModelGeometry& g, const QsaState& draft, std::string& error);
++// The same with `draft == nullptr`: a lane without the MTP draft layer saves the QSA layers only (format v1 unchanged).
++bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionKvSource>& sources,
++                                   const ConversationView& view, const SessionState& session,
++                                   const ModelGeometry& g, const QsaState* draft, std::string& error);
+ bool conversation_snapshot_validate(const SavedConversation& image, const SessionState& session,
+                                     const ModelGeometry& g, const QsaState& draft, std::string& error);
+ /// #2409: true when a restore (or a copy) on CUDA device `device` from the calling thread creates no copy stream: this
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
 index ca325ae..117d881 100644
 --- a/include/strata/core/expert_source.hpp
@@ -277,6 +456,851 @@ index ca325ae..117d881 100644
      const uint8_t* device_alias(int64_t layer, int64_t expert) const override;
      /// Prefix pinning: the old rule (device_alias(layer, 0)); pin by need: at least one pinned range in the layer.
      bool pcie_layer(int64_t layer) const override;
+diff --git a/src/core/conversation_file.cpp b/src/core/conversation_file.cpp
+index 24291be..c08ac70 100644
+--- a/src/core/conversation_file.cpp
++++ b/src/core/conversation_file.cpp
+@@ -239,6 +239,13 @@ public:
+         }
+         return true;
+     }
++    bool seek(uint64_t offset) {
++        LARGE_INTEGER at{};
++        at.QuadPart = (LONGLONG) offset;
++        if (SetFilePointerEx(h_, at, nullptr, FILE_BEGIN)) return true;
++        { const DWORD c_ = GetLastError(); kind_ = win_kind(c_); error_ = last_error(c_); }
++        return false;
++    }
+     bool truncate(uint64_t n) {
+         LARGE_INTEGER at{};
+         at.QuadPart = (LONGLONG) n;
+@@ -415,6 +422,12 @@ public:
+         }
+         return true;
+     }
++    bool seek(uint64_t offset) {
++        if (::lseek(fd_, (off_t) offset, SEEK_SET) == (off_t) offset) return true;
++        kind_ = errno_kind(errno);
++        error_ = std::strerror(errno);
++        return false;
++    }
+     bool truncate(uint64_t n) {
+         if (::ftruncate(fd_, (off_t) n) == 0) return true;
+         kind_ = errno_kind(errno);
+@@ -718,7 +731,6 @@ struct In {
+     size_t kv_layer = 0;
+     bool fail(const std::string& m) { if (error.empty()) error = "session file: " + m; return false; }
+     bool raw(void* p, size_t c) {
+-        if (c > left) return fail("payload ends early");
+         if (c && !f->read(p, c)) { kind = f->kind(); return fail("read error: " + f->error()); }
+         hash.update(p, c);
+         left -= c;
+@@ -749,6 +761,56 @@ struct In {
+         b.resize((size_t) n);
+         return b.visit(0, b.size(), [&](uint8_t* p, size_t c, size_t) { return raw(p, c); });
+     }
++    // ---- streamed restore: pass 1 hashes and skips the byte arrays; pass 2 hashes (state arrays: stores) or hands the
++    // K/V bytes to the caller's sink.  `scratch` is the caller's staging block (the only buffer pass 1/2 read through).
++    uint8_t* scratch = nullptr;
++    size_t scratch_size = 0;
++    const SessionKvSink* sink = nullptr;
++    bool touched = false;
++    std::string sink_error;
++    bool skip(uint64_t c) {
++        while (c) {
++            const size_t n = (size_t) std::min<uint64_t>(c, scratch_size);
++            if (!f->read(scratch, n)) { kind = f->kind(); return fail("read error: " + f->error()); }
++            hash.update(scratch, n);
++            left -= n;
++            c -= n;
++        }
++        return true;
++    }
++    // pass 1: an array the caller does not need as bytes on disk - record its size and skip (hash only)
++    bool meta_array(uint64_t& n, size_t elem, uint64_t limit, uint64_t& record) {
++        if (!count(n, elem, limit)) return false;
++        record = n;
++        return skip(n * (uint64_t) (elem ? elem : 1));
++    }
++    // pass 2: the same array, allocated and read into `v` (the sizes were checked by pass 1 and the caller's limits)
++    bool load_array(uint64_t n, uint64_t limit, std::vector<uint8_t>& v) {
++        if (n > limit) return fail("state array exceeds this engine's limit");
++        if (n > (uint64_t) std::numeric_limits<size_t>::max()) return fail("state array too large");
++        v.resize((size_t) n);
++        return v.empty() || raw(v.data(), v.size());
++    }
++    // pass 2: one K/V part straight into its sink; the bytes are read in staging-block pieces and hashed as they move
++    bool stream_part(size_t part, uint64_t n, uint64_t& offset) {
++        if (sink == nullptr) return fail("streamed restore: no sink for this layer");
++        if (sink->sizes[part] != n) return fail("saved K/V part size does not match this engine");
++        while (n) {
++            const size_t c = (size_t) std::min<uint64_t>(n, scratch_size);
++            if (!f->read(scratch, c)) { kind = f->kind(); return fail("read error: " + f->error()); }
++            hash.update(scratch, c);
++            left -= c;
++            if (!sink->write(part, (size_t) offset, scratch, c)) {
++                if (sink->error) sink_error = sink->error();
++                kind = SessionError::io;
++                return fail(sink_error.empty() ? "the K/V destination refused the transfer" : sink_error);
++            }
++            touched = true;
++            offset += c;
++            n -= c;
++        }
++        return true;
++    }
+ };
+ 
+ bool get_checkpoint(In& in, ConversationCheckpoint& c) {
+@@ -1170,6 +1232,301 @@ bool session_file_write(const std::string& path, const SavedConversation& image,
+     return write_guarded(path, image, nullptr, id, bytes, error, options, status);
+ }
+ 
++namespace {
++// ---- the streamed restore's two payload passes (format v1, field order identical to put_payload/get_payload) ----
++bool stream_meta_checkpoint(In& in, ConversationCheckpoint& c, std::array<uint64_t, 5>& state_bytes) {
++    if (!in.vec(c.ids, in.limits.max_tokens)) return false;
++    uint64_t n = 0;
++    if (!in.count(n, 16, in.limits.max_tokens)) return false;
++    c.imgs.resize((size_t) n);
++    for (auto& k : c.imgs) if (!in.i64(k.start) || !in.u64(k.hash)) return false;
++    const auto& m = in.limits.max_state_bytes;
++    for (size_t i = 0; i < 5; ++i) if (!in.meta_array(n, 1, m[i], state_bytes[i])) return false;
++    return in.u64(c.used);
++}
++
++// pass 1: everything but the running-state bytes and the K/V bytes; those sizes are recorded for the preflight
++bool stream_meta_payload(In& in, SessionStreamMeta& out) {
++    SavedConversation& image = out.image;
++    for (auto& g : image.geometry) if (!in.i64(g)) return false;
++    if (in.limits.geometry && *in.limits.geometry != image.geometry)
++        return in.fail("saved with another model geometry than this runtime's");
++    uint64_t cvec = 0;
++    if (!in.i64(image.layer_lo) || !in.i64(image.layer_hi) || !in.u64(cvec)) return false;
++    if (in.limits.layer_range &&
++        (in.limits.layer_range->first != image.layer_lo || in.limits.layer_range->second != image.layer_hi))
++        return in.fail("saved with another layer range than this runtime's");
++    if (cvec > 1) return in.fail("invalid cvec flag");
++    image.cvec = cvec == 1;
++    if (!stream_meta_checkpoint(in, image.live, out.live_state_bytes)) return false;
++    uint64_t n = 0;
++    if (!in.count(n, 72, in.limits.max_checkpoints)) return false;
++    image.checkpoints.resize((size_t) n);
++    out.checkpoint_state_bytes.assign((size_t) n, {});
++    for (size_t i = 0; i < (size_t) n; ++i)
++        if (!stream_meta_checkpoint(in, image.checkpoints[i], out.checkpoint_state_bytes[i])) return false;
++    if (!in.count(n, 96, in.limits.max_kv_layers)) return false;
++    image.kv.resize((size_t) n);
++    out.kv_part_bytes.assign((size_t) n, {});
++    for (size_t layer = 0; layer < (size_t) n; ++layer) {
++        ConversationKv& k = image.kv[layer];
++        int64_t format = 0;
++        if (!in.i64(format) || !in.i64(k.cells) || !in.i64(k.heads) || !in.i64(k.head_dim) ||
++            !in.i64(k.page_size) || !in.i64(k.pooled_rows) || !in.i64(k.idx_dim)) return false;
++        if (format < INT32_MIN || format > INT32_MAX) return in.fail("invalid K/V format");
++        k.format = (int) format;
++        in.kv_layer = layer;
++        for (size_t part = 0; part < 5; ++part) {
++            uint64_t part_count = 0, bytes = 0;
++            const uint64_t limit = layer < in.limits.max_kv_bytes.size() ? in.limits.max_kv_bytes[layer][part] : UINT64_MAX;
++            if (!in.meta_array(part_count, 1, limit, bytes)) return false;
++            out.kv_part_bytes[layer][part] = bytes;
++        }
++    }
++    return true;
++}
++
++bool stream_load_checkpoint(In& in, const ConversationCheckpoint& meta, ConversationCheckpoint& c,
++                            const std::array<uint64_t, 5>& state_bytes) {
++    // ids/images: re-read and verify against pass 1 (the file could have changed under the open descriptor)
++    std::vector<int32_t> ids;
++    uint64_t n = 0;
++    if (!in.vec(ids, in.limits.max_tokens)) return false;
++    if (ids != meta.ids) return in.fail("the session file changed between validation and load");
++    if (!in.count(n, 16, in.limits.max_tokens)) return false;
++    std::vector<ConversationImageKey> imgs((size_t) n);
++    for (auto& k : imgs) if (!in.i64(k.start) || !in.u64(k.hash)) return false;
++    if (imgs != meta.imgs) return in.fail("the session file changed between validation and load");
++    c.ids = std::move(ids);
++    c.imgs = std::move(imgs);
++    const auto& lim = in.limits.max_state_bytes;
++    std::vector<uint8_t>* dst[5] = {&c.gdn, &c.ple, &c.tails, &c.dead, &c.block_pos};
++    for (size_t i = 0; i < 5; ++i) {
++        if (!in.count(n, 1, lim[i])) return false;
++        if (n != state_bytes[i]) return in.fail("the session file changed between validation and load");
++        if (!in.load_array(n, lim[i], *dst[i])) return false;
++    }
++    uint64_t used = 0;
++    if (!in.u64(used)) return false;
++    if (used != meta.used) return in.fail("the session file changed between validation and load");
++    c.used = used;
++    return true;
++}
++
++// pass 2: the two running-state copies are materialised; each K/V part goes to its sink as it is read
++bool stream_load_payload(In& in, SessionStreamMeta& meta, const SessionStreamTarget& target) {
++    SavedConversation& image = meta.image;
++    std::array<int64_t, 18> geometry{};
++    for (auto& g : geometry) if (!in.i64(g)) return false;
++    if (geometry != image.geometry) return in.fail("the session file changed between validation and load");
++    int64_t lo = 0, hi = 0;
++    uint64_t cvec = 0;
++    if (!in.i64(lo) || !in.i64(hi) || !in.u64(cvec)) return false;
++    if (lo != image.layer_lo || hi != image.layer_hi || cvec != (image.cvec ? 1 : 0))
++        return in.fail("the session file changed between validation and load");
++    if (!stream_load_checkpoint(in, image.live, image.live, meta.live_state_bytes)) return false;
++    uint64_t n = 0;
++    if (!in.count(n, 72, in.limits.max_checkpoints)) return false;
++    if (n != image.checkpoints.size()) return in.fail("the session file changed between validation and load");
++    std::vector<ConversationCheckpoint> checks((size_t) n);
++    for (size_t i = 0; i < (size_t) n; ++i)
++        if (!stream_load_checkpoint(in, image.checkpoints[i], checks[i], meta.checkpoint_state_bytes[i]))
++            return false;
++    image.checkpoints = std::move(checks);
++    if (!in.count(n, 96, in.limits.max_kv_layers)) return false;
++    if (n != image.kv.size() || n != target.kv.size()) return in.fail("invalid K/V layer count");
++    for (size_t layer = 0; layer < (size_t) n; ++layer) {
++        ConversationKv& k = image.kv[layer];
++        const SessionKvSink& sink = target.kv[layer];
++        int64_t format = 0;
++        if (!in.i64(format) || !in.i64(k.cells) || !in.i64(k.heads) || !in.i64(k.head_dim) ||
++            !in.i64(k.page_size) || !in.i64(k.pooled_rows) || !in.i64(k.idx_dim)) return false;
++        if (format != sink.format || k.cells != sink.cells || k.heads != sink.heads || k.head_dim != sink.head_dim ||
++            k.page_size != sink.page_size || k.pooled_rows != sink.pooled_rows || k.idx_dim != sink.idx_dim)
++            return in.fail("saved K/V header does not match this engine");
++        in.kv_layer = layer;
++        in.sink = &sink;
++        for (size_t part = 0; part < 5; ++part) {
++            uint64_t bytes = 0;
++            if (!in.count(bytes, 1, UINT64_MAX)) return false;
++            if (bytes != meta.kv_part_bytes[layer][part] || bytes != sink.sizes[part])
++                return in.fail(bytes != sink.sizes[part] ? "saved K/V part size does not match this engine"
++                                                         : "the session file changed between validation and load");
++            uint64_t offset = 0;
++            if (!in.stream_part(part, bytes, offset)) return false;
++        }
++        in.sink = nullptr;
++    }
++    return true;
++}
++
++uint64_t stream_meta_peak(const SessionStreamMeta& meta) {
++    uint64_t n = 2u << 20;        // the small vectors/directories + the transient pass-2 ids/images
++    n = sat_add(n, 2 * kBlock);   // FileSource's read block + the streamed restore's staging block
++    auto add_state = [&](const std::array<uint64_t, 5>& b) {
++        for (uint64_t v : b) n = sat_add(n, v);
++        n = sat_add(n, 5 * 8);
++    };
++    add_state(meta.live_state_bytes);
++    for (const auto& b : meta.checkpoint_state_bytes) add_state(b);
++    n = sat_add(n, sat_add(8, sat_mul((uint64_t) meta.image.live.ids.size(), 4)));
++    n = sat_add(n, sat_add(8, sat_mul((uint64_t) meta.image.live.imgs.size(), 16)));
++    for (const auto& c : meta.image.checkpoints) {
++        n = sat_add(n, sat_add(8, sat_mul((uint64_t) c.ids.size(), 4)));
++        n = sat_add(n, sat_add(8, sat_mul((uint64_t) c.imgs.size(), 16)));
++        n = sat_add(n, 8);
++    }
++    n = sat_add(n, 8);
++    for (size_t layer = 0; layer < meta.kv_part_bytes.size(); ++layer) {
++        n = sat_add(n, 7 * 8);    // the K/V header: only the five part sizes are per part (the bytes themselves stream)
++        n = sat_add(n, 5 * 8);
++    }
++    return n;
++}
++
++// The streamed restore itself: one descriptor, two passes, no format change.
++bool stream_impl(const std::string& path, const SessionFileIdentity& id, const SessionStreamTarget& target,
++                 SessionStreamMeta& meta, size_t& bytes, std::string& error, const SessionReadLimits& limits,
++                 SessionStatus& st) {
++    error.clear();
++    st = {};
++    st.error = SessionError::invalid;
++    RawFile raw;
++    uint64_t size = 0;
++    if (!raw.open_session(path, size)) {
++        st.error = raw.refused() ? SessionError::invalid : raw.kind();
++        error = "session file: " + path + ": " + raw.error();
++        return false;
++    }
++    if (size < kHeader + kTrailer) { error = "session file: size " + std::to_string(size) + " is below the minimum"; return false; }
++    const uint64_t max_size = session_read_max_file_bytes(limits);
++    if (size > max_size || size > (uint64_t) std::numeric_limits<size_t>::max()) {
++        error = "session file: size " + std::to_string(size) + " exceeds this engine's limit" +
++                (max_size == UINT64_MAX ? std::string() : " of " + std::to_string(max_size));
++        return false;
++    }
++    // the one staging block both passes read through (16 MiB: the K/V streaming block; pass 1 only hashes)
++    Aligned staging = aligned_block();
++    if (!staging) { st.error = SessionError::memory; error = "session file: out of memory for the read buffer"; return false; }
++    // the header, checked exactly as read_impl does
++    auto check_header = [&](FileSource& f) -> bool {
++        uint8_t h[kHeader];
++        if (!f.read(h, kHeader)) { st.error = f.kind(); error = "session file: header read error: " + f.error(); return false; }
++        uint32_t version = 0, hsize = 0;
++        uint64_t model = 0, config = 0, payload = 0, r0 = 0, r1 = 0, hh = 0;
++        std::memcpy(&version, h + 8, 4); std::memcpy(&hsize, h + 12, 4);
++        std::memcpy(&model, h + 16, 8); std::memcpy(&config, h + 24, 8); std::memcpy(&payload, h + 32, 8);
++        std::memcpy(&r0, h + 40, 8); std::memcpy(&r1, h + 48, 8); std::memcpy(&hh, h + 56, 8);
++        if (std::memcmp(h, kMagic, 8) != 0) { error = "session file: not a Strata session file (magic)"; return false; }
++        if (hh != session_hash64(h, 56, 0)) { error = "session file: header checksum mismatch"; return false; }
++        if (version != kVersion) { error = "session file: unsupported version " + std::to_string(version); return false; }
++        if (hsize != kHeader || r0 || r1) { error = "session file: invalid header fields"; return false; }
++        if (model != id.model) { error = "session file: saved with another model (model fingerprint differs)"; return false; }
++        if (config != id.config) { error = "session file: saved with another engine configuration (config fingerprint differs)"; return false; }
++        if (payload > size || size - kHeader - kTrailer != payload) {
++            error = "session file: size " + std::to_string(size) + " does not match the header (" +
++                    std::to_string(kHeader + payload + kTrailer) + ")";
++            return false;
++        }
++        return true;
++    };
++    // ---- pass 1: validate the whole payload, allocate only the metadata (no state arrays, no K/V)
++    {
++        FileSource f(raw);
++        if (!f.ok()) { st.error = SessionError::memory; error = "session file: " + f.error(); return false; }
++        if (limits.progress) f.progress.emplace(limits.progress);   // pass 1 reports, pass 2 does not
++        f.expected = size;
++        if (!check_header(f)) return false;
++        const uint64_t payload = size - kHeader - kTrailer;
++        In in{&f, SessionHasher(0), payload, error, limits};
++        in.scratch = staging.get();
++        in.scratch_size = kBlock;
++        SessionStreamMeta parsed;
++        if (!stream_meta_payload(in, parsed)) { st.error = in.kind; return false; }
++        if (in.left) { error = "session file: payload has " + std::to_string(in.left) + " unparsed bytes"; return false; }
++        uint8_t t[kTrailer];
++        if (!f.read(t, kTrailer)) { st.error = f.kind(); error = "session file: trailer read error: " + f.error(); return false; }
++        uint64_t ph = 0;
++        std::memcpy(&ph, t, 8);
++        if (ph != in.hash.digest()) { error = "session file: payload checksum mismatch"; return false; }
++        if (std::memcmp(t + 8, kEnd, 8) != 0) { error = "session file: bad end marker"; return false; }
++        meta = std::move(parsed);
++    }
++    // ---- the RAM preflight, before pass 2 allocates the state copies; then the caller's prepare step
++    if (limits.admit) {
++        std::string why;
++        if (!limits.admit(session_stream_peak_bytes(meta), why)) {
++            st.error = SessionError::memory;
++            error = "session file: " + why;
++            return false;
++        }
++    }
++    if (target.prepare) {
++        std::string why;
++        if (!target.prepare(meta, why)) {
++            st.error = SessionError::invalid;
++            error = "session file: " + (why.empty() ? std::string("the engine refused the restored session") : why);
++            return false;
++        }
++    }
++    if (limits.phase) limits.phase("transfer", size);
++    // ---- pass 2: re-read the same descriptor, materialise the state copies, stream the K/V into the sinks
++    {
++        if (!raw.seek(0)) { st.error = raw.kind(); error = "session file: seek error: " + raw.error(); return false; }
++        FileSource f(raw);
++        if (!f.ok()) {
++            st.error = SessionError::memory;
++            error = "session file: " + f.error();
++            return false;
++        }
++        if (!check_header(f)) return false;
++        const uint64_t payload = size - kHeader - kTrailer;
++        In in{&f, SessionHasher(0), payload, error, limits};
++        in.scratch = staging.get();
++        in.scratch_size = kBlock;
++        struct TouchedOnThrow {
++            const In& in;
++            SessionStatus& st;
++            ~TouchedOnThrow() { st.touched = in.touched; }
++        } touched_on_throw{in, st};
++        if (!stream_load_payload(in, meta, target)) {
++            st.error = in.kind;
++            st.touched = in.touched;
++            if (!in.sink_error.empty() && error.find(in.sink_error) == std::string::npos) error = in.sink_error;
++            return false;
++        }
++        if (in.left) {
++            st.touched = in.touched;
++            error = "session file: payload has " + std::to_string(in.left) + " unparsed bytes";
++            return false;
++        }
++        uint8_t t[kTrailer];
++        if (!f.read(t, kTrailer)) {
++            st.error = f.kind();
++            st.touched = in.touched;
++            error = "session file: trailer read error: " + f.error();
++            return false;
++        }
++        uint64_t ph = 0;
++        std::memcpy(&ph, t, 8);
++        st.touched = in.touched;
++        if (ph != in.hash.digest()) { error = "session file: payload checksum mismatch"; return false; }
++        if (std::memcmp(t + 8, kEnd, 8) != 0) { error = "session file: bad end marker"; return false; }
++    }
++    if (target.finish) {
++        std::string why;
++        if (!target.finish(why)) {
++            st.error = SessionError::io;
++            error = "session file: " + (why.empty() ? std::string("the restored K/V could not be finished") : why);
++            return false;
++        }
++    }
++    bytes = (size_t) size;
++    st.error = SessionError::none;
++    return true;
++}
++} // namespace
++
+ namespace {
+ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConversation& image,
+                size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus& st) {
+@@ -1236,8 +1593,29 @@ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConv
+     st.error = SessionError::none;
+     return true;
+ }
++
+ } // namespace
+ 
++uint64_t session_stream_peak_bytes(const SessionStreamMeta& meta) {
++    return stream_meta_peak(meta);
++}
++
++bool session_file_restore_streamed(const std::string& path, const SessionFileIdentity& id,
++                                   const SessionStreamTarget& target, SessionStreamMeta& meta, size_t& bytes,
++                                   std::string& error, const SessionReadLimits& limits, SessionStatus* status) {
++    SessionStatus st;
++    bool ok = false;
++    try {
++        ok = stream_impl(path, id, target, meta, bytes, error, limits, st);
++    } catch (const std::bad_alloc&) {
++        error = "session file: out of memory while restoring " + path;
++        st.error = SessionError::memory;
++        ok = false;
++    }
++    if (status) *status = st;
++    return ok;
++}
++
+ bool session_file_read(const std::string& path, const SessionFileIdentity& id, SavedConversation& image,
+                        size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus* status) {
+     SessionStatus st;
+@@ -1253,4 +1631,4 @@ bool session_file_read(const std::string& path, const SessionFileIdentity& id, S
+     return ok;
+ }
+ 
+-} // namespace strata::core
++} // namespace strata::core
+\ No newline at end of file
+diff --git a/src/core/conversation_file_test.cpp b/src/core/conversation_file_test.cpp
+index fd85f2c..f95bd76 100644
+--- a/src/core/conversation_file_test.cpp
++++ b/src/core/conversation_file_test.cpp
+@@ -360,6 +360,195 @@ int main() {
+               "image K/V plus sources refused");
+     }
+ 
++    // ---- streamed restore: same image as session_file_read, K/V streamed into sinks; corrupt/truncated refuse in
++    // pass 1 before any sink; a sink failure after the first write reports touched
++    {
++        auto peak = [](const SessionStreamMeta& m) {
++            uint64_t n = (2u << 20) + 2 * (16u << 20);   // small vectors + transients, two read blocks
++            auto add_state = [&](const std::array<uint64_t, 5>& b) {
++                for (uint64_t v : b) n += v;
++                n += 5 * 8;
++            };
++            add_state(m.live_state_bytes);
++            for (const auto& b : m.checkpoint_state_bytes) add_state(b);
++            n += 8 + 4ull * m.image.live.ids.size() + 8 + 16ull * m.image.live.imgs.size();
++            for (const auto& c : m.image.checkpoints) n += 8 + 4ull * c.ids.size() + 8 + 16ull * c.imgs.size() + 8;
++            n += 8;
++            n += m.kv_part_bytes.size() * (7 * 8 + 5 * 8);   // the K/V headers: the bytes themselves stream
++            return n;
++        };
++        int prepares = 0, sink_calls = 0;
++        bool fail_sink = false;
++        std::vector<ConversationKv> collected;
++        SessionStreamTarget target;
++        SessionStreamMeta meta;
++        target.prepare = [&](const SessionStreamMeta& m, std::string&) {
++            ++prepares;
++            collected.clear();
++            collected.resize(m.image.kv.size());
++            target.kv.clear();
++            target.kv.resize(m.image.kv.size());
++            for (size_t i = 0; i < m.image.kv.size(); ++i) {
++                const ConversationKv& h = m.image.kv[i];
++                ConversationKv& g = collected[i];
++                g.format = h.format; g.cells = h.cells; g.heads = h.heads; g.head_dim = h.head_dim;
++                g.page_size = h.page_size; g.pooled_rows = h.pooled_rows; g.idx_dim = h.idx_dim;
++                g.k.resize(m.kv_part_bytes[i][0]);
++                g.v.resize(m.kv_part_bytes[i][1]);
++                g.k_scale.resize(m.kv_part_bytes[i][2]);
++                g.v_scale.resize(m.kv_part_bytes[i][3]);
++                g.pooled.resize(m.kv_part_bytes[i][4]);
++                SessionKvSink& sk = target.kv[i];
++                sk.format = h.format; sk.cells = h.cells; sk.heads = h.heads; sk.head_dim = h.head_dim;
++                sk.page_size = h.page_size; sk.pooled_rows = h.pooled_rows; sk.idx_dim = h.idx_dim;
++                for (size_t part = 0; part < 5; ++part) sk.sizes[part] = (size_t) m.kv_part_bytes[i][part];
++                ConversationKv* dst = &collected[i];
++                sk.write = [dst, &sink_calls, &fail_sink](size_t part, size_t offset, const void* src, size_t n) {
++                    ++sink_calls;
++                    if (fail_sink && offset > 0) return false;
++                    ConversationBuffer* b = part == 0 ? &dst->k : part == 1 ? &dst->v
++                                        : part == 2 ? &dst->k_scale : part == 3 ? &dst->v_scale : &dst->pooled;
++                    return b->visit(offset, n, [&](uint8_t* p, size_t c, size_t) {
++                        std::memcpy(p, src, c);
++                        return true;
++                    });
++                };
++                sk.error = [] { return std::string("injected sink failure"); };
++            }
++            return true;
++        };
++        size_t rbytes = 0;
++        std::string err;
++        SessionStatus st;
++        check(session_file_restore_streamed(good.string(), id, target, meta, rbytes, err, {}, &st),
++              "streamed restore succeeds");
++        for (size_t i = 0; i < collected.size(); ++i) {
++            meta.image.kv[i].k = std::move(collected[i].k);
++            meta.image.kv[i].v = std::move(collected[i].v);
++            meta.image.kv[i].k_scale = std::move(collected[i].k_scale);
++            meta.image.kv[i].v_scale = std::move(collected[i].v_scale);
++            meta.image.kv[i].pooled = std::move(collected[i].pooled);
++        }
++        check(same(original, meta.image), "streamed restore gives the session_file_read image");
++        check(rbytes == (size_t) slurp(good).size(), "streamed restore reports the file size");
++        check(prepares == 1 && sink_calls > 0 && st.touched && st.error == SessionError::none,
++              "prepare once, K/V streamed, touched, no error");
++        check(session_stream_peak_bytes(meta) == peak(meta), "streamed peak formula");
++        check(meta.live_state_bytes[0] == original.live.gdn.size(), "pass 1 records the state sizes");
++        check(meta.checkpoint_state_bytes.size() == original.checkpoints.size(), "pass 1 records every checkpoint size");
++        // corrupt: one byte in the last K/V part (section 4) -> pass 1 checksum refusal, no prepare, no sink
++        const std::vector<char> whole = slurp(good);
++        std::vector<char> bad = whole;
++        bad[bad.size() - 100] ^= 0x40;
++        const fs::path corrupt = dir / "streamed-corrupt.bin";
++        spit(corrupt, bad);
++        prepares = sink_calls = 0;
++        check(!session_file_restore_streamed(corrupt.string(), id, target, meta, rbytes, err, {}, &st) &&
++              st.error == SessionError::invalid && prepares == 0 && sink_calls == 0 && !st.touched,
++              "corrupt file refused in pass 1, no prepare, no sink, untouched");
++        // truncated by 1 MiB -> refused before any sink
++        std::vector<char> cut(whole.begin(), whole.end() - (1u << 20));
++        const fs::path truncated = dir / "streamed-truncated.bin";
++        spit(truncated, cut);
++        prepares = sink_calls = 0;
++        check(!session_file_restore_streamed(truncated.string(), id, target, meta, rbytes, err, {}, &st) &&
++              prepares == 0 && sink_calls == 0 && !st.touched,
++              "truncated file refused before any sink");
++        // injected sink failure: the first part is > 16 MiB, so the second block fails after the first write
++        fail_sink = true;
++        prepares = sink_calls = 0;
++        check(!session_file_restore_streamed(good.string(), id, target, meta, rbytes, err, {}, &st) &&
++              st.touched && sink_calls > 1 && err.find("injected sink failure") != std::string::npos,
++              "sink failure after a write reports touched");
++        fail_sink = false;
++        // the preflight sees the streamed peak (not the file size), before any sink write
++        {
++            SessionReadLimits l;
++            uint64_t asked = 0;
++            l.admit = [&](uint64_t need, std::string& why) { asked = need; (void) why; return true; };
++            prepares = sink_calls = 0;
++            check(session_file_restore_streamed(good.string(), id, target, meta, rbytes, err, l, &st),
++                  "admitted streamed restore succeeds");
++            check(asked == session_stream_peak_bytes(meta) && asked < (64u << 20),
++                  "admit asked for the streamed peak (the formula above), far below the file size of a 250k session");
++        }
++    }
++
++    // ---- draft-optional session files: the deployed DFlash2 lane has no MTP draft layer, so SAVE writes the QSA
++    // layers only and a streamed RESTORE of such a file must work (format v1 unchanged; layer count = layers)
++    {
++        SavedConversation meta = original;
++        meta.kv.clear();
++        std::vector<SessionKvSource> sources;
++        for (size_t j = 0; j + 1 < original.kv.size(); ++j) {
++            const ConversationKv& k = original.kv[j];
++            SessionKvSource s;
++            s.format = k.format; s.cells = k.cells; s.heads = k.heads; s.head_dim = k.head_dim;
++            s.page_size = k.page_size; s.pooled_rows = k.pooled_rows; s.idx_dim = k.idx_dim;
++            const std::array<const ConversationBuffer*, 5> parts = {&k.k, &k.v, &k.k_scale, &k.v_scale, &k.pooled};
++            for (size_t i = 0; i < 5; ++i) s.sizes[i] = parts[i]->size();
++            s.read = [parts](size_t part, size_t offset, void* dst, size_t n) {
++                return parts[part]->read(dst, offset, n);
++            };
++            sources.push_back(std::move(s));
++        }
++        const fs::path p = dir / "no-draft.bin";
++        check(session_file_write(p.string(), meta, sources, id, written, error), "draft-optional write succeeds");
++        SavedConversation expected = original;
++        expected.kv.pop_back();
++        SavedConversation back;
++        size_t n = 0;
++        check(session_file_read(p.string(), id, back, n, error) && same(expected, back),
++              "draft-optional file reads back (layers only)");
++        int prepares = 0;
++        std::vector<ConversationKv> collected;
++        SessionStreamTarget target;
++        SessionStreamMeta smeta;
++        target.prepare = [&](const SessionStreamMeta& m, std::string&) {
++            ++prepares;
++            collected.clear();
++            collected.resize(m.image.kv.size());
++            target.kv.clear();
++            target.kv.resize(m.image.kv.size());
++            for (size_t i = 0; i < m.image.kv.size(); ++i) {
++                const ConversationKv& h = m.image.kv[i];
++                ConversationKv& g = collected[i];
++                g.format = h.format; g.cells = h.cells; g.heads = h.heads; g.head_dim = h.head_dim;
++                g.page_size = h.page_size; g.pooled_rows = h.pooled_rows; g.idx_dim = h.idx_dim;
++                g.k.resize(m.kv_part_bytes[i][0]); g.v.resize(m.kv_part_bytes[i][1]);
++                g.k_scale.resize(m.kv_part_bytes[i][2]); g.v_scale.resize(m.kv_part_bytes[i][3]);
++                g.pooled.resize(m.kv_part_bytes[i][4]);
++                SessionKvSink& sk = target.kv[i];
++                sk.format = h.format; sk.cells = h.cells; sk.heads = h.heads; sk.head_dim = h.head_dim;
++                sk.page_size = h.page_size; sk.pooled_rows = h.pooled_rows; sk.idx_dim = h.idx_dim;
++                for (size_t part = 0; part < 5; ++part) sk.sizes[part] = (size_t) m.kv_part_bytes[i][part];
++                ConversationKv* dst = &collected[i];
++                sk.write = [dst](size_t part, size_t offset, const void* src, size_t bytes) {
++                    ConversationBuffer* b = part == 0 ? &dst->k : part == 1 ? &dst->v
++                                        : part == 2 ? &dst->k_scale : part == 3 ? &dst->v_scale : &dst->pooled;
++                    return b->visit(offset, bytes, [&](uint8_t* q, size_t c, size_t) {
++                        std::memcpy(q, src, c);
++                        return true;
++                    });
++                };
++            }
++            return true;
++        };
++        size_t rbytes = 0;
++        SessionStatus st;
++        check(session_file_restore_streamed(p.string(), id, target, smeta, rbytes, error, {}, &st) && st.touched,
++              "draft-optional streamed restore succeeds");
++        for (size_t i = 0; i < collected.size(); ++i) {
++            smeta.image.kv[i].k = std::move(collected[i].k);
++            smeta.image.kv[i].v = std::move(collected[i].v);
++            smeta.image.kv[i].k_scale = std::move(collected[i].k_scale);
++            smeta.image.kv[i].v_scale = std::move(collected[i].v_scale);
++            smeta.image.kv[i].pooled = std::move(collected[i].pooled);
++        }
++        check(prepares == 1 && smeta.image.kv.size() == expected.kv.size() && same(expected, smeta.image),
++              "draft-optional streamed restore gives the layers-only image");
++    }
++
+     // the configuration fingerprint: every field counts, doubles by their exact bits
+     {
+         SessionConfig c;
+diff --git a/src/core/conversation_snapshot.cpp b/src/core/conversation_snapshot.cpp
+index 0e4c440..7d95ddd 100644
+--- a/src/core/conversation_snapshot.cpp
++++ b/src/core/conversation_snapshot.cpp
+@@ -514,6 +514,43 @@ bool conversation_kv_part_sizes(const QsaState& st, const ModelGeometry& g, int6
+     return true;
+ }
+ 
++bool conversation_kv_sink(SessionKvSink& sink, const QsaState& st, const ModelGeometry& g, int64_t upto,
++                          bool index, std::string& error) {
++    Layout l{};
++    if (!layout(st, g, upto, index, l, error) || !valid(st, l, upto, error)) return false;
++    SessionKvSink s;
++    s.format = l.format; s.cells = l.cells; s.heads = g.n_head_kv; s.head_dim = g.head_dim;
++    s.page_size = l.page_size; s.pooled_rows = l.pooled_rows; s.idx_dim = g.idx_key_dim;
++    s.sizes = {l.data, l.value_data, l.scales, l.value_scales, l.pooled};
++    const auto dst = pools(st);
++    const auto sizes = s.sizes;
++    auto why = std::make_shared<std::string>();
++    s.write = [dst, sizes, why](size_t part, size_t offset, const void* src, size_t n) {
++        if (part >= 5 || offset > sizes[part] || n > sizes[part] - offset) {
++            *why = "K/V sink write out of range";
++            return false;
++        }
++        return transfer(dst[part] ? static_cast<uint8_t*>(dst[part]) + offset : nullptr, src, n, *why);
++    };
++    s.error = [why] { return *why; };
++    sink = std::move(s);
++    return true;
++}
++
++bool conversation_kv_sink_finish(const SessionKvSink& sink, const QsaState& st, const ModelGeometry& g,
++                                 int64_t upto, bool index, std::string& error) {
++    Layout l{};
++    if (!layout(st, g, upto, index, l, error) || !valid(st, l, upto, error)) return false;
++    if (sink.format != l.format || sink.cells != l.cells || sink.heads != g.n_head_kv ||
++        sink.head_dim != g.head_dim || sink.page_size != l.page_size || sink.pooled_rows != l.pooled_rows ||
++        sink.idx_dim != g.idx_key_dim ||
++        sink.sizes != std::array<size_t, 5>{l.data, l.value_data, l.scales, l.value_scales, l.pooled}) {
++        error = "conversation snapshot: streamed K/V header does not match this state";
++        return false;
++    }
++    return refresh_residency(st, g, upto, error);
++}
++
+ bool conversation_kv_source(SessionKvSource& out, const QsaState& st, const ModelGeometry& g,
+                             int64_t upto, bool index, std::string& error) {
+     Layout l{};
+diff --git a/src/core/conversation_state.cpp b/src/core/conversation_state.cpp
+index b02f066..2084a7d 100644
+--- a/src/core/conversation_state.cpp
++++ b/src/core/conversation_state.cpp
+@@ -622,6 +622,12 @@ bool conversation_snapshot_save(SavedConversation& image, const ConversationView
+ bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionKvSource>& sources,
+                                    const ConversationView& view, const SessionState& ss, const ModelGeometry& g,
+                                    const QsaState& draft, std::string& error) {
++    return conversation_snapshot_sources(meta, sources, view, ss, g, &draft, error);
++}
++
++bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionKvSource>& sources,
++                                   const ConversationView& view, const SessionState& ss, const ModelGeometry& g,
++                                   const QsaState* draft, std::string& error) {
+     if (!view_validate(view, ss, g, error) || !sync(error)) return false;
+     SavedConversation captured;
+     captured.geometry = geometry_key(g);
+@@ -633,10 +639,11 @@ bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionK
+     conversation_checkpoint_join(captured.live.gdn.data());
+     const int64_t upto = (int64_t) view.ids.size();
+     const size_t layers = owned_qsa(ss);
+-    std::vector<SessionKvSource> out(layers + 1);
++    // no MTP draft layer on this lane (the deployed DFlash2 lane passes no --mtp): the file holds the QSA layers only
++    std::vector<SessionKvSource> out(layers + (draft ? 1 : 0));
+     for (size_t j = 0; j < layers; ++j)
+         if (!conversation_kv_source(out[j], owned(ss, j), g, upto, true, error)) return false;
+-    if (!conversation_kv_source(out.back(), draft, g, upto, false, error)) return false;
++    if (draft && !conversation_kv_source(out.back(), *draft, g, upto, false, error)) return false;
+     meta = std::move(captured);
+     sources = std::move(out);
+     return true;
+@@ -645,6 +652,12 @@ bool conversation_snapshot_sources(SavedConversation& meta, std::vector<SessionK
+ bool conversation_session_read_limits(SessionReadLimits& limits, const SessionState& ss, const ModelGeometry& g,
+                                       const QsaState& draft, uint64_t max_tokens, uint64_t max_checkpoints,
+                                       std::string& error) {
++    return conversation_session_read_limits(limits, ss, g, &draft, max_tokens, max_checkpoints, error);
++}
++
++bool conversation_session_read_limits(SessionReadLimits& limits, const SessionState& ss, const ModelGeometry& g,
++                                      const QsaState* draft, uint64_t max_tokens, uint64_t max_checkpoints,
++                                      std::string& error) {
+     ConversationStateSizes z;
+     if (!conversation_session_sizes(g, ss, z, error)) return false;
+     if (ss.max_cells < 0) return fail(error, "invalid session cells");
+@@ -654,21 +667,23 @@ bool conversation_session_read_limits(SessionReadLimits& limits, const SessionSt
+     size_t tails = 0, dead = 0, block_pos = 0;
+     if (!product(tails, {layers, z.tail}) || !product(dead, {layers, z.dead}) ||
+         !product(block_pos, {layers, z.block_pos})) return fail(error, "indexer byte count overflow");
+-    SessionReadLimits l = limits;   // keeps the caller's admit / progress / max_file_bytes
++    SessionReadLimits l = limits;   // keeps the caller's admit / progress / task_phase / max_file_bytes
+     l.max_tokens = tokens;
+     l.max_checkpoints = max_checkpoints;
+-    l.max_kv_layers = layers + 1;
++    l.max_kv_layers = layers + (draft ? 1 : 0);   // no MTP draft layer: a QSA-layers-only file
+     l.geometry = geometry_key(g);
+     l.layer_range = std::make_pair(ss.layer_lo, ss.layer_hi);
+     l.max_state_bytes = {z.gdn, ss.ple_hist ? z.ple : 0, tails, dead, block_pos};
+-    l.max_kv_bytes.assign(layers + 1, {});
++    l.max_kv_bytes.assign(layers + (draft ? 1 : 0), {});
+     for (size_t j = 0; j < layers; ++j) {
+         const auto& st = owned(ss, j);
+         const int64_t upto = (int64_t) std::min<uint64_t>(tokens, (uint64_t) std::max<int64_t>(st.max_cells, 0));
+         if (!conversation_kv_part_sizes(st, g, upto, true, l.max_kv_bytes[j], error)) return false;
+     }
+-    const int64_t dupto = (int64_t) std::min<uint64_t>(tokens, (uint64_t) std::max<int64_t>(draft.max_cells, 0));
+-    if (!conversation_kv_part_sizes(draft, g, dupto, false, l.max_kv_bytes.back(), error)) return false;
++    if (draft) {
++        const int64_t dupto = (int64_t) std::min<uint64_t>(tokens, (uint64_t) std::max<int64_t>(draft->max_cells, 0));
++        if (!conversation_kv_part_sizes(*draft, g, dupto, false, l.max_kv_bytes.back(), error)) return false;
++    }
+     limits = std::move(l);
+     return true;
+ }
+@@ -691,6 +706,88 @@ bool conversation_snapshot_validate(const SavedConversation& image, const Sessio
+     return !draft || conversation_kv_validate(image.kv.back(), *draft, g, upto, false, error);
+ }
+ 
++bool conversation_snapshot_validate_meta(const SessionStreamMeta& meta, const SessionState& ss,
++                                         const ModelGeometry& g, const QsaState* draft, std::string& error) {
++    const SavedConversation& image = meta.image;
++    if (!image.stage_images.empty()) return fail(error, "a layer split's image restored as a single session");
++    if (image.geometry != geometry_key(g)) return fail(error, "incompatible runtime geometry");
++    if (image.layer_lo != ss.layer_lo || image.layer_hi != ss.layer_hi)
++        return fail(error, "snapshot from another session layer range");
++    if (!image.live.stage_parts.empty()) return fail(error, "live.stage_parts in a session file");
++    // metadata only: pass 1 leaves every running-state array EMPTY (sizes are recorded in meta.state_bytes), so this
++    // must not go through view_validate -> conversation_checkpoint_validate, which compares those arrays' sizes.  The
++    // file's recorded sizes are checked against this session below; pass 2 materialises the arrays.
++    ConversationStateSizes vz;
++    if (!checkpoint_targets(ss, g, image.live.ids.size(), vz, error)) return false;
++    if (image.live.ids.empty() || !image_keys(image.live.imgs, image.live.ids.size()) ||
++        std::any_of(image.live.ids.begin(), image.live.ids.end(), [](int32_t id) { return id < 0; }))
++        return fail(error, "invalid live token/image metadata");
++    for (const auto& c : image.checkpoints) {
++        if (!c.stage_parts.empty() || c.ids.empty() || c.ids.size() > image.live.ids.size() ||
++            !std::equal(c.ids.begin(), c.ids.end(), image.live.ids.begin()))
++            return fail(error, "checkpoint is not a live token prefix");
++        size_t img = 0;
++        for (const auto& key : image.live.imgs) {
++            if ((uint64_t) key.start >= c.ids.size()) break;
++            if (img >= c.imgs.size() || !(c.imgs[img++] == key))
++                return fail(error, "checkpoint image identity differs");
++        }
++        if (img != c.imgs.size()) return fail(error, "checkpoint image prefix differs");
++    }
++    // the running-state byte sizes the file carries must be exactly this session's (they are copied, not streamed)
++    ConversationStateSizes z;
++    if (!conversation_session_sizes(g, ss, z, error)) return false;
++    const size_t layers = owned_qsa(ss);
++    size_t tails = 0, dead = 0, block_pos = 0;
++    if (!conversation_detail::product(tails, {layers, z.tail}) ||
++        !conversation_detail::product(dead, {layers, z.dead}) ||
++        !conversation_detail::product(block_pos, {layers, z.block_pos}))
++        return fail(error, "indexer byte count overflow");
++    const std::array<uint64_t, 5> want = {z.gdn, ss.ple_hist ? z.ple : 0, tails, dead, block_pos};
++    if (meta.live_state_bytes != want)
++        return fail(error, "saved running state does not match this session's");
++    for (const auto& cp : meta.checkpoint_state_bytes)
++        if (cp != want) return fail(error, "saved checkpoint state does not match this session's");
++    // a lane without the MTP draft layer saves the QSA layers only; a lane with it saves layers + 1 (format v1 unchanged)
++    if (image.kv.size() != layers + (draft ? 1 : 0)) return fail(error, "invalid K/V layer count");
++    return true;
++}
++
++bool conversation_snapshot_stream_sinks(std::vector<SessionKvSink>& sinks, const SessionStreamMeta& meta,
++                                        const SessionState& ss, const ModelGeometry& g, const QsaState* draft,
++                                        std::string& error) {
++    const size_t layers = owned_qsa(ss);
++    const size_t n = layers + (draft ? 1 : 0);
++    if (meta.image.kv.size() != n || meta.kv_part_bytes.size() != n)
++        return fail(error, "invalid K/V layer count");
++    const int64_t upto = (int64_t) meta.image.live.ids.size();
++    std::vector<SessionKvSink> built(n);
++    for (size_t j = 0; j < layers; ++j)
++        if (!conversation_kv_sink(built[j], owned(ss, j), g, upto, true, error)) return false;
++    if (draft && !conversation_kv_sink(built.back(), *draft, g, upto, false, error)) return false;
++    for (size_t j = 0; j < n; ++j) {
++        const ConversationKv& h = meta.image.kv[j];
++        const SessionKvSink& b = built[j];
++        bool same = b.format == h.format && b.cells == h.cells && b.heads == h.heads && b.head_dim == h.head_dim &&
++                    b.page_size == h.page_size && b.pooled_rows == h.pooled_rows && b.idx_dim == h.idx_dim;
++        for (size_t part = 0; same && part < 5; ++part)
++            same = meta.kv_part_bytes[j][part] == (uint64_t) b.sizes[part];
++        if (!same) return fail(error, "saved K/V header does not match this engine's K/V layout");
++    }
++    sinks = std::move(built);
++    return true;
++}
++
++bool conversation_snapshot_stream_finish(const std::vector<SessionKvSink>& sinks, const SessionState& ss,
++                                         const ModelGeometry& g, const QsaState* draft, int64_t upto,
++                                         std::string& error) {
++    const size_t layers = owned_qsa(ss);
++    if (sinks.size() != layers + (draft ? 1 : 0)) return fail(error, "invalid streamed K/V layer count");
++    for (size_t j = 0; j < layers; ++j)
++        if (!conversation_kv_sink_finish(sinks[j], owned(ss, j), g, upto, true, error)) return false;
++    return !draft || conversation_kv_sink_finish(sinks.back(), *draft, g, upto, false, error);
++}
++
+ bool conversation_copy_stream_ready(int device) { return conversation_detail::copy_stream_ready(device); }
+ 
+ ConversationRestore conversation_snapshot_restore(const SavedConversation& image, SessionState& ss,
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
 index 4a872e8..960bdb0 100644
 --- a/src/core/expert_source.cpp
@@ -859,7 +1883,7 @@ index 0f2c410..56edcae 100644
                              for (size_t j = 0; j < order.size(); ++j) {
                                  const int32_t e = order[j];
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index e2657ae..ecfb6f3 100644
+index e2657ae..918239c 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
 @@ -170,6 +170,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
@@ -1523,7 +2547,193 @@ index e2657ae..ecfb6f3 100644
              if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
                                                              adapt_stream, dma_mode) != cudaSuccess) {
                  std::fprintf(stderr, "strata serve: adaptive swap copy failed (batched): %s\n",
-@@ -17449,6 +17903,7 @@ int main(int argc, char** argv) {
+@@ -14931,7 +15385,9 @@ int main(int argc, char** argv) {
+                             sl.state_bytes = state;
+                             sl.tokens = live.size();
+                             sl.images = live_imgs.size();
+-                            sl.kv_layers = (uint64_t) std::max<int64_t>(ss.qsa_alloc, 0) + 1;
++                            // the MTP draft layer is the last K/V layer when the lane runs one; the deployed DFlash2
++                            // lane has no --mtp, so its session files hold the QSA layers only (draft-optional SAVE)
++                            sl.kv_layers = (uint64_t) std::max<int64_t>(ss.qsa_alloc, 0) + (use_mtp ? 1 : 0);
+                         }
+                         const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
+                         if (o.session_save_reclaim) {
+@@ -14969,8 +15425,8 @@ int main(int argc, char** argv) {
+                         std::vector<strata::core::SessionKvSource> sources;
+                         // the live running state comes off the device in one synchronous copy
+                         blocking("capture", sl.state_bytes == UINT64_MAX ? 0 : sl.state_bytes);
+-                        if (!strata::core::conversation_snapshot_sources(meta, sources, view, ss, g, mtp.kv_state(),
+-                                                                         err)) {
++                        if (!strata::core::conversation_snapshot_sources(
++                                meta, sources, view, ss, g, use_mtp ? &mtp.kv_state() : nullptr, err)) {
+                             refuse(err, strata::core::SessionError::io);
+                             continue;
+                         }
+@@ -14996,14 +15452,17 @@ int main(int argc, char** argv) {
+                                  path.c_str(), ms(), capture_ms);
+                     std::printf("SAVED %zu %zu %.1f\n", live.size(), bytes, ms());
+                 } else {
+-                    strata::core::SavedConversation image;
++                    strata::core::SessionStreamMeta meta;
+                     size_t bytes = 0;
+                     try {
+                         // bounds this session can ever restore (geometry, layer range, tokens, checkpoints, every
+                         // state and K/V part), checked as the file is parsed and before each array is allocated; the
+-                        // file size follows from them.  The RAM the parse needs at its peak is asked first.
++                        // file size follows from them.  The RAM the streamed restore needs at its peak (the two
++                        // running-state copies, not the whole image) is asked first, after pass 1 has validated the
++                        // file and before pass 2 allocates anything large.
+                         strata::core::SessionReadLimits limits;
+                         limits.progress = moving;
++                        limits.phase = blocking;
+                         const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
+                         limits.admit = [floor, &o](uint64_t need, std::string& why) {
+                             const auto mem = strata::core::sample_host_memory();
+@@ -15015,64 +15474,97 @@ int main(int argc, char** argv) {
+                             return false;
+                         };
+                         if (!strata::core::conversation_session_read_limits(
+-                                limits, ss, g, mtp.kv_state(), (uint64_t) o.max_context,
++                                limits, ss, g, use_mtp ? &mtp.kv_state() : nullptr, (uint64_t) o.max_context,
+                                 (uint64_t) std::max(o.prompt_cache, 1), err)) {
+                             refuse(err, strata::core::SessionError::io);
+                             continue;
+                         }
+                         strata::core::SessionStatus st;
+-                        if (!strata::core::session_file_read(path, id, image, bytes, err, limits, &st)) {
++                        strata::core::SessionStreamTarget target;
++                        // tiberius: the streamed session RESTORE (conversation_file.hpp): pass 1 validated the file
++                        // and parsed only its metadata; this runs before pass 2 writes anything - metadata checks,
++                        // the --kv-grow remap (it must precede the sinks: it moves the pools they point into), the
++                        // outgoing retained K/V dropped and the live session declared lost.
++                        target.prepare = [&](const strata::core::SessionStreamMeta& m, std::string& why) -> bool {
++                            if (!strata::core::conversation_snapshot_validate_meta(
++                                    m, ss, g, use_mtp ? &mtp.kv_state() : nullptr, why))
++                                return false;
++                            uint64_t prep_bytes = 0;   // the running-state copies the sink build / remap sit beside
++                            for (uint64_t b : m.live_state_bytes) prep_bytes += b;
++                            for (const auto& c : m.checkpoint_state_bytes)
++                                for (uint64_t b : c) prep_bytes += b;
++                            blocking("prepare", prep_bytes);   // validate_meta + kvg_ensure + the sink build are one step
++                            if (!kvg_ensure((int64_t) m.image.live.ids.size() + 256, adapt_quiesce)) {
++                                why = "the K/V cannot grow to the saved conversation: no VRAM is left";
++                                return false;
++                            }
++                            // the sinks go first: a refusal here (their exact header/part compare) must leave the live
++                            // session and the retained K/V untouched, as the SERR contract says
++                            if (!strata::core::conversation_snapshot_stream_sinks(
++                                    target.kv, m, ss, g, use_mtp ? &mtp.kv_state() : nullptr, why)) return false;
++                            conversations.take_reuse();   // retained K/V described the outgoing session
++                            live_ok = false;
++                            return true;
++                        };
++                        // after pass 2 loaded every layer: validate each destination and rebuild the ring/stream map
++                        target.finish = [&](std::string& why) -> bool {
++                            return strata::core::conversation_snapshot_stream_finish(
++                                target.kv, ss, g, use_mtp ? &mtp.kv_state() : nullptr,
++                                (int64_t) meta.image.live.ids.size(), why);
++                        };
++                        if (!strata::core::session_file_restore_streamed(path, id, target, meta, bytes, err, limits, &st)) {
++                            if (st.touched) {
++                                // a sink wrote before the failure: never decode from the partial session
++                                std::fprintf(stderr, "strata serve: session restore %s: transfer failed: %s\n",
++                                             path.c_str(), err.c_str());
++                                std::printf("FATAL restoring the session file failed after the device state was "
++                                            "changed: %s\n", err.c_str());
++                                std::fflush(stdout);
++                                return 1;
++                            }
+                             refuse(err, st.error);
+                             continue;
+                         }
++                        // the running state from the host copies pass 2 made: one bounded allowance, then the commit
++                        uint64_t state_bytes = 0;
++                        for (uint64_t b : meta.live_state_bytes) state_bytes += b;
++                        blocking("state", state_bytes);
++                        if (!strata::core::conversation_checkpoint_restore(meta.image.live, ss, g, err)) {
++                            std::fprintf(stderr, "strata serve: session restore %s: state restore failed: %s\n",
++                                         path.c_str(), err.c_str());
++                            std::printf("FATAL restoring the session file failed after the device state was "
++                                        "changed: %s\n", err.c_str());
++                            std::fflush(stdout);
++                            return 1;
++                        }
++#if defined(STRATA_HAVE_DFLASH2)
++                        // tiberius: a restored session replaces the K/V (a file's K/V is not the drafter's lineage
++                        // log, and a restore can rewind a conversation it has seen), so the drafter's position/tags
++                        // are stale - invalidate them before the session is live (answers are verified either way;
++                        // without this the acceptance collapses after a rewind).
++                        if (use_df2) df2.reset();
++#endif
++                        live = std::move(meta.image.live.ids);
++                        live_imgs = std::move(meta.image.live.imgs);
++                        checks = std::move(meta.image.checkpoints);
++                        for (const ConvCheckpoint& c : checks) check_clock = std::max(check_clock, c.used);
++                        cvec_cached = meta.image.cvec;
++                        live_ok = true;
++                        if (nan_flush) {   // #879: the file replaced the poisoned session; the parked ones go (no slots here)
++                            nan_flush = false;
++                            const size_t n_parked = conversations.clear();
++                            std::fprintf(stderr, "strata serve: after non-finite logits (#879): the restored session "
++                                                 "replaces the live one; dropped %zu parked conversation%s\n", n_parked,
++                                         n_parked == 1 ? "" : "s");
++                        }
++                        std::fprintf(stderr, "strata serve: session restored %zu tokens, %zu checkpoints, %zu bytes from %s "
++                                     "in %.1f ms (streamed: pass 1 + pass 2, no image)\n", live.size(), checks.size(),
++                                     bytes, path.c_str(), ms());
++                        std::printf("RESTORED %zu %zu %.1f\n", live.size(), bytes, ms());
+                     } catch (const std::bad_alloc&) {
+                         refuse("not enough RAM to read the session", strata::core::SessionError::memory);
+                         continue;
+                     }
+-                    const double read_ms = ms();
+-                    // the whole image against this engine, still without any device write
+-                    blocking("validate", bytes);
+-                    if (!strata::core::conversation_snapshot_validate(image, ss, g, mtp.kv_state(), err)) {
+-                        refuse(err);
+-                        continue;
+-                    }
+-                    // the elastic K/V (--kv-grow) maps only the cells it has grown to: make room for the file's cells
+-                    if (!kvg_ensure((int64_t) image.live.ids.size() + 256, adapt_quiesce)) {
+-                        refuse("the K/V cannot grow to the saved conversation: no VRAM is left", strata::core::SessionError::memory);
+-                        continue;
+-                    }
+-                    conversations.take_reuse();   // retained K/V described the outgoing session
+-                    live_ok = false;
+-                    // host -> device in synchronous copies of the whole state: one bounded allowance
+-                    blocking("transfer", bytes);
+-                    if (strata::core::conversation_snapshot_restore(image, ss, g, mtp.kv_state(), err) !=
+-                        strata::core::ConversationRestore::restored) {
+-                        // validated above: a failure here is a transfer failure, after device writes began - never
+-                        // decode from a partial state; the server starts the engine again
+-                        std::fprintf(stderr, "strata serve: session restore %s: transfer failed: %s\n", path.c_str(),
+-                                     err.c_str());
+-                        std::printf("FATAL restoring the session file failed after the device state was changed: %s\n",
+-                                    err.c_str());
+-                        std::fflush(stdout);
+-                        return 1;
+-                    }
+-                    live = std::move(image.live.ids);
+-                    live_imgs = std::move(image.live.imgs);
+-                    checks = std::move(image.checkpoints);
+-                    for (const ConvCheckpoint& c : checks) check_clock = std::max(check_clock, c.used);
+-                    cvec_cached = image.cvec;
+-                    live_ok = true;
+-                    if (nan_flush) {   // #879: the file replaced the poisoned session; the parked ones go (no slots here)
+-                        nan_flush = false;
+-                        const size_t n_parked = conversations.clear();
+-                        std::fprintf(stderr, "strata serve: after non-finite logits (#879): the restored session "
+-                                             "replaces the live one; dropped %zu parked conversation%s\n", n_parked,
+-                                     n_parked == 1 ? "" : "s");
+-                    }
+-                    std::fprintf(stderr, "strata serve: session restored %zu tokens, %zu checkpoints, %zu bytes from %s "
+-                                 "in %.1f ms (read+check %.1f ms)\n", live.size(), checks.size(), bytes, path.c_str(),
+-                                 ms(), read_ms);
+-                    std::printf("RESTORED %zu %zu %.1f\n", live.size(), bytes, ms());
+                 }
+                 std::fflush(stdout);
+                 continue;
+@@ -17449,6 +17941,7 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -1531,7 +2741,7 @@ index e2657ae..ecfb6f3 100644
              double dt_run = 0, dt_commit = 0, dt_draft = 0;
              double dt_adapt_wait = 0, dt_adapt_join = 0;   // the tier's wait before a window / join after the draft (ms, summed)
              const int64_t dt_sw0 = ajob ? a_swapped : adapt_nswaps;
-@@ -18433,6 +18888,7 @@ int main(int argc, char** argv) {
+@@ -18433,6 +18926,7 @@ int main(int argc, char** argv) {
                          if (file_left > 0) { --file_left; src.replace_resident(x.layer, x.in, x.out); }
                      }
                  }
@@ -1539,7 +2749,7 @@ index e2657ae..ecfb6f3 100644
                  if (!adapt_tick(false)) {   // --adapt-async: the round in flight moves on a step when it can
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18599,7 +19055,9 @@ int main(int argc, char** argv) {
+@@ -18599,7 +19093,9 @@ int main(int argc, char** argv) {
                      const double asw_join = std::chrono::duration<double, std::milli>(Clock::now() - taj0).count();
                      dt_adapt_join += asw_join;
                      asw_wait_ms += asw_join;
@@ -1549,7 +2759,7 @@ index e2657ae..ecfb6f3 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18662,6 +19120,17 @@ int main(int argc, char** argv) {
+@@ -18662,6 +19158,17 @@ int main(int argc, char** argv) {
                  p += a + 1;
              }
              if (!keep_sync()) { std::printf("ERR %s\n", err.c_str()); return 1; }
@@ -1567,7 +2777,7 @@ index e2657ae..ecfb6f3 100644
              const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
              if (use_df2 && o.draft_auto && bandit_key != 0 && produced_n >= 48 && decode_ms > 0.0) {
                  DraftBandit& b = bandit[bandit_key];
-@@ -18721,6 +19190,7 @@ int main(int argc, char** argv) {
+@@ -18721,6 +19228,7 @@ int main(int argc, char** argv) {
                  }
              }
              if (drive.d.fs) std::fprintf(stderr, "strata serve: %s\n", drive.d.fs->report().c_str());
@@ -1575,7 +2785,7 @@ index e2657ae..ecfb6f3 100644
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -19806,17 +20276,33 @@ int main(int argc, char** argv) {
+@@ -19806,17 +20314,33 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
          int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
@@ -1609,7 +2819,7 @@ index e2657ae..ecfb6f3 100644
              if (trace_pending)
                  std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
              unpin_blobs(pin_live);
-@@ -19896,28 +20382,163 @@ int main(int argc, char** argv) {
+@@ -19896,28 +20420,163 @@ int main(int argc, char** argv) {
              std::vector<void*> cp_dst;
              std::vector<const void*> cp_src;
              std::vector<size_t> cp_bytes;
@@ -1784,7 +2994,7 @@ index e2657ae..ecfb6f3 100644
              }
              if (drive.d.evict_sync && !swaps.empty()) {   // the evicted ones are misses now (see the pre-launch hook)
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
-@@ -20235,6 +20856,7 @@ int main(int argc, char** argv) {
+@@ -20235,6 +20894,7 @@ int main(int argc, char** argv) {
              // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
              if (adapt_nowait()) apply_pending(false);
                  else if (pending.empty() || ++pending_age >= adapt_lag()) apply_pending(true);
@@ -1792,7 +3002,7 @@ index e2657ae..ecfb6f3 100644
              if (gated_proposal) ver.set_spec_proposal(proposal.n_q ? proposal.mu.data() : nullptr, proposal.n_q);
              // the MTP's q lists judge only candidates the MTP drew: DFlash2's are a deterministic pick (exact-match path)
              else if (strata::spec::mtp_q_applies(use_mtp, spec_uses_df2, use_mtp && mtp.prob(), from_sfx, first_window, T_mtp) && o.spec_corrupt <= 0)
-@@ -20328,7 +20950,11 @@ int main(int argc, char** argv) {
+@@ -20328,7 +20988,11 @@ int main(int argc, char** argv) {
              generation = {};
              const GatedDraftLimit draft_limit(mtp, gated_proposal, S_mtp, p + a + 1, o.max_context);
              const bool drafted = !draft_on || (int64_t) produced.size() >= max_new || draft_next(T, a);
@@ -1805,7 +3015,7 @@ index e2657ae..ecfb6f3 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -20428,6 +21054,7 @@ int main(int argc, char** argv) {
+@@ -20428,6 +21092,7 @@ int main(int argc, char** argv) {
              std::printf("%-24s %lld windows, %lld with mismatches (%lld entries), %lld layer-windows with CPU experts and "
                          "no activation published\n", "residency check", (long long) res_windows,
                          (long long) res_bad_windows, (long long) res_bad, (long long) drive.d.stale_x);

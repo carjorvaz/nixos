@@ -151,8 +151,8 @@ stdenv.mkDerivation {
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
-  # prefill.{hpp,cpp} and generate.cpp (the third is independent: one park_source
-  # hunk in generate.cpp and two methods in conversation_cache.hpp):
+  # prefill.{hpp,cpp} and generate.cpp (the third and fourth are independent: the
+  # park fix and the streamed session restore + drafter invalidation below):
   #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill is
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
   #   * STRATA_DAX_TIMING (added 2026-11-04): one log line per DAX window rotation with
@@ -196,6 +196,31 @@ stdenv.mkDerivation {
   #     07pr3sndmbszvsyq8jayd334ak0nwf59, the engine store path above); the patch file
   #     is unchanged since that build, so the switch reused it.  See
   #     /tmp/strata-tune/park-patch.md.
+  #   * the streamed session restore (round 5, added 2026-11-04): SAVE streams the K/V
+  #     from the pools, but RESTORE materialised the whole SavedConversation in host
+  #     RAM first, so a 250k session (3.89 GB file) asked ~3,727 MiB plus the 384 MiB
+  #     floor and was refused on this 8 GB box.  The restore now reads the same file
+  #     twice: pass 1 validates the v1 header/trailer/payload hash with metadata only;
+  #     pass 2 re-parses it and streams each K/V section into the session pools through
+  #     a 16 MiB pinned staging block, with the RAM gate moved after pass 1 to the exact
+  #     metadata-derived peak (~270 MiB at 250k).  No file-format change; corrupt or
+  #     truncated files are refused in pass 1 before any device write, and a failure
+  #     after the first write keeps the old FATAL contract.  Measured on the isolated
+  #     port-8099 engine 2026-11-04: 240k restore 5,240 ms with VmHWM +259 MiB and an
+  #     identical greedy continuation sha; 50k save/restart/restore sha regression
+  #     identical; an old-writer file from the MTP lane restores; cross-lane files are
+  #     refused; the park regression is clean.  The same change fixes a pre-existing bug
+  #     found in that window: SAVE unconditionally passed mtp.kv_state(), which is an
+  #     empty QsaState on the deployed DFlash2-alone lane (no --mtp), so every SAVE
+  #     there failed with "invalid K/V extent" - disk sessions had never worked on this
+  #     lane.  SAVE/RESTORE now make the draft layer optional (layers + (use_mtp ? 1 : 0);
+  #     MTP-lane files stay byte-identical, DFlash2-lane files are layers-only, a
+  #     mismatched file is refused).  RESTORE also invalidates the DFlash2 drafter
+  #     before the session goes live (its slot shadow describes pre-restore K/V
+  #     otherwise).  Deployed as generation 103 (system 56fx2bk..., engine
+  #     gv3vlx7ah...).  Accepted follow-ups for the next regeneration: the four "payload
+  #     ends early" over-read guards dropped in this cut and conversation_file.cpp's
+  #     final newline.  See /tmp/strata-tune/stream-restore-design.md and -results.md.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
@@ -208,8 +233,9 @@ stdenv.mkDerivation {
   # All three were generated against the pin above and re-applied in order onto a
   # pristine ffa80d73 tree (bit-identical result) before this build.  tiberius.patch
   # was regenerated again on 2026-11-04 for the transactional-park addition (built,
-  # probed and deployed as generation 101) and once more for STRATA_DAX_TIMING, each
-  # time re-verified the same way.  The module's run config does not change: the timing
+  # probed and deployed as generation 101), once more for STRATA_DAX_TIMING (deployed
+  # as generation 102) and once more for the streamed session restore + draft-optional
+  # SAVE/RESTORE (deployed as generation 103), each time re-verified the same way.  The module's run config does not change: the timing
   # is log-only and off unless STRATA_DAX_TIMING=1 is set, which is exactly how the
   # task-8 A/B measured the rotation cost.
   #
@@ -319,6 +345,20 @@ stdenv.mkDerivation {
     }
     grep -q 'evictable_bytes' include/strata/core/conversation_cache.hpp || {
       echo "tiberius.patch lost the ConversationCache::evictable_bytes() pre-check helper" >&2
+      exit 1
+    }
+    # tiberius.patch's streamed session restore (round 5): the API name and the pass-1/pass-2 marker strings.  A
+    # rebase that drops the streaming would silently go back to the whole-image read, which refuses the 250k session.
+    grep -q 'session_file_restore_streamed' src/program/generate.cpp || {
+      echo "tiberius.patch lost the streamed session restore (generate.cpp)" >&2
+      exit 1
+    }
+    grep -q 'SessionStreamMeta' include/strata/core/conversation_file.hpp || {
+      echo "tiberius.patch lost SessionStreamMeta (the streamed restore's metadata pass)" >&2
+      exit 1
+    }
+    grep -q "drafter's position/tags" src/program/generate.cpp || {
+      echo "tiberius.patch lost the DFlash2 invalidate-after-restore" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`

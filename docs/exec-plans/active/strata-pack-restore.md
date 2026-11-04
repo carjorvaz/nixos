@@ -288,6 +288,16 @@ The disk path therefore restores conversations whose image fits free RAM (~50k
 and below: 391 MB plus the floor) and survives both a background request and a
 restart, which parking does not, but it does not rescue 250k on this box.
 
+**Corrected 2026-11-04 (generation 103).** The SAVE/RESTORE numbers above were measured on the
+MTP lane, which had `--mtp` loaded. After DFlash2 replaced MTP on 2026-11-04 the deployed lane runs
+without `--mtp`, and SAVE passed `mtp.kv_state()` unconditionally - an empty QsaState there - so
+every SAVE failed `conversation snapshot: invalid K/V extent` and disk sessions had never worked on
+the deployed lane (the empty `/optane/strata-data/sessions` was the symptom). Generation 103 makes
+the draft layer optional in both directions and streams RESTORE (240k: 5,240 ms, VmHWM +259 MiB,
+continuation sha equal; corrupt/truncated/header files refused before any device write), so the
+paragraph above now describes the MTP lane, not the current one. The refusal-destruction root cause
+below is unaffected by this and still stands for the DFlash2 lane.
+
 **Why a refusal destroys the copy (root cause, v0.2.9).**  `park_source`
 (`generate.cpp:10655-10694`) runs `drop_superseded`, then `make_room`, then the
 RAM loop `while (!admit() && ... conversations.evict_oldest()) ++evicted;` - so
