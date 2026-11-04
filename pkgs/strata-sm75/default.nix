@@ -155,6 +155,26 @@ stdenv.mkDerivation {
   # hunk in generate.cpp and two methods in conversation_cache.hpp):
   #   * the STRATA_REGISTER_DAX sliding window, which makes the layer the prefill is
   #     reading DMA-able by the device without registering the whole 46.84 GiB pack;
+  #   * STRATA_DAX_TIMING (added 2026-11-04): one log line per DAX window rotation with
+  #     the stream-drain wait and the unregister/register driver times (off by default;
+  #     log-only - the copy and the window are the same either way).  It exists because
+  #     the rotation is the prompt path's remaining fixed cost: 9 windows per 46.84 GiB
+  #     pack pass, each a drain plus an unregister/register of ~5.5 GiB, and the
+  #     short/mid prompt's "wait copy" was 36.9-39.7 % of its GPU timeline (4,245-token
+  #     prompt: 2,626 ms of 7,111 ms) against 3.7 % at 26k.  Measured with it on
+  #     (single-window): wait 108-198 ms + unregister 65-87 ms + register 125-342 ms per
+  #     rotation.  It was built to judge a pipelined TWO-WINDOW rotation (a run of ~2-3
+  #     layers per registration, two windows resident under the same budget, the next
+  #     run registered while the current one still streams, the stale run released after
+  #     a per-window cudaEvent).  That was built and A/B-measured on 2026-11-04 and
+  #     REJECTED: the fence wait is 0 ms, but an unregister that lands while the copy
+  #     engine is active costs 60-260 ms/rotation (21.5 ms after a drain), the run cap
+  #     doubles the rotation count from 9 to 19 per pass, and the 4,260/8,276-token
+  #     reads lost 1.66 %/4.13 % while the 26,134-token read gained 5.43 % and its
+  #     answer sha drifted (the frozen two-window state moves the decode's PCIe
+  #     grouping).  The pipelined code is NOT in the patch; only the timing stays, as
+  #     the measurement seam for any future rotation work.  Artifacts: /data/dax-ab
+  #     (tiberius) and /tmp/strata-tune/dax-ab;
   #   * STRATA_REFILL_PIN_SRC, the decode-time VRAM refill read from registered sources,
   #     with its straddle guard;
   #   * the transactional park (added 2026-11-04): a park the physical-RAM admission
@@ -187,8 +207,11 @@ stdenv.mkDerivation {
   # app's pages, assets and /settings into 404s and leaves the API untouched.
   # All three were generated against the pin above and re-applied in order onto a
   # pristine ffa80d73 tree (bit-identical result) before this build.  tiberius.patch
-  # was regenerated again on 2026-11-04 for the transactional-park addition and
-  # re-verified the same way (the deployed generation predates it).
+  # was regenerated again on 2026-11-04 for the transactional-park addition (built,
+  # probed and deployed as generation 101) and once more for STRATA_DAX_TIMING, each
+  # time re-verified the same way.  The module's run config does not change: the timing
+  # is log-only and off unless STRATA_DAX_TIMING=1 is set, which is exactly how the
+  # task-8 A/B measured the rotation cost.
   #
   # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
   # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent
@@ -278,6 +301,13 @@ stdenv.mkDerivation {
     }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
       echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
+      exit 1
+    }
+    # tiberius.patch's env-gated per-rotation DAX timing (log-only, off by default).  It is the only
+    # place the window rotation's cost is attributed, so a rebase that drops it silently would take the
+    # measurement seam with it - fail here instead.
+    grep -q 'STRATA_DAX_TIMING' src/core/expert_source.cpp || {
+      echo "tiberius.patch lost the per-rotation DAX timing (STRATA_DAX_TIMING)" >&2
       exit 1
     }
     # tiberius.patch's transactional park: the distinct refusal line is its marker (no upstream line has

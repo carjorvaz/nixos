@@ -39,25 +39,27 @@ in
     "${self}/profiles/nixos/tailscale.nix"
   ];
 
-  boot.initrd.availableKernelModules = [
-    "ata_piix"
-    "uhci_hcd"
-    "virtio_pci"
-    "virtio_net"
-    "virtio_scsi"
-    "sd_mod"
-    "sr_mod"
-  ];
+  boot = {
+    initrd.availableKernelModules = [
+      "ata_piix"
+      "uhci_hcd"
+      "virtio_pci"
+      "virtio_net"
+      "virtio_scsi"
+      "sd_mod"
+      "sr_mod"
+    ];
 
-  # This VM has 2 GB of RAM. The default ARC cap (~60% of RAM) plus the mail,
-  # DNS and web stack left no headroom, so the nightly nix-gc store walk pushed
-  # the kernel into global OOM kills. Cap ARC at 384 MiB.
-  boot.kernelParams = [ "zfs.zfs_arc_max=402653184" ];
+    # This VM has 2 GB of RAM. The default ARC cap (~60% of RAM) plus the mail,
+    # DNS and web stack left no headroom, so the nightly nix-gc store walk
+    # pushed the kernel into global OOM kills. Cap ARC at 384 MiB.
+    kernelParams = [ "zfs.zfs_arc_max=402653184" ];
 
-  # The Redis NixOS module (pulled in for rspamd) sets this to 1, which makes
-  # the kernel never refuse an allocation and turns memory pressure into random
-  # OOM kills instead of a failing allocation. Use the heuristic instead.
-  boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
+    # The Redis NixOS module (pulled in for rspamd) sets this to 1, which makes
+    # the kernel never refuse an allocation and turns memory pressure into
+    # random OOM kills instead of a failing allocation. Use the heuristic.
+    kernel.sysctl."vm.overcommit_memory" = lib.mkForce 0;
+  };
 
   systemd = {
     # zram is the only swap device here, and its compressed pool is not

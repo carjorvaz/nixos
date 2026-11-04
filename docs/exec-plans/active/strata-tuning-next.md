@@ -1,8 +1,11 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, round 2 - campaign closed and the park fix deployed 2026-11-04** (generation
-101); the open items are experiment rows 6-9 and patch roadmap items 2-5. Started 2026-11-04,
-after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling) was measured. Round 1 is
+Status: **active, rounds 2-3 - campaign closed, park fix and the measurement/telemetry round
+deployed 2026-11-04** (generation 102); the open items are experiment rows 6-9 and patch roadmap
+items 3-5 (streamed RESTORE is next), plus the per-window counters. DAX rotation pipelining was
+measured this round and rejected (its log-only timing seam is kept and deployed). Started
+2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling) was
+measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
 on. Labels: **[M]** measured, **[E]** estimate - expected effects are [E] unless a measurement is cited.
 
@@ -149,6 +152,84 @@ because the residency-biased route prior makes fresh-engine state part of the an
   `--spec`); `--prefill 8192` arms auto-selected `--draft-conf 0.7`; the 8-gen P27 decode was
   never used for a decision; eval80 is a guardrail only.
 
+## Round 3 results (2026-11-04)
+
+Software-only round; no hardware change. Generation 102 was deployed at 18:47 (service healthy,
+smoke completion, the unchanged 7,859-slot / elastic-K/V / DFlash2 / 5.52 GiB DAX start, and the
+new `tiberius-strata-telemetry.timer` active).
+
+### DAX rotation pipelining - measured, rejected, timing seam kept
+
+One 11.0-min trap window (production restored, warm, `postflight_fail=0`): base = deployed
+`3qla1qfa...`, patched = `68960zpz...` (patch sha `fa6d6a17...`), 3 counterbalanced runs/arm plus
+2 same-binary `STRATA_DAX_PIPE=0` control runs; cells 4,260 / 8,276 / 26,142-token reads +8 gen,
+greedy, `reused=0` everywhere.
+
+| cell | base read_ms mean[min-max] | patched two-window | patched PIPE=0 control |
+|---|---|---|---|
+| 4,260 | 8,591 [8,563-8,622] | 8,734 [8,700-8,772] **+1.66%** | 8,739 (+1.72%) |
+| 8,276 | 10,072 [9,872-10,289] | 10,488 [10,328-10,778] **+4.13%** | 10,155 (+0.82%) |
+| 26,142 | 20,830 [20,748-20,907] | 19,698 [19,394-19,881] **-5.43%** | 21,187 (+1.71%) |
+
+Rotations/pass went 8-9 -> 18-19, zero registration refusals, P1/P8K answer shas identical in
+every arm, P27 sha deterministic per arm but different in the pipelined arm (`719ac447` vs
+`a16eafe9`). The new `STRATA_DAX_TIMING` lines attribute it: fence/stream-drain wait 0.0 ms, but
+unregister 1.68-2.74 s and register 1.44-2.30 s per cell (~215-245 ms/rotation); halving the run
+doubles the driver work, and the overlap does not pay it back on short/mid prompts. **Rejected;
+only the log-only `STRATA_DAX_TIMING` instrumentation is retained** (patch sha `cd67094e...`,
+one marker grep; default-off, zero run-config change) as the seam for a future, different
+mechanism. Evidence: `/data/dax-ab/` (results, per-run logs with every timing line, DECISION.md).
+
+### eval320 / McNemar / PPL harness - landed (C9 met)
+
+`/data/eval320/` (box-local, public-safe counters only): 320 held-out exact-answer items, sha256
+`567d10be...`; arithmetic 80 / conversion 40 / logic 60 / python_output 60 / structured_data 60 /
+code_output 20, 106 easy + 86 medium + 128 hard, ground truth programmatically verified 320/320;
+`evalmcnemar.py` (paired McNemar, exact p, risk difference, paired-bootstrap CI, test-retest
+agreement + kappa); `ppl.py` (fixed 3,100-token corpus, 128 greedy tokens, OpenAI-style
+`logprobs` via the chat endpoint - `/v1/completions` is 404 on this build). Baseline on the
+generation-101 engine: **pass1 186/320 (58.1%), pass2 191/320 (59.7%)**; test-retest 19/320
+flips = **5.9%**, agreement 94.1%, kappa 0.8774, McNemar p = 0.359 (no same-stack difference).
+That is the variance floor: a ~2.8 pp net edge is now detectable (z~2.8), so eval320 can rank
+answer-changing arms where eval80 cannot. PPL repeats: mean token logprob -0.2209/-0.1623 (ppl
+1.247/1.176) on pass1 and -0.1548/-0.1606 (1.167/1.174) on pass2; the gate is usable but greedy
+continuations are not bit-repeatable past ~51/128 tokens, so compare paired on the common prefix
+and treat <0.05 nats as noise. Evidence: `/data/eval320/RESULTS.md`,
+`/data/eval320/logprobs-support.md`.
+
+### Telemetry - deployed
+
+`profiles/nixos/strata-telemetry.nix` (new module, wired into `hosts/tiberius.nix`): a 15 s
+oneshot timer writes one compact JSON line per scrape to `/persist/strata/metrics/YYYY-MM-DD.jsonl`
+(daily files, 14-day prune) with live state/rates, expert slots, VRAM free, park/restore/eviction
+counters, GPU temp/power and totals; drift warnings via `logger -t strata-telemetry` for decode
+below 70% of a 20-answer-sample median, two consecutive scrape failures, GPU >= 82 C and
+evictions rising by >5 in 5 min, with hysteresis so a transient does not spam. Verified live:
+timer active at 15 s, valid lines, journal clean. First decode warning needs ~5 min of answering
+traffic to fill the median ring.
+
+### Validation and park-fix production evidence
+
+- The repo's pre-existing statix repeated-key warnings were merged away (`profiles/nixos/mail.nix`,
+  `hosts/hadrianus.nix`, `hosts/tiberius.nix` - one `systemd`/`services` wrapper each, semantics
+  checked by comparing the evaluated unit/service/wait-online sets; the systemd wrapper change was
+  validated against the original evaluated values). `scripts/validate` now completes successfully,
+  including deadnix/nixfmt/statix and every host evaluation.
+- Park fix in production (generation 101, first ~15 min of traffic): 11 parks, 5 restores, 4
+  legitimate admitted-after-evict lines, and **7 "nothing evicted, N still parked" refusals** -
+  seven refused parks that would each have destroyed up to two parked conversations before the fix.
+  The new telemetry will make this rate visible.
+- Deployed generation 102: system
+  `/nix/store/ppprl8ix6cd49k7lp2nzijzgks8sb61z-nixos-system-tiberius-...`, engine
+  `/nix/store/ixssrl2q9qihzvl0xwhrp3iia9vx5fhf-strata-engine-0.1.56` (transactional park +
+  `STRATA_DAX_TIMING`), 7,859 slots, elastic K/V, DFlash2, 5.52 GiB DAX; service healthy and warm.
+
+### Still open
+
+Streamed session RESTORE (roadmap item 3) was not attempted this round and is the next patch
+candidate; pmem park spill (item 4), the CUDA #4677 port (item 5) and the per-window counters stay
+open. Flag experiments rows 6-9 were not run this round.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -170,15 +251,20 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    (`/nix/store/07pr3sndmbszvsyq8jayd334ak0nwf59-nixos-system-tiberius-...`), engine
    `/nix/store/3qla1qfa09rsf6rqmcnnndk04hrqvb0y-strata-engine-0.1.56`; the 7,859-slot / elastic-K/V
    / DFlash2 / 5.52 GiB DAX-window start is unchanged.
-2. **DAX rotation pipelining - proposed, needs timing first.** A rotation today drains the copy
-   stream and unregisters/registers ~5.5 GiB, 9x per pack pass; with run size ~2-3 layers (~2.8 GiB)
-   two windows fit the 6 GiB budget, so register the next run while the current stream reads and
-   unregister only the run that has fallen behind. Pointers: `pkgs/strata-sm75/tiberius.patch`
-   (`prepare_layer` ~528-590, `dax_register[_run]` ~440-520; overlap rules ~125-200). Risk: rebase
-   burden; bitwise payload, but a refused registration falls back to the pageable path (13 s
-   prefill) - assert 0 refusals. Expected **5-15% of long-prompt read** [E]; add the env-gated
-   per-rotation clock print first (none exists). Probe: 26,134/38k read cells, 3 runs, rotations
-   still 9, answer sha.
+2. **DAX rotation pipelining - measured and REJECTED 2026-11-04; timing seam kept and deployed.**
+   The instrumentation answered the mechanism question: the per-window fence wait is ~0 ms, but
+   `cudaHostUnregister` while the copy engine is active costs 60-260 ms/rotation (21.5 ms after a
+   drain). A two-window pipelined rotation (run cap = 6 GiB budget / 2, two resident windows)
+   doubles the rotation count 9 -> 19 per pack pass and measures +1.66% / +4.13% read on
+   4,260/8,276-token prompts and -5.43% on 26,142, with a deterministic P27 8-token answer-sha
+   drift (the frozen two-window state changes decode PCIe grouping); zero registration refusals,
+   and the same-binary `STRATA_DAX_PIPE=0` control isolates the pipeline from the binary. Reopening
+   this family needs a mechanism that does not unregister while copies are in flight (retention
+   instead of rotation, or a ring budget below the 7 GiB process cap) - the drain is already free.
+   Pointers: `pkgs/strata-sm75/tiberius.patch` (`prepare_layer` ~528-590, `dax_register[_run]`
+   ~440-520; overlap rules ~125-200). The log-only `STRATA_DAX_TIMING` seam (patch sha256
+   `cd67094e...`) is kept and deployed in generation 102 for any future attempt; probe evidence:
+   `/data/dax-ab/` and `/tmp/strata-tune/dax-ab/`.
 3. **Streamed session RESTORE - proposed (250k on 8 GB).** SAVE streams K/V from the pools (3.89 GB
    in 5.1 s, 760 MB/s at 250k), but RESTORE materialises the whole payload in a host-RAM
    `SavedConversation` before pushing it; stream the sections into the session pools and keep the
@@ -278,8 +364,10 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   PA_V2T/SELECT_SIMT/ADAPT_NOWAIT/LAG (answers move, no win); batch/parallel/layer split/GDN tensor
   cores/YaRN 1M/`--resident-budget-gib` (not applicable); CPU governor/pool/ISA and prompt-cache
   root/tail/spread families (conclusive null for this shape).
-- **Deferred harness/quality**: eval320 + PPL + test-retest (C9) before any answer-changing arm is
-  ranked rather than only guarded.
+- **Harness/quality (landed 2026-11-04)**: eval320 + paired McNemar + PPL + test-retest are in
+  `/data/eval320/`; answer-changing arms can now be ranked (5.9% same-stack variance floor, ~2.8 pp
+  detectable net edge). Still open: per-window counters on `/metrics` and tuning the telemetry
+  alert thresholds against a week of the new JSONL.
 - **Not carried from round 1**: the 524,288 context and 1M YaRN lane (slot cost), and the k8v4 KV
   (retested in row 5, not adopted yet).
 
@@ -295,4 +383,17 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   built on tiberius (`3qla1qfa...`, 7 min), isolated probe passed (above), and deployed as
   generation 101 at 17:40; service healthy, smoke completion "Ready", engine start line carries the
   patched store path and the unchanged 7,859-slot / elastic-K/V / DFlash2 / 5.52 GiB DAX start.
-- Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/tmp/strata-tune/`.
+- **2026-11-04, round 3 / DAX**: four-way A/B (base, two-window pipeline, same-binary PIPE=0
+  control; 3+3+2 runs) in an 11.0-min window - REJECTED (+1.66%/+4.13% on 4.2k/8.3k reads,
+  -5.43% on 26k, rotations 9->19, P27 sha drift); mechanism attributed by the new timing seam
+  (fence ~0, unregister 60-260 ms while copies are live). Timing-only patch kept
+  (`cd67094e...`) and deployed.
+- **2026-11-04, round 3 / measurement**: eval320 (320 items, verified 320/320) + McNemar + PPL
+  harness landed in `/data/eval320/`; baseline 58.1%/59.7%, same-stack variance floor 5.9%
+  (kappa 0.877), ~2.8 pp net-edge detectability; logprob/PPL gate usable with common-prefix pairing.
+- **2026-11-04, round 3 / telemetry + hygiene**: `profiles/nixos/strata-telemetry.nix` 15 s
+  scraper/timer deployed; pre-existing statix warnings merged; `scripts/validate` green.
+  Generation 102 (system `ppprl8ix...`, engine `ixssrl2q...`) deployed at 18:47 and verified
+  (health, warm smoke, park+timing markers, telemetry timer active, unchanged 7,859-slot start).
+- Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
+  `/data/eval320/`, `/tmp/strata-tune/`.

@@ -11,8 +11,27 @@
 # and conversation_cache.hpp are outside every region changes 1-2 touch (the cache header was not in
 # this patch before it), so it needs no merge.  The whole patch was regenerated against ffa80d73 and
 # re-applied in order onto a pristine tree (byte-identical result; transcript in
-# /tmp/strata-tune/park-patch.md).  Code-only so far: the build and the isolated-harness probe are
-# task-7, not run yet.
+# /tmp/strata-tune/park-patch.md).  Built on tiberius
+# (/nix/store/3qla1qfa09rsf6rqmcnnndk04hrqvb0y-strata-engine-0.1.56) and probed against the deployed
+# pre-fix binary: the pre-fix arm evicted two parked conversations and the next request re-read the
+# prompt their copy held; the patched arm skipped with "nothing evicted, 2 still parked" and restored
+# it (normal parks unchanged, all six answer shas identical).  Deployed as generation 101 on 2026-11-04
+# (system 07pr3sndmbszvsyq8jayd334ak0nwf59).
+#
+# ADDED 2026-11-04 (second addition): STRATA_DAX_TIMING, log-only per-rotation timing of the DAX window:
+# one line per rotation with the stream-drain wait and the unregister/register driver times (off by
+# default; the copy and the window are the same either way).  It exists because the DAX rotation is the
+# prompt path's remaining fixed cost: 9 windows per 46.84 GiB pack pass, each a drain plus an
+# unregister/register of ~5.5 GiB.  Measured with it on the patched build (single-window path): wait
+# 108-198 ms + unregister 65-87 ms + register 125-342 ms, i.e. 310-630 ms per rotation.
+# The two-window pipelined rotation the timing was built to judge (a run of ~2-3 layers per registration,
+# two windows resident, the next run registered while the current one still streams) was measured in the
+# task-8 A/B and REJECTED: on the 4,260/8,276-token reads it was +1.66%/+4.13% slower (the run cap
+# doubles the rotation count from 9 to 19 per pass; the fence wait is 0 ms, but an unregister that lands
+# while the copy engine is active costs 60-260 ms, not the 21.5 ms it costs after a drain), while the
+# 26,134-token read gained 5.43% (its
+# rotations hide under the compute-bound timeline) but its answer sha changed with the arm (the frozen
+# window's size moves the decode's PCIe grouping).  Only the log-only timing is kept.
 #
 # Three changes, in one patch because changes 1-2 interleave in the same regions of
 # expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; change 3 is independent (one function in
@@ -104,7 +123,7 @@ index 78ff9f1..61bb29f 100644
      // the parking path can also free RAM one entry at a time on demand (see the physical-RAM admission
      // gate in generate.cpp).  A ConversationBuffer is a list of 16 MiB segments and each segment is its
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
-index ca325ae..4507336 100644
+index ca325ae..117d881 100644
 --- a/include/strata/core/expert_source.hpp
 +++ b/include/strata/core/expert_source.hpp
 @@ -217,9 +217,50 @@ public:
@@ -224,7 +243,7 @@ index ca325ae..4507336 100644
      /// The blob's bytes from the mapped file(s) - experts.bin, or the three GGUF role slices - into `dst`.
      bool copy_from_files(int64_t layer, int64_t expert, uint8_t* dst) const;
      bool open_gguf(std::string& err);
-@@ -1216,6 +1307,20 @@ private:
+@@ -1216,6 +1307,24 @@ private:
      bool complement_ready_ = false;
      uint64_t complement_locked_ = 0;          ///< bytes held in the working set (pin refused)
      int64_t complement_lent_slots_ = 0;
@@ -240,12 +259,16 @@ index ca325ae..4507336 100644
 +    /// The copy stream the DMA reads run on (`Prefill` sets it).  `prepare_layer` synchronises it before the first
 +    /// `cudaHostUnregister` of a rotation, so a range the copy engine could still be reading is never released.
 +    void* dax_stream_ = nullptr;
++    /// tiberius (STRATA_DAX_TIMING): STRATA_DAX_TIMING=1 prints one line per window rotation with the stream-drain
++    /// wait and the unregister/register driver times, so the rotation's share of the prompt path is attributable.
++    /// Off by default; log-only (the copy and the window are the same either way).
++    bool dax_timing_ = false;
 +    /// Rotations so far, for the once-per-rotation log line.
 +    int64_t dax_rotations_ = 0;
      std::vector<std::vector<std::pair<int32_t, int32_t>>> stage_lend_regions_;  ///< a split: each stage's lend region
      std::vector<const uint8_t*> override_;    ///< staged exchanges: an evicted expert read from its exchange buffer
      struct Exchange { size_t in, out; int64_t q; uint64_t bytes; };
-@@ -1282,6 +1387,8 @@ public:
+@@ -1282,6 +1391,8 @@ public:
      const uint8_t* blob_at(int64_t layer, int64_t expert) const;
      int64_t reads() const { return reads_.load(std::memory_order_relaxed); }
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -255,10 +278,10 @@ index ca325ae..4507336 100644
      /// Prefix pinning: the old rule (device_alias(layer, 0)); pin by need: at least one pinned range in the layer.
      bool pcie_layer(int64_t layer) const override;
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
-index 4a872e8..9426f6a 100644
+index 4a872e8..960bdb0 100644
 --- a/src/core/expert_source.cpp
 +++ b/src/core/expert_source.cpp
-@@ -1563,6 +1563,79 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
+@@ -1563,6 +1563,90 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
      layer_offsets_ = std::move(layer_offsets);
      layer_blob_bytes_ = std::move(layer_blob_bytes);
      record_inputs(path, gguf_, layout, false);
@@ -310,14 +333,20 @@ index 4a872e8..9426f6a 100644
 +        const char* mib = std::getenv("STRATA_REGISTER_DAX_MIB");
 +        const long long mib_value = mib != nullptr ? std::atoll(mib) : 0;
 +        dax_budget_ = mib_value > 0 ? (uint64_t) mib_value << 20 : (6144ull << 20);
++        // tiberius (STRATA_DAX_TIMING): the per-rotation timing report (log-only, off by default).
++        const char* tim = std::getenv("STRATA_DAX_TIMING");
++        dax_timing_ = tim != nullptr && std::atoi(tim) != 0;
 +        std::fprintf(stderr,
 +                     "FileExpertSource: STRATA_REGISTER_DAX: sliding window of %.2f GiB over a %.2f GiB pack "
 +                     "(%lld layers, %.2f GiB per layer)\n",
 +                     (double) dax_budget_ / 1073741824.0, (double) mapped_bytes_ / 1073741824.0,
 +                     (long long) n_layers_, (double) mapped_bytes_ / 1073741824.0 / (double) n_layers_);
 +        // Open on the first run of layers that fits, so the first chunk of a prompt pays no rotation to start.
++        const auto t_init = std::chrono::steady_clock::now();
 +        if (n_layers_ > 0 && !layer_blob_bytes_.empty() && layer_end(0) <= dax_budget_ && dax_register_run(0))
 +            dax_ok_ = true;
++        const double init_ms =
++            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_init).count();
 +        if (dax_ok_) {
 +            std::fprintf(stderr,
 +                         "FileExpertSource: STRATA_REGISTER_DAX: window on layers %lld..%lld, %.2f GiB "
@@ -325,6 +354,11 @@ index 4a872e8..9426f6a 100644
 +                         (long long) dax_windows_.front().first, (long long) dax_windows_.front().last,
 +                         (double) dax_windows_.front().bytes / 1073741824.0,
 +                         dax_windows_.front().device != nullptr ? " (device alias ok)" : " (NO device alias)");
++            if (dax_timing_)
++                std::fprintf(stderr,
++                             "FileExpertSource: STRATA_DAX_TIMING: startup rotation: layers %lld..%lld, register "
++                             "%.1f ms\n",
++                             (long long) dax_windows_.front().first, (long long) dax_windows_.front().last, init_ms);
 +        } else {
 +            std::fprintf(stderr,
 +                         "FileExpertSource: STRATA_REGISTER_DAX ignored: cudaHostRegister of a %.2f GiB window "
@@ -338,7 +372,7 @@ index 4a872e8..9426f6a 100644
      return true;
  }
  
-@@ -1571,6 +1644,17 @@ void FileExpertSource::close() {
+@@ -1571,6 +1655,17 @@ void FileExpertSource::close() {
      ram_stop();
      io_stop();
      inputs_.clear();
@@ -356,7 +390,7 @@ index 4a872e8..9426f6a 100644
      if (complement_arena_ != nullptr) {
          if (complement_pinned_ && !complement_registered_) (void) cudaFreeHost(complement_arena_);
          else {
-@@ -4087,7 +4171,13 @@ bool FileExpertSource::pin_cache_complement(
+@@ -4087,7 +4182,13 @@ bool FileExpertSource::pin_cache_complement(
                  return;
              }
  #if !defined(_WIN32)
@@ -371,7 +405,7 @@ index 4a872e8..9426f6a 100644
              const uint64_t layer_offset = layer_offsets_[(size_t) layer];
              const uint64_t layer_bytes = blob_bytes * (uint64_t) n_expert_;
              const uint64_t layer_end = layer_offset + layer_bytes;
-@@ -4308,14 +4398,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
+@@ -4308,14 +4409,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
  }
  
  bool FileExpertSource::stage_exchange(int64_t layer, int64_t in, int64_t out, int64_t q) {
@@ -415,7 +449,7 @@ index 4a872e8..9426f6a 100644
      override_[i_out] = exchange_buffer(q, layer);
      staged_.push_back({i_in, i_out, q, layer_blob_bytes_[(size_t) layer]});
      return true;
-@@ -4684,7 +4799,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+@@ -4684,7 +4810,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
      return result;
  }
  
@@ -426,7 +460,7 @@ index 4a872e8..9426f6a 100644
      if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
          layer >= n_layers_ || expert >= n_expert_) return false;
      const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
-@@ -4697,14 +4814,291 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -4697,14 +4825,308 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
             complement_offsets_[at_index] + layer_blob_bytes_[(size_t) layer] <= complement_pin_limit_;
  }
  
@@ -609,10 +643,18 @@ index 4a872e8..9426f6a 100644
 +    if (dax_window_of(layer) != nullptr) return true;
 +    int64_t last = 0;
 +    if (!dax_fit(layer, last)) return false;   // bigger than the whole budget: never DMA-able, never retried
++    const bool timing = dax_timing_;
++    const auto ms_since = [](const std::chrono::steady_clock::time_point& t) {
++        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
++    };
++    const auto t_rot = std::chrono::steady_clock::now();
++    double wait_ms = 0.0, unreg_ms = 0.0, reg_ms = 0.0;
 +    if (!dax_windows_.empty()) {
 +        const uint64_t need = page_up(layer_end(last)) - page_down(layer_begin(layer));
 +        if (dax_stream_ != nullptr) {
++            const auto tw = std::chrono::steady_clock::now();
 +            const cudaError_t sync = cudaStreamSynchronize((cudaStream_t) dax_stream_);
++            wait_ms += ms_since(tw);
 +            if (sync != cudaSuccess) {
 +                std::fprintf(stderr,
 +                             "FileExpertSource: STRATA_REGISTER_DAX: the copy stream did not drain before a "
@@ -629,9 +671,12 @@ index 4a872e8..9426f6a 100644
 +            for (size_t i = 1; i < dax_windows_.size(); ++i)
 +                if (dax_windows_[i].last < dax_windows_[victim].last) victim = i;
 +            held -= dax_windows_[victim].bytes;
++            const auto tu = std::chrono::steady_clock::now();
 +            (void) dax_unregister(victim);
++            unreg_ms += ms_since(tu);
 +        }
 +    }
++    const auto t_reg = std::chrono::steady_clock::now();
 +    if (!dax_register_run(layer)) {
 +        // One refused rotation disables the window for the rest of the run: every later layer then answers
 +        // `dma_ready` false and is staged exactly as the baseline stages it, instead of paying a failing driver
@@ -643,11 +688,17 @@ index 4a872e8..9426f6a 100644
 +        dax_ok_ = false;
 +        return false;
 +    }
++    reg_ms = ms_since(t_reg);
 +    ++dax_rotations_;
 +    // Once per rotation, never per blob: the layer range moved and how many bytes that cost.
 +    std::fprintf(stderr, "FileExpertSource: STRATA_REGISTER_DAX: rotation %lld: window now layers %lld..%lld, %.2f GiB\n",
 +                 (long long) dax_rotations_, (long long) dax_windows_.back().first,
 +                 (long long) dax_windows_.back().last, (double) dax_windows_.back().bytes / 1073741824.0);
++    if (timing)
++        std::fprintf(stderr,
++                     "FileExpertSource: STRATA_DAX_TIMING: rotation %lld: register %.1f ms, unregister %.1f ms, "
++                     "wait %.1f ms, rotation %.1f ms\n",
++                     (long long) dax_rotations_, reg_ms, unreg_ms, wait_ms, ms_since(t_rot));
 +    std::fflush(stderr);
 +    return true;
 +}
@@ -725,7 +776,7 @@ index 4a872e8..9426f6a 100644
  }
  
  bool FileExpertSource::pcie_layer(int64_t layer) const {
-@@ -6309,6 +6703,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -6309,6 +6731,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
      return lay.blob_offset(layer, expert) + lay.blob_bytes(layer) <= pinned_bytes_;
  }
  

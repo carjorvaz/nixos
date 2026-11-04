@@ -279,6 +279,21 @@ config screen (routed stream, prefill chunks, `--spec 8`, `--lookup-max-t`,
 k8v4, sampling card0) adopted nothing; the results are in
 `docs/exec-plans/active/strata-tuning-next.md`, "Round 2 campaign results".
 
+Generation 102 (2026-11-04) keeps the same run config and engine lineage and adds the log-only
+`STRATA_DAX_TIMING` instrumentation to the DAX rotation (the two-window pipelining experiment was
+measured and rejected: +1.66%/+4.13% read on 4.2k/8.3k, -5.43% on 26k, rotations 9->19 and a
+deterministic 26k answer-sha drift; the timing seam is what measured it and stays default-off).
+It also deploys `profiles/nixos/strata-telemetry.nix` (15 s `/metrics` scraper writing
+`/persist/strata/metrics/YYYY-MM-DD.jsonl`, 14-day prune, journal warnings on decode drift, two
+consecutive scrape failures, GPU >=82 C and conversation-cache eviction bursts) and the
+repeated-key merges that make `scripts/validate` pass again. Engine
+`/nix/store/ixssrl2q9qihzvl0xwhrp3iia9vx5fhf-strata-engine-0.1.56`, system
+`/nix/store/ppprl8ix6cd49k7lp2nzijzgks8sb61z-nixos-system-tiberius-...`; service healthy, smoke
+completion, 7,859 slots / elastic K/V / DFlash2 / 5.52 GiB DAX. The quality harness for
+answer-changing arms is now `/data/eval320/` (320 verified items, paired McNemar, fixed-corpus
+logprob/PPL gate): generation-101 baseline 186/320 and 191/320 with 19 same-stack flips (5.9%,
+kappa 0.877), i.e. a ~2.8 pp net edge is detectable - eval80 remains a guardrail only.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

@@ -285,54 +285,55 @@ in
     options edns0 trust-ad
   '';
 
-  systemd.services.postfix.serviceConfig.BindReadOnlyPaths = [
-    "/etc/postfix-resolv.conf:/run/systemd/resolve/stub-resolv.conf"
-  ];
+  systemd.services = {
+    postfix = {
+      serviceConfig = {
+        BindReadOnlyPaths = [
+          "/etc/postfix-resolv.conf:/run/systemd/resolve/stub-resolv.conf"
+        ];
+        OOMScoreAdjust = -800;
+        ManagedOOMPreference = "avoid";
+      };
+      # rspamd is Required by postfix, so a dead rspamd stops postfix. Pull
+      # postfix back up whenever rspamd starts again.
+      wantedBy = [
+        "multi-user.target"
+        "rspamd.service"
+      ];
+    };
 
-  systemd.services.rspamd = {
-    after = [
-      "blocky.service"
-      "unbound.service"
-    ];
-    wants = [
-      "blocky.service"
-      "unbound.service"
-    ];
-    # Do not give up while the Required redis instance is coming back.
-    startLimitIntervalSec = 0;
-    serviceConfig = {
-      OOMScoreAdjust = -800;
-      ManagedOOMPreference = "avoid";
+    rspamd = {
+      after = [
+        "blocky.service"
+        "unbound.service"
+      ];
+      wants = [
+        "blocky.service"
+        "unbound.service"
+      ];
+      # Do not give up while the Required redis instance is coming back.
+      startLimitIntervalSec = 0;
+      serviceConfig = {
+        OOMScoreAdjust = -800;
+        ManagedOOMPreference = "avoid";
+        RestartSec = "2s";
+      };
+    };
+
+    # simple-nixos-mailserver leaves redis-rspamd at Restart=no. One OOM kill
+    # then stops rspamd (Requires) and postfix (Requires), and mail stays down
+    # until someone notices.
+    redis-rspamd.serviceConfig = {
+      Restart = "always";
       RestartSec = "2s";
-    };
-  };
-
-  # simple-nixos-mailserver leaves redis-rspamd at Restart=no. One OOM kill
-  # then stops rspamd (Requires) and postfix (Requires), and mail stays down
-  # until someone notices.
-  systemd.services.redis-rspamd.serviceConfig = {
-    Restart = "always";
-    RestartSec = "2s";
-    OOMScoreAdjust = -800;
-    ManagedOOMPreference = "avoid";
-  };
-
-  systemd.services.postfix = {
-    # rspamd is Required by postfix, so a dead rspamd stops postfix. Pull
-    # postfix back up whenever rspamd starts again.
-    wantedBy = [
-      "multi-user.target"
-      "rspamd.service"
-    ];
-    serviceConfig = {
       OOMScoreAdjust = -800;
       ManagedOOMPreference = "avoid";
     };
-  };
 
-  systemd.services.dovecot.serviceConfig = {
-    OOMScoreAdjust = -800;
-    ManagedOOMPreference = "avoid";
+    dovecot.serviceConfig = {
+      OOMScoreAdjust = -800;
+      ManagedOOMPreference = "avoid";
+    };
   };
 
   environment.persistence."/persist".directories = [
