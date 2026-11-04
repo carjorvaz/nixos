@@ -294,6 +294,18 @@ answer-changing arms is now `/data/eval320/` (320 verified items, paired McNemar
 logprob/PPL gate): generation-101 baseline 186/320 and 191/320 with 19 same-stack flips (5.9%,
 kappa 0.877), i.e. a ~2.8 pp net edge is detectable - eval80 remains a guardrail only.
 
+Round 4 (2026-11-04) then screened the remaining flag families in two isolated windows and kept the
+config unchanged: `STRATA_ROUTE_PRIOR=1.35` lost 6.29% (L-live) / 7.54% (P2) decode
+(`STATUS=1.2`), `STRATA_ROUTE_TAIL_SKIP=8`/`9` lost 4.6-13.5% across the cells (`7` stays) - the
+routing arms reran L-live onto an alternate continuation whose draft acceptance fell from 98.8% to
+~84.5% - and the conversation/prompt-cache probe found the deployed settings already keeping 5/5
+turn-2 prefixes at 98.5% reused tokens with no pressure refusals in the isolated window
+(`--prompt-cache 3` and a 1024 MiB/3-slot cache did not beat it). The next patch is streamed
+session RESTORE, designed against the pin: two passes over the session file, no format change, a
+250k restore's peak host RAM drops from 3,727 MiB to ~260 MB; an adjacent bug (RESTORE never resets
+the DFlash2 drafter after a rewind) is a separable two-line fix to land first. Details and evidence
+pointers: `docs/exec-plans/active/strata-tuning-next.md`, "Round 4 results".
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is
