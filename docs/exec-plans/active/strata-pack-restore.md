@@ -383,17 +383,19 @@ server versions default the family to qwen4exp), so #4590 does move tokens (the
 control differs from B), and upstream's other 0.1.56 engine changes - the
 verify/expert-grouped/gemm rewrites among them - move them too.  The divergence
 is accepted with the bump; `STRATA_PENALTY_PROMPT=1` is the documented window
-escape, not a parity switch.  Quality: the eval80 exact-answer set scores
-61/80 (A) against 58/80 (B) - arithmetic 19 vs 17, logic 10 vs 9, the other
-categories equal - a 3-task gap inside the set's binomial noise (1 sigma about
-5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
+escape, not a parity switch.  Quality: eval80 scores 61/80 (A) against 59/80
+(B, the fit-pinned MTP arm; the earlier 58/80 was measured before the fit pin,
+on a start with `--kv-resident 4096` and `--kv-grow` off) - arithmetic 19 vs 16
+and logic 10 vs 11 in that pair - 2 tasks, inside the set's binomial noise
+(1 sigma about 5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
 the serve-layer tool-call fixes and #4590, with the deterministic answer change
 recorded.  #4677 does not touch these cells: the stop-bound park fix is HIP-only
 (see the box note above), so the local park/restore work still has no upstream
 counterpart.
 DFlash2 (CUDA 8.6+) and the all-cards split engine (two or more cards) do not
 select for this card.  Two start-time checks on deploy: 0.2.10's serve runs
-`drafting.apply` (Auto must resolve to the MTP layer on sm_75) and
+`drafting.apply` (the chosen drafter must resolve as intended: MTP at the time
+of this check, DFlash2 after 2026-11-04) and
 `vram_fit.fit_start`, whose only CUDA knob is `--kv-resident` - a KV window
 turns `--kv-grow` off in the engine, so if the journal prints `KV window ...`
 the 262144 start lost the module's elastic-KV win and the fitter's estimate
@@ -448,10 +450,12 @@ temperature 0, but the serve layer still merged the qwen4exp card's
 `presence_penalty 1.5` (and top_p/top_k) for a non-thinking request, so
 "greedy" was the argmax of penalized logits, not the model's.  Removed the pin:
 requests that name no sampling get the card's values (non-thinking
-0.7 / 0.8 / 20 / 1.5, thinking 1.0 / 0.95 / 20).  One engine start, four
-request-level arms, eval80: greedy+penalty (the old default) 58/80, pure greedy
-(presence 0) 59/80, card 59/80, card without penalty 60/80 - all inside the
-set's binomial noise (1 sigma about 5.4), the repetition probe flat.  Campaigns
+0.7 / 0.8 / 20 / 1.5, thinking 1.0 / 0.95 / 20).  One engine start (fit-pinned,
+DFlash2), four request-level arms, eval80: greedy+penalty (the old default)
+58/80, pure greedy (presence 0) 60/80, card 59/80, card without penalty 63/80 -
+all inside the set's binomial noise (1 sigma about 5.4), the repetition probe
+flat.  The card preset is the upstream/owner choice; card-without-penalty's 63
+is one noise step and not the model card's recommendation.  Campaigns
 that need determinism send `temperature: 0` per request (`/data/ab25.py` now
 does).
 
@@ -472,6 +476,15 @@ ladder (22 GB card), and the Windows/AMD/Mac paths.  Already on: the Turing
 series, the residency router
 (1.2 here), BF16 tensor-core GEMMs, `--kv-grow`, `STRATA_KV_ROT`, the DAX
 window and the refill pin.
+
+Deployed as generation 100 (2026-11-04): the run config has no `sampling`
+block, `drafting = "dflash2"` and `user_args = [ "--kv-resident" "0" ]`;
+the start logs DFlash2 on the selected Q4_0-selector pack (no MTP layer),
+7,859 expert slots, `elastic K/V: 16384 of 262144`, and the DAX window at
+layers 0..5 / 5.52 GiB, with no `KV window` line from `fit_start` (its
+generic "short of GPU memory" note still prints).  Two identical creative
+requests returned different text, confirming the card sampling.  Generation
+99 was the same stack with the then-assumed PF switch; 98 the fit pin alone.
 
 ### Other 0.2.7 findings
 

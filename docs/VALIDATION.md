@@ -209,16 +209,20 @@ starts with `--kv-grow` and `--kv-resident 0`, logs `elastic K/V: 16384 of
 `short of GPU memory` line although nothing changes.  On this lane the engine is
 flat and its answers move.  Measured 2026-11-03 (production config, three
 counterbalanced fresh-engine runs per arm, ab26): reads -0.2% / -1.0% / -0.1% at
-4,252 / 3,477 / 26,134 tokens.  Greedy answers are bit-identical within each
-build but differ between 0.1.55 and 0.1.56 on the two short cells (the 26,134
-cell's 8 tokens match).  The cause is not a single change:
+4,252 / 3,477 / 26,134 tokens.  Greedy answers are bit-identical across each
+arm's runs but differ between 0.1.55 and 0.1.56 on the two short cells (the
+26,134 cell's 8 tokens match); the server layer matters as much as the engine -
+0.1.56 with the 0.1.56 server (M1) and with the 0.2.4.2 server (B) produce
+different answers.  The cause is not a single change:
 `data/expert-profile.bin` is byte-identical across the packages, and 0.1.56 with
 `STRATA_PENALTY_PROMPT=1` (the old window) does not reproduce 0.1.55 - it keeps
 B's 4,252 answer, gives a third 3,477 answer, and differs from B on 3,477 and
 26,134 - so #4590, which is live because the qwen4exp card puts
 `presence_penalty 1.5` on non-thinking requests while the config pins only
 temperature, and other 0.1.56 engine changes both move logits.  eval80 scores
-61/80 against 58/80, inside that set's binomial noise.  The bump is taken for the
+61/80 against 59/80 on the fit-pinned MTP arm (the earlier 58/80 was the pre-pin
+start, `--kv-resident 4096` with `--kv-grow` off), inside that set's binomial
+noise.  The bump is taken for the
 serve-layer tool-call fixes (#4701, #4663/#4700, #4751) and #4590, not for speed.
 Verified 2026-11-03: the Nix fetch hash matches, the three patches apply in
 order to the fetched tree (`patch -p1`) and produce a tree identical to the
@@ -233,14 +237,19 @@ from the pinned source and checked against its pinned SHA-256, and 3+3
 counterbalanced runs against the MTP keep prompts flat (+0.3% / -1.3% / -0.1%)
 while decode gains 4.8% / 4.7% / 3.9%; expert slots 7,859 against 7,762 and
 eval80 58/80 against 59/80.  The model card's sampling replaced the
-temperature-0 pin (eval80 58/59/59/60 over the four request-level arms, inside
-the set's noise); campaigns send `temperature: 0` per request.  Of the Turing
+temperature-0 pin (eval80 58/60/59/63 over the four request-level arms, one
+fit-pinned DFlash2 start, inside the set's noise); campaigns send
+`temperature: 0` per request.  Of the Turing
 opt-ins outside `STRATA_SM75_PERF`, `STRATA_PF_FUSED_SM75` is NOT carried: it is
 inert without `STRATA_PF_FUSED` (the native pack needs `requested()`), and with
 both set the reads were -2.5% / -0.9% / -0.3% with no fused-path line;
 `STRATA_PA_V2T` and `STRATA_SELECT_SIMT` changed answers with no consistent win
 and stay off; `--lookup-max-t 16` is flat.  Details and provenance:
 `docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
+Deployed as generation 100 on 2026-11-04: DFlash2 on the selector pack (no MTP
+layer), 7,859 expert slots, `elastic K/V: 16384 of 262144`, DAX 5.52 GiB, no
+`--kv-resident` injected; the config carries no `sampling` block and two
+identical creative requests returned different text.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last

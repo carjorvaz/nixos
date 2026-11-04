@@ -342,12 +342,12 @@ let
       # thinking 1.0 / 0.95 / 20 - as upstream's serve layer implements them
       # (`MODEL_CARD_SAMPLING`, and the family defaults to qwen4exp when the
       # config names none).  The old pin here was temperature 0, which made the
-      # lane greedy; measured 2026-11-04 (eval80, one engine start, request
-      # sampling overrides): greedy+penalty 58/80, pure greedy 59, card 59, card
-      # without penalty 60 - all inside the set's binomial noise (1 sigma about
-      # 5.4), and the repetition probe showed no cost.  A client that sends
-      # sampling keys still wins; campaigns that need determinism send
-      # temperature 0 per request.
+      # lane greedy; measured 2026-11-04 (eval80, one fit-pinned DFlash2 start,
+      # request sampling overrides): greedy+penalty 58/80, pure greedy 60, card
+      # 59, card without penalty 63 - all inside the set's binomial noise
+      # (1 sigma about 5.4), and the repetition probe showed no cost.  A client
+      # that sends sampling keys still wins; campaigns that need determinism
+      # send temperature 0 per request.
       log = "${cfg.stateDir}/strata-${cfg.model}.log";
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
