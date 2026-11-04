@@ -235,10 +235,11 @@ while decode gains 4.8% / 4.7% / 3.9%; expert slots 7,859 against 7,762 and
 eval80 58/80 against 59/80.  The model card's sampling replaced the
 temperature-0 pin (eval80 58/59/59/60 over the four request-level arms, inside
 the set's noise); campaigns send `temperature: 0` per request.  Of the Turing
-opt-ins outside `STRATA_SM75_PERF`, `STRATA_PF_FUSED_SM75=1` is adopted (+2.2%
-at 4,252 tokens, answers bit-identical), while `STRATA_PA_V2T` and
-`STRATA_SELECT_SIMT` changed answers with no consistent win and stay off;
-`--lookup-max-t 16` is flat.  Details and provenance:
+opt-ins outside `STRATA_SM75_PERF`, `STRATA_PF_FUSED_SM75` is NOT carried: it is
+inert without `STRATA_PF_FUSED` (the native pack needs `requested()`), and with
+both set the reads were -2.5% / -0.9% / -0.3% with no fused-path line;
+`STRATA_PA_V2T` and `STRATA_SELECT_SIMT` changed answers with no consistent win
+and stay off; `--lookup-max-t 16` is flat.  Details and provenance:
 `docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by

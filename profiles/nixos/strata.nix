@@ -390,15 +390,15 @@ let
         # added nothing on top of the series, and STRATA_ATTN_DAILY with
         # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
         STRATA_SM75_PERF = "1";
-        # The one numerics-changing Turing option that paid and stayed exact
-        # (measured 2026-11-04 with DFlash2 on, 2 runs an arm, alternating):
-        # the fused int8 prompt experts.  Prompt read at 4,252 tokens: 496.9
-        # against 486.0 tok/s (+2.2%; the arms' ranges 495.1-498.6 against
-        # 483.5-488.5); 3,477 and 26,134: +0.8% each; the answers are
-        # bit-identical on all three cells.  The other opt-ins outside the
-        # series (STRATA_PA_V2T, STRATA_SELECT_SIMT) changed the answers and
-        # showed no consistent win in the screen, so they stay off.
-        STRATA_PF_FUSED_SM75 = "1";
+        # STRATA_PF_FUSED_SM75 (the fused int8 prompt experts on Turing) is not
+        # carried: without STRATA_PF_FUSED it is inert on this native pack
+        # (requested() needs =1; the engine printed no fused-path line in the
+        # first screen), and with both set (2 runs an arm, 2026-11-04, DFlash2
+        # on) prompt read was -2.5% / -0.9% / -0.3% at 4,252 / 3,477 / 26,134
+        # with the answers identical and still no fused-path line.  The other
+        # opt-ins outside the series (STRATA_PA_V2T, STRATA_SELECT_SIMT) changed
+        # the answers and showed no consistent win in the screen, so they stay
+        # off too.
         # The 1 GiB resident host tier (--resident-budget-gib, STRATA_RESIDENT_PIN
         # and STRATA_RESIDENT_HEADROOM_GIB with it) is gone with hostTierGib = 0:
         # it is mutually exclusive with --kv-grow, and the elastic K/V above buys

@@ -456,17 +456,20 @@ that need determinism send `temperature: 0` per request (`/data/ab25.py` now
 does).
 
 **Other levers screened.**  The Turing opt-ins outside `STRATA_SM75_PERF`:
-`STRATA_PF_FUSED_SM75=1` (fused int8 prompt experts) is adopted - 2 runs an
-arm: 4,252 read 496.9 against 486.0 tok/s (+2.2%, ranges 495.1-498.6 against
-483.5-488.5), +0.8% on the other two cells, answers bit-identical.
-`STRATA_PA_V2T=1` and `STRATA_SELECT_SIMT=2` changed the answers and showed no
-consistent win in one run each, so they stay off; `--lookup-max-t 16` (default
-12) is flat.  Not applicable on this card: the all-cards split engine (2+
-cards), the parallel-request stack (`--batch`/`--parallel` >= 2; the lane
-serves one request), the 0.2.9 GDN tensor-core prompt kernels (`GDN_TC` is
-gated at compute capability 8+ in the engine; `GDN_CONVL2=2` is applied by the
-serve layer already), the 8 GB/128K ladder (22 GB card), and the
-Windows/AMD/Mac paths.  Already on: the Turing series, the residency router
+`STRATA_PF_FUSED_SM75=1` looked like +2.2% on the 4,252 cell in a first screen,
+but that arm was inert - the native pack takes the fused path only through
+`STRATA_PF_FUSED=1` (`requested()`), and the engine logged no fused-path line.
+With both flags set (2 runs an arm, alternating): read -2.5% / -0.9% / -0.3% at
+4,252 / 3,477 / 26,134, answers identical, and still no fused-path line, so
+neither flag is carried.  `STRATA_PA_V2T=1` and `STRATA_SELECT_SIMT=2` changed
+the answers and showed no consistent win in one run each, so they stay off;
+`--lookup-max-t 16` (default 12) is flat.  Not applicable on this card: the
+all-cards split engine (2+ cards), the parallel-request stack
+(`--batch`/`--parallel` >= 2; the lane serves one request), the 0.2.9 GDN
+tensor-core prompt kernels (`GDN_TC` is gated at compute capability 8+ in the
+engine; `GDN_CONVL2=2` is applied by the serve layer already), the 8 GB/128K
+ladder (22 GB card), and the Windows/AMD/Mac paths.  Already on: the Turing
+series, the residency router
 (1.2 here), BF16 tensor-core GEMMs, `--kv-grow`, `STRATA_KV_ROT`, the DAX
 window and the refill pin.
 
