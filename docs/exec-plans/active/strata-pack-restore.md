@@ -438,8 +438,10 @@ the MTP; read tok/s, decode tok/s):
 | 3,477 read / decode | 402.9 / 59.6 | 397.6 / 62.4 |
 | 26,134 read / 8 gen | 1,252.9 / 51.7 | 1,251.4 / 53.7 |
 
-Prompts flat (+0.3% / -1.3% / -0.1%), decode +4.8% / +4.7% / +3.9%; DFlash2
-accepts far more drafts (P1 52/67 against 49/72, P2 32/35 against 30/49) and
+Prompts flat (+0.3% / -1.3% / -0.1%), decode +4.8% / +4.7% / +3.9% (on the
+different generated sequences - 105 / 80 tokens against 85 / 61 - so this is
+the drafter's rate on that workload; per-token gen_ms/gen agrees, ~3-5%);
+DFlash2 accepts far more drafts (P1 52/67 against 49/72, P2 32/35 against 30/49) and
 frees the MTP layer's VRAM (7,859 expert slots against 7,762; drafter 492 MiB).
 eval80: 58/80 against the MTP's 59/80, inside the set's noise.  It serves one
 request at a time (the lane runs no `--batch`), and a missing pack falls back
@@ -466,8 +468,8 @@ but that arm was inert - the native pack takes the fused path only through
 With both flags set (2 runs an arm, alternating): read -2.5% / -0.9% / -0.3% at
 4,252 / 3,477 / 26,134, answers identical, and still no fused-path line, so
 neither flag is carried.  `STRATA_PA_V2T=1` and `STRATA_SELECT_SIMT=2` changed
-the answers and showed no consistent win in one run each, so they stay off;
-`--lookup-max-t 16` (default 12) is flat.  Not applicable on this card: the
+the answers and showed no consistent win in one run each, so they stay off.
+Not applicable on this card: the
 all-cards split engine (2+ cards), the parallel-request stack
 (`--batch`/`--parallel` >= 2; the lane serves one request), the 0.2.9 GDN
 tensor-core prompt kernels (`GDN_TC` is gated at compute capability 8+ in the
@@ -476,6 +478,21 @@ ladder (22 GB card), and the Windows/AMD/Mac paths.  Already on: the Turing
 series, the residency router
 (1.2 here), BF16 tensor-core GEMMs, `--kv-grow`, `STRATA_KV_ROT`, the DAX
 window and the refill pin.
+
+**NVIDIA tables that never reach sm_75.**  `nv_defaults.cpp` applies its
+answer-preserving stacks only on sm_86 / sm_60 / sm_121; none loads here.
+Their generic code paths were screened under DFlash2 (one run an arm, base
+runs bracketing): `STRATA_SIDE_MIXER=2` (P1/P2 +1.4 / +1.3%, 26,134 -3.1%),
+`STRATA_HC_UPMIX=1` (+1.6 / +1.5 / -0.4%), `STRATA_GR_UP75=1
+STRATA_GU_SWIGLU=1` (+0.9 / -1.6 / -0.4%) and `STRATA_CPU_IQ_ALL_EXACT1=1
+STRATA_B6_MMVQ_ROWS=1` (-1.3 / +1.6 / -0.5%) all sit inside the base runs'
+spread (P1 484.7-498.8, P2 399.0-405.8) with the answers identical, while
+`STRATA_ADAPT_NOWAIT=1 STRATA_ADAPT_LAG=2` changed the answers on all three
+cells - none is carried.  `STRATA_SPEC_COST=1` is MTP-only
+(`if (spec_cost && use_mtp)`) and inert with DFlash2.  Suffix drafting is
+already on: `suffix_draft` defaults to 3 and `--lookup-max-t` to 12 in this
+one-GPU 8-row CUDA build (the DFlash2 runs log `suffix drafts`); 16 measured
+flat.
 
 Deployed as generation 100 (2026-11-04): the run config has no `sampling`
 block, `drafting = "dflash2"` and `user_args = [ "--kv-resident" "0" ]`;

@@ -244,7 +244,11 @@ opt-ins outside `STRATA_SM75_PERF`, `STRATA_PF_FUSED_SM75` is NOT carried: it is
 inert without `STRATA_PF_FUSED` (the native pack needs `requested()`), and with
 both set the reads were -2.5% / -0.9% / -0.3% with no fused-path line;
 `STRATA_PA_V2T` and `STRATA_SELECT_SIMT` changed answers with no consistent win
-and stay off; `--lookup-max-t 16` is flat.  Details and provenance:
+and stay off.  The NVIDIA sm_86/sm_121 default tables never load on sm_75; their generic
+switches were screened and none is carried (ADAPT_NOWAIT/LAG changed the
+answers, the rest sat inside the base spread, SPEC_COST is MTP-only).  Suffix
+drafting is on by default (`suffix_draft` 3, `--lookup-max-t` 12) and active
+in the DFlash2 runs; 16 is flat.  Details and provenance:
 `docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
 Deployed as generation 100 on 2026-11-04: DFlash2 on the selector pack (no MTP
 layer), 7,859 expert slots, `elastic K/V: 16384 of 262144`, DAX 5.52 GiB, no
