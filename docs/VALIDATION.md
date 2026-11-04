@@ -248,7 +248,9 @@ and stay off.  The NVIDIA sm_86/sm_121 default tables never load on sm_75; their
 switches were screened and none is carried (ADAPT_NOWAIT/LAG changed the
 answers, the rest sat inside the base spread, SPEC_COST is MTP-only).  Suffix
 drafting is on by default (`suffix_draft` 3, `--lookup-max-t` 12) and active
-in the DFlash2 runs; 16 is flat.  Details and provenance:
+in the DFlash2 runs; 16 is flat.  The serve layer's `--draft-conf 0.8` was
+tested against 0.5 and 0.65 (2 runs each): no consistent read gain, mixed
+per-token decode, different answers - 0.8 stays.  Details and provenance:
 `docs/exec-plans/active/strata-pack-restore.md`, "Post-bump experiments".
 Deployed as generation 100 on 2026-11-04: DFlash2 on the selector pack (no MTP
 layer), 7,859 expert slots, `elastic K/V: 16384 of 262144`, DAX 5.52 GiB, no

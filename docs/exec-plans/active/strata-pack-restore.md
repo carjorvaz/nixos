@@ -492,7 +492,12 @@ cells - none is carried.  `STRATA_SPEC_COST=1` is MTP-only
 (`if (spec_cost && use_mtp)`) and inert with DFlash2.  Suffix drafting is
 already on: `suffix_draft` defaults to 3 and `--lookup-max-t` to 12 in this
 one-GPU 8-row CUDA build (the DFlash2 runs log `suffix drafts`); 16 measured
-flat.
+flat.  The serve layer picks `--draft-conf 0.8` from its slot estimate for
+this card; upstream's own slot table puts ~7.9k slots nearer 0.5, so 0.5 and
+0.65 were tested (2 runs each, alternating): reads within +0.7 / +0.3 / +0.3%
+and -0.3 / -1.6 / -0.1% (P1 / P2 / 26,134), per-token decode mixed (P1
+slower at both, P2 faster), and both change the answers (98/95 tokens against
+105/80), so the server's 0.8 stays.
 
 Deployed as generation 100 (2026-11-04): the run config has no `sampling`
 block, `drafting = "dflash2"` and `user_args = [ "--kv-resident" "0" ]`;
