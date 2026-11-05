@@ -623,6 +623,36 @@ redownloadable, old pack rebuildable from them); coder lane needs its own PLE ag
 `/data/round9/` (baseline, iq3_xxs, iq2_xs; item-level JSON + compare summaries), speed reports in
 `/tmp/strata-tune/round9-speed-results.md` and `/tmp/round9-speed/`.
 
+**Rollback source (verified 2026-11-05):** old model is
+`ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`, `IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf`
+(54,817,524,224 B, LFS sha256 `4c1eb2ce...`) and
+`...-00002-of-00002.gguf` (28,800,138,432 B, LFS sha256 `316b46f3...`; this shard is both the old
+shared PLE and the coder lane's PLE). Rollback: download both, put shard 1 under
+`/data/strata-models/IQ3_S/` and the PLE under `/optane/strata-data/ple/` under the old name, revert
+`lanes.iq3-s` (pack `iq3_s`, models `IQ3_S`, old shard1, no `midShards`, old `pleShard`/`pleFile`),
+rebuild `pack` with `tools/iq_pack.py --gguf <shard1> --out /optane/strata-data/packs/iq3_s
+--experts-bin` (GSQ does not need `--compat-bf16`), and `nixos-rebuild switch`. The coder lane stays
+unavailable unless its own IQ1_M pack/model are restored as well; the module assertion documents
+both.
+
+### Round 10 follow-ups (2026-11-05, same day)
+
+- **DFlash2 knob sweep on UD-IQ2_XS** (the pack's L-live fresh acceptance fell 98.1 % -> 85.1 %):
+  eight fresh-engine starts with the live config and only `--spec`/`--draft-conf` changed. The
+  acceptance loss is a **spec-window effect, not a confidence one**: at spec 6, lowering draft-conf
+  0.8 -> 0.65 -> 0.5 does not recover acceptance (85.1 / 84.4 / 84.1 %) and costs 0.5-1 % decode;
+  `--spec 4` at conf 0.8 recovers acceptance to **91.6 % (+6.5 pp)** but decode is **-1.2 %**
+  (109.65 -> 108.35 tok/s); `--spec 8` lowers acceptance further. Nothing beat the deployed
+  (spec 6, draft-conf 0.8) decode, and all variants generated the identical L-live text
+  (51d49971...), so **no change was adopted**; a drafter refit could recover some decode but is not
+  worth it for the measured window. Report: `/tmp/strata-tune/round10-sweep-results.md`,
+  `/data/round10/`.
+- **Coder lane**: marked unavailable in the module with an assertion carrying the restore procedure
+  (its pack, model shards and the shared old PLE were removed by the round-9 switch); rollback
+  source and rebuild steps for the old IQ3_S pack are recorded below.
+- **Rollback source verified** (see above): `ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` IQ3_S
+  shards with their LFS sha256s, plus the `iq_pack.py` rebuild + lane-field revert steps.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -878,6 +908,11 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   no DAX failures, 8,898 cache slots; DFlash2 acceptance 85 % vs 98 %. Adopted IQ2_XS and deployed
   as generation 109; lane config gained midShards/pleShard/pleFile for 3-shard models. Old source
   GGUFs/PLE deleted (redownloadable); coder lane PLE currently missing (follow-up).
+- **2026-11-05, round 10 follow-ups**: DFlash2 spec/draft-conf sweep on the UD pack (8 variants):
+  acceptance loss is spec-window-driven (spec 4 -> 91.6 % acceptance, -1.2 % decode; confidence
+  knob has no effect; identical L-live text across variants) - no knob change adopted. Coder lane
+  marked unavailable via a module assertion with its restore procedure; rollback source URLs/LFS
+  hashes and the IQ3_S pack rebuild steps recorded.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,

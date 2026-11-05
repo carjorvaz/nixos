@@ -733,15 +733,15 @@ in
       ];
       default = "iq3-s";
       description = ''
-        Which lane to serve.  `iq3-s` is the quality lane and the default: the
-        original IQ3_S pack (24,576 experts, "matches the full model") and the
-        one the box serves.  `coder` is the low-footprint alternative (IQ1_M,
-        half the experts, 23.4 GiB pack); measured 2026-10-03 at 131072 context
-        it does 1.73x / 1.12x the prefill and 1.66x / 1.63x the decode of iq3-s
-        (790.7 / 1129.9 tok/s prefill, 39.6 / 34.3 tok/s decode at 4344 / 27575
-        tokens at 94.1 / 91.3% hit), at the cost of the documented quality trade
-        (91.3% of the full model's SWE-bench Verified, weaker outside code
-        including CJK).  Not taken here on purpose.
+        Which lane to serve.  `iq3-s` is the only provisioned lane and the
+        default: since round 9 (2026-11-05) it serves the Unsloth Dynamic V3.1
+        UD-IQ2_XS pack (IQ2_S experts, 39.38 GiB experts.bin, 8,898 cache
+        slots) instead of Qwen's GSQ-RCO IQ3_S pack - measured eval320 quality
+        parity with the old pack and prefill read -14.8 % P1 / -11.5 % P8K /
+        -16.3 % L-live, decode +4.1 %.  `coder` is the old low-footprint IQ1_M
+        alternative; it is NOT provisioned on this box (its pack, model shards
+        and shared PLE were removed by that switch), and selecting it trips an
+        assertion with the restore procedure.
       '';
     };
 
@@ -755,13 +755,14 @@ in
       type = lib.types.str;
       default = "/data/strata-models";
       description = ''
-        Root of the raw shard directories.  Each lane's directory holds shard 1
-        ONLY, under its own `-00001-of-00002.gguf` name; the service symlinks it
-        (and the shared PLE shard) into stateDir/native/<lane>/ on every start,
-        because upstream's gguf_split_paths() makes a missing sibling shard fatal
-        and refuses a shard file opened as a whole model.  Shard 2 is fed in
-        through --ple-gguf from that same directory, so the engine's shard list
-        names it exactly once.
+        Root of the raw shard directories.  Each lane's directory holds its model
+        shards under their real split names; the service symlinks shard 1, the
+        lane's middle shards (lane.midShards) and the shared PLE shard into
+        stateDir/native/<lane>/ on every start, because upstream's
+        gguf_split_paths() makes a missing sibling shard fatal and refuses a
+        shard file opened as a whole model.  The PLE shard is fed in through
+        --ple-gguf from that same directory, so the engine's shard list names it
+        exactly once.
       '';
     };
 
@@ -872,6 +873,24 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.model != "coder";
+        message = ''
+          The coder lane is not provisioned on tiberius.  Round 9 (2026-11-05)
+          switched the served pack to Unsloth UD-IQ2_XS and removed the coder
+          lane's pack (coder-iq1_m), its model shards (/data/strata-models/
+          coder-IQ1_M) and the GSQ-RCO IQ3_S shard-2 PLE it shared.  Keep
+          services.tiberius-strata.model = "iq3-s".  To restore the coder lane:
+          download ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF IQ1_M
+          shards 1-2 and ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF IQ3_S
+          shard 2 (the PLE), rebuild its pack with tools/iq_pack.py --experts-bin
+          --compat-bf16, then restore lanes.coder.pleFile/shard fields before
+          selecting it.
+        '';
+      }
+    ];
+
     environment.systemPackages = [
       cfg.package
       pkgs.libndctl

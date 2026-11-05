@@ -103,6 +103,13 @@ removes the DAX registration fallbacks and raises the expert cache (7,859 -> 8,8
 (+1.4 pp quality signal, no speed gain) is kept as an optional quality-first alternative but was not
 chosen: its would-be quality edge is not significant and its speed is neutral-to-worse.
 
+A follow-up knob sweep on the UD pack (eight fresh-engine starts, only `--spec`/`--draft-conf`
+changed) found the L-live acceptance loss is a spec-window effect, not confidence: spec 4 at
+conf 0.8 recovers 85.1 % -> 91.6 % acceptance but costs 1.2 % decode, and no setting beat the
+deployed (spec 6, conf 0.8) decode; all variants produced the identical L-live text, so no knob
+change was adopted. A drafter refit could recover decode but is not justified by the measured
+window for now.
+
 Deployment (generation 109): `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PLE shard 3 under
 `/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the NixOS lane config gained
 `midShards`/`pleShard`/`pleFile` fields for 3-shard models and links all three shards into the

@@ -409,7 +409,12 @@ model name unchanged; service healthy on both doors, expert cache 8,898 slots, w
 telemetry active, no Xid, boot default re-set to 109. The old GSQ-RCO IQ3_S source GGUFs/PLE were
 deleted to make room (redownloadable; old pack rebuildable from them) and the coder lane's shared PLE
 is consequently missing until restored (follow-up). See `unsloth-dynamic-v31-assessment.md` and the
-round-9 section of the plan for the full tables and caveats.
+round-9 section of the plan for the full tables and caveats. Rollback source verified: the old
+model is `ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` IQ3_S shard 1 (54,817,524,224 B, LFS sha256
+`4c1eb2ce...`) and shard 2 (28,800,138,432 B, LFS sha256 `316b46f3...`, also the old shared PLE);
+the plan records the re-download + `iq_pack.py` rebuild + lane-field revert steps. The coder lane is
+explicitly unavailable in the module now (assertion with the restore procedure) because its pack,
+model shards and shared PLE were removed by this switch.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
