@@ -59,6 +59,14 @@
 #   layers+1 format byte-identical; a file with the other layer count is refused (config identity already separates
 #   the lanes).  Format v1 untouched.
 #
+# REGENERATED 2026-11-05 (round 6, HYGIENE ONLY): the four "payload ends early" over-read guards that the 1128b6c9
+# build carried in conversation_file.cpp (In::raw, In::skip, and both spans of stream_impl's K/V stream_part) were
+# accidentally dropped by a debug-instrumentation strip while fixing the streamed restore before 829b20ec; they are
+# restored here verbatim (a span that exceeds the remaining payload bytes is refused at once instead of relying only
+# on the final left!=0 / IO check), and conversation_file.cpp's final newline is restored.  Nothing else changes: the
+# streamed RESTORE, the draft-optional SAVE/RESTORE and the df2.reset() after a restore are byte-identical to
+# 829b20ec (verified against the deployed tree: only that file's guard lines differ).
+#
 # Four changes, in one patch because the first two interleave in the same regions of
 # expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; changes 3-4 are independent (the park fix:
 # one function in generate.cpp + two methods in conversation_cache.hpp; the streamed restore:
@@ -457,7 +465,7 @@ index ca325ae..117d881 100644
      /// Prefix pinning: the old rule (device_alias(layer, 0)); pin by need: at least one pinned range in the layer.
      bool pcie_layer(int64_t layer) const override;
 diff --git a/src/core/conversation_file.cpp b/src/core/conversation_file.cpp
-index 24291be..c08ac70 100644
+index 24291be..4e238a7 100644
 --- a/src/core/conversation_file.cpp
 +++ b/src/core/conversation_file.cpp
 @@ -239,6 +239,13 @@ public:
@@ -487,15 +495,7 @@ index 24291be..c08ac70 100644
      bool truncate(uint64_t n) {
          if (::ftruncate(fd_, (off_t) n) == 0) return true;
          kind_ = errno_kind(errno);
-@@ -718,7 +731,6 @@ struct In {
-     size_t kv_layer = 0;
-     bool fail(const std::string& m) { if (error.empty()) error = "session file: " + m; return false; }
-     bool raw(void* p, size_t c) {
--        if (c > left) return fail("payload ends early");
-         if (c && !f->read(p, c)) { kind = f->kind(); return fail("read error: " + f->error()); }
-         hash.update(p, c);
-         left -= c;
-@@ -749,6 +761,56 @@ struct In {
+@@ -749,6 +762,59 @@ struct In {
          b.resize((size_t) n);
          return b.visit(0, b.size(), [&](uint8_t* p, size_t c, size_t) { return raw(p, c); });
      }
@@ -507,6 +507,7 @@ index 24291be..c08ac70 100644
 +    bool touched = false;
 +    std::string sink_error;
 +    bool skip(uint64_t c) {
++        if (c > left) return fail("payload ends early");
 +        while (c) {
 +            const size_t n = (size_t) std::min<uint64_t>(c, scratch_size);
 +            if (!f->read(scratch, n)) { kind = f->kind(); return fail("read error: " + f->error()); }
@@ -533,8 +534,10 @@ index 24291be..c08ac70 100644
 +    bool stream_part(size_t part, uint64_t n, uint64_t& offset) {
 +        if (sink == nullptr) return fail("streamed restore: no sink for this layer");
 +        if (sink->sizes[part] != n) return fail("saved K/V part size does not match this engine");
++        if (n > left) return fail("payload ends early");
 +        while (n) {
 +            const size_t c = (size_t) std::min<uint64_t>(n, scratch_size);
++            if (c > left) return fail("payload ends early");
 +            if (!f->read(scratch, c)) { kind = f->kind(); return fail("read error: " + f->error()); }
 +            hash.update(scratch, c);
 +            left -= c;
@@ -552,7 +555,7 @@ index 24291be..c08ac70 100644
  };
  
  bool get_checkpoint(In& in, ConversationCheckpoint& c) {
-@@ -1170,6 +1232,301 @@ bool session_file_write(const std::string& path, const SavedConversation& image,
+@@ -1170,6 +1236,301 @@ bool session_file_write(const std::string& path, const SavedConversation& image,
      return write_guarded(path, image, nullptr, id, bytes, error, options, status);
  }
  
@@ -854,7 +857,7 @@ index 24291be..c08ac70 100644
  namespace {
  bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConversation& image,
                 size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus& st) {
-@@ -1236,8 +1593,29 @@ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConv
+@@ -1236,8 +1597,29 @@ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConv
      st.error = SessionError::none;
      return true;
  }
@@ -884,13 +887,6 @@ index 24291be..c08ac70 100644
  bool session_file_read(const std::string& path, const SessionFileIdentity& id, SavedConversation& image,
                         size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus* status) {
      SessionStatus st;
-@@ -1253,4 +1631,4 @@ bool session_file_read(const std::string& path, const SessionFileIdentity& id, S
-     return ok;
- }
- 
--} // namespace strata::core
-+} // namespace strata::core
-\ No newline at end of file
 diff --git a/src/core/conversation_file_test.cpp b/src/core/conversation_file_test.cpp
 index fd85f2c..f95bd76 100644
 --- a/src/core/conversation_file_test.cpp

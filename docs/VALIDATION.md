@@ -321,6 +321,19 @@ active, start line unchanged (7,859 slots / elastic K/V / DFlash2 / 5.52 GiB DAX
 "Disk sessions measured" numbers in `strata-pack-restore.md` were MTP-lane measurements and are
 annotated there.
 
+Generation 104 (2026-11-05) is a hygiene regeneration of the same patch: the four "payload ends
+early" over-read guards and `conversation_file.cpp`'s final newline, accepted as round-5 follow-ups,
+are restored - the delta is exactly one file (4 guard lines + newline) and no behaviour change.
+Host-only tests 214/214 and 4,842 checks pass; a 2m21s isolated smoke window re-ran the 50k
+SAVE/restart/streamed-RESTORE path (sha equal, 1,459.7 ms), corrupt/truncated/header refusals
+(SERR invalid, same pid, next request ok) and the park spot check. Engine
+`/nix/store/sz2dwc0kaw5ypf1037agwg5cigbfxly2-strata-engine-0.1.56`, system
+`/nix/store/j73nq77fyzzsl79mxwyf0zjk14jms43s-...`. Experiment row 9 (VRAM reserve geometry) was
+closed without a window with its rationale recorded in the plan; the external Turing-unlock project
+was assessed and deliberately not attempted on this hardware
+(`docs/exec-plans/active/turing-unlock-assessment.md`), and the pmem park-spill design was completed
+for the next round.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

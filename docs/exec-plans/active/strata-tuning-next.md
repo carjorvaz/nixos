@@ -1,13 +1,14 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, rounds 2-5 - campaign, park fix, measurement/telemetry, flag cleanup and the
-streamed session RESTORE round done 2026-11-04** (generation 103). Round 4 adopted nothing (run
-config unchanged); round 5 landed the streamed RESTORE + draft-optional SAVE/RESTORE + DFlash2
-drafter reset and found/fixed a pre-existing SAVE bug on the deployed lane. Open: experiment row 9
-(reserve geometry), patch roadmap items 4-5 (pmem spill deferred, CUDA #4677), per-window counters,
-and the two accepted NITs from the round-5 patch (over-read guards + final newline to restore on
-the next regeneration). DAX rotation pipelining was measured and rejected, with its log-only
-timing seam kept.
+Status: **active, rounds 2-6 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
+session RESTORE and the patch-hygiene round done 2026-11-04/05** (generation 104). Round 4 adopted
+nothing; round 5 landed the streamed RESTORE + draft-optional SAVE/RESTORE + DFlash2 drafter reset
+and found/fixed a pre-existing SAVE bug; round 6 restored the four over-read guards + final newline
+accepted as round-5 follow-ups (one-file delta, deployed as generation 104), closed experiment row
+9 with a recorded rationale, completed the Turing-unlock assessment (`turing-unlock-assessment.md`,
+decision: do not attempt on this hardware) and produced the pmem-park design for a future round.
+Open: patch roadmap items 4-5 (pmem spill designed, CUDA #4677), per-window counters. DAX rotation
+pipelining was measured and rejected, with its log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
@@ -83,7 +84,7 @@ answer sha, means with [min-max], production restored by trap. *Bitwise* = the b
 | 6 | tail-skip | `STRATA_ROUTE_TAIL_SKIP=8`, then `9` (deployed 7; 96.6% of missed entries are already skipped at rank 7) | P1/P2/P27 | 2-3 bracketed, promote to 3+ if >=2% | 0-3% decode | answer-drift (KL rises from the adopted 0.0058 baseline; acceptance can fall at high cache %) | adopt only if decode >=2% on >=2 cells with eval80 not >8 worse and needle 3/3 | measured 2026-11-04: skip8 -5.3/-4.6/-10.7/-7.3% and skip9 -4.9/-10.4/-13.5/-4.7% on P1/P2/L-live/P27d; 0/3 decision cells >=+2%; **closed, 7 stays** |
 | 7 | route-prior 1.35 | 1.2 (deployed) vs 1.35 | P1/P2/P27 | 2 campaign + full quality battery (eval80 x2, 9-turn continuation x2, 27.8k needle 3/3) | between 1.2 (clean) and 1.5 (26k 77.8 vs 61.4 tok/s but degenerated on the 9-turn probe); 1.35 unmeasured | answer-drift by construction; degeneration is the failure mode | adopt only if decode +>=5% on >=2 cells AND needle 3/3, repetition clean 2/2, eval80 within 1 sigma; else close the family | measured 2026-11-04: L-live -6.29%, P2 -7.54%, P27d +2.23% (0/3 cells >=+5%); the acceptance drop on the alternate continuation (98.8 -> 84.1%) explains it; **closed, 1.2 stays** |
 | 8 | conversation-cache sizing | 2048/4/min-free 384/park-gain 512 (deployed); 1024/3/384/512; 2048/4/512/512 | 2.4k isolation probe interleaved with a 19.4k foreign request (5 probes/arm) + one 20-request mixed run | 1 engine start, 5 probes | refused-park lines -50% (893 now), reuse share within 2 pts; RAM pressure is the binding term, not the flags | no answer change (cache policy only); OOM risk below the 384 MiB floor - never test lower | reduce the budget only if refusals drop >=50% with reused share within 2 pts | measured 2026-11-04 with prompt-cache 3 and cache1024: deployed 0 pressure refusals in the isolated window and 5/5 turn-2 prefixes at 98.5% reuse; the narrowed arms never beat that (promptcache3 had the only refusal); **closed, deployed settings stay** - production pressure is a RAM-capacity effect, not a cache-flag one |
-| 9 | reserve geometry | auto (deployed), `--vram-reserve-mib 0`, `512` (768 was closed at ~6.2k slots: -2 hit points) | P1/P2/P27 | 2-3 | <=1%; confirm the 7,859-slot / 777 MiB-free regime has not re-opened the #2065 paging state | bitwise paths, but a slot/residency change can drift answers (ab11) - sha gate; VRAM OOM at reserve 0 | keep deployed unless >=1% on >=2 cells with vram_free >=400 MiB | not run 2026-11-04; still open |
+| 9 | reserve geometry | auto (deployed), `--vram-reserve-mib 0`, `512` (768 was closed at ~6.2k slots: -2 hit points) | P1/P2/P27 | 2-3 | <=1%; confirm the 7,859-slot / 777 MiB-free regime has not re-opened the #2065 paging state | bitwise paths, but a slot/residency change can drift answers (ab11) - sha gate; VRAM OOM at reserve 0 | keep deployed unless >=1% on >=2 cells with vram_free >=400 MiB | closed 2026-11-05 without a window: the prior 768 MiB arm cost 2 hit points by taking ~400 slots, the deployed start reports 777 MiB free with no `KV window`/paging line in every campaign/deployment since, and the expected effect (<=1%) is below this harness's measurement floor; the auto default is kept. Reopen only if a start ever prints the paging/KV-window warning again |
 
 Rows 1-2 were campaign block A, 3-5 block B on 2026-11-04 (rows 6-9 deferred); the measured
 verdicts are in "Round 2 campaign results" below. No adopted arm and no partially closed sub-arm
@@ -348,6 +349,65 @@ generation 103** (system `/nix/store/56fx2bkqqbpq5bc7z973z288n8d9f517-...`, engi
 the patch: restore the four "payload ends early" over-read guards and the missing final newline
 from `conversation_file.cpp` (hardening/style only; over-reads still refuse via `left != 0`/IO).
 
+## Round 6 results (2026-11-05)
+
+Purpose: close the last two loose ends before the next large patch - the accepted patch-hygiene
+follow-ups and experiment row 9 - record the external Turing-unlock assessment, and design the
+remaining large lever (pmem park spill). No hardware change; production stays on the same
+configuration.
+
+### Patch hygiene (deployed as generation 104)
+
+Regenerated `tiberius.patch` to restore the four "payload ends early" over-read guards
+(`In::raw`, `In::skip`, and both streamed K/V spans) that were present at the round-5 review
+snapshot and accidentally dropped in the final cut, plus `conversation_file.cpp`'s missing final
+newline. Proven to be the *only* delta: full patch order on pristine `ffa80d73` vs the deployed
+generation-103 tree differs in exactly one file, by 4 guard lines + the newline. Patch sha
+`5c05df8b...`; host-only tests 214/214 + 4,842 checks; built
+`/nix/store/sz2dwc0k...-strata-engine-0.1.56`. A 2m21s isolated smoke window confirmed no
+behaviour change: 50k SAVE -> restart -> streamed RESTORE in 1,459.7 ms with the same greedy sha;
+corrupt/truncated/header all SERR invalid with the same pid and a working next request; the
+two-conversation park spot check restored 1,738 tokens with zero invalid-snapshot lines.
+**Deployed as generation 104** (system `/nix/store/j73nq77...`); service healthy, smoke answered,
+telemetry timer active, start line unchanged.
+
+### Experiment row 9 closed without a window
+
+`--vram-reserve-mib` geometry is closed by measurement-adjacent evidence rather than another
+production stop: the one prior arm (768 MiB) cost 2 hit points by taking ~400 slots, every start
+since reports 777 MiB free with no `KV window`/paging line, and the expected effect (<=1%) is below
+this harness's measurement floor. The auto default is kept; reopen only if a start ever prints the
+paging/KV-window warning. The matrix now has no open flag rows.
+
+### Turing-unlock assessment (external lever): do not attempt on tiberius
+
+Recorded in `docs/exec-plans/active/turing-unlock-assessment.md`. Upstream
+(github.com/haohervchb/Turing-unlock) is a volatile pre-OS EFI payload that raises FP16-in/
+FP32-accum MMA and integer IMLA4 from half to full rate on one specific ASUS TU102 card (1.996x MMA,
+1.769x cuBLAS GEMM in its own measurements; mining showed no gain; IMLA4 has no dedicated A/B). It
+cannot be run from the public repo: the build needs private firmware inputs (the test card's FWSEC,
+a Dell A14 root-bridge PE, pinned CMP-unlock blobs), and the runtime guards pin PCI BDF/device/
+subsystem/BAR0/firmware bytes to the original Alienware machine. tiberius differs at every one of
+those layers (`10de:1e04` / `1043:8687` / VBIOS 90.02.17.40.0E / 22 GB mod / TYAN board / systemd-boot
+/ driver 595). The upside for this engine is also bounded: dense FP16 tensor-core GEMMs are a few
+percent of prompt time and decode is verify-window bound; a generous bound is low single-digit
+percent of prompt read, with nothing on the measured fixed cost. Risk is a pre-OS DMA mutation of
+the only production GPU whose documented failure mode holds the box in UEFI and needs a full power
+cycle - on a 28-min-POST host with no spare card. Revisit only with a spare identical card + test
+rig, private firmware inputs, an upstream persistence/recovery wrapper, and a measured
+FP16/FP32-accum or IMLA4 bottleneck.
+
+### pmem park spill designed (next large patch)
+
+The design study (see roadmap item 4 and `/tmp/strata-tune/pmem-park-design.md`) recommends the
+adaptive hybrid: RAM parks unchanged, and a refused park is written as a v1 session file on
+`/optane` (the existing SAVE writer + the generation-103 streamed RESTORE) instead of being dropped,
+with a metadata-only parked-cache entry and a new tier gate. It converts the production failure
+mode - size-proportional RAM admission at ~4,276 MiB for 250k - into a constant capture plus the
+floor, so the logged refusals become file parks and subsequent turns reuse (164 s re-read at 250k
+replaced by a ~5 s restore). ~800-950 engine lines + tests, 15-20 min GPU window; the main risks are
+Optane thermal headroom and write volume. This is the next round's candidate.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -406,11 +466,24 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    window). Accepted follow-ups on the next regeneration: restore the four "payload ends early"
    over-read guards and `conversation_file.cpp`'s final newline. Design/results:
    `/tmp/strata-tune/stream-restore-design.md`, `stream-restore-results.md`.
-4. **pmem park spill - deferred, high complexity.** Parks are RAM-only by design (404 MiB for 2.4k,
-   4,276 MiB at 250k); a pmem-backed image on `/optane` (40 GB free, DAX-speed restore) would end
-   RAM-gated admission and survive a restart. Complexity: snapshot format/identity, mmap lifecycle,
-   partial-image validation, failure paths; overlaps the disk session format in item 3. Probe when
-   reopened: four conversations parked under pressure, restore latency/bytes, answer identity.
+4. **pmem park spill - designed 2026-11-05; next large patch candidate.** Design verdict: an
+   *adaptive hybrid* - keep the RAM park path byte-identical, and when the transactional pre-check
+   (or the parked-cache budget) refuses, write the park as a v1 session file on `/optane`
+   (XFS dax=always) with the existing SAVE writer (live + deepest/pinned checkpoint, K/V streamed
+   from the pools), insert a metadata-only file-tier entry (~2-3 MB), and restore it with the
+   generation-103 streamed RESTORE. That turns the size-proportional gate (4,276 MiB at 250k) into
+   a constant capture (~371 MiB) plus the floor, so the logged refusals become file parks and the
+   next turn reuses instead of re-reading (164 s at 250k). New settings: a park directory, a size
+   cap (~12 GiB), more slots and a free-space reserve; never evict a RAM entry for a file park;
+   `give_reuse` the donor. Pure mmap-arena (option a) was rejected: it moves only the K/V and the
+   live+checkpoint state still refuses long chains, for ~1.2-1.6k lines and no persistence. Estimated
+   ~800-950 engine lines + ~200 test lines over 6 files, 10-20 min build, 15-20 min GPU window.
+   Risks: Optane thermal headroom (media 77 C, controller 83 C vs 85 C critical), write volume from
+   ~3.6 GB files, and the ~7 GiB registered-memory cap (~6.3 GiB already used by the pack window)
+   ruling out cudaHostRegister for park pages - stage through the 16 MiB block. Probe: forced-pressure
+   two-conversation isolation, 100k/250k park+restore where today it refuses, VmHWM <= +400 MiB,
+   service-restart persistence, greedy sha parity, normal-park regression, corrupt/foreign refusal.
+   Design: `/tmp/strata-tune/pmem-park-design.md`.
 5. **CUDA port of upstream #4677 - behaviour.** `stop_bound` and both call sites sit inside
    `#if defined(STRATA_USE_HIP)`, so a CUDA verify window cannot commit-bound at an EOS inside it;
    removing the guard is ~20 lines plus a correctness run. Pointers: `generate.cpp:17403-17410`,
@@ -546,6 +619,11 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   MTP, cross-lane refusal, corrupt/truncated/header, round-trip, park regression, copy-failure
   seams all pass. Deployed as generation 103 at 21:44; service healthy, smoke answered, telemetry
   timer active. Accepted follow-ups: over-read guards + final newline next regeneration.
+- **2026-11-05, round 6 / hygiene**: regenerated the patch to restore the four over-read guards +
+  final newline (one-file delta), unit tests green, rebuilt (`sz2dwc0k...`), 2m21s isolated smoke
+  (50k restore sha equal, corrupt/truncated/header SERR invalid same-pid, park spot check clean),
+  deployed as generation 104. Row 9 closed without a window; Turing-unlock assessed (do not attempt
+  on this hardware); pmem-park design completed for the next round.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
-  `stream-restore-results.md`).
+  `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`).

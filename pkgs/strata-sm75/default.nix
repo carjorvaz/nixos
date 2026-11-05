@@ -218,9 +218,12 @@ stdenv.mkDerivation {
   #     mismatched file is refused).  RESTORE also invalidates the DFlash2 drafter
   #     before the session goes live (its slot shadow describes pre-restore K/V
   #     otherwise).  Deployed as generation 103 (system 56fx2bk..., engine
-  #     gv3vlx7ah...).  Accepted follow-ups for the next regeneration: the four "payload
-  #     ends early" over-read guards dropped in this cut and conversation_file.cpp's
-  #     final newline.  See /tmp/strata-tune/stream-restore-design.md and -results.md.
+  #     gv3vlx7ah...).  A hygiene regeneration then restored the four "payload ends
+  #     early" over-read guards (In::raw, In::skip and both streamed K/V spans) and
+  #     conversation_file.cpp's final newline that had been dropped in that cut - the
+  #     only delta: one file, 4 guard lines + the newline - and was deployed as
+  #     generation 104 (system j73nq77..., engine sz2dwc0k...).  See
+  #     /tmp/strata-tune/stream-restore-design.md, -results.md and hygiene-round6.md.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
