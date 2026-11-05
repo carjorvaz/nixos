@@ -21,9 +21,13 @@ log. Round 9 tested both Unsloth Dynamic V3.1 packs and switched production to U
 -14.8 % P1 / -11.5 % P8K / -16.3 % L-live, decode +4.1 %, the 39.38 GiB expert pack removes the DAX
 register fallbacks and raises the expert cache to 8,898 slots. The UD-IQ3_XXS arm measured +1.4 pp
 quality (not significant) with neutral speed and is kept as an optional quality-first alternative.
-Open: the DFlash2 drafter refit for the UD pack (its L-live acceptance fell 98 % -> 85 %), rollback
-pack reconstruction if ever needed, and the coder lane's own PLE. DAX rotation pipelining was measured and rejected,
-with its log-only timing seam kept.
+Open: the DFlash2 drafter refit for the UD pack (its L-live acceptance fell 98 % -> 85 %) and rollback
+pack reconstruction if ever needed.  The coder lane is **closed as not wanted** (owner, 2026-11-05): it
+is the IQ1_M half-expert (12,288 of 24,576), coding/tool/vision-pruned variant - fast (790.7 tok/s
+prefill at 4,344, 1.66x the decode) but 91.3 % of the full model's SWE-bench and weaker outside code
+including CJK, i.e. exactly the trade the owner does not want; its pack/shards/shared PLE stay deleted
+and it is not to be rebuilt unless asked.  DAX rotation pipelining was measured and rejected, with its
+log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
