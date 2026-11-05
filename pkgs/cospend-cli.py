@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Preview-first Cospend expense client for a least-privilege bot account."""
+"""Preview-first Cospend client for a least-privilege expense bot.
+
+Expenses (add/edit), balance reports, and category listing/copying are all
+preview-first. Category commits fail closed unless the bot holds temporary
+Maintainer access; the permanent bot contract stays Participant.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +28,8 @@ KEYCHAIN_ACCOUNT = "cospend-bot@cloud.vaz.one"
 KEYCHAIN_SERVICE = "omp-cospend-api"
 IDEMPOTENCY_PREFIX = "cospendctl:"
 CENT = Decimal("0.01")
+ACCESS_LEVEL_PARTICIPANT = 2
+ACCESS_LEVEL_MAINTAINER = 3
 
 
 class CospendError(RuntimeError):
@@ -375,6 +382,10 @@ class CospendClient:
         quoted = urllib.parse.quote(project_id, safe="")
         return int(self.request("POST", f"/projects/{quoted}/bills", payload))
 
+    def create_category(self, project_id: str, payload: dict[str, Any]) -> int:
+        quoted = urllib.parse.quote(project_id, safe="")
+        return int(self.request("POST", f"/projects/{quoted}/category", payload))
+
     def update_bill(
         self, project_id: str, bill_id: int, payload: dict[str, Any]
     ) -> int:
@@ -444,8 +455,119 @@ def choose_project(projects: list[dict[str, Any]], requested: str | None) -> dic
     return projects[0]
 
 
+def project_access_level(project: dict[str, Any]) -> int:
+    return int(project.get("myaccesslevel", 0))
+
+
+def project_categories(project: dict[str, Any]) -> list[dict[str, Any]]:
+    """Canonical, order-stable view of a project's categories."""
+    categories: list[dict[str, Any]] = []
+    for category in values(project.get("categories")):
+        try:
+            category_id = int(category["id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CospendError("Project category entry is malformed") from exc
+        categories.append(
+            {
+                "id": category_id,
+                "name": str(category.get("name") or ""),
+                "icon": category.get("icon"),
+                "color": category.get("color"),
+                "order": int(category.get("order") or 0),
+            }
+        )
+    return sorted(categories, key=lambda category: (category["order"], category["id"]))
+
+
+def category_pair(category: dict[str, Any]) -> tuple[str, str]:
+    """Display fields that must match for two categories to be equivalent."""
+    icon = "" if category.get("icon") is None else str(category["icon"])
+    color = "" if category.get("color") is None else str(category["color"]).casefold()
+    return (icon, color)
+
+
+def categories_by_name(
+    categories: list[dict[str, Any]], kind: str
+) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for category in categories:
+        key = normalize_text(category["name"])
+        if key in indexed:
+            raise CospendError(
+                f"{kind.capitalize()} project has duplicate category name "
+                f"{category['name']!r}; refusing ambiguous copy"
+            )
+        indexed[key] = category
+    return indexed
+
+
+def category_diff(
+    source_categories: list[dict[str, Any]],
+    target_categories: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (additions, conflicts, target extras); never edits or deletes."""
+    source = categories_by_name(source_categories, "source")
+    target = categories_by_name(target_categories, "target")
+    additions = [
+        category
+        for category in source_categories
+        if normalize_text(category["name"]) not in target
+    ]
+    conflicts = [
+        {
+            "name": source[key]["name"],
+            "source": category_pair(source[key]),
+            "target": category_pair(target[key]),
+        }
+        for key in source
+        if key in target and category_pair(source[key]) != category_pair(target[key])
+    ]
+    extras = [
+        category
+        for category in target_categories
+        if normalize_text(category["name"]) not in source
+    ]
+    return additions, conflicts, extras
+
+
+def categories_token(
+    target_project_id: str,
+    source_project_id: str,
+    additions: list[dict[str, Any]],
+) -> str:
+    payload = {
+        "target": target_project_id,
+        "source": source_project_id,
+        "additions": [
+            [normalize_text(category["name"]), category_pair(category), category["order"]]
+            for category in additions
+        ],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()[:20]
+
+
+def ensure_categories_readable(project: dict[str, Any]) -> None:
+    level = project_access_level(project)
+    if level not in (ACCESS_LEVEL_PARTICIPANT, ACCESS_LEVEL_MAINTAINER):
+        raise CospendError(
+            "Category operations require bot access Participant (2) or Maintainer "
+            f"(3); project has {level}"
+        )
+
+
+def ensure_categories_writable(project: dict[str, Any]) -> None:
+    level = project_access_level(project)
+    if level != ACCESS_LEVEL_MAINTAINER:
+        raise CospendError(
+            "Category changes require bot access exactly Maintainer (3); "
+            f"project has {level}. Temporarily raise the cospend-bot share to "
+            "Maintainer, re-run the commit, then revert it to Participant"
+        )
+
+
 def check_bot_contract(project: dict[str, Any]) -> list[dict[str, Any]]:
-    if int(project.get("myaccesslevel", 0)) != 2:
+    if project_access_level(project) != ACCESS_LEVEL_PARTICIPANT:
         raise CospendError(
             "Bot access must be exactly Participant (2); refusing broader or narrower access"
         )
@@ -461,11 +583,11 @@ def check_bot_contract(project: dict[str, Any]) -> list[dict[str, Any]]:
 
 def connect(
     args: argparse.Namespace,
-) -> tuple[CospendClient, dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[CospendClient, list[dict[str, Any]], dict[str, Any]]:
     password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
     client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
-    project = choose_project(client.projects(), args.project)
-    return client, project, check_bot_contract(project)
+    projects = client.projects()
+    return client, projects, choose_project(projects, args.project)
 
 
 def record_view(
@@ -494,9 +616,7 @@ def record_view(
 
 
 def run_balance(args: argparse.Namespace) -> int:
-    password = keychain_password(KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE)
-    client = CospendClient(DEFAULT_BASE_URL, "cospend-bot", password)
-    project = choose_project(client.projects(), args.project)
+    client, _, project = connect(args)
     check_bot_contract(project)
     members_by_id = {int(member["id"]): member for member in project.get("members", [])}
     bills = client.recent_bills(project["id"])
@@ -558,17 +678,19 @@ def run_balance(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Preview-first Cospend client: add or edit one expense, or report balances"
+            "Preview-first Cospend client: add or edit one expense, report "
+            "balances, or inspect/copy project categories"
         )
     )
     parser.add_argument(
         "mode",
         nargs="?",
-        choices=("add", "edit", "balance"),
+        choices=("add", "edit", "balance", "categories"),
         default="add",
         help=(
             "add (default): record one expense; edit: change one bill; "
-            "balance: read-only who-owes-whom report"
+            "balance: read-only who-owes-whom report; categories: list a "
+            "project's categories or copy missing ones from another project"
         ),
     )
     parser.add_argument("--description")
@@ -592,8 +714,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Omit to keep (edit) or leave empty (add); pass an empty string to clear",
     )
     parser.add_argument("--bill", type=int, help="Bill id to edit")
+    parser.add_argument(
+        "--copy-from",
+        metavar="PROJECT",
+        help=(
+            "categories mode: source project id or name. Only categories "
+            "missing from the target are added; existing target categories "
+            "are never edited or deleted. Preview is read-only; the commit "
+            "requires temporary Maintainer access for the bot"
+        ),
+    )
     parser.add_argument("--project")
-    parser.add_argument("--commit", metavar="PREVIEW_TOKEN")
+    parser.add_argument(
+        "--commit",
+        metavar="PREVIEW_TOKEN",
+        help=(
+            "Apply a previewed change; categories commits also require the "
+            "bot to hold temporary Maintainer access"
+        ),
+    )
     return parser
 
 
@@ -617,7 +756,8 @@ def run_add(args: argparse.Namespace) -> int:
     if not description:
         raise CospendError("Description must not be empty")
 
-    client, project, active_members = connect(args)
+    client, _, project = connect(args)
+    active_members = check_bot_contract(project)
     payer = resolve_named(active_members, args.payer, "payer")
     selected: list[dict[str, Any]] = []
     for query in args.owers:
@@ -736,7 +876,8 @@ def run_edit(args: argparse.Namespace) -> int:
     if all(value is None for value in change_flags):
         raise CospendError("Edit mode requires at least one change flag")
 
-    client, project, active_members = connect(args)
+    client, _, project = connect(args)
+    active_members = check_bot_contract(project)
     members_by_id = {
         int(member["id"]): member for member in project.get("members", [])
     }
@@ -859,6 +1000,160 @@ def run_edit(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_categories(args: argparse.Namespace) -> int:
+    client, projects, project = connect(args)
+    ensure_categories_readable(project)
+    target_categories = project_categories(project)
+
+    if args.copy_from is None:
+        if args.commit is not None:
+            raise CospendError("--commit requires --copy-from")
+        report = {
+            "status": "categories",
+            "project": project["name"],
+            "project_id": project["id"],
+            "access_level": project_access_level(project),
+            "count": len(target_categories),
+            "categories": target_categories,
+        }
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0
+
+    source = choose_project(projects, args.copy_from)
+    if source["id"] == project["id"]:
+        raise CospendError("Source and target project must be different")
+    source_categories = project_categories(source)
+    additions, conflicts, extras = category_diff(source_categories, target_categories)
+    in_sync = not additions and not conflicts
+    token = categories_token(project["id"], source["id"], additions)
+    preview = {
+        "status": "preview" if args.commit is None else "ready-to-commit",
+        "confirmation_token": token,
+        "project": project["name"],
+        "project_id": project["id"],
+        "source_project": source["name"],
+        "source_project_id": source["id"],
+        "access_level": project_access_level(project),
+        "in_sync": in_sync,
+        "to_add": [
+            {
+                "name": category["name"],
+                "icon": category["icon"],
+                "color": category["color"],
+                "order": category["order"],
+            }
+            for category in additions
+        ],
+        "conflicts": [
+            {
+                "name": conflict["name"],
+                "source_icon": conflict["source"][0],
+                "source_color": conflict["source"][1],
+                "target_icon": conflict["target"][0],
+                "target_color": conflict["target"][1],
+            }
+            for conflict in conflicts
+        ],
+        "extra_in_target": [category["name"] for category in extras],
+    }
+
+    if args.commit is None:
+        print(json.dumps(preview, indent=2, ensure_ascii=False))
+        return 0
+    if in_sync:
+        print(
+            json.dumps(
+                {
+                    "status": "already-in-sync",
+                    "project": project["name"],
+                    "project_id": project["id"],
+                    "count": len(target_categories),
+                }
+            )
+        )
+        return 0
+    if conflicts:
+        raise CospendError(
+            "Category conflicts must be resolved manually: "
+            + ", ".join(conflict["name"] for conflict in conflicts)
+        )
+    ensure_categories_writable(project)
+    if args.commit != token:
+        raise CospendError(
+            "Commit token does not match the current canonical payload"
+        )
+
+    added: list[dict[str, Any]] = []
+    try:
+        for category in additions:
+            payload = {
+                "name": category["name"],
+                "icon": category["icon"],
+                "color": category["color"],
+                "order": category["order"],
+            }
+            added.append(
+                {
+                    "id": client.create_category(project["id"], payload),
+                    "name": category["name"],
+                }
+            )
+    except CospendError:
+        current = project_categories(choose_project(client.projects(), project["id"]))
+        present = {normalize_text(category["name"]) for category in current}
+        missing = [
+            category["name"]
+            for category in additions
+            if normalize_text(category["name"]) not in present
+        ]
+        if not missing:
+            print(
+                json.dumps(
+                    {
+                        "status": "committed-after-ambiguous-response",
+                        "project": project["name"],
+                        "added": added,
+                    }
+                )
+            )
+            return 0
+        raise CospendError(
+            "Category copy interrupted; still missing: "
+            + ", ".join(missing)
+            + ". Re-run the preview to resume"
+        )
+
+    current = project_categories(choose_project(client.projects(), project["id"]))
+    current_by_name = {
+        normalize_text(category["name"]): category for category in current
+    }
+    broken = []
+    for category in additions:
+        stored = current_by_name.get(normalize_text(category["name"]))
+        if (
+            stored is None
+            or category_pair(stored) != category_pair(category)
+            or stored["order"] != category["order"]
+        ):
+            broken.append(category["name"])
+    if broken:
+        raise CospendError(
+            "Post-write verification failed for: " + ", ".join(broken)
+        )
+    print(
+        json.dumps(
+            {
+                "status": "committed",
+                "project": project["name"],
+                "project_id": project["id"],
+                "added": added,
+                "count": len(current),
+            }
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -866,6 +1161,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_balance(args)
         if args.mode == "edit":
             return run_edit(args)
+        if args.mode == "categories":
+            return run_categories(args)
         return run_add(args)
     except CospendError as exc:
         print(f"cospendctl: {exc}", file=sys.stderr)
