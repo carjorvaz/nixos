@@ -94,8 +94,6 @@ in
 
     health = {
       statePath = healthStatePath;
-      planPath = null;
-      statusPath = null;
     };
 
     healthSample = {
