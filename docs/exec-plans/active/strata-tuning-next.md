@@ -653,6 +653,27 @@ both.
 - **Rollback source verified** (see above): `ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` IQ3_S
   shards with their LFS sha256s, plus the `iq_pack.py` rebuild + lane-field revert steps.
 
+### Round 11: prompt-chunk screen on the smaller pack (2026-11-05)
+
+The UD-IQ2_XS switch made the expert pack 7.5 GiB smaller, so the deployed chunk
+`--prefill 28160` was re-screened (the real hindsight traffic is 19-38k tokens, where a 28,160 chunk
+means two chunks and two pack streams). Result: **no win** - the engine halves a larger request at
+startup with the explicit log line `prompt chunk 56320 -> 28160 tokens so its buffers fit in every
+expert cache`, so 56320 runs as the identical 28160 and 112640 clamps the same; the measured 38k
+read was +1.8 % (noise), 26k -4.2 % (noise), 4k +4.2 % (noise) on single runs. **`--prefill 28160`
+stays.** Side finding for hindsight: a repeated 38k conversation restored one chunk-level checkpoint
+(reused 28,160) and read the remaining 9,862 tokens in 11.1 s instead of 29.0 s.
+
+The window also spot-checked the pmem conversation park with the new pack: two short conversations
+parked (3,554/4,259 tokens, ~140-163 ms) and restored on repeat (reused 3,470/4,245 tokens, ~57 ms,
+zero invalid-snapshot lines) - the tier works on UD-IQ2_XS. Note for the record: the restored 3,477-
+token conversation generated a different continuation than its live first answer (78 -> 64 tokens;
+the 8-token P1 case was identical). That is the checkpoint-continuation state effect (the restore
+replays from a 3,470-token checkpoint rather than the exact live state), not a half-restored
+session; it is the same class as the eval pass-state flips and worth knowing when a parked
+interactive conversation is restored - answers can differ from an uninterrupted run. Report:
+`/tmp/strata-tune/round11-chunk-screen.md`, `/data/round11/`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -913,6 +934,12 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   knob has no effect; identical L-live text across variants) - no knob change adopted. Coder lane
   marked unavailable via a module assertion with its restore procedure; rollback source URLs/LFS
   hashes and the IQ3_S pack rebuild steps recorded.
+- **2026-11-05, round 11 / chunk screen**: `--prefill 56320` is clamped by the engine to 28160
+  ("buffers fit in every expert cache"), so the 38k real-traffic cell cannot be made one-chunk with
+  this knob; 38k/26k/4k read deltas were noise. Kept 28160. Park spot check with the new pack
+  passed (reused>0, no invalid snapshots); noted that a restored 3,477-token conversation's
+  continuation can differ from the live one (checkpoint-continuation state effect, same class as
+  the eval pass-state flips). No deploy.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
