@@ -230,6 +230,11 @@ stdenv.mkDerivation {
   #     pkgs/turing-unlock + profiles/nixos/turing-unlock.nix), measured prefill -5.7 %
   #     at 26,134 tokens / -2.0 % at 8,268 / -1.1 % at 4,252 at the production 280 W cap
   #     with identical answers; see docs/exec-plans/active/turing-unlock-assessment.md.
+  #     Round 8 then fixed the pmem park checkpoint match (patch 1f2393f2: the park saves
+  #     the deepest chain checkpoint >=1024 tokens below the live state, keeps the whole
+  #     chain as metadata, and prefers a file candidate over a full reread) and enabled
+  #     the tier in generation 107 (system 3i99wsnk..., engine gci3izr...; 6 GiB / 4 slots
+  #     / 4096 MiB reserve + stale-*.park cleanup).  See the round-8 section of the plan.
   #   * the pmem park-spill hybrid (round 7, added 2026-11-05): the RAM park path is
   #     byte-identical; when the transactional pre-check (or the parked-cache budget)
   #     refuses a park, the conversation is written as a v1 session file under
@@ -244,6 +249,19 @@ stdenv.mkDerivation {
   #     answers unchanged.  This cut is in-run only: boot re-admission of existing
   #     *.park files is not implemented (so a restart drops file parks; the files are
   #     deleted at startup/clear sites).  See /tmp/strata-tune/pmem-park-design.md.
+  #   * the pmem park-spill checkpoint match (round 8, added 2026-11-05): the parked file now records the WHOLE
+  #     checkpoint chain as metadata and saves the deepest checkpoint that is strictly shorter than the live state
+  #     (the one the next turn's prompt actually starts with), the tier's matching only offers the saved checkpoint
+  #     (the streamed restore can only rewind to it) or the live state, and a request that would otherwise reread the
+  #     prompt from token 0 now takes a file candidate; STRATA_PARK_DEBUG=1 logs, per request, the candidates vs
+  #     resume/slot/parked and, at capture, the chain's token lengths and the chosen one.  Metadata only: session
+  #     format v1 untouched.
+  #   * round 8b (added 2026-11-05): (a) upstream #4677's stop bound is ported to CUDA - a verify window that would
+  #     commit past an EOS inside it commits to the stop token instead (same serve_stop_bound as HIP, unconditional;
+  #     STRATA_SERVE_STOP_BOUND=0 still turns it off), and (b) a per-request `WSTAT` stdout line carries the counters
+  #     serve/server.py aggregates on /metrics/prometheus: DAX rotations/request, the prompt path's borrowed bytes,
+  #     verify windows/rows/accepted, the CUDA stop-bound clips, the prompt read seconds, windows by size and (with
+  #     STRATA_PREFILL_TIMING=1) the prefill phase timeline.  Counters only: no answer or token change.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
@@ -400,6 +418,33 @@ stdenv.mkDerivation {
     }
     grep -q 'restore_park_file' src/program/generate.cpp || {
       echo "tiberius.patch lost the request-path pmem park restore" >&2
+      exit 1
+    }
+    # tiberius.patch's pmem park checkpoint match (round 8): the saved-checkpoint selection and its debug
+    # instrumentation.  A rebase that drops them brings back the full-reread after an ordinary-turn park.
+    grep -q 'STRATA_PARK_DEBUG' src/program/generate.cpp || {
+      echo "tiberius.patch lost the pmem park debug instrumentation (STRATA_PARK_DEBUG)" >&2
+      exit 1
+    }
+    grep -q 'saved_tokens' include/strata/core/conversation_park_file.hpp || {
+      echo "tiberius.patch lost the pmem park saved-checkpoint matching" >&2
+      exit 1
+    }
+    # round 8b: the CUDA stop_bound port and its telemetry, and the server-side WSTAT counters.
+    grep -q 'STRATA_SERVE_STOP_BOUND' src/program/generate.cpp || {
+      echo "tiberius.patch lost the stop bound (STRATA_SERVE_STOP_BOUND)" >&2
+      exit 1
+    }
+    grep -q 'WSTAT rot=' src/program/generate.cpp || {
+      echo "tiberius.patch lost the per-request WSTAT telemetry line" >&2
+      exit 1
+    }
+    grep -q 'prefill_last_phase_times' include/strata/prefill/prefill.hpp || {
+      echo "tiberius.patch lost the prefill phase timeline accessor" >&2
+      exit 1
+    }
+    grep -q 'verify_window_tokens' serve/prometheus.py || {
+      echo "tiberius.patch lost the /metrics/prometheus WSTAT counters" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`

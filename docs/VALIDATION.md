@@ -355,6 +355,27 @@ is still a follow-up before the tier can be enabled. Engine
 take effect. See `docs/exec-plans/active/turing-unlock-assessment.md` and the round-7 section of the
 plan for the full measurements, safety evidence and remaining risks.
 
+Generation 107 (2026-11-05) enables the pmem park-spill tier after the round-8 checkpoint-match fix
+(patch `1f2393f2`): a parked file now saves the deepest chain checkpoint at least 1024 tokens below
+the live state, keeps the whole chain as metadata only (session format v1 untouched), and a request
+that would otherwise reread the prompt from token 0 takes a file candidate. Validated in one
+7-minute isolated window: 250k ordinary-turn park -> next turn restored 225,280 tokens from the
+pmem file in 5,149.5 ms (19.4 s including 13,917 re-read tokens, versus the 152.6 s reread) with the
+continuation sha identical to the live-path re-ask; park writes 4.48-4.50 s / ~3.636 GB each; corrupt
+newest file -> pass-1 checksum refusal + clean reread with the same answer, no half-restored state;
+RAM-park regression clean. Production run config adds the four `--conversation-park-*` flags
+(6144 MiB / 4 slots / 4096 MiB free reserve, /optane/strata-data/parks) and an `ExecStartPre` that
+pre-cleans stale `*.park` files (boot re-admission not implemented). Engine
+`/nix/store/gci3izrz4djkfrby0g6mnbfsfch0ys1y-strata-engine-0.1.56`, system
+`/nix/store/3i99wsnkmq3jmiy975k51l9dnmhkz2b4-...`; service healthy on both doors, telemetry active,
+unlock still active from the initrd, no Xid. The persistent systemd-boot `LoaderEntryDefault` EFI
+variable again pointed at the old generation and was re-set with `bootctl set-default
+nixos-generation-107.conf`. Unsloth Dynamic V3.1 for Qwen3.8-Flash-Next was assessed and not adopted
+(`docs/exec-plans/active/unsloth-dynamic-v31-assessment.md`): it is a GGUF quantization recipe, the
+engine's packer supports i-quants but not its K-quant mixes, the lane is already ~82 GB on the
+124 GB Optane, and the claimed gain is against other quants; the one plausible UD-IQ3_XXS experiment
+is recorded as task-24.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

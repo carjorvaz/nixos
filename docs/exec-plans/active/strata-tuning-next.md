@@ -1,17 +1,21 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, rounds 2-7 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
-session RESTORE, patch hygiene and the Turing-unlock / pmem-spill round done 2026-11-05**
-(generation 106). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
+Status: **active, rounds 2-8 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
+session RESTORE, patch hygiene, the Turing-unlock round and the pmem-spill enable done 2026-11-05**
+(generation 107). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
 SAVE/RESTORE + DFlash2 drafter reset and found/fixed a pre-existing SAVE bug; round 6 restored the
 four over-read guards + final newline (one-file delta, generation 104) and closed experiment row 9;
 round 7 tested and adopted the volatile nlzy/turing-unlock kernel module (`turing-unlock-assessment.md`:
 prefill read -5.7 % at 26,134 tokens at the production 280 W cap, -2.0 % at 8.3k, -1.1 % at 4.2k,
 decode unchanged, answers bit-identical; no VBIOS flash, power-cycle reversible) and added the pmem
 park-spill hybrid **dormant** (flags off by default; write/guard/RAM paths validated, ordinary-turn
-restore match is a follow-up before enabling). Generation 106 = engine 2fa52rq... + unlock at boot.
-Open: pmem-spill checkpoint-match fix (follow-up task), patch roadmap items 5-6 (CUDA #4677, per-window
-counters). DAX rotation pipelining was measured and rejected, with its log-only timing seam kept.
+restore match is a follow-up before enabling). Generation 106 = engine 2fa52rq... + unlock at boot; round 8 landed the pmem park-spill checkpoint
+match (ordinary-turn park -> streamed restore from the stable 225,280-token checkpoint, 5.15 s vs the
+152 s reread, identical answers) and enabled the tier in generation 107 (engine gci3izr..., 6 GiB /
+4 slots / 4096 MiB reserve + stale-*.park cleanup). Open: patch roadmap items 5-6 (CUDA #4677,
+per-window counters; in progress), and the deferred Unsloth Dynamic V3.1 UD-IQ3_XXS quality experiment
+(`unsloth-dynamic-v31-assessment.md`, task-24). DAX rotation pipelining was measured and rejected,
+with its log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
@@ -482,6 +486,66 @@ unlock verified in the boot log and nvidia driver healthy, pmem tier off. A syst
 104; it was set explicitly with `bootctl set-default` before the successful boot, so future
 generations take effect on reboot as intended.
 
+## Round 8 results (2026-11-05)
+
+Goal: make the ordinary-turn pmem park actually restore on the next turn, then enable the tier if
+it passes; plus the Unsloth assessment. No hardware change.
+
+### pmem park-spill checkpoint match: fixed, validated, enabled
+
+Two windows on top of the dormant round-7 patch found the real cause. The parked file carried only
+the deepest checkpoint, and even "strictly shorter" was not enough: the last chain checkpoints
+(239,184 / 239,190 tokens) sit at the old prompt's junction with the reply, and appending a turn
+re-tokenizes it, so they are not prefixes of the next prompt. The engine itself showed the stable
+choice - at the continuation it reused the 225,280-token checkpoint. Fix (patch `1f2393f2`): the
+park saves the deepest chain checkpoint **at least 1024 tokens below the live state** (falling back
+to the deepest shorter one, then the writer's rule), stores the whole chain as metadata only
+(session format v1 untouched), matches only the saved/live states the streamed reader can rewind
+to, and prefers a file candidate over a full reread when the request would otherwise read from
+token 0. `STRATA_PARK_DEBUG=1` logs the candidates and the choice.
+
+Validated in a 7-minute isolated window: 250k ordinary-turn park -> next turn restored **225,280**
+tokens from the pmem file in **5,149.5 ms** (prompt line 225,280 reused + 13,917 read in 19.4 s, vs
+152.6 s reread), continuation sha identical to the live-path re-ask (`e9f339a7...`); park writes
+4.48-4.50 s / ~3.636 GB each, 2 files/7.27 GB on disk; corrupt newest `.park` -> pass-1 checksum
+refusal + clean reread with the same sha, no half-restored state; RAM-park regression clean, zero
+files; Optane 40 G free PRE/POST. VmHWM not isolatable (the 250k prefill set it) - the streamed
+restore's host peak is the ~270 MiB class measured in round 5.
+
+**Enabled in generation 107** (engine `gci3izr...`, patch `1f2393f2`): engine args
+`--conversation-park-dir /optane/strata-data/parks --conversation-park-mib 6144
+--conversation-park-slots 4 --conversation-park-min-free-mib 4096`, plus an `ExecStartPre` that
+pre-cleans stale `*.park` files (boot re-admission is not implemented). Note the 6 GiB cap holds one
+long 250k park plus short ones; two concurrent long chats would evict the older (8 GiB would hold
+both). Residual costs: 4.5 s blocking capture on the request thread at a switch, ~3.6 GB written per
+250k park (~0.8 GB/s effective), Optane write volume/thermal headroom (media 77 C baseline) - the
+telemetry lane watches this; disable by dropping the four flags.
+
+### Unsloth Dynamic V3.1: assessed, not adopted
+
+The 2026-11-02 Unsloth update is a **GGUF quantization recipe** (better imatrix/calibration and
+per-layer dynamic quantization; their Qwen3.8-Flash-Next table claims, e.g., UD-IQ3_XXS 82.0 GB /
+85.4 % top-1 and UD-Q2_K_XL 78.9 GB / 82.7 % vs. their competitors' quants). It is not a new model
+and not a drop-in for this lane: `tools/iq_pack.py` supports the engine's i-quant family
+(IQ1_M/IQ2_*/IQ3_*/IQ4_*/Q2_0/Q4_0/Q4_NL/Q8_0) but not the K-quant UD mixes, the lane's total
+footprint is already ~82 GB on the 124 GB Optane with 40 GB free (an 82 GB download plus rollback
+pack does not fit without moving the retained source GGUF), and the claimed +15 % is against
+competing quants, not against the current GSQ/RCO IQ3_S pack. The recommended non-thinking sampling
+already matches the lane's served defaults, and MTP does not apply (DFlash2 drafter). Only
+UD-IQ3_XXS is a technically plausible same-size experiment; it would need a pack rebuild, a
+DFlash2 question (drafter was fitted to the current pack), and 2-3 paired eval320 passes to clear
+the 5.9 % harness floor before adoption. Recorded with a full experiment plan in
+`unsloth-dynamic-v31-assessment.md` and task-24; not adopted now (quality is not the current
+bottleneck, prefill was and the unlock improved it).
+
+### Deployment
+
+Generation 107 deployed from the repo tree (system `/nix/store/3i99wsnkmq3jmiy975k51l9dnmhkz2b4-...`)
+and verified: engine args carry the four park flags, `/optane/strata-data/parks` created, service
+healthy on both doors, telemetry timer active, no Xid, unlock still active from the initrd. The
+persistent systemd-boot `LoaderEntryDefault` EFI variable again pointed at the previous generation
+and was re-set with `bootctl set-default nixos-generation-107.conf` so a reboot keeps 107.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -540,7 +604,7 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    window). Accepted follow-ups on the next regeneration: restore the four "payload ends early"
    over-read guards and `conversation_file.cpp`'s final newline. Design/results:
    `/tmp/strata-tune/stream-restore-design.md`, `stream-restore-results.md`.
-4. **pmem park spill - implemented and deployed dormant 2026-11-05; enable after the checkpoint-match fix.** Implemented as patch `a833153c` (+~775 lines): an
+4. **pmem park spill - implemented, validated and ENABLED in generation 107 (2026-11-05).** Implemented as patch `a833153c` (+~775 lines) with the round-8 checkpoint match (patch `1f2393f2`): the
    *adaptive hybrid* - keep the RAM park path byte-identical, and when the transactional pre-check
    (or the parked-cache budget) refuses, write the park as a v1 session file on `/optane`
    (XFS dax=always) with the existing SAVE writer (live + deepest/pinned checkpoint, K/V streamed
@@ -561,8 +625,12 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    write 4.5 s / ~3.6 GB at 250k with tier peak 10.16 GiB, streamed restore from a pmem park 5.17 s
    with checkpoint reuse, corrupt-park pass-1 refusal + identical reread, RAM path unchanged. The
    ordinary-turn "park -> next turn restores" match was NOT taken (the file keeps only the deepest
-   prefill-chunk checkpoint, which did not match the next prompt), so the patch ships dormant; fix
-   the checkpoint set + preference, then re-window before enabling.
+   prefill-chunk checkpoint, which did not match the next prompt). Fixed in round 8: the park saves
+   the deepest chain checkpoint >=1024 tokens below the live state (the stable prefix the engine's
+   own continuation reused, 225,280 at 250k), matches only the saved/live states, and prefers a file
+   over a full reread; validated and enabled in generation 107 with 6 GiB / 4 slots / 4096 MiB
+   reserve + stale-file cleanup. Residual: 4.5 s blocking capture, ~3.6 GB per 250k park, Optane
+   thermals; 6 GiB holds one long park (8 GiB for two).
 5. **CUDA port of upstream #4677 - behaviour.** `stop_bound` and both call sites sit inside
    `#if defined(STRATA_USE_HIP)`, so a CUDA verify window cannot commit-bound at an EOS inside it;
    removing the guard is ~20 lines plus a correctness run. Pointers: `generate.cpp:17403-17410`,
@@ -711,6 +779,15 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   park-spill hybrid (patch `a833153c`) and deployed it dormant after two validation windows: file
   park write 4.5 s/3.6 GB, streamed restore 5.17 s, corrupt-refusal path and RAM regression pass;
   ordinary-turn restore match is the follow-up before enabling.
+- **2026-11-05, round 8 / pmem checkpoint match + Unsloth**: two windows diagnosed the junction
+  re-tokenization (saved checkpoints 239,184/239,190 are not prefixes after appending a turn) and
+  fixed it (deepest chain checkpoint >=1024 tokens below live; whole chain as metadata; prefer file
+  over reread; STRATA_PARK_DEBUG). Validated: ordinary-turn 250k park -> next turn restored 225,280
+  tokens in 5.15 s (19.4 s incl. 13,917 re-read) vs 152.6 s reread, identical sha; corrupt refusal
+  and RAM regression clean. Enabled with 6 GiB/4 slots/4096 MiB + stale-*.park cleanup, deployed as
+  generation 107 (patch 1f2393f2, engine gci3izr...). Unsloth Dynamic V3.1 assessed
+  (`unsloth-dynamic-v31-assessment.md`): not adoptable as-is (GGUF/K-quant mismatch, ~82 GB lane),
+  UD-IQ3_XXS experiment recorded as task-24.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,

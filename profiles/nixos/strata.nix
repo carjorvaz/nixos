@@ -148,6 +148,22 @@ let
         "${cfg.package}/share/strata/data/${lane.profile}"
         "--expert-cache"
         "auto"
+        # pmem park tier (validated 2026-11-05): when the RAM park pre-check
+        # refuses, the conversation is written as a v1 session file on the
+        # Optane and the next turn restores it with the streamed reader.
+        # Measured: 4.5 s / 3.6 GB capture per 250k park, 5.15 s restore
+        # (225,280-token stable checkpoint), answer shas identical; the RAM
+        # path is unchanged.  Costs: a blocking capture on the request thread
+        # and Optane write volume/thermal headroom - the telemetry module
+        # watches this lane; disable by dropping these four flags.
+        "--conversation-park-dir"
+        "${cfg.dataDir}/parks"
+        "--conversation-park-mib"
+        "6144"
+        "--conversation-park-slots"
+        "4"
+        "--conversation-park-min-free-mib"
+        "4096"
         "--prefill"
         # Upstream's prompt path streams, per chunk, the union of the experts that
         # chunk's tokens route to, and above ~2K tokens that union is nearly the
@@ -978,6 +994,15 @@ in
             # below) - and, unlike a park, it survives a background request and a
             # restart.
             "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}/sessions"
+            # pmem park tier (round 7/8, validated 2026-11-05): a refused RAM
+            # park is written as a v1 session file under this directory and
+            # restored streamed on a later turn.  Boot re-admission of *.park
+            # files is not implemented, so pre-clean anything an unclean
+            # shutdown left behind; the engine recreates the tier's metadata
+            # at start.  6 GiB / 4 slots keeps one long (~3.6 GB) park resident
+            # plus short ones; the 4096 MiB reserve keeps session/SAVE space.
+            "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}/parks"
+            "${pkgs.findutils}/bin/find ${cfg.dataDir}/parks -maxdepth 1 -name '*.park' -delete"
           ];
           ExecStart = lib.escapeShellArgs [
             "${python}/bin/python3"
