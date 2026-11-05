@@ -107,8 +107,14 @@ A follow-up knob sweep on the UD pack (eight fresh-engine starts, only `--spec`/
 changed) found the L-live acceptance loss is a spec-window effect, not confidence: spec 4 at
 conf 0.8 recovers 85.1 % -> 91.6 % acceptance but costs 1.2 % decode, and no setting beat the
 deployed (spec 6, conf 0.8) decode; all variants produced the identical L-live text, so no knob
-change was adopted. A drafter refit could recover decode but is not justified by the measured
-window for now.
+change was adopted.
+
+A second bound measured drafting off (the serve layer's `drafting: "off"` still runs the engine's
+built-in suffix/lookup fallback) on the same pack: L-live decode dropped 113.85 -> 62.3 tok/s, i.e.
+**DFlash2 already buys 1.83x decode**, with acceptance 85.1 % and its 6-token windows 80-95 % full.
+A perfect-acceptance drafter could therefore add at most ~+15 % decode on average (absolute +25 % on
+the best run) and nothing on prefill - a refit is a training/calibration project with low expected
+upside. Decode-wise it is not worth it; a quality/robustness motivation would be a different call.
 
 Deployment (generation 109): `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PLE shard 3 under
 `/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the NixOS lane config gained

@@ -674,6 +674,17 @@ session; it is the same class as the eval pass-state flips and worth knowing whe
 interactive conversation is restored - answers can differ from an uninterrupted run. Report:
 `/tmp/strata-tune/round11-chunk-screen.md`, `/data/round11/`.
 
+### Round 12: DFlash2 refit value bound (2026-11-05)
+
+To answer whether a drafter refit is worth pursuing, one isolated window ran the live config with
+`drafting: "off"` (the serve layer then omits DFlash2; the engine's built-in suffix/lookup drafting
+still runs). L-live decode fell **113.85 -> 62.3 tok/s**, so DFlash2 already buys **1.83x decode** on
+the UD pack; with acceptance 85.1 % and its 6-token windows 80-95 % full, a perfect-acceptance
+drafter could add at most ~+15 % decode on average (+25 % on the best run) and zero on prefill.
+**No refit**: the effort is a training/calibration project for a single-digit-to-mid-teens decode
+ceiling, and prefill (the real bottleneck) is untouched. Report:
+`/tmp/strata-tune/round12-draftoff-bound.md`, `/data/round12/`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -940,6 +951,9 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   passed (reused>0, no invalid snapshots); noted that a restored 3,477-token conversation's
   continuation can differ from the live one (checkpoint-continuation state effect, same class as
   the eval pass-state flips). No deploy.
+- **2026-11-05, round 12 / DFlash2 refit bound**: drafting-off (fallback-only) L-live decode 62.3
+  vs 113.85 tok/s with DFlash2 = the drafter already buys 1.83x; perfect-acceptance ceiling
+  ~+15 % decode (mean) and no prefill gain, so no refit. See round-12 section.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
