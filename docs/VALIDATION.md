@@ -376,6 +376,22 @@ engine's packer supports i-quants but not its K-quant mixes, the lane is already
 124 GB Optane, and the claimed gain is against other quants; the one plausible UD-IQ3_XXS experiment
 is recorded as task-24.
 
+Generation 108 (2026-11-05) is the round-8b engine: the CUDA port of upstream #4677 (a verify window
+that would commit past an EOS inside it now commits up to the stop token; `STRATA_SERVE_STOP_BOUND=0`
+still disables it) and the per-request WSTAT telemetry counters on both `/metrics` and
+`/metrics/prometheus` (DAX rotations, prompt-path borrowed bytes, verify windows/rows/accepted and
+windows-by-size, stop-bound clips, prompt-read seconds, prefill phase timeline when
+`STRATA_PREFILL_TIMING=1`; counters only, no answer change, payload numbers-only). Validation: A/B
+with the bound on/off gave identical answer shas and emitted token counts on five requests; final
+telemetry window showed all nine families present and monotonic, rotations reconciled with the engine
+log (17 == 17), borrow 12.29 GB, stop-bound counters reported, prefill phases emitted. Two bugs were
+found and fixed before deploy: the WSTAT stash was wiped by `_parse_done`, and the legacy
+`/metrics/prometheus` endpoint had not been extended (its rotations counter is now the engine's
+cumulative count - per-request delta from two scrapes). The pmem park tier stayed enabled from
+generation 107. Engine `/nix/store/gwhnf6mm1dx0ba84swv8mzw0zq9mvcr0-strata-engine-0.1.56`, system
+`/nix/store/7nac9cgx01235ivdvh7kb7rzgjwvpx2l-...`; service healthy on both doors, telemetry active,
+unlock still active from the initrd, no Xid, boot default re-set to 108.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

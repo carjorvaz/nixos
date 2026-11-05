@@ -82,11 +82,16 @@
 # (a verify window that would commit past an EOS inside it commits to the stop token) is ported from HIP to CUDA by
 # removing the STRATA_USE_HIP guards on serve_stop_bound's include, its one definition and both call sites; the HIP
 # path is the same code, and STRATA_SERVE_STOP_BOUND=0 still disables it.  (b) every finished request prints one
-# `WSTAT` line (counters only, no answer change) with its DAX rotations, the prompt path's borrowed device bytes, verify
-# windows/rows/accepted rows, windows by size, the stop-bound clips, the prompt read seconds and, when
-# STRATA_PREFILL_TIMING=1, the prefill phase timeline; serve/server.py parses it (unknown lines ignored, an older
-# engine is unchanged) and serve/prometheus.py exposes it under strata:* plus a verify-window-tokens histogram.
-# Purely additive to /metrics; answer bytes, tokens and stop behaviour on the normal cells are unchanged.
+# `WSTAT` line (counters only, no answer change) with its DAX rotations (counted where the rotation happens, whatever
+# source object performs it), the prompt path's borrowed device bytes, verify windows/rows/accepted rows, windows by
+# size, the stop-bound clips, the prompt read seconds and, when STRATA_PREFILL_TIMING=1, the prefill phase timeline;
+# serve/server.py parses it in every request reader (the solo GEN loop, the batch/admission _control loop,
+# _drain_control), stashes it across the DONE parse that replaces a request's figures (attached by _parse_done, reset
+# at every request start so nothing is inherited), and exposes it on /metrics/prometheus (the llama.cpp-named endpoint,
+# additive strata:* counters plus the verify-window histogram and prefill phase families) and on
+# /metrics?format=prometheus / the JSON totals via serve/prometheus.py; serve/test_wstat.py pins the parse -> DONE ->
+# totals/renderer chain on the host.  Purely additive to /metrics; answer bytes, tokens and stop behaviour on the
+# normal cells are unchanged.
 #
 # Four changes, in one patch because the first two interleave in the same regions of
 # expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; changes 3-4 are independent (the park fix:
@@ -586,10 +591,21 @@ index 27ba8c9..08ca7fc 100644
                                      const ModelGeometry& g, const QsaState& draft, std::string& error);
  /// #2409: true when a restore (or a copy) on CUDA device `device` from the calling thread creates no copy stream: this
 diff --git a/include/strata/core/expert_source.hpp b/include/strata/core/expert_source.hpp
-index ca325ae..8982fdf 100644
+index ca325ae..adde306 100644
 --- a/include/strata/core/expert_source.hpp
 +++ b/include/strata/core/expert_source.hpp
-@@ -188,6 +188,9 @@ int64_t append_stage_lend_regions(int64_t n_layers, int64_t n_expert, const std:
+@@ -51,6 +51,10 @@ struct ExpertLayout;
+ 
+ namespace strata::core {
+ 
++/// tiberius telemetry: DAX sliding-window rotations so far, counted where they happen (STRATA_REGISTER_DAX), whatever
++/// source object performs them - the engine reports the per-request delta in its WSTAT line (0 when the window is off).
++int64_t dax_rotation_count();
++
+ class PeerExperts;   // multi-GPU: the second GPU's expert tier (peer_experts.hpp)
+ class RemoteExperts;
+ struct LoadStats;
+@@ -188,6 +192,9 @@ int64_t append_stage_lend_regions(int64_t n_layers, int64_t n_expert, const std:
  /// cache, and because a test can supply an in-memory source without a 34 GB artifact.
  class ExpertSource {
  public:
@@ -599,7 +615,7 @@ index ca325ae..8982fdf 100644
      virtual ~ExpertSource() = default;
  
      /// The expert-layout blob for `(layer, expert)`, or nullptr if it cannot be produced.
-@@ -217,9 +220,50 @@ public:
+@@ -217,9 +224,50 @@ public:
      /// asynchronous host-to-device copy can DMA it directly (no staging copy on the CPU).
      virtual bool pinned(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return false; }
  
@@ -650,7 +666,7 @@ index ca325ae..8982fdf 100644
      /// Plan v0.3 P6: the DEVICE address of a pinned, mapped blob (the GPU can read it over PCIe), or null.
      virtual const uint8_t* device_alias(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return nullptr; }
      /// A file-backed source: start reading this expert's pages now (it will be needed by the CPU); no-op elsewhere.
-@@ -727,6 +771,9 @@ public:
+@@ -727,6 +775,9 @@ public:
      bool open(const std::string& pack_dir, int64_t n_layers, int64_t n_expert, std::string& err);
      /// CS-T: the --native shard (native_experts.txt names the other files beside it); see `open`.
      void set_gguf(const std::string& native) { gguf_ = native; }
@@ -660,7 +676,7 @@ index ca325ae..8982fdf 100644
      /// STRATA_NUMA_SPLIT: files the engine read at start outside this source (the pack's dense.bin, the MTP head),
      /// whose cached pages the placement's drop gives back too.  Set BEFORE `pin_cache_complement`.
      void set_extra_drop_files(std::vector<std::string> paths) { extra_drop_files_ = std::move(paths); }
-@@ -916,8 +963,15 @@ public:
+@@ -916,8 +967,15 @@ public:
      /// VRAM. Never touches the resident complement or staging buffers. Disabled by default.
      uint64_t release(int64_t layer, int64_t expert) override;
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -676,7 +692,7 @@ index ca325ae..8982fdf 100644
      bool transient(int64_t layer, int64_t expert) const override;
      double cached_share(int64_t samples) const override;
      bool copy_blob(int64_t layer, int64_t expert, uint8_t* dst) override;
-@@ -992,6 +1046,49 @@ public:
+@@ -992,6 +1050,49 @@ public:
  private:
      const uint8_t* resident_blob(size_t index) const;
      const uint8_t* mapped_blob(int64_t layer, int64_t expert) const;
@@ -726,7 +742,7 @@ index ca325ae..8982fdf 100644
      /// The blob's bytes from the mapped file(s) - experts.bin, or the three GGUF role slices - into `dst`.
      bool copy_from_files(int64_t layer, int64_t expert, uint8_t* dst) const;
      bool open_gguf(std::string& err);
-@@ -1216,6 +1313,24 @@ private:
+@@ -1216,6 +1317,24 @@ private:
      bool complement_ready_ = false;
      uint64_t complement_locked_ = 0;          ///< bytes held in the working set (pin refused)
      int64_t complement_lent_slots_ = 0;
@@ -751,7 +767,7 @@ index ca325ae..8982fdf 100644
      std::vector<std::vector<std::pair<int32_t, int32_t>>> stage_lend_regions_;  ///< a split: each stage's lend region
      std::vector<const uint8_t*> override_;    ///< staged exchanges: an evicted expert read from its exchange buffer
      struct Exchange { size_t in, out; int64_t q; uint64_t bytes; };
-@@ -1282,6 +1397,8 @@ public:
+@@ -1282,6 +1401,8 @@ public:
      const uint8_t* blob_at(int64_t layer, int64_t expert) const;
      int64_t reads() const { return reads_.load(std::memory_order_relaxed); }
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -889,10 +905,30 @@ index 7c09192..793d088 100644
             last.get("decode_tok_s"))
      gpus = hw.get("gpus") or ([{"index": 0, "util": hw.get("gpu_util"), "mem_used": hw.get("gpu_mem_used"),
 diff --git a/serve/server.py b/serve/server.py
-index f690d61..4b1789c 100644
+index f690d61..e89aec5 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -1725,6 +1725,8 @@ class StrataEngine:
+@@ -1101,6 +1101,9 @@ class StrataEngine:
+         self.max_context = int(args[args.index("--max-context") + 1]) if "--max-context" in args else 4096
+         self.can_stop = False            # the engine honours a STOP line mid-request (READY <ctx> stop)
+         self.last = {}
++        # tiberius telemetry: the WSTAT line arrives BEFORE DONE (which RESETS self.last), so it is stashed here and
++        # attached by _parse_done; cleared at every request start so one never inherits another's counters.
++        self._last_wstat = None
+         self.info = {}                   # INFO key=value facts (engine 0.1.8+): kv, expert slots, ... (Monitor tab)
+         self.terminal_stages: list[dict] = []  # final layer ranges from this engine start's bounded stderr log
+         self.terminal_batch_sample: dict | None = None
+@@ -1503,6 +1506,9 @@ class StrataEngine:
+                     self.last[key] = int(value)
+                 except ValueError:
+                     pass
++        if self._last_wstat:                              # tiberius telemetry: the WSTAT line that came before DONE
++            self.last["wstat"] = self._last_wstat
++            self._last_wstat = None
+ 
+     def vram(self, reserve_mib: int | None, timeout: float = 120.0) -> dict:
+         """#533: `VRAM <reserve_mib>` between requests (the caller holds the service's FIFO): the engine shrinks its
+@@ -1725,6 +1731,8 @@ class StrataEngine:
                      self._send("STOP")
                      stopped = True
                  yield None
@@ -901,7 +937,7 @@ index f690d61..4b1789c 100644
              elif line.startswith("DONE"):
                  self._parse_done(line)
                  self._last_done = line
-@@ -1746,6 +1748,22 @@ class StrataEngine:
+@@ -1746,6 +1754,22 @@ class StrataEngine:
                  self._ctl_result = ("done", None)
                  return
  
@@ -918,21 +954,119 @@ index f690d61..4b1789c 100644
 +                out[k] = float(v) if (k == "pm" or k.startswith("ph")) else int(float(v))
 +            except ValueError:
 +                continue
-+        if out and isinstance(self.last, dict):
-+            self.last = {**self.last, "wstat": out}
++        if out:
++            self._last_wstat = out
 +
      def _done_finish(self) -> str | None:
          """The finish field of the DONE line the control lines read last (None: none since it was cleared)."""
          f = (getattr(self, "_last_done", None) or "").split()
-@@ -6335,6 +6353,18 @@ class Service:
+@@ -1767,6 +1791,8 @@ class StrataEngine:
+                 continue
+             if line is None:
+                 return None
++            if line.startswith("WSTAT "):
++                self._parse_wstat(line)
+             if line.startswith("DONE"):
+                 self._parse_done(line)
+             if line.startswith(until) or line.startswith("ERR"):
+@@ -2052,6 +2078,7 @@ class StrataEngine:
+         admission to its BADM, a slot is BSTOPped and freed at its BDONE."""
+         if not self.alive():
+             raise EngineDied("the engine is unavailable; this request was not sent")
++        self._last_wstat = None   # a request must never inherit the previous WSTAT
+         self.progress, self.progress_ms, self.reused = None, 0, 0
+         born = self.gen                                 # the engine process this request is sent to
+         keys = self.sampling_keys(sampling or {})
+@@ -2486,6 +2513,7 @@ class StrataEngine:
+         has gone.  A consumer that stops early (or `cancel`) makes the engine STOP, so it does not run to max_new."""
+         if not self.alive():
+             raise EngineDied("the engine is unavailable; this request was not sent")
++        self._last_wstat = None   # a request must never inherit the previous WSTAT
+         bias_api.validate_request(sampling or {}, self, None)
+         refuse_for_split(self, sampling or {})
+         if getattr(self, "batch", 0) and not self.multi:
+@@ -2572,6 +2600,8 @@ class StrataEngine:
+                 beat = heard
+                 if stall_state:
+                     stall_state.clear()
++                if not line.startswith(("T ", "PP ")):   # tiberius diagnostic (STRATA_BATCH_TRACE=1): lines the solo reader sees
++                    btrace("gen<", line.strip()[:80])
+                 if line.startswith("T "):
+                     allow = silence
+                     if cancel.is_set():
+@@ -2606,6 +2636,8 @@ class StrataEngine:
+                         read_to = self.reused = int(line.split()[1])
+                     except (IndexError, ValueError):
+                         pass
++                elif line.startswith("WSTAT "):
++                    self._parse_wstat(line)       # tiberius telemetry: the engine's per-request counters (before DONE)
+                 elif line.startswith("DONE"):
+                     self._parse_done(line)
+                     done = True
+@@ -5419,9 +5451,51 @@ class Service:
+             ("strata:tool_args_repaired_total", "counter", "Tool call arguments (a JSON array or object) that were damaged and read as written",
+              t.get("tool_args_repaired", 0)),
+             ("strata:model_loaded", "gauge", "1 while the model is loaded", int(self.loaded())),
++            # tiberius telemetry: the engine's per-request WSTAT counters (absent, so never emitted, on an engine
++            # without the WSTAT line: a scrape against an older engine is exactly as before).
++            ("strata:rotations_total", "counter", "DAX sliding-window rotations paid by finished requests",
++             t.get("wstat_rot")),
++            ("strata:prompt_borrow_bytes_total", "counter", "Device bytes the prompt path borrowed from the expert cache",
++             t.get("wstat_borrow")),
++            ("strata:verify_windows_total", "counter", "Verify windows committed by finished requests",
++             t.get("wstat_windows")),
++            ("strata:verify_rows_total", "counter", "Verified rows offered in those windows", t.get("wstat_rows")),
++            ("strata:verify_rows_accepted_total", "counter", "Verified rows accepted in those windows",
++             t.get("wstat_acc")),
++            ("strata:stop_bound_windows_total", "counter", "CUDA verify windows the EOS stop bound clipped (#4677)",
++             t.get("wstat_sbw")),
++            ("strata:stop_bound_rows_total", "counter", "Rows the stop bound kept out of the draft cache",
++             t.get("wstat_sbr")),
++            ("strata:prefill_seconds_total", "counter", "Prompt read seconds of finished requests (engine WSTAT pm)",
++             round(t["wstat_pm"] / 1000.0, 6) if "wstat_pm" in t else None),
+         ]
+-        return "".join(f"# HELP {name} {help_}\n# TYPE {name} {kind}\n{name} {value}\n"
+-                       for name, kind, help_, value in rows)
++        text = "".join(f"# HELP {name} {help_}\n# TYPE {name} {kind}\n{name} {value}\n"
++                       for name, kind, help_, value in rows if isinstance(value, (int, float)) and not isinstance(value, bool))
++        text += self._prometheus_wstat_hist(self.latencies.snapshot(), t)
++        return text
++
++    @staticmethod
++    def _prometheus_wstat_hist(lat: dict, t: dict) -> str:
++        """tiberius telemetry: the two families the legacy endpoint had no shape for - the verify-window tokens
++        histogram and the prefill phase timeline (STRATA_PREFILL_TIMING=1) - appended to /metrics/prometheus' text."""
++        from serve.prometheus import PHASE_NAMES, VERIFY_BUCKETS
++        out = ""
++        counts, total, n = lat.get("win", ([0] * len(VERIFY_BUCKETS), 0.0, 0))
++        if n:
++            out += ("# HELP strata:verify_window_tokens The verified rows per verify window, per request (engine WSTAT)\n"
++                    "# TYPE strata:verify_window_tokens histogram\n")
++            for b, c in zip(VERIFY_BUCKETS, counts):
++                out += f'strata:verify_window_tokens_bucket{{le="{b}"}} {c}\n'
++            out += (f'strata:verify_window_tokens_bucket{{le="+Inf"}} {n}\n'
++                    f"strata:verify_window_tokens_sum {round(total, 6)}\n"
++                    f"strata:verify_window_tokens_count {n}\n")
++        phases = [(i, name, t.get(f"wstat_ph{i}")) for i, name in enumerate(PHASE_NAMES) if t.get(f"wstat_ph{i}")]
++        if phases:
++            out += ("# HELP strata:prefill_phase_seconds_total Prefill GPU timeline by phase (STRATA_PREFILL_TIMING)\n"
++                    "# TYPE strata:prefill_phase_seconds_total counter\n")
++            for i, name, value in phases:
++                out += f'strata:prefill_phase_seconds_total{{phase="{name}"}} {round(value / 1000.0, 6)}\n'
++        return out
+ 
+     def v1_status(self) -> dict:
+         """GET /v1/status: what this server is and does, for a client that would rather ask than guess (a front-end
+@@ -6335,6 +6409,19 @@ class Service:
                              t["decode_ms"] += last.get("decode_ms") or 0.0
                              t["drafts_offered"] += last.get("drafts_offered") or 0
                              t["drafts_accepted"] += last.get("drafts_accepted") or 0
 +                            ws = last.get("wstat") or {}          # tiberius telemetry: the engine's WSTAT line
++                            btrace("totals wstat", ws)
 +                            if isinstance(ws, dict) and ws:
 +                                t["wstat_requests"] = t.get("wstat_requests", 0) + 1
 +                                for k in ("rot", "borrow", "windows", "rows", "acc", "sbw", "sbr"):
-+                                    t["wstat_" + k] = t.get("wstat_" + k, 0) + int(ws.get(k) or 0)
++                                    t["wstat_" + k] = max(t.get("wstat_" + k, -1), int(ws.get(k) or 0)) if k == "rot" else t.get("wstat_" + k, 0) + int(ws.get(k) or 0)
 +                                t["wstat_pm"] = t.get("wstat_pm", 0.0) + float(ws.get("pm") or 0.0)
 +                                for k, v in ws.items():       # the prefill phase timeline (STRATA_PREFILL_TIMING=1)
 +                                    if k.startswith("ph") and k[2:].isdigit():
@@ -943,6 +1077,81 @@ index f690d61..4b1789c 100644
                              ft0 = st.get("first_token")             # this request's own (#465: one per request)
                              self.latencies.observe(ft0 - started if ft0 else None, n,
                                                     (last.get("decode_ms") or 0.0) / 1000, time.time() - started)
+diff --git a/serve/test_wstat.py b/serve/test_wstat.py
+new file mode 100644
+index 0000000..62a093c
+--- /dev/null
++++ b/serve/test_wstat.py
+@@ -0,0 +1,69 @@
++"""Round-8b host smoke test for the WSTAT telemetry plumbing (no GPU, no model): the engine's per-request counters
++must survive the DONE parse (which replaces the request's figures), never leak into the next request, and reach both
++/metrics forms.  Run with pytest or `python3 serve/test_wstat.py`."""
++import os
++import sys
++
++sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++
++from serve import prometheus, server  # noqa: E402
++
++WSTAT = ("WSTAT rot=17 borrow=123456789 windows=10 rows=60 acc=40 sbw=2 sbr=3 pm=34000.0 "
++         "wsz3=4 wac3=12 ph2=120.5 ph0=55.0 phtok=50121")
++DONE = "DONE 3 18 100.0 50.0 stop 4 6 0 0 0 0 0 0.0 18 0 chunk=18 experts_streamed=0"
++
++
++def _engine():
++    e = object.__new__(server.StrataEngine)          # no process: the parsers only touch the figures
++    e.__dict__["_last"] = {}
++    e.__dict__["_last_wstat"] = None
++    return e
++
++
++def test_wstat_survives_done():
++    e = _engine()
++    server.StrataEngine._parse_wstat(e, WSTAT)
++    assert e.__dict__["_last_wstat"]["rot"] == 17, "the WSTAT line is stashed until DONE"
++    server.StrataEngine._parse_done(e, DONE)
++    assert e.last["wstat"]["rot"] == 17, "DONE must attach the stashed WSTAT to the request's figures"
++    assert e.last["wstat"]["sbw"] == 2 and e.last["wstat"]["phtok"] == 50121
++    assert e.__dict__["_last_wstat"] is None, "the stash is consumed by its own DONE"
++
++
++def test_no_wstat_does_not_inherit():
++    e = _engine()
++    server.StrataEngine._parse_wstat(e, WSTAT)
++    server.StrataEngine._parse_done(e, DONE)
++    server.StrataEngine._parse_done(e, DONE)                 # a next request that printed no WSTAT
++    assert "wstat" not in e.last, "a request must never inherit the previous one's counters"
++
++
++def test_aggregation_and_prometheus_render():
++    m = {"engine": {"model": "m", "max_context": 262144}, "live": {}, "hardware": {}, "requests": [],
++         "totals": {"requests": 1, "prompt_tokens": 5, "output_tokens": 2, "reused": 0, "drafts_offered": 0,
++                    "drafts_accepted": 0, "wstat_rot": 17, "wstat_borrow": 123456789, "wstat_windows": 10,
++                    "wstat_rows": 60, "wstat_acc": 40, "wstat_sbw": 2, "wstat_sbr": 3, "wstat_pm": 34000.0,
++                    "wstat_ph2": 120.5}}
++    lat = prometheus.Latencies()
++    lat.observe_verify(6, 1)
++    text = prometheus.render(m, lat.snapshot())
++    for family in ("strata:rotations_total", "strata:prompt_borrow_bytes_total", "strata:verify_windows_total",
++                   "strata:verify_rows_total", "strata:verify_rows_accepted_total", "strata:stop_bound_windows_total",
++                   "strata:stop_bound_rows_total", "strata:prefill_seconds_total", "strata:prefill_phase_seconds_total",
++                   "strata:verify_window_tokens"):
++        assert family in text, family
++    legacy = server.Service._prometheus_wstat_hist(lat.snapshot(), m["totals"])
++    assert "strata:verify_window_tokens_count 1" in legacy and 'phase="gdn"' in legacy
++
++
++def test_backward_compatible_without_wstat():
++    e = _engine()
++    server.StrataEngine._parse_done(e, DONE)
++    assert "wstat" not in e.last and e.last["generated"] == 3, "an engine without WSTAT lines is unchanged"
++
++
++if __name__ == "__main__":
++    for name, fn in sorted(globals().items()):
++        if name.startswith("test_") and callable(fn):
++            fn()
++            print("ok", name)
 diff --git a/src/core/conversation_file.cpp b/src/core/conversation_file.cpp
 index 24291be..4e238a7 100644
 --- a/src/core/conversation_file.cpp
@@ -1928,10 +2137,23 @@ index b02f066..2084a7d 100644
  
  ConversationRestore conversation_snapshot_restore(const SavedConversation& image, SessionState& ss,
 diff --git a/src/core/expert_source.cpp b/src/core/expert_source.cpp
-index 4a872e8..960bdb0 100644
+index 4a872e8..da649ea 100644
 --- a/src/core/expert_source.cpp
 +++ b/src/core/expert_source.cpp
-@@ -1563,6 +1563,90 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
+@@ -100,6 +100,12 @@ static bool arena_pid_alive(uint64_t pid) {
+ 
+ namespace strata::core {
+ 
++// tiberius telemetry: see dax_rotation_count() (the WSTAT line's rot= field).
++namespace {
++std::atomic<int64_t> g_dax_rotations{0};
++}  // namespace
++int64_t dax_rotation_count() { return g_dax_rotations.load(std::memory_order_relaxed); }
++
+ namespace detail {
+ 
+ bool cgroup_available_bytes(uint64_t limit, const CgroupMemoryStat& stat, uint64_t& bytes) {
+@@ -1563,6 +1569,90 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
      layer_offsets_ = std::move(layer_offsets);
      layer_blob_bytes_ = std::move(layer_blob_bytes);
      record_inputs(path, gguf_, layout, false);
@@ -2022,7 +2244,7 @@ index 4a872e8..960bdb0 100644
      return true;
  }
  
-@@ -1571,6 +1655,17 @@ void FileExpertSource::close() {
+@@ -1571,6 +1661,17 @@ void FileExpertSource::close() {
      ram_stop();
      io_stop();
      inputs_.clear();
@@ -2040,7 +2262,7 @@ index 4a872e8..960bdb0 100644
      if (complement_arena_ != nullptr) {
          if (complement_pinned_ && !complement_registered_) (void) cudaFreeHost(complement_arena_);
          else {
-@@ -4087,7 +4182,13 @@ bool FileExpertSource::pin_cache_complement(
+@@ -4087,7 +4188,13 @@ bool FileExpertSource::pin_cache_complement(
                  return;
              }
  #if !defined(_WIN32)
@@ -2055,7 +2277,7 @@ index 4a872e8..960bdb0 100644
              const uint64_t layer_offset = layer_offsets_[(size_t) layer];
              const uint64_t layer_bytes = blob_bytes * (uint64_t) n_expert_;
              const uint64_t layer_end = layer_offset + layer_bytes;
-@@ -4308,14 +4409,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
+@@ -4308,14 +4415,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
  }
  
  bool FileExpertSource::stage_exchange(int64_t layer, int64_t in, int64_t out, int64_t q) {
@@ -2099,7 +2321,7 @@ index 4a872e8..960bdb0 100644
      override_[i_out] = exchange_buffer(q, layer);
      staged_.push_back({i_in, i_out, q, layer_blob_bytes_[(size_t) layer]});
      return true;
-@@ -4684,7 +4810,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+@@ -4684,7 +4816,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
      return result;
  }
  
@@ -2110,7 +2332,7 @@ index 4a872e8..960bdb0 100644
      if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
          layer >= n_layers_ || expert >= n_expert_) return false;
      const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
-@@ -4697,14 +4825,308 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -4697,14 +4831,309 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
             complement_offsets_[at_index] + layer_blob_bytes_[(size_t) layer] <= complement_pin_limit_;
  }
  
@@ -2340,6 +2562,7 @@ index 4a872e8..960bdb0 100644
 +    }
 +    reg_ms = ms_since(t_reg);
 +    ++dax_rotations_;
++    g_dax_rotations.fetch_add(1, std::memory_order_relaxed);
 +    // Once per rotation, never per blob: the layer range moved and how many bytes that cost.
 +    std::fprintf(stderr, "FileExpertSource: STRATA_REGISTER_DAX: rotation %lld: window now layers %lld..%lld, %.2f GiB\n",
 +                 (long long) dax_rotations_, (long long) dax_windows_.back().first,
@@ -2426,7 +2649,7 @@ index 4a872e8..960bdb0 100644
  }
  
  bool FileExpertSource::pcie_layer(int64_t layer) const {
-@@ -6309,6 +6731,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -6309,6 +6738,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
      return lay.blob_offset(layer, expert) + lay.blob_bytes(layer) <= pinned_bytes_;
  }
  
@@ -2562,7 +2785,7 @@ index 0f2c410..6b46051 100644
 +}
 +}  // namespace strata::prefill
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index e2657ae..9be5ae9 100644
+index e2657ae..5deabdf 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
 @@ -28,10 +28,9 @@
@@ -3939,7 +4162,7 @@ index e2657ae..9be5ae9 100644
 +            // windows by size and the accepted tokens in them, the stop-bound clips, and the DAX rotations the request paid.
 +            int64_t win_windows = 0, win_rows = 0, win_acc = 0, sb_windows = 0, sb_rows = 0;
 +            int64_t win_by_size[17] = {}, win_acc_by_size[17] = {};
-+            const int64_t rot0 = srcp != nullptr ? srcp->dax_rotations() : 0;
++            [[maybe_unused]] const int64_t rot0 = strata::core::dax_rotation_count();   // kept for the comment trail; see WSTAT rot (cumulative)
 +            auto win_count = [&](int64_t T, int64_t a) {
 +                const int b = (int) std::min<int64_t>(std::max<int64_t>(T - 1, 0), 16);
 +                ++win_windows;
@@ -4048,7 +4271,7 @@ index e2657ae..9be5ae9 100644
 +            // wall time; wszN/wacN: windows of N accepted rows and the accepted rows in them; phtok/phN: the prefill
 +            // phase timeline (when STRATA_PREFILL_TIMING=1) - the same numbers the log prints.
 +            {
-+                const int64_t rot = srcp != nullptr ? srcp->dax_rotations() - rot0 : 0;
++                const int64_t rot = strata::core::dax_rotation_count();   // cumulative: the prefill rotations happen before this scope
 +                std::printf("WSTAT rot=%lld borrow=%lld windows=%lld rows=%lld acc=%lld sbw=%lld sbr=%lld pm=%.1f",
 +                            (long long) rot, (long long) borrow_bytes, (long long) win_windows,
 +                            (long long) win_rows, (long long) win_acc, (long long) sb_windows, (long long) sb_rows,

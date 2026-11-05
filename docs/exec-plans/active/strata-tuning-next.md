@@ -2,7 +2,7 @@
 
 Status: **active, rounds 2-8 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
 session RESTORE, patch hygiene, the Turing-unlock round and the pmem-spill enable done 2026-11-05**
-(generation 107). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
+(generation 108). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
 SAVE/RESTORE + DFlash2 drafter reset and found/fixed a pre-existing SAVE bug; round 6 restored the
 four over-read guards + final newline (one-file delta, generation 104) and closed experiment row 9;
 round 7 tested and adopted the volatile nlzy/turing-unlock kernel module (`turing-unlock-assessment.md`:
@@ -12,8 +12,10 @@ park-spill hybrid **dormant** (flags off by default; write/guard/RAM paths valid
 restore match is a follow-up before enabling). Generation 106 = engine 2fa52rq... + unlock at boot; round 8 landed the pmem park-spill checkpoint
 match (ordinary-turn park -> streamed restore from the stable 225,280-token checkpoint, 5.15 s vs the
 152 s reread, identical answers) and enabled the tier in generation 107 (engine gci3izr..., 6 GiB /
-4 slots / 4096 MiB reserve + stale-*.park cleanup). Open: patch roadmap items 5-6 (CUDA #4677,
-per-window counters; in progress), and the deferred Unsloth Dynamic V3.1 UD-IQ3_XXS quality experiment
+4 slots / 4096 MiB reserve + stale-*.park cleanup). Round 8b then landed the CUDA #4677 stop-bound
+port and the per-request WSTAT telemetry counters (9 families on /metrics/prometheus, validated and
+deployed in generation 108, engine gwhnf6m...): answers unchanged, counters reconcile with the engine
+log. Open: the deferred Unsloth Dynamic V3.1 UD-IQ3_XXS quality experiment
 (`unsloth-dynamic-v31-assessment.md`, task-24). DAX rotation pipelining was measured and rejected,
 with its log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
@@ -546,6 +548,33 @@ healthy on both doors, telemetry timer active, no Xid, unlock still active from 
 persistent systemd-boot `LoaderEntryDefault` EFI variable again pointed at the previous generation
 and was re-set with `bootctl set-default nixos-generation-107.conf` so a reboot keeps 107.
 
+### Round 8b: CUDA stop-bound port and per-window telemetry (generation 108)
+
+Two engine patches, deployed as generation 108 (engine `gwhnf6m...`, patch `6f44477`):
+
+- **CUDA port of upstream #4677** (behaviour): the `STRATA_USE_HIP` guards around `serve_stop_bound`
+  are gone, so on CUDA a verify window that would commit past an EOS inside it commits up to the
+  stop token; `STRATA_SERVE_STOP_BOUND=0` still disables it. Validated A/B: five requests with the
+  bound on vs off gave identical answer shas and emitted token counts (exact/empty/one/short/p50),
+  and the short prompts exercised the path (1-2 clipped windows, rows counted).
+- **Per-request WSTAT telemetry** (counters only): one stdout line per finished request carries DAX
+  rotations, prompt-path borrowed bytes, verify windows/rows/accepted and windows-by-size, stop-bound
+  clips, prompt-read seconds and the prefill phase timeline (when STRATA_PREFILL_TIMING=1); the serve
+  layer parses it on the solo path, the control/drain paths and the batch path, aggregates it into
+  totals and exposes nine `strata:*` families plus the verify-window-tokens histogram and
+  `prefill_phase_seconds_total{phase=...}`. `/metrics/prometheus` and the JSON `/metrics` both carry
+  it; older engines emit no WSTAT and the endpoints are unchanged. `/metrics` payload ~6 KB, public
+  safe (numbers only).
+
+Validation found and fixed two server/telemetry bugs before deployment: the WSTAT line was stashed
+and then wiped by `_parse_done` (now attached by `_parse_done`), and the legacy `/metrics/prometheus`
+path was not extended (fixed additively); the rotations counter was decode-only because its baseline
+was taken after the prompt read, so it now reports the engine's cumulative rotation count (the
+per-request delta is derivable from two scrapes; the probe's histogram-count==requests expectation is
+wrong - the histogram counts requests that actually had verify windows). Final window: all nine
+families present and monotonic, rotations delta 17 == engine-log 17, borrow 12.29 GB, stop-bound
+counters 1 window/2 rows, phases emitted, A/B answers identical (`same_answers: true`).
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -631,12 +660,12 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    over a full reread; validated and enabled in generation 107 with 6 GiB / 4 slots / 4096 MiB
    reserve + stale-file cleanup. Residual: 4.5 s blocking capture, ~3.6 GB per 250k park, Optane
    thermals; 6 GiB holds one long park (8 GiB for two).
-5. **CUDA port of upstream #4677 - behaviour.** `stop_bound` and both call sites sit inside
+5. **CUDA port of upstream #4677 - LANDED in generation 108 (2026-11-05, patch 6f44477).** `stop_bound` and both call sites sit inside
    `#if defined(STRATA_USE_HIP)`, so a CUDA verify window cannot commit-bound at an EOS inside it;
    removing the guard is ~20 lines plus a correctness run. Pointers: `generate.cpp:17403-17410`,
    `:17966-17972`; `include/strata/core/serve_stop_bound.hpp`. Risk: changes stop handling (not
    speed). Probe: park/restore and stop handling, plus answer sha on the normal cells.
-6. **Per-window telemetry counters - proposed (enables rows 1-9).** Expose rotations/request,
+6. **Per-window telemetry counters - LANDED in generation 108 (2026-11-05, patch 6f44477).** Expose rotations/request,
    prompt-path borrow bytes, tokens/verify-window, acceptance by window size and prefill phase times
    as counters on `/metrics/prometheus`; today they are log-scraped and there are no histograms.
    Pointers: `serve/server.py` `Latencies` (~4564), the `?requests=all` path (~7535);
@@ -788,6 +817,12 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   generation 107 (patch 1f2393f2, engine gci3izr...). Unsloth Dynamic V3.1 assessed
   (`unsloth-dynamic-v31-assessment.md`): not adoptable as-is (GGUF/K-quant mismatch, ~82 GB lane),
   UD-IQ3_XXS experiment recorded as task-24.
+- **2026-11-05, round 8b / CUDA #4677 + counters**: ported the EOS stop bound to CUDA (A/B answers
+  identical with the bound on/off) and added the per-request WSTAT telemetry (nine strata:* families
+  + verify-window histogram + prefill phases; JSON and legacy prometheus endpoints). Fixed the
+  stash-wiped-by-DONE and legacy-endpoint bugs and made the rotations counter cumulative; final
+  window all families present/monotonic and rotations reconciled with the engine log. Deployed as
+  generation 108 (engine gwhnf6m..., patch 6f44477...).
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,

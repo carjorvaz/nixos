@@ -234,7 +234,11 @@ stdenv.mkDerivation {
   #     the deepest chain checkpoint >=1024 tokens below the live state, keeps the whole
   #     chain as metadata, and prefers a file candidate over a full reread) and enabled
   #     the tier in generation 107 (system 3i99wsnk..., engine gci3izr...; 6 GiB / 4 slots
-  #     / 4096 MiB reserve + stale-*.park cleanup).  See the round-8 section of the plan.
+  #     / 4096 MiB reserve + stale-*.park cleanup).  Round 8b added the CUDA #4677 stop bound and
+  #     the per-request WSTAT telemetry counters (nine strata:* families + verify-window histogram +
+  #     prefill phases on /metrics/prometheus and JSON /metrics; answers unchanged, counters
+  #     reconcile with the engine log) and was deployed as generation 108 (system 7nac9cgx...,
+  #     engine gwhnf6m...).  See the round-8 section of the plan.
   #   * the pmem park-spill hybrid (round 7, added 2026-11-05): the RAM park path is
   #     byte-identical; when the transactional pre-check (or the parked-cache budget)
   #     refuses a park, the conversation is written as a v1 session file under
@@ -445,6 +449,10 @@ stdenv.mkDerivation {
     }
     grep -q 'verify_window_tokens' serve/prometheus.py || {
       echo "tiberius.patch lost the /metrics/prometheus WSTAT counters" >&2
+      exit 1
+    }
+    grep -q '_last_wstat' serve/server.py || {
+      echo "tiberius.patch lost the WSTAT stash that survives the DONE parse" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`
