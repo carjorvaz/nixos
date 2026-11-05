@@ -469,8 +469,12 @@ p = 0.754, risk difference -0.62 pp [95 % CI -2.50, +1.25] - no detectable quali
 
 Deployed as generation 111: engine `/nix/store/x4jdmab9180v31xc5fx725py1z9mv6l7-strata-engine-0.1.57`, system `/nix/store/gb91d6ap0z57ad397xzapx8ny50l67yc-nixos-system-tiberius-26.05.20260927.cf5e765`; service healthy on both
 doors, 8,898 slots, warm completion, all nine WSTAT families present after a request, no Xid, boot
-default re-set to 111.  Rollback: revert `pkgs/strata-sm75/default.nix` and the three patch files to
-the parent commit, rebuild, `nixos-rebuild switch`; the pack, model shards and PLE are untouched.
+default re-set to 111.  A request in the shape that used to lose the telemetry (non-streaming,
+thinking off) raised `wstat_requests` and the counters after the switch, so the drain-loop hook is
+live.  Rollback: revert `pkgs/strata-sm75/default.nix` and the three patch files to the parent
+commit, rebuild, `nixos-rebuild switch`; the pack, model shards and PLE are untouched.  Probe
+artifacts: `/data/bump/` (`window.log`, `{new,old}-results.json`, `prom-*.txt`, `eval-new.json`,
+`eval-compare.json`, and the cross-serve checks in `run_cross.sh`/`serve_probe.sh`).
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
