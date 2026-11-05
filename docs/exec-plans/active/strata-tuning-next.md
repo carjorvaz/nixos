@@ -1,8 +1,8 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, rounds 2-8 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
-session RESTORE, patch hygiene, the Turing-unlock round and the pmem-spill enable done 2026-11-05**
-(generation 108). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
+Status: **active, rounds 2-9 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
+session RESTORE, patch hygiene, the Turing-unlock round, the pmem-spill enable and the Unsloth
+quantization switch done 2026-11-05** (generation 109). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
 SAVE/RESTORE + DFlash2 drafter reset and found/fixed a pre-existing SAVE bug; round 6 restored the
 four over-read guards + final newline (one-file delta, generation 104) and closed experiment row 9;
 round 7 tested and adopted the volatile nlzy/turing-unlock kernel module (`turing-unlock-assessment.md`:
@@ -15,8 +15,13 @@ match (ordinary-turn park -> streamed restore from the stable 225,280-token chec
 4 slots / 4096 MiB reserve + stale-*.park cleanup). Round 8b then landed the CUDA #4677 stop-bound
 port and the per-request WSTAT telemetry counters (9 families on /metrics/prometheus, validated and
 deployed in generation 108, engine gwhnf6m...): answers unchanged, counters reconcile with the engine
-log. Open: the deferred Unsloth Dynamic V3.1 UD-IQ3_XXS quality experiment
-(`unsloth-dynamic-v31-assessment.md`, task-24). DAX rotation pipelining was measured and rejected,
+log. Round 9 tested both Unsloth Dynamic V3.1 packs and switched production to UD-IQ2_XS (generation
+109): eval320 quality within noise of the old pack (-0.2 pp mean over 3 passes), prefill read
+-14.8 % P1 / -11.5 % P8K / -16.3 % L-live, decode +4.1 %, the 39.38 GiB expert pack removes the DAX
+register fallbacks and raises the expert cache to 8,898 slots. The UD-IQ3_XXS arm measured +1.4 pp
+quality (not significant) with neutral speed and is kept as an optional quality-first alternative.
+Open: the DFlash2 drafter refit for the UD pack (its L-live acceptance fell 98 % -> 85 %), rollback
+pack reconstruction if ever needed, and the coder lane's own PLE. DAX rotation pipelining was measured and rejected,
 with its log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
@@ -575,6 +580,49 @@ wrong - the histogram counts requests that actually had verify windows). Final w
 families present and monotonic, rotations delta 17 == engine-log 17, borrow 12.29 GB, stop-bound
 counters 1 window/2 rows, phases emitted, A/B answers identical (`same_answers: true`).
 
+## Round 9 results (2026-11-05): Unsloth Dynamic V3.1 switch
+
+Question: the Unsloth Dynamic V3.1 chart shows UD-IQ3_XXS at 82 GB scoring 99.9 vs 99.0 average
+recovery for Qwen's GSQ-RCO IQ3_S at 83.7 GB, and UD-IQ2_XS at 76.5 GB scoring 99.4 - i.e. at equal
+size a small quality edge, and at lower size parity-or-better. Both technically plausible arms were
+built and measured.
+
+**Compatibility:** the GGUF headers show UD-IQ3_XXS uses IQ3_XXS/IQ2_S/IQ4_NL/IQ4_XS/Q2_0 experts
+and Q6_K/Q8_0/F32/BF16 dense/PLE tensors, all in the engine's supported families; UD-IQ2_XS uses
+IQ2_S experts + IQ4_NL downs (3 shards). `tools/iq_pack.py --experts-bin --compat-bf16` produced
+packs cleanly (the Q8_0 hc/projection tensors the engine reads as BF16 need the compat conversion;
+compat-bf16 rounds only those small tensors). Disk staging: the old source GGUFs/PLE were deleted
+to make room (redownloadable), old artifacts were archived to pius where not rebuildable, and
+`/data` + Optane were reorganized around the 82/76 GB downloads.
+
+**Arm A - UD-IQ3_XXS** (experts.bin 46.84 GiB, 7,660 slots): eval320 3 passes 60.0/61.6/59.4 % vs
+baseline 58.1/59.7 x (mean +1.4 pp); same-index paired +1.9 pp both passes, pooled p=0.111 - inside
+the same-stack floor, not significant. Speed: +1.6 % P1, +0.3 % P8K, +0.8 % P27 (neutral), L-live
+read +2.7 %, decode 107-127 tok/s (in-session drift), DFlash2 acceptance -8..-13 pp on some cells.
+Two DAX host-registration failures per prompt pass (5.93 GiB windows, 46.84 GiB pack) and 9 rotation
+windows/pass; ~0.0-1.4 MB extra file read per cell, so the cost was small but real.
+
+**Arm B - UD-IQ2_XS** (experts.bin **39.38 GiB**, **8,898** slots): eval320 58.1/58.8/60.0 % vs
+baseline 58.1/59.7 % (mean -0.2 pp; p≈1.0) - quality statistically indistinguishable from the old
+pack, and every pass faster to evaluate (337/333 s vs 386/393 s). Speed: **P1 -14.8 %, P8K -11.5 %,
+L-live read -16.3 %, decode +4.1 %, P27 +1.2 % (neutral)**; clean same-engine PPL cell -24.7 %
+read / +21 % decode vs IQ3_S; streamed expert bytes -19/-16/-8/-31 %. **Zero** DAX registration
+fallbacks and 7 rotation windows/pass (the 0.82 GiB layer blobs fit the 6.00 GiB window); expert
+cache +1,039 slots. Costs: DFlash2 L-live acceptance 85 % vs 98 % (decode still faster), greedy
+answer identity changes (different quant), and in-session greedy drift on P1/L-live.
+
+**Decision: arm B adopted** (quality parity within the measured floor, clear speed gain, less DAX
+pressure, more cache slots); arm A remains the quality-first option if a later eval settles a real
+edge. Deployed as generation 109: `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PLE shard 3 under
+`/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the lane config gained
+`midShards`/`pleShard`/`pleFile` for 3-shard models (native dir links all shards) and the API
+`model_name` is unchanged for client compatibility. Verified: service healthy on both doors, expert
+cache 8,898 slots, warm request answers, telemetry active, no Xid, boot default re-set to 109.
+Follow-ups: DFlash2 drafter refit for the UD pack; rollback procedure (old source GGUFs/PLE are
+redownloadable, old pack rebuildable from them); coder lane needs its own PLE again. Full data:
+`/data/round9/` (baseline, iq3_xxs, iq2_xs; item-level JSON + compare summaries), speed reports in
+`/tmp/strata-tune/round9-speed-results.md` and `/tmp/round9-speed/`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -823,6 +871,13 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   stash-wiped-by-DONE and legacy-endpoint bugs and made the rotations counter cumulative; final
   window all families present/monotonic and rotations reconciled with the engine log. Deployed as
   generation 108 (engine gwhnf6m..., patch 6f44477...).
+- **2026-11-05, round 9 / Unsloth switch**: built both UD packs (IQ3_XXS 46.84 GiB, IQ2_XS 39.38
+  GiB) from the Unsloth V3.1 GGUFs and ran 3-pass eval320 + a 4-cell speed probe on each. Arm IQ3_XXS:
+  +1.4 pp quality (within floor), neutral speed, 2 DAX registration failures/pass. Arm IQ2_XS:
+  quality parity (-0.2 pp), prefill -14.8 % P1 / -11.5 % P8K / -16.3 % L-live read, decode +4.1 %,
+  no DAX failures, 8,898 cache slots; DFlash2 acceptance 85 % vs 98 %. Adopted IQ2_XS and deployed
+  as generation 109; lane config gained midShards/pleShard/pleFile for 3-shard models. Old source
+  GGUFs/PLE deleted (redownloadable); coder lane PLE currently missing (follow-up).
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,

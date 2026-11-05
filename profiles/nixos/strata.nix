@@ -86,9 +86,19 @@ let
       defaultContext = 131072;
     };
     iq3-s = {
-      pack = "iq3_s";
-      models = "IQ3_S";
-      shard1 = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf";
+      # Round 9 (2026-11-05): the pack is now Unsloth Dynamic V3.1 UD-IQ2_XS
+      # (3 shards: metadata, model, PLE) instead of Qwen's GSQ-RCO IQ3_S.  The
+      # lane/profile/model-name stay the same so clients and the expert profile
+      # are unchanged.  Measured on tiberius: prefill read -14.8 % P1 (4.2k) and
+      # -11.5 % P8K (8.3k), -16.3 % L-live read, decode +4.1 %, P27 neutral;
+      # eval320 quality within noise of the old pack (-0.2 pp mean, 3 passes);
+      # the smaller 39.38 GiB expert pack removes the DAX register fallbacks.
+      pack = "ud-iq2_xs";
+      models = "UD-IQ2_XS";
+      shard1 = "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf";
+      midShards = [ "Qwen3.8-Flash-Next-UD-IQ2_XS-00002-of-00003.gguf" ];
+      pleShard = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
+      pleFile = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
       profile = "expert-profile.bin";
       modelName = "qwen3.8-flash-next-iq3_s";
       defaultContext = 262144;
@@ -117,10 +127,14 @@ let
   # ...IQ1_M-00002-of-00002.gguf (shard 2 of 2)" (reproduced 2026-10-03).  Bumping
   # the split number in lane.shard1 reproduces the engine's derivation for every
   # lane; for iq3-s it yields exactly the name this used to hardcode.
-  pleShard = lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1;
+  pleShard = lane.pleShard or (lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1);
   # The file on disk is one shared table (the Coder release ships no shard 2 of
-  # its own), linked per lane under the derived name above.
-  pleFile = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+  # its own), linked per lane under the derived name above.  A lane may name it
+  # explicitly (UD-IQ2_XS has its PLE in shard 3 of 3).
+  pleFile = lane.pleFile or "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+  # Models split into 3+ shards have middle shards that must sit beside --native
+  # under their own split names as well; empty for the 2-shard lanes.
+  midShards = lane.midShards or [ ];
 
   strataJson = pkgs.writeText "strata-${cfg.model}.json" (
     builtins.toJSON {
@@ -983,6 +997,11 @@ in
             # point inside it.  ln -sfn is idempotent and replaces a stale link.
             "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
+          ]
+          ++ map (
+            s: "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${s} ${nativeDir}/${s}"
+          ) midShards
+          ++ [
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
             # Disk sessions (POST /slots/0?action=save|restore).  A SAVE streams
             # the K/V straight from the pools into the file ("without a full host

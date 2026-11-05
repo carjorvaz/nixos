@@ -1,9 +1,8 @@
 # Unsloth Dynamic V3.1 for Qwen3.8-Flash-Next: assessment
 
-Status: **assessed 2026-11-05; not adopted.** A quality lever worth a bounded experiment only if
-quality becomes the priority over prefill speed and the disk work is acceptable. This note records
-what the update is, why it does not drop into the current lane, the one technically plausible
-variant, and the experiment plan.
+Status: **assessed and TESTED 2026-11-05; adopted: UD-IQ2_XS is now the production pack**
+(generation 109). The earlier part of this note records the pre-test analysis; the "Round 9 test
+result" section below records the measurements and the decision.
 
 Sources: <https://unsloth.ai/docs/models/qwen3.8-next> (quant table, recommended sampling, MTP),
 <https://unsloth.ai/docs/basics/dynamic-3.0-ggufs> (Dynamic methodology, KLD/Divergence-300),
@@ -75,11 +74,41 @@ tensors in their GGUF form.
 4. Keep the current pack and generation as the rollback; storage juggling is the main risk to the
    lane, not the engine.
 
-## Verdict
+## Round 9 test result (2026-11-05)
 
-Not adopted now: it is a model-quality/disk experiment, not a configuration knob, and the current
-lane's measured bottleneck is prefill (now improved 5.7 % by the tensor-core unlock) rather than
-quality. Revisit when (a) quality rather than speed is the priority, (b) a same-family i-quant
-variant at ≤82 GB is available (or the current pack's source GGUF is no longer needed for rebuilds),
-and (c) the DFlash2 drafter question is settled. The assessment is recorded here so the idea is not
-re-derived from scratch next time; the outline above is the starting point.
+Both plausible arms were built from the Unsloth Dynamic V3.1 GGUFs with the engine's own
+`tools/iq_pack.py --experts-bin --compat-bf16` (the Q8_0 hc/projection tensors the engine reads as
+BF16 need the compat conversion) and measured on the same eval320 protocol as the baseline:
+
+| arm | pack | experts.bin | expert slots | quality (3 passes) | prefill read | decode |
+|---|---|---|---|---|---|---|
+| current | GSQ-RCO IQ3_S | 46.84 GiB | 7,859 | 58.1 / 59.7 % (2 passes) | baseline | 109.4 tok/s |
+| A | UD-IQ3_XXS | 46.84 GiB | 7,660 | 60.0 / 61.6 / 59.4 % → **+1.4 pp** mean | +1.6 % P1, +0.3 % P8K, +0.8 % P27 | L-live 107.4-127.4 |
+| B | UD-IQ2_XS | **39.38 GiB** | **8,898** | 58.1 / 58.8 / 60.0 % → **-0.2 pp** mean | **-14.8 % P1, -11.5 % P8K**, +1.2 % P27 | **+4.1 %** (L-live), acceptance 85 % vs 98 % |
+| B (clean same-engine PPL cell) | | | | | **-24.7 % vs IQ3_S** (6,924 ms vs 8,634) | **+21 %** (56.6 vs 46.6 tok/s) |
+
+Quality caveat: the eval320 same-index paired deltas are inside the 5.9 % same-stack floor (arm A
++1.9 pp both paired passes, pooled p=0.111; arm B -0.2 pp mean, p≈1.0) - neither is a statistically
+significant quality difference, and arm A's own pass-to-pass noise is lower (kappa 0.961) so the +6
+net items/pass signal may be real but is not proven. Speed is not ambiguous: arm B's 39.38 GiB
+(0.82 GiB/layer) expert pack fits the 6.00 GiB DAX window, removing the 2 failed host-registrations
+per pass that arm A (46.84 GiB) pays, and cuts streamed expert bytes 19 %/16 %/8 %/31 % on
+P1/P8K/P27/L-live. Its L-live DFlash2 acceptance drops to 85 % (from 98 %), yet decode still ends
+4 % faster; P1/P8K greedy shas differ from the old pack (expected - different quantization) and
+in-session greedy drift appears on P1/L-live.
+
+**Decision: adopt arm B (UD-IQ2_XS)** - the prefill/decode gain is material and reproducible, the
+quality change is within noise of the already-measured same-stack floor, and the smaller pack also
+removes the DAX registration fallbacks and raises the expert cache (7,859 -> 8,898 slots). Arm A
+(+1.4 pp quality signal, no speed gain) is kept as an optional quality-first alternative but was not
+chosen: its would-be quality edge is not significant and its speed is neutral-to-worse.
+
+Deployment (generation 109): `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PLE shard 3 under
+`/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the NixOS lane config gained
+`midShards`/`pleShard`/`pleFile` fields for 3-shard models and links all three shards into the
+per-lane native dir. API `model_name` stays `qwen3.8-flash-next-iq3_s` so clients keep working.
+DFlash2 still runs with the existing drafter; refititing it for the UD pack (or disabling it) is the
+obvious next optimisation. Rollback: the old GSQ-RCO IQ3_S source GGUFs and PLE shard were deleted
+to make room (both redownloadable from the pinned HF/S3 source); rollback = re-download, rebuild the
+pack with `iq_pack.py`, revert the lane fields. The coder lane's shared old PLE file is gone with
+them; it needs its own PLE restored before it can be selected again.

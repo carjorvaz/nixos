@@ -392,6 +392,25 @@ generation 107. Engine `/nix/store/gwhnf6mm1dx0ba84swv8mzw0zq9mvcr0-strata-engin
 `/nix/store/7nac9cgx01235ivdvh7kb7rzgjwvpx2l-...`; service healthy on both doors, telemetry active,
 unlock still active from the initrd, no Xid, boot default re-set to 108.
 
+Generation 109 (2026-11-05) switches the production pack from Qwen's GSQ-RCO IQ3_S to Unsloth
+Dynamic V3.1 **UD-IQ2_XS** after the round-9 A/B (both UD variants built with
+`tools/iq_pack.py --experts-bin --compat-bf16`, measured with the same eval320 protocol on an
+isolated engine). UD-IQ3_XXS measured +1.4 pp eval320 quality (inside the same-stack floor, not
+significant) with neutral prefill; UD-IQ2_XS measured quality parity (-0.2 pp mean, 3 passes) with
+prefill read -14.8 % at 4,252 tokens, -11.5 % at 8,268, -16.3 % L-live read and +4.1 % decode, a
+clean same-engine control showing -24.7 % read / +21 % decode, zero DAX host-registration fallbacks
+(the 39.38 GiB expert pack's 0.82 GiB layer blobs fit the 6.00 GiB window; the old pack needed 9
+windows with 2 failures per pass), and 8,898 vs 7,859 expert slots. Cost: DFlash2 L-live acceptance
+falls 98 % -> 85 % (decode is still faster) and greedy answer identity changes with the pack.
+Deployment: model shards under `/data/strata-models/UD-IQ2_XS`, PLE shard 3 under
+`/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the lane config gained
+`midShards`/`pleShard`/`pleFile` for 3-shard models and the native dir links all three shards. API
+model name unchanged; service healthy on both doors, expert cache 8,898 slots, warm request answered,
+telemetry active, no Xid, boot default re-set to 109. The old GSQ-RCO IQ3_S source GGUFs/PLE were
+deleted to make room (redownloadable; old pack rebuildable from them) and the coder lane's shared PLE
+is consequently missing until restored (follow-up). See `unsloth-dynamic-v31-assessment.md` and the
+round-9 section of the plan for the full tables and caveats.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is
