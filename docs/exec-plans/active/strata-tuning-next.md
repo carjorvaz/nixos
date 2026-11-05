@@ -2,7 +2,8 @@
 
 Status: **active, rounds 2-9 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
 session RESTORE, patch hygiene, the Turing-unlock round, the pmem-spill enable and the Unsloth
-quantization switch done 2026-11-05** (generation 109). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
+quantization switch done 2026-11-05** (generation 109), plus the v0.2.11 engine bump
+(round 13, generation 111). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
 SAVE/RESTORE + DFlash2 drafter reset and found/fixed a pre-existing SAVE bug; round 6 restored the
 four over-read guards + final newline (one-file delta, generation 104) and closed experiment row 9;
 round 7 tested and adopted the volatile nlzy/turing-unlock kernel module (`turing-unlock-assessment.md`:
@@ -42,9 +43,10 @@ needs. Nothing is adopted on one run; a round is accepted only through the decis
   first, but this round is software-only (`box-audit.md` §§2-3).
 - No other services: the lane stays the boot engine behind the lease proxy; no vLLM/NInfer switch,
   no host OS/sysctl changes, no client/context changes (the 262,144 window stays).
-- No engine pin bump (`ffa80d73` is v0.2.10 and upstream `main` HEAD - nothing to bump).  The
-  campaigns run on the isolated port-8099 engine; the Lead deploys only what passes its rule, and
-  every deploy is recorded in the progress log below.
+- No engine pin bump was planned when this round started (`ffa80d73` was v0.2.10 and upstream
+  `main` HEAD).  That changed when v0.2.11 (`c3b3f503`, engine 0.1.57) shipped on 2026-11-05; the
+  bump was taken as round 13 below.  The campaigns run on the isolated port-8099 engine; the Lead
+  deploys only what passes its rule, and every deploy is recorded in the progress log below.
 
 ## Context: the 2026-11-04 regime shift (generation 100)
 
@@ -684,6 +686,43 @@ drafter could add at most ~+15 % decode on average (+25 % on the best run) and z
 **No refit**: the effort is a training/calibration project for a single-digit-to-mid-teens decode
 ceiling, and prefill (the real bottleneck) is untouched. Report:
 `/tmp/strata-tune/round12-draftoff-bound.md`, `/data/round12/`.
+
+### Round 13: engine pin bump to v0.2.11 (2026-11-05, generation 111)
+
+v0.2.11 (`c3b3f503`, engine 0.1.57) shipped on 2026-11-05 and was taken over the v0.2.10 pin
+(`ffa80d73`, engine 0.1.56).  **What selects for this lane:** the Q5_0 expert-dot fix (upstream
+aa678f10) - the deployed UD-IQ2_XS pack's expert layer 4 is the only one of 48 whose down type is
+Q5_0 (`native_experts.txt` d_type=6), and upstream measured the whole-expert error falling
+2.1-3.1e-2 -> 1.2e-2 (the other down types' level) - plus the 0.2.11 serve-layer changes (chat
+files, agent-turn takeover, the 60 s stream-write timeout, the bounded console queue, the drafter-less
+retry of an OOM start, the activity lease).  **What does not select:** the K-quant MMQ prompt kernels
+and the 32768-token `--prefill auto` ceiling (compute capability 8.0+ only; the module's explicit
+`--prefill 28160` is untouched), the all-cards split engine / two-card prompt path / layer-split
+trim-and-spill walk (multi-GPU only), the gfx12 Radeon defaults (not built), and the FP16 weight
+cache (batch slots only; this lane runs none).  The discrete-CUDA CPU/upload share rule (ceiling 0.95,
+k following the pool rate) feeds PcieAuto only, and `STRATA_PCIE_FRAC_DEFAULT=old` still keeps that
+refinement off - the start-up probe still logs `PCIe probe: 12.2 GB/s ... -> pcie_frac 0.34`.
+
+Rebase: the engine hunks (expert_source.cpp, prefill.cpp, all of generate.cpp) applied with no fuzz
+and `no-web-ui.patch` / `avx512-bw-tier.patch` applied cleanly.  `serve/server.py` took two "keep
+both" conflicts (0.2.11's per-line progress reset in the two wait loops beside the WSTAT parse;
+0.2.11's `if not admission_rejected:` guard around the per-request totals, with the WSTAT aggregation
+re-indented inside it) and one added hook: 0.2.11 finishes non-streaming requests in the `finally`
+drain loop, which consumed the WSTAT line without parsing it - the probe found the telemetry silently
+absent from /metrics (answers unaffected), and the drain loop now parses WSTAT before DONE.  The
+build-time greps grew 42 -> 48 (the new share gates and the `!pf_old` gate, the W16 batch gate,
+`prefill_auto_bare`, nv_defaults' MMQ gate, vram_fit's `kv_fixed` hook).
+
+Validation (isolated port-8099 window, production stopped and trap-restored; deployed 0.1.56 vs
+0.1.57, same config/pack): 4,252-token read 8.60 -> 8.68 s (+0.9 %), 26,134-token read
+21.78 -> 21.39 s (-1.8 %); per-request totals 2,155 -> 2,184 tok/s prefill and 65.3 -> 68.0 tok/s
+decode (5 requests each, one interleaved run - inside the box's ~3-5 % spread).  All four speed-cell
+answers differ (the Q5_0 layer, expected).  eval320 (frozen protocol) 188/320 = 58.8 % against the
+round-9 UD-IQ2_XS 0.1.56 baseline 186/320 = 58.1 %: discordance 10/320 (3.1 %), McNemar p = 0.754,
+risk difference -0.62 pp [95 % CI -2.50, +1.25] - no detectable quality change.  Deployed as
+generation 111 (engine `/nix/store/x4jdmab9180v31xc5fx725py1z9mv6l7-strata-engine-0.1.57`, system `/nix/store/gb91d6ap0z57ad397xzapx8ny50l67yc-nixos-system-tiberius-26.05.20260927.cf5e765`); service healthy on both doors and
+the nine WSTAT families verified after the switch.  Rollback: revert the pin and the three patch
+files to the previous commit, rebuild, `nixos-rebuild switch`; the pack/model are untouched.
 
 ## Source-level patch roadmap
 

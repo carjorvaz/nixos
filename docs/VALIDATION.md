@@ -152,8 +152,9 @@ slot on 2026-10-11 until an on-box A/B of hindsight's refresh job put the two
 lanes in the same envelope - 283 s on strata against 67-617 s on the 27B, with
 a richer page from strata; the 27B stays installed as the parked fast and
 interactive lane). It builds upstream Strata at pin
-`ffa80d73` (v0.2.10, engine 0.1.56; the v0.2.4.2 record is `dfa3f402`, engine
-0.1.49.2) with three patches:
+`c3b3f503` (v0.2.11, engine 0.1.57; the previous pin `ffa80d73` is v0.2.10 /
+engine 0.1.56, and the v0.2.4.2 record is `dfa3f402`, engine 0.1.49.2) with three
+patches:
 `tiberius.patch` (a sliding DAX register window, decode-time refill pinning with
 its straddle guard), `no-web-ui.patch` (`STRATA_NO_WEB=1` turns off the bundled
 web app, its pages/assets and `/settings`; the OpenAI-compatible API is
@@ -415,6 +416,61 @@ model is `ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` IQ3_S shard 1 (54,817,524
 the plan records the re-download + `iq_pack.py` rebuild + lane-field revert steps. The coder lane is
 explicitly unavailable in the module now (assertion with the restore procedure) because its pack,
 model shards and shared PLE were removed by this switch.
+
+Generation 111 (2026-11-05) bumps the engine pin from v0.2.10 (`ffa80d73`, engine 0.1.56) to
+v0.2.11 (`c3b3f503`, engine 0.1.57).  Upstream's headline changes do not select for this lane: the
+K-quant MMQ prompt kernels and the 32768-token `--prefill auto` ceiling are compute capability 8.0+
+only (sm_75 keeps its paths, and the module's explicit `--prefill 28160` is untouched), the
+all-cards split engine / two-card prompt path / layer-split trim-and-spill walk are multi-GPU only,
+the gfx12 Radeon defaults are not built here, and the FP16 weight cache selects only with batch
+slots (this lane runs no `--batch`/`--parallel`).  The discrete-CUDA CPU/upload share rule (ceiling
+0.95, k following the pool rate) feeds PcieAuto only, and the module's
+`STRATA_PCIE_FRAC_DEFAULT=old` still keeps that refinement off
+(`pcie_frac_auto = ... && !pf_old`), so the start-up probe stays at the measured
+`PCIe probe: 12.2 GB/s ... -> pcie_frac 0.34`.  What DOES reach the lane is the Q5_0 expert-dot fix
+(upstream `aa678f10`): the constant -16 offset now takes the sum of the QUANTIZED activations; the
+deployed UD-IQ2_XS pack's expert layer 4 is the only one of 48 whose down type is Q5_0
+(`native_experts.txt` d_type=6), so that layer's down projection moves toward the exact result
+(upstream: whole-expert error 2.1-3.1e-2 -> 1.2e-2, the other down types' level) - an accepted answer
+change.  The serve layer also takes its 0.2.11 changes (chats stored as files, a running agent turn
+taken over after a reload, the 60 s stream-write timeout, the bounded console queue, a start that
+stops for lack of memory retried once without a drafter, the activity lease; the metric rendering is
+byte-identical, and `vram_fit` is additive only, so the `--kv-resident 0` user arg still suppresses
+the injected window).
+
+Rebase: the engine-side hunks (`expert_source.cpp`, `prefill.cpp`, all 1,314 added lines of
+`generate.cpp`) applied with no fuzz, and `no-web-ui.patch` / `avx512-bw-tier.patch` applied
+cleanly.  `serve/server.py` needed two "keep both" resolutions - 0.2.11's per-line progress reset in
+the two engine-line wait loops (every line restarts the stop limits) beside the WSTAT parse, and
+0.2.11's `if not admission_rejected:` guard (#3040) around the per-request totals with the WSTAT
+aggregation block re-indented inside it - plus one ADDED hook: 0.2.11 finishes non-streaming requests
+in the `finally` drain loop (the early-consumer path), and that loop consumed the WSTAT line without
+parsing it.  The isolated probe found the telemetry silently absent from `/metrics` on every request
+(answers unaffected; cross-checked: old serve + new engine and new serve + one request both emit it,
+the probe's request shape finishes in the drain loop), so the drain loop now parses WSTAT before
+DONE, like the other three readers.  The build-time greps grew from 42 to 48: the new share-gate
+variables (`STRATA_PCIE_AUTO_SPLIT`/`_K_RULE`/`_SHARE_MAX`), the `!pf_old` gate that keeps PcieAuto
+off, the W16 `o.batch >= 2` gate, `prefill_auto_bare`, `nv_defaults.cpp`'s `STRATA_MMQ_KQ` gate and
+`vram_fit.py`'s `kv_fixed` hook.
+
+Validation: the Nix fetch hash matches (`sha256-YTKr...`); the three patches apply in order to the
+fetched tree with `patch -p1` and the patched tree is byte-identical to the regenerated rebase tree;
+a tiberius-native build succeeds and reports `strata 0.1.57`; the WSTAT serve smoke test passes 4/4; the deployed build (with the drain hook) is `/nix/store/x4jdmab9180v31xc5fx725py1z9mv6l7-strata-engine-0.1.57`;
+the closure diff against generation 110 is the engine alone (`strata-engine: 0.1.56 -> 0.1.57`,
++315.8 KiB).  Engine start is unchanged: 8,898 expert slots, DFlash2 `--spec 6 --draft-conf 0.8`, the
+5.4-5.9 GiB DAX window, `pcie_frac 0.34`, no MMQ/FP16/split lines.  Isolated A/B on port 8099
+(production stopped under the GPU lock and trap-restored; deployed 0.1.56 vs 0.1.57, same config and
+pack, 5 requests each): 4,252-token read 8.60 -> 8.68 s (+0.9 %), 26,134-token read
+21.78 -> 21.39 s (-1.8 %), totals 2,155 -> 2,184 tok/s prefill and 65.3 -> 68.0 tok/s decode (one
+interleaved run; inside the box's ~3-5 % spread).  All four speed-cell answers differ, as expected
+from the Q5_0 layer.  eval320 (frozen protocol: temperature 0, thinking off, max 96) 188/320 = 58.8 %
+against the round-9 UD-IQ2_XS 0.1.56 baseline 186/320 = 58.1 %: discordance 10/320 (3.1 %), McNemar
+p = 0.754, risk difference -0.62 pp [95 % CI -2.50, +1.25] - no detectable quality change.
+
+Deployed as generation 111: engine `/nix/store/x4jdmab9180v31xc5fx725py1z9mv6l7-strata-engine-0.1.57`, system `/nix/store/gb91d6ap0z57ad397xzapx8ny50l67yc-nixos-system-tiberius-26.05.20260927.cf5e765`; service healthy on both
+doors, 8,898 slots, warm completion, all nine WSTAT families present after a request, no Xid, boot
+default re-set to 111.  Rollback: revert `pkgs/strata-sm75/default.nix` and the three patch files to
+the parent commit, rebuild, `nixos-rebuild switch`; the pack, model shards and PLE are untouched.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last

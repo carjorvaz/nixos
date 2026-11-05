@@ -5,6 +5,11 @@
 # would be written beside the read-only store config is never reached).  Upstream added
 # /tool-media/ to the same router in 0.2.5, so the 404 block sits above it and returns.
 #
+# RE-VERIFIED 2026-11-05 against c3b3f503 (v0.2.11, engine 0.1.57): applies with no hunk conflicts.
+# 0.2.11's serve/server.py delta (the chat store, the stream/lifecycle changes) leaves this GET/POST router
+# region untouched; re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, and
+# /api-monitor and /settings are still the only non-API pages at the root.
+#
 # Regenerated against ffa80d73 (v0.2.10, engine 0.1.56).  The patch applied cleanly: 0.2.10 rewrote parts of
 # serve/server.py (the split engine's server keys, the drafting plan) but not the GET/POST router shape this
 # block guards.  Re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, /api-monitor and

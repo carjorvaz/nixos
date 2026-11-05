@@ -1,5 +1,10 @@
-# tiberius: the AVX-512 expert tier without VBMI, against upstream ffa80d73 (v0.2.10, engine 0.1.56).
-# REBASED 2026-11-03 onto ffa80d73.  No hunk conflicts: upstream's 0.2.10 delta in the files this patch
+# tiberius: the AVX-512 expert tier without VBMI, against upstream c3b3f503 (v0.2.11, engine 0.1.57).
+# RE-VERIFIED 2026-11-05 onto c3b3f503: applies with no hunk conflicts.  Upstream's 0.2.11 delta in
+# CMakeLists.txt is the split/DFlash2/parity TUs and comments, not the kernel flag lists this patch edits,
+# and the postPatch absence checks (no vpmultishiftqb in expert.cpp, no -mavx512vbmi on expert.cpp or
+# iq/nvfp4_avx512.cpp, VBMI still on tq_avx512.cpp) pass on the merged tree.
+#
+# REBASED 2026-11-03 onto ffa80d73 (history).  No hunk conflicts: upstream's 0.2.10 delta in the files this patch
 # touches is CMakeLists.txt growth (the split/DFlash2 TUs) plus comments; the expert, iq and nvfp4 kernel
 # bodies and the flag lists are unchanged, so the VBMI-free forms carried over as they were.  The
 # absence checks in the package's postPatch (no vpmultishiftqb in expert.cpp, no -mavx512vbmi on expert.cpp

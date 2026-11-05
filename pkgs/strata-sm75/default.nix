@@ -23,31 +23,43 @@
 let
   c = cudaPackages;
 
-  # ffa80d73: v0.2.10 (2026-11-02), the current release.  The engine inside it
-  # is 0.1.56.  Since the last pin (c62d5e3a = v0.2.9 / engine 0.1.55) upstream's
-  # headline changes are the DFlash2 drafter (the Auto choice for Qwen3.8 on CUDA
-  # compute capability 8.6/8.9/12.0/12.1 - sm_75 is NOT in that list, so this
-  # lane keeps the MTP layer it has), the all-cards split engine (Auto only for
-  # two 8.6/12.0 cards or four R9700s; one card keeps the layer split), the
-  # 128K-context walk for 8 GB cards, the ISTA-DAS Coder and DeepSeek pictures on
-  # a Mac.  None of those select for a single 22 GB sm_75 card; what does reach
-  # this lane is the 0.1.56 engine itself: the Qwen penalty window now counts
-  # only the reply's own tokens (#4590; the old whole-prompt window is
-  # STRATA_PENALTY_PROMPT=1 - a documented answer change, adopted), and the PLE
-  # lock path raises the memlock soft limit before locking (#4671) - not
-  # exercised here: --ple-io mmap leaves the table mapped and unlocked (only
-  # --ple-io ram or the residency policy sets pio.lock).  NOT this lane: #4677's
-  # stop-bound park fix is compiled only under STRATA_USE_HIP (generate.cpp
-  # defines `stop_bound` and both call sites inside the HIP guard), so this CUDA
-  # build carries neither the behaviour nor STRATA_SERVE_STOP_BOUND.  One new
-  # serve-layer trap: 0.2.10's
-  # vram_fit.fit_start runs on every engine start and on CUDA its only knob is
-  # --kv-resident; the engine turns --kv-grow off whenever a KV window is set,
-  # so a start the fitter calls short would silently drop the module's measured
-  # elastic-KV win - watch for the "KV window ..." line in the journal.
+  # c3b3f503: v0.2.11 (2026-11-05), the current release.  The engine inside it
+  # is 0.1.57.  Since the last pin (ffa80d73 = v0.2.10 / engine 0.1.56) upstream's
+  # headline changes are the new Unsloth Dynamic V3.1 Qwen sets (app/Terminal
+  # catalog only - the engine still reads the pack prepared once on the host),
+  # the K-quant MMQ prompt kernels and the 32768-token --prefill auto ceiling
+  # (both compute capability 8.0+, so sm_75 keeps its path and the module's
+  # explicit 28160 chunk), the all-cards split engine / two-card prompt path /
+  # layer-split trim-and-spill walk (one card does not start the split engine,
+  # and the walk is multi-GPU only), the gfx12 Radeon defaults (not this build)
+  # and the FP16 weight cache for batch slots (this lane runs no --batch /
+  # --parallel slots).  What DOES reach this lane:
+  #   * the Q5_0 expert-dot fix (upstream aa678f10, CUDA): the constant -16
+  #     offset now takes the sum of the QUANTIZED activations instead of the
+  #     q8_1 block's ds.y.  The deployed UD-IQ2_XS pack's expert layer 4 has
+  #     Q5_0 as its DOWN type (native_experts.txt d_type=6), which is exactly
+  #     the path that was wrong; upstream measured the whole-expert error fall
+  #     from 2.1-3.1e-2 to 1.2e-2, every other down type's level.  Answers on
+  #     that layer move TOWARD the exact reference (an anticipated, adopted
+  #     answer change - the eval320 pass rate is the gate on the deploy).
+  #   * the serve layer: chats stored as files in the data folder, a running
+  #     agent turn taken over after a reload, stream write/disconnect bounds, a
+  #     start that stops for lack of memory retried once without a drafter, the
+  #     bounded console queue, image format/EXIF fixes.  The WSTAT patch had to
+  #     be re-merged into two wait loops (see tiberius.patch's header).
+  #   * the discrete-CUDA CPU/upload share rule (pcie_share_rule.hpp, ceiling
+  #     0.95 and k falling with the pool rate) is PcieAuto's: the module's
+  #     STRATA_PCIE_FRAC_DEFAULT=old still keeps the pool-timed refinement OFF
+  #     (the gate is `... && !pf_old` in generate.cpp), so the measured 0.1.42
+  #     share stays.  The build-time greps below fail if those gate variables
+  #     ever disappear from the source.
+  #   * vram_fit.fit_start's behaviour is unchanged (still --kv-resident only on
+  #     CUDA), so the module's `--kv-resident 0` user arg keeps suppressing the
+  #     injected window; #4677's stop-bound park fix is still HIP-only, so this
+  #     patch's CUDA port remains the only stop bound in this build.
   # llama.cpp's pin is unchanged (third_party/ggml/VERSION.txt = 3cf03257), so
   # llamaRevision below still holds.
-  revision = "ffa80d73133ea5c548aefe57889a16e8085a938f";
+  revision = "c3b3f5035506f3e966f1b4b7b188aeaabae92f1d";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -79,7 +91,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.56";
+  version = "0.1.57";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -116,7 +128,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-cIBcdKRYVH78bu4sElF0XK/wedcLTK8tu12c0Alzlw8=";
+    hash = "sha256-YTKrlOqN97ISsaNZfpEqzLBAvglOI8Lq5G2KFTKQXWE=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -148,6 +160,21 @@ stdenv.mkDerivation {
   # the Windows standby-list release) sit outside the FileExpertSource region
   # this patch owns, and the CMakeLists growth is new split/DFlash2 TUs and
   # comments, not the kernel flag lists.
+  # The v0.2.11 bump (c3b3f503) needed three resolutions, all in serve/server.py.
+  # Two conflicts were resolved "keep both": 0.2.11's per-line progress reset in
+  # the two engine-line wait loops (every line restarts the stop limits) beside
+  # this patch's WSTAT parse, and 0.2.11's `if not admission_rejected:` guard
+  # (#3040) around the per-request totals, with the WSTAT aggregation block
+  # re-indented inside it.  The third is an added hook: 0.2.11 can finish a
+  # request in the `finally` drain loop (the early-consumer path), and that loop
+  # consumed the WSTAT line without parsing it - observed on every 0.2.11 probe
+  # request (telemetry silently absent from /metrics; answers fine) - so the
+  # drain loop now parses WSTAT before DONE like the other three readers.
+  # The engine-side hunks (expert_source.cpp, prefill.cpp and all of
+  # generate.cpp's 1,314 added lines) applied with no fuzz, as did
+  # no-web-ui.patch and avx512-bw-tier.patch; upstream's 0.2.11 delta in those
+  # files (the PCIe share rule, the layer-split walk, DFlash2 batch slots, the
+  # chat-store/stream serve changes) sits outside every region this patch owns.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
@@ -368,6 +395,54 @@ stdenv.mkDerivation {
     }
     grep -q 'STRATA_PCIE_FRAC_DEFAULT' src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_PCIE_FRAC_DEFAULT (the pinned start-up share)" >&2
+      exit 1
+    }
+    # 0.2.11's discrete-CUDA CPU/upload share rule (pcie_share_rule.hpp, ceiling
+    # 0.95 with k following the pool rate) feeds PcieAuto only, and the module's
+    # STRATA_PCIE_FRAC_DEFAULT=old keeps that refinement off.  Fail here if the
+    # gates disappear, so a later bump cannot silently hand this lane's share to
+    # the new rule (it moved the share up and cost 5-7% decode when measured on
+    # this box in the 0.1.42 campaigns).
+    for v in STRATA_PCIE_AUTO_SPLIT STRATA_PCIE_K_RULE STRATA_PCIE_SHARE_MAX; do
+      grep -q "$v" src/program/generate.cpp || {
+        echo "the engine no longer reads $v (the 0.2.11 CPU/upload share gates)" >&2
+        exit 1
+      }
+    done
+
+    # The old pin must keep PcieAuto off on this box: the start-up gate is
+    # `o.pcie_frac_auto = ... && !pf_old`.  A rebase that re-enables the
+    # refinement (or renames the gate) changes this lane's decode share - fail
+    # the build instead of accepting it silently.
+    grep -A3 'o.pcie_frac_auto = ' src/program/generate.cpp | grep -q '!pf_old' || {
+      echo "the STRATA_PCIE_FRAC_DEFAULT=old gate no longer disables PcieAuto" >&2
+      exit 1
+    }
+    # 0.2.11's FP16 weight cache is a value-changing default that selects only
+    # with batch slots (--batch/--parallel >= 2); this lane runs none.  Keep the
+    # gate, so a later default cannot move this card's outputs.
+    grep -q 'set_w16_auto_default' src/program/generate.cpp && grep -q 'o.batch >= 2' src/program/generate.cpp || {
+      echo "the FP16 weight cache is no longer gated on batch slots (o.batch >= 2)" >&2
+      exit 1
+    }
+    # 0.2.11's 32768-token --prefill auto ceiling is compute capability 8.0+ only
+    # and this lane passes an explicit --prefill; keep the bare-auto gate present
+    # so a later bump cannot silently raise this lane's chunk.
+    grep -q 'prefill_auto_bare' src/program/generate.cpp || {
+      echo "the --prefill auto ceiling gate (prefill_auto_bare) disappeared" >&2
+      exit 1
+    }
+    # 0.2.11's K-quant MMQ prompt kernels are compute capability 8.0+ only; the
+    # sm_75 build must keep the variable behind nv_defaults.cpp's cc gate.
+    grep -q 'STRATA_MMQ_KQ' src/core/nv_defaults.cpp || {
+      echo "the K-quant MMQ default gate (STRATA_MMQ_KQ) disappeared from nv_defaults.cpp" >&2
+      exit 1
+    }
+    # The module's `--kv-resident 0` user arg keeps 0.2.11's fit_start from
+    # injecting a KV window (which would turn --kv-grow off).  The fitter's
+    # kv_fixed path is the hook; fail if it disappears.
+    grep -q 'kv_fixed' strata_control/vram_fit.py || {
+      echo "vram_fit lost the kv_fixed hook (the module's --kv-resident 0 workaround)" >&2
       exit 1
     }
     grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
