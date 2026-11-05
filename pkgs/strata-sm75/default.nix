@@ -224,6 +224,26 @@ stdenv.mkDerivation {
   #     only delta: one file, 4 guard lines + the newline - and was deployed as
   #     generation 104 (system j73nq77..., engine sz2dwc0k...).  See
   #     /tmp/strata-tune/stream-restore-design.md, -results.md and hygiene-round6.md.
+  #     The round-7 pmem park-spill hybrid was then added (dormant: no run flags) and
+  #     deployed as generation 106 (system idsww8aa..., engine 2fa52rq...); the same
+  #     generation boots the volatile nlzy/turing-unlock module (host packages in
+  #     pkgs/turing-unlock + profiles/nixos/turing-unlock.nix), measured prefill -5.7 %
+  #     at 26,134 tokens / -2.0 % at 8,268 / -1.1 % at 4,252 at the production 280 W cap
+  #     with identical answers; see docs/exec-plans/active/turing-unlock-assessment.md.
+  #   * the pmem park-spill hybrid (round 7, added 2026-11-05): the RAM park path is
+  #     byte-identical; when the transactional pre-check (or the parked-cache budget)
+  #     refuses a park, the conversation is written as a v1 session file under
+  #     /optane (the same SAVE writer: live + deepest checkpoint, K/V streamed from the
+  #     pools) and kept in a separate metadata-only file tier (ids/images/used only, no
+  #     state, no K/V) with its own --conversation-park-dir/-mib/-slots/-min-free-mib
+  #     budget and LRU.  A later turn restores it with the round-5 streamed restore and
+  #     then invalidates the DFlash2 drafter like a disk restore.  A refused/failed park
+  #     or a restore refused in pass 1 is non-destructive (the transactional contract:
+  #     donor handed back, no RAM park evicted for a file, no half-restored session);
+  #     no cudaHostRegister for park pages (the writer's 16 MiB block).  Format v1 and
+  #     answers unchanged.  This cut is in-run only: boot re-admission of existing
+  #     *.park files is not implemented (so a restart drops file parks; the files are
+  #     deleted at startup/clear sites).  See /tmp/strata-tune/pmem-park-design.md.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
@@ -362,6 +382,24 @@ stdenv.mkDerivation {
     }
     grep -q "drafter's position/tags" src/program/generate.cpp || {
       echo "tiberius.patch lost the DFlash2 invalidate-after-restore" >&2
+      exit 1
+    }
+    # tiberius.patch's pmem park-spill file tier (round 7): the option, the tier class and its log marker.  A rebase
+    # that drops the fallback would silently go back to refusing the park (the long-conversation re-read).
+    grep -q 'conversation-park-dir' src/program/generate.cpp || {
+      echo "tiberius.patch lost the --conversation-park-dir option" >&2
+      exit 1
+    }
+    grep -q 'ConversationParkFiles' include/strata/core/conversation_park_file.hpp || {
+      echo "tiberius.patch lost the ConversationParkFiles file tier" >&2
+      exit 1
+    }
+    grep -q 'tokens to pmem in' src/program/generate.cpp || {
+      echo "tiberius.patch lost the park-to-pmem write path / its log marker" >&2
+      exit 1
+    }
+    grep -q 'restore_park_file' src/program/generate.cpp || {
+      echo "tiberius.patch lost the request-path pmem park restore" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`

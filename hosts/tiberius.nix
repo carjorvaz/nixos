@@ -207,6 +207,10 @@ in
     # Persist the lane's /metrics counters (15 s scraper) and warn on drift;
     # the module owns the timer and the /persist/strata/metrics directory.
     "${self}/profiles/nixos/strata-telemetry.nix"
+    # Volatile TU102 full-rate tensor-core unlock at boot (see
+    # profiles/nixos/turing-unlock.nix and docs/exec-plans/active/
+    # turing-unlock-assessment.md; no VBIOS flash, undo by disabling + reboot).
+    "${self}/profiles/nixos/turing-unlock.nix"
   ];
 
   boot = {
@@ -941,6 +945,15 @@ in
     # profiles/nixos/strata-telemetry.nix for the measured settings.
     tiberius-strata-telemetry.enable = true;
   };
+
+  # Volatile TU102 tensor-core unlock at boot. Measured on this box 2026-11-05:
+  # prefill read -5.7 % at 26,134 tokens, -2.0 % at 8,268, -1.1 % at 4,252 (same
+  # at the production 280 W cap), decode unchanged, answer shas identical; the
+  # gain sits in the dense/projection FP16 MMA phases. No VBIOS or persistent
+  # firmware is touched and a power cycle restores the locked state; if the
+  # module refuses or fails, the boot continues locked. Enable/disable takes
+  # effect on the next boot.
+  hardware.turingUnlock.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 

@@ -1,14 +1,17 @@
 # strata tuning round 2: the prompt path, the verify window, and park
 
-Status: **active, rounds 2-6 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
-session RESTORE and the patch-hygiene round done 2026-11-04/05** (generation 104). Round 4 adopted
-nothing; round 5 landed the streamed RESTORE + draft-optional SAVE/RESTORE + DFlash2 drafter reset
-and found/fixed a pre-existing SAVE bug; round 6 restored the four over-read guards + final newline
-accepted as round-5 follow-ups (one-file delta, deployed as generation 104), closed experiment row
-9 with a recorded rationale, completed the Turing-unlock assessment (`turing-unlock-assessment.md`,
-decision: do not attempt on this hardware) and produced the pmem-park design for a future round.
-Open: patch roadmap items 4-5 (pmem spill designed, CUDA #4677), per-window counters. DAX rotation
-pipelining was measured and rejected, with its log-only timing seam kept.
+Status: **active, rounds 2-7 - campaign, park fix, measurement/telemetry, flag cleanup, streamed
+session RESTORE, patch hygiene and the Turing-unlock / pmem-spill round done 2026-11-05**
+(generation 106). Round 4 adopted nothing; round 5 landed the streamed RESTORE + draft-optional
+SAVE/RESTORE + DFlash2 drafter reset and found/fixed a pre-existing SAVE bug; round 6 restored the
+four over-read guards + final newline (one-file delta, generation 104) and closed experiment row 9;
+round 7 tested and adopted the volatile nlzy/turing-unlock kernel module (`turing-unlock-assessment.md`:
+prefill read -5.7 % at 26,134 tokens at the production 280 W cap, -2.0 % at 8.3k, -1.1 % at 4.2k,
+decode unchanged, answers bit-identical; no VBIOS flash, power-cycle reversible) and added the pmem
+park-spill hybrid **dormant** (flags off by default; write/guard/RAM paths validated, ordinary-turn
+restore match is a follow-up before enabling). Generation 106 = engine 2fa52rq... + unlock at boot.
+Open: pmem-spill checkpoint-match fix (follow-up task), patch roadmap items 5-6 (CUDA #4677, per-window
+counters). DAX rotation pipelining was measured and rejected, with its log-only timing seam kept.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
@@ -408,6 +411,77 @@ floor, so the logged refusals become file parks and subsequent turns reuse (164 
 replaced by a ~5 s restore). ~800-950 engine lines + tests, 15-20 min GPU window; the main risks are
 Optane thermal headroom and write volume. This is the next round's candidate.
 
+## Round 7 results (2026-11-05)
+
+Two goals: test whether the Turing tensor-core unlock can really help prefill, and land the remaining
+large software lever (pmem park spill). No hardware change; the 280 W power cap is unchanged.
+
+### Turing-unlock: tested on tiberius and adopted
+
+The <https://github.com/haohervchb/Turing-unlock> EFI payload remains inapplicable (private firmware
+build inputs, Alienware-board guards; see `turing-unlock-assessment.md`). The second project,
+<https://github.com/nlzy/turing-unlock>, is a GPL kernel module that runs in the initramfs before
+nvidia binds, executes pinned NVIDIA 610.43.03 Booter/ACR firmware and writes the two TU102 speed
+selectors (SS0=0x88888888, SS1=0x8) - volatile, no VBIOS flash. Its device table covers our
+`10de:1e04`, so it was tested in a one-shot systemd-boot generation (module + six firmware files in
+the initrd, `turing_unlock.targets=0000:17:00.0`, normal generation kept as the default). Boot log:
+`unlock result: ss0=0x88888888 ss1=0x8 readout=0x0`, `TU102 FEAT UNLOCKED`; nvidia 595.71.05 bound
+normally, no Xid, idle 41 C. A controlled locked-vs-unlocked A/B (same engine/config/boot, 200 W for
+both states, 2 fresh-engine runs per cell) measured:
+
+| cell | locked | unlocked | delta |
+|---|---|---|---|
+| 4,252-token read | 8,604 ms / 494 tok/s | ~8,518 ms / ~499 tok/s | -1.0 % |
+| 8,268-token read | 10,271 ms / 805 tok/s | 10,008 ms / 826 tok/s | -2.6 % |
+| 26,134-token read | 22,488 ms / 1,162 tok/s | 21,103 ms / 1,238 tok/s | -6.2 % |
+| L-live decode (768 gen) | 90.85 tok/s | 91.05 tok/s | +0.2 % (none) |
+
+At the production 280 W cap the unlocked numbers were 8,495 ms (-1.1 %), 9,870 ms (-2.0 %),
+19,610 ms / 1,332.7 tok/s (-5.7 %) and 109.4 tok/s decode (flat), so the gain is attributable to the
+unlock, not the cap. Answer shas were identical in every cell and both states. Phase attribution put
+the gain in the dense/projection FP16 MMA phases (gdn -37 %, qsa proj -39 %, hc read -34..-65 %),
+with the quantized MoE expert GEMMs flat (+1.8 %/+1.4 %) - exactly the FMLA32 path the unlock
+targets; decode stays power/GPU-wait bound. Safety: no persistent writes (BAR0 MMIO + firmware-run
+selectors only), power-cycle reversible, boot continued locked if the module refuses, benchmark temp
+max 60 C and no Xid; the card's 280 W cap binds in both states. **Adopted** via
+`pkgs/turing-unlock` + `profiles/nixos/turing-unlock.nix` (`hardware.turingUnlock.enable = true` on
+tiberius): the module is built against the plain nixpkgs kernel of the booted version (version
+asserted; fsdax kernel patch does not change the module ABI, CONFIG_MODVERSIONS off) and the six
+firmware files are generated at build time from two pinned NVIDIA/CachyOS artifacts - proprietary
+blobs are never committed to the public repo, and the assessment records the URL-rot/maintenance
+caveat. Generation 106 boots with it; residual risks: single card/boot/driver-generation evidence,
+and upstream's warning that full-rate tensor cores draw high power (watch telemetry, keep 280 W).
+
+### pmem park-spill: implemented and deployed dormant
+
+The hybrid from `/tmp/strata-tune/pmem-park-design.md` was implemented as patch `a833153c` (~775
+lines: a metadata-only file tier + the forced-fallback park writer reusing the v1 SAVE writer with
+streamed K/V + the request-path streamed restore, four new settings, LRU/budget/free-space, no
+cudaHostRegister). It was validated in two short isolated windows: forced-pressure file park write
+works (250k conversation, 3,636,601,128 B file, 4.5 s at ~0.8 GB/s, tier peak 10.16 GiB under the
+12 GiB budget), a streamed restore from a pmem park works (5.17 s, checkpoint reuse, take+unlink),
+corrupt-park refusal works (pass-1 checksum refusal, clean reread, identical answer), and the RAM
+park path is unchanged. The ordinary-turn "park now -> next turn restores" flow was **not** taken:
+the parked file carries only the deepest prefill-chunk checkpoint and that candidate did not match
+the next turn's prompt, so the request reread the prompt (152.6 s at 239k) instead of restoring;
+the probe's own sequencing bugs were fixed between windows, and the remaining gap is engine-side
+checkpoint-set policy. Enabling was therefore rejected for now; the patch is **deployed dormant**
+(no `--conversation-park-*` flags, zero behaviour change) in generation 106. Follow-up before
+enabling: log the file candidates (live/deepest/cvec/resume) and store all chain checkpoints in the
+ParkedFile metadata (or synthesise a turn-boundary checkpoint), and prefer a file match over a full
+reread when a file candidate exists; then one 5-8 min re-window. Risks if enabled: 4.5 s blocking
+capture on the request thread per 250k park, ~3.6 GB of Optane writes per park, and DCPMM thermal
+headroom (media 77 C, controller 83 C vs 85 C critical).
+
+### Deployment
+
+Generation 106 deployed from the repo tree (engine `/nix/store/2fa52rqzh86szmfmrqwkd0lziwj2da0s-...`,
+system `/nix/store/idsww8aa...`); `tiberius-strata` healthy on both doors, telemetry timer active,
+unlock verified in the boot log and nvidia driver healthy, pmem tier off. A systemd-boot EFI variable
+(`LoaderEntryDefault`) was found overriding the regenerated `loader.conf` and pinned to generation
+104; it was set explicitly with `bootctl set-default` before the successful boot, so future
+generations take effect on reboot as intended.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -466,7 +540,7 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    window). Accepted follow-ups on the next regeneration: restore the four "payload ends early"
    over-read guards and `conversation_file.cpp`'s final newline. Design/results:
    `/tmp/strata-tune/stream-restore-design.md`, `stream-restore-results.md`.
-4. **pmem park spill - designed 2026-11-05; next large patch candidate.** Design verdict: an
+4. **pmem park spill - implemented and deployed dormant 2026-11-05; enable after the checkpoint-match fix.** Implemented as patch `a833153c` (+~775 lines): an
    *adaptive hybrid* - keep the RAM park path byte-identical, and when the transactional pre-check
    (or the parked-cache budget) refuses, write the park as a v1 session file on `/optane`
    (XFS dax=always) with the existing SAVE writer (live + deepest/pinned checkpoint, K/V streamed
@@ -483,7 +557,12 @@ for item 6; `profiles/nixos/strata.nix` only for an adopted fix/flag, by the dep
    ruling out cudaHostRegister for park pages - stage through the 16 MiB block. Probe: forced-pressure
    two-conversation isolation, 100k/250k park+restore where today it refuses, VmHWM <= +400 MiB,
    service-restart persistence, greedy sha parity, normal-park regression, corrupt/foreign refusal.
-   Design: `/tmp/strata-tune/pmem-park-design.md`.
+   Design: `/tmp/strata-tune/pmem-park-design.md`. Validation (two isolated windows): file park
+   write 4.5 s / ~3.6 GB at 250k with tier peak 10.16 GiB, streamed restore from a pmem park 5.17 s
+   with checkpoint reuse, corrupt-park pass-1 refusal + identical reread, RAM path unchanged. The
+   ordinary-turn "park -> next turn restores" match was NOT taken (the file keeps only the deepest
+   prefill-chunk checkpoint, which did not match the next prompt), so the patch ships dormant; fix
+   the checkpoint set + preference, then re-window before enabling.
 5. **CUDA port of upstream #4677 - behaviour.** `stop_bound` and both call sites sit inside
    `#if defined(STRATA_USE_HIP)`, so a CUDA verify window cannot commit-bound at an EOS inside it;
    removing the guard is ~20 lines plus a correctness run. Pointers: `generate.cpp:17403-17410`,
@@ -624,6 +703,15 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   (50k restore sha equal, corrupt/truncated/header SERR invalid same-pid, park spot check clean),
   deployed as generation 104. Row 9 closed without a window; Turing-unlock assessed (do not attempt
   on this hardware); pmem-park design completed for the next round.
+- **2026-11-05, round 7 / Turing unlock + pmem hybrid**: tested nlzy/turing-unlock in a one-shot
+  generation (TU102 FEAT UNLOCKED, driver 595 healthy, no Xid); controlled A/B measured prefill read
+  -6.2 / -2.6 / -1.0 % at 26,134 / 8,268 / 4,252 tokens at 200 W and -5.7 / -2.0 / -1.1 % at 280 W,
+  decode flat, answers identical; adopted via `hardware.turingUnlock` (boot initrd module, firmware
+  generated at build time, not committed) and deployed in generation 106. Implemented the pmem
+  park-spill hybrid (patch `a833153c`) and deployed it dormant after two validation windows: file
+  park write 4.5 s/3.6 GB, streamed restore 5.17 s, corrupt-refusal path and RAM regression pass;
+  ordinary-turn restore match is the follow-up before enabling.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
-  `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`).
+  `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
+  `parkspill-round7.md`, `turing-bench-results.md`; `/data/round7/`).

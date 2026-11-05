@@ -1,108 +1,121 @@
-# Turing-unlock on tiberius: can it be made to work, and should it?
+# Turing-unlock on tiberius: tested, adopted
 
-Status: **assessed 2026-11-05; decision: do not attempt on tiberius.** This is a
-decision record for an external research project, not a planned change. The lane keeps
-the stock (modded-VRAM) RTX 2080 Ti behaviour.
+Status: **tested on tiberius 2026-11-05 and adopted at boot** (see
+`profiles/nixos/turing-unlock.nix` / `pkgs/turing-unlock`). This record covers the two
+upstream projects that motivated it, the measured effect, the safety evidence and the
+conditions under which it should be disabled or reverted.
 
-Upstream: <https://github.com/haohervchb/Turing-unlock> (haohervchb/Turing-unlock,
-last commit 2026-10-22, published as a board-specific research archive). All performance
-figures below are **the upstream project's own claims**, not re-measured here.
+## What was evaluated
 
-## What the project is
+1. <https://github.com/haohervchb/Turing-unlock> - a volatile pre-OS EFI payload that
+   pokes NVIDIA RM controls through direct physical DMA on one specific ASUS TU102
+   card (2x FP16-in/FP32-accum MMA in its own measurements, 1.77x cuBLAS). It is not a
+   general installer: its build needs private firmware inputs (the test card's FWSEC,
+   a Dell A14 root-bridge PE, pinned CMP-unlock blobs), and its guards pin PCI BDF
+   `0000:02:00.0`, `10de:1e07`, subsystem `1043:866a`, BAR0 `fa000000`, the original
+   Alienware board and firmware bytes. tiberius (`10de:1e04`, `1043:8687`, VBIOS
+   `90.02.17.40.0E`, 22 GB mod, TYAN board, systemd-boot) differs at every one of
+   those layers, so this payload was **not** attempted. Its unsafe failure mode (boot
+   held in UEFI, full power cycle required) also made it a poor first choice on the
+   only production GPU.
+2. <https://github.com/nlzy/turing-unlock> - a Linux kernel module (2.0.0, GPL-2.0)
+   that runs in the initramfs before nvidia binds, executes pinned NVIDIA
+   610.43.03 Booter/ACR firmware against the GPU, and writes two speed selectors
+   (`SS0=0x88888888`, `SS1=0x8`) so FMLA32 and IMLA4 run at full rate until power off.
+   No VBIOS flash, no persistent firmware change. This is the one that was tested.
 
-A volatile, pre-OS tensor-compute unlock for one specific TU102 board. An EFI payload
-writes NVIDIA Resource Manager (RM) controls through a guarded direct-physical high-RAM
-DMA path before Linux boots; RM then reports **FMLA32 and IMLA4 at full rate instead of
-half rate**. Upstream measured on its test card: FP16-in/FP32-accum MMA 511.67 ->
-1022.44 FLOP/SM/clock (1.998x), 46.94 -> 93.66 TFLOPS (1.996x), cuBLAS 8192 GEMM
-48.15 -> 85.17 TFLOPS (1.769x); FP16-in/FP16-accum was unchanged. No extra SMs, cores,
-Tensor Cores or VRAM were enabled. An integer/mining run (Pearl, PeakMiner) showed **no
-meaningful gain**, and IMLA4 never got a dedicated throughput A/B.
+## Measured effect (tiberius, 2026-11-05)
 
-It does **not** flash a VBIOS or modify a live Linux GPU. One physical v4 run succeeded
-on 2026-10-22; the unlock is volatile (a normal restart reverted it), automatic
-reapplication is **not implemented or enabled**, and the published boot entry is a
-one-shot example, not a supported default.
+Same engine (gen-104 build), same run config, same boot session; locked vs unlocked;
+greedy/temperature 0, thinking off; 2 fresh-engine runs per cell per state, plus
+repeats. Answer shas were **identical on every cell in both states**.
 
-## Why it cannot simply be run here
+| cell | locked | unlocked | delta |
+|---|---|---|---|
+| P1 4,252-token read | 8,604 ms / 494.2 tok/s | ~8,518 ms / ~499 tok/s | **-1.0 %** |
+| P8K 8,268-token read | 10,271 ms / 805 tok/s | 10,008 ms / 826 tok/s | **-2.6 %** |
+| P27 26,134-token read | 22,488 ms / 1,162 tok/s | 21,103 ms / 1,238 tok/s | **-6.2 %** |
+| L-live decode (768 gen) | 90.85 tok/s | 91.05 tok/s | +0.2 % (no change) |
 
-The public checkout is deliberately not a working payload for arbitrary cards. Its
-build requires private inputs that are *not* redistributed and are pinned by hash:
-the exact native FWSEC extracted from the test card's own ROM, the audited Dell A14
-root-bridge PE image, and input blobs from a pinned `xrip/cmp50hx-unlock` checkout.
-The runtime guards check the exact PCI BDF (`0000:02:00.0`), vendor/device
-(`10de:1e07`), subsystem (`1043:866a`), BAR0 (`fa000000`), PCI command (`0007`), the
-parent bridge, firmware descriptor bytes and a finite set of observed selector tuples;
-unknown pre-write states refuse. The ESP GUID is all-zero and the boot example has a
-placeholder filesystem UUID. Possessing "an apparently similar GPU" is explicitly not
-enough.
+The controlled pair above is at 200 W for both states. At the production 280 W cap the
+unlocked numbers were P1 8,495 ms (**-1.1 %**), P8K 9,870 ms (**-2.0 %**), P27
+19,610 ms / 1,332.7 tok/s (**-5.7 %**), L-live 109.4 tok/s (no decode gain) - the gain
+is attributable to the unlock, not to the power cap. Phase attribution: the P27 GPU
+timeline fell 6.6 %, concentrated in the dense/projection FP16 MMA phases (gdn -37 %,
+qsa projection -39 %, hc read -34..-65 %), while the quantized MoE expert GEMMs were
+flat (+1.8 %/+1.4 %) and `wait copy`/dequant did not improve. That is exactly the
+FMLA32 issue-rate path the unlock targets; decode is power/GPU-wait bound and gains
+nothing.
 
-tiberius differs at every layer that matters:
+The work also measured the upper bound for the haohervchb-style unlock: the same
+selection of phases is what a full-rate FMLA32/IMLA4 would accelerate, and those are a
+few percent of prompt time outside the MoE/copy walls - so the practical difference
+between the two approaches would have been small even if the EFI payload had been
+applicable.
 
-| | upstream test card | tiberius |
-|---|---|---|
-| device | `10de:1e07` (TU102, 11 GiB, 68 SMs) | `10de:1e04`, 22 GB mod, VBIOS `90.02.17.40.0E` |
-| subsystem | `1043:866a`, ASUS RTX 2080 Ti Rev. A | `1043:8687`, ASUS 22 GB mod |
-| BAR0 / BDF | `fa000000` / `0000:02:00.0` | `f3000000` / `0000:17:00.0` |
-| board/firmware | Alienware Area-51 R2, BIOS A14, Dell root bridge | TYAN S5630GMRE-CGN, AMI 7.206.B80, systemd-boot UEFI |
-| boot state | Above-4G decoding **off**, CSM **on** | headless UEFI server boot; 128 GB DCPMM; impermanent root |
-| driver | unmodified NVIDIA open `580.178.04` | NVIDIA `595.71.05` |
+## Safety evidence from the test
 
-A second card (upstream tried an RTX 5060 Ti) already changed enough preboot state to
-make the guards refuse; an unknown 22 GB VBIOS mod on a different board is a much larger
-delta. Adapting the guards/firmware to this card would require the private inputs for
-*this* board and its own platform/firmware audit - the project warns, in its own words,
-not to weaken the identity/DMA guards to make a build run.
+- **No persistent writes:** the module only writes BAR0 MMIO registers, loads and runs
+  the pinned firmware into the GPU's protected memory, and writes the two selectors
+  through the GPU's own Booter finalize path. No VBIOS/SPI flash access was observed in
+  the source or the boot log. The unlock is volatile: a power cycle restores the locked
+  state (upstream and self-evident for register/strap state).
+- **Failure handling:** the module refuses unknown pre-write states, skips cards with a
+  driver already bound, does a PCIe FLR when needed, and on a firmware-quiesce failure
+  retains its DMA buffers with an explicit "power off the machine before you try again"
+  message rather than continuing. A failed unlock logs and the boot continues locked.
+- **The test boot:** one-shot systemd-boot entry (normal generation remained the
+  default; `bootctl set-oneshot`), initrd carried the module + six firmware files, no
+  VBIOS or loader default changes. Boot reached ssh in ~75 s; kernel log showed
+  `unlock result: ss0=0x88888888 ss1=0x8 readout=0x0`, `TU102 FEAT UNLOCKED`,
+  `pci 0000:17:00.0: turing_unlock: unlocked`; nvidia 595.71.05 bound normally; no Xid,
+  no NVRM errors, idle 41 C.
+- **Benchmark safety:** both measurement windows ran at 200 W (and the production-cap
+  confirmation at 280 W) with a 2 s temp/power monitor and an auto-abort at 85 C/Xid:
+  temp max 60 C, power max 298.7 W against the 280 W cap (brief 2 s sample), throttle
+  reasons only SW power cap, no Xid, no thermal event. The card already runs at 280 W
+  under the lane's normal prefill load; the unlock changes issue rate, not clocks or
+  voltage, and the power cap binds in both states.
+- **Recovery path:** the host's BMC answers IPMI (`ipmitool chassis power status`
+  works from the OS), so a boot that ever hangs can be power-cycled remotely; a normal
+  one-shot boot also returns to the locked generation if the experiment is not
+  re-armed.
 
-## Could it work safely with different hardware?
+## Adoption
 
-Only as a separate research effort, not as a lane change:
+`hardware.turingUnlock.enable = true` on tiberius:
+`pkgs/turing-unlock` builds the upstream module against the plain nixpkgs kernel of the
+booted version (version asserted at evaluation time; the host's fsdax kernel patch does
+not change the module ABI and CONFIG_MODVERSIONS is off, so the vermagic is the only
+handshake) and generates the six firmware images at build time from two pinned NVIDIA
+610.43.03 artifacts fetched by hash. **The firmware is never committed to this public
+repository** (NVIDIA licence; personal local packaging), and no vendor blob is stored in
+the repo; the derivation references the pinned URLs/hashes and the GPL-2.0 upstream
+source. This leaves one maintainability cost: if NVIDIA/CachyOS remove those exact
+archived artifacts, a from-scratch rebuild of the firmware derivation needs a mirror
+(store-realized outputs survive GC until collected; the URL rot is recorded here).
 
-1. A **spare** identical card (ASUS `1043:866a`, VBIOS `90.02.17.00.47`, 11 GiB) and a
-   board close to the tested Alienware A14 (or the original board), plus the private
-   firmware inputs from that exact machine.
-2. A test rig where a failed mutation (upstream: boot held in UEFI, full power cycle
-   required) costs nothing, plus an offline boot-flow with the in-progress/failure
-   marker and a normal-boot bypass described in upstream `docs/BOOT-STATUS.md`.
-3. A successful bounded physical attempt, then upstream's read-only RM verifier and
-   the SM75 tensor benchmarks re-run on the exact rig before anything production-adjacent.
+Disable with `hardware.turingUnlock.enable = false;` + rebuild + reboot (the volatile
+unlock disappears on the next boot either way). If a future NVIDIA driver or kernel
+change breaks the module, the boot continues locked and disabling the option removes it
+from the initramfs.
 
-The firmware-free host tests (`tools/test_preflight.sh`) can be built and run on any
-x86-64 Linux; they never touch a GPU, but they only exercise the loader's simulated
-paths and prove nothing about this card.
+## Residual risks and revisit conditions
 
-## Why it should not be attempted on tiberius
-
-- **Blast radius**: the unlock is a pre-OS mutation executed over direct physical DMA on
-  the only GPU this box has. Upstream's documented failure mode holds the machine in
-  UEFI with DMA backing retained and requires a full power cycle; the box already has a
-  ~28 min firmware POST and is the production inference lane. A hang or a partial GPU
-  mutation is a recovery incident at best.
-- **Not reproducible from the public repo**: the required payload/firmware inputs are
-  private and bound to a different board/VBIOS; making it work here is a from-scratch
-  platform audit, with no upstream support path.
-- **The upside for Strata is small and unproven**: the unlock targets FP16-in/FP32-accum
-  MMA and integer IMLA4 *issue rates*. In this engine, dense FP16 tensor-core GEMMs are
-  a minority of prompt time (the `STRATA_BF16_TC` measurement moved ~1564 -> 1302 ms of
-  kernel time inside a ~9.2 s prompt read; the prompt path is otherwise DAX/Optane-paced
-  and the prefill timing attributes most of its GPU time to expert/GEMM/attention work
-  that is not this rate). Decode is GPU-verify-window bound with 98-99 % expert-cache
-  hits. Upstream's own integer workload saw no gain, and IMLA4 has no dedicated A/B. A
-  generous upper bound from doubling the dense MMA rate is low single-digit percent of
-  prompt read, and nothing on decode; it would not move the measured fixed-cost or the
-  Optane-preill wall the tuning work is aimed at.
-- **Persistence is unfinished upstream**: applying it every boot is explicitly not
-  implemented; our boot chain (systemd-boot, impermanent root, 27-min POST) would need
-  its own wrapper and recovery design on top.
-
-## Decision and revisit conditions
-
-Do not attempt Turing-unlock on tiberius. Revisit only if **all** of these change:
-(a) a spare compatible TU102 card + test board (or a published board-generic, audited
-profile for this VBIOS/board) exists; (b) upstream ships a supported persistence/recovery
-wrapper with the failure marker; (c) a bounded test rig has shown the unlock survives the
-boot-flow and repeats FMLA32/IMLA4 full rate; and (d) the engine's remaining bottlenecks
-are measured to be FP16/FP32-accum or IMLA4 issue rate, which they currently are not.
-Until then the same engineering time is better spent on the measured software levers
-(DAX rotation cost, host-RAM admission/park capacity, session handling), not on a
-single-card research unlock.
+- Single-success evidence: one card, one boot, one driver generation (595.71.05) and a
+  single ~10-minute benchmark; upstream tested 575.51.03 and warns that full-rate
+  tensor cores draw high power. Long-duration stability is not established. Watch the
+  telemetry (GPU temp/power, Xid) after adoption; keep the 280 W cap.
+- Power/thermal damage is the only credible hardware risk (the module does not flash
+  anything); the measurement stayed inside the existing cap at <=60 C, but this is a
+  judgement the owner accepts explicitly.
+- The 22 GB VRAM mod is not a stock configuration; the module's device table covers
+  `10de:1e04` and the selectors were written/read back correctly, but nothing guarantees
+  every VBIOS/board variant.
+- Revisit (disable) if: any Xid/NVRM error appears under load, GPU temperature reaches
+  the telemetry warning (82 C) in normal service, a new driver or kernel makes the
+  module fail or the initrd gain disappear, or the measured prefill gain is not
+  reproduced by a fresh A/B after an engine/driver change.
+- The haohervchb EFI path is still not worth pursuing on this hardware: same target
+  registers, an inapplicable board-specific payload, and a worse failure mode for a
+  few percent of additional prompt time at most.

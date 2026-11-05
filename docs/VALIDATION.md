@@ -334,6 +334,27 @@ was assessed and deliberately not attempted on this hardware
 (`docs/exec-plans/active/turing-unlock-assessment.md`), and the pmem park-spill design was completed
 for the next round.
 
+Generation 106 (2026-11-05) adopts the two round-7 items. First, the host boots the volatile
+nlzy/turing-unlock kernel module: `pkgs/turing-unlock` builds the upstream GPL module against the
+plain nixpkgs kernel of the booted version and generates the six NVIDIA 610.43.03 firmware images at
+build time from two hash-pinned artifacts (no vendor blob is committed); `profiles/nixos/turing-unlock.nix`
+puts the module and firmware in the initramfs and appends `turing_unlock.targets=0000:17:00.0`.
+The boot log confirms `unlock result: ss0=0x88888888 ss1=0x8 readout=0x0` / `TU102 FEAT UNLOCKED`
+with driver 595.71.05 healthy and no Xid; a controlled locked-vs-unlocked A/B (same engine/config/
+boot) measured prefill read -6.2 % at 26,134 tokens, -2.6 % at 8,268 and -1.0 % at 4,252 in a
+controlled 200 W pair, and -5.7/-2.0/-1.1 % at the production 280 W cap, decode unchanged and answer
+shas identical; the gain is in the dense/projection FP16 MMA phases. Second, the pmem park-spill
+hybrid (patch `a833153c`) is included but **dormant** (no `--conversation-park-*` flags, so run
+config and behaviour are unchanged); its validation proved the forced file-park write (4.5 s /
+3.64 GB at 250k), a streamed restore from a parked file (5.17 s with checkpoint reuse), corrupt-park
+pass-1 refusal and the RAM-park regression, but the ordinary-turn "park -> next turn restores" match
+is still a follow-up before the tier can be enabled. Engine
+`/nix/store/2fa52rqzh86szmfmrqwkd0lziwj2da0s-strata-engine-0.1.56`, system
+`/nix/store/idsww8aa0bby7bkma43yxzmbdb6jbxa3-...`; a persistent systemd-boot
+`LoaderEntryDefault` EFI variable had to be re-set with `bootctl set-default` for the generation to
+take effect. See `docs/exec-plans/active/turing-unlock-assessment.md` and the round-7 section of the
+plan for the full measurements, safety evidence and remaining risks.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

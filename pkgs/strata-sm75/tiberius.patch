@@ -67,6 +67,17 @@
 # streamed RESTORE, the draft-optional SAVE/RESTORE and the df2.reset() after a restore are byte-identical to
 # 829b20ec (verified against the deployed tree: only that file's guard lines differ).
 #
+# ROUND 7 (pmem park spill, tiberius local change): the conversation cache keeps the RAM park path byte-identical; a
+# park the transactional pre-check (or the parked-cache budget) refuses is written as a v1 session file on /optane by
+# the existing SAVE writer (K/V streamed from the pools, live + deepest checkpoint) and inserted into a separate,
+# metadata-only file tier (ids/images/used, no state, no K/V).  The next turn restores such a park with the round-5
+# streamed RESTORE, then invalidates the DFlash2 drafter like a disk restore.  The file tier has its own --conversation-
+# park-dir/-mib/-slots/-min-free-mib settings and its own LRU (only file entries are evicted; RAM parks are never
+# evicted for a file; the park donor is handed back before the file write).  No cudaHostRegister: park files travel
+# through the writer's 16 MiB block.  Zero format change (v1), zero answer change; a refused/failed park or a restore
+# refused in pass 1 stays non-destructive (transactional contract), a fatal after the first K/V sink write keeps the
+# existing ERR+exit path.  Boot re-admission of existing park files is NOT in this cut (in-run tier only).
+#
 # Four changes, in one patch because the first two interleave in the same regions of
 # expert_source.{hpp,cpp}, prefill.{hpp,cpp} and generate.cpp; changes 3-4 are independent (the park fix:
 # one function in generate.cpp + two methods in conversation_cache.hpp; the streamed restore:
@@ -252,6 +263,239 @@ index 069ca24..dfb4236 100644
  // Full validation (a regular file with one link, size, header, identity, bounded parse, payload hash) before `image`
  // is replaced.  The file is opened without following a symbolic link (or a reparse point) at its name, and the checks
  // are made on the opened handle.  On failure `image` is unchanged and `status->error` says what kind of failure.
+diff --git a/include/strata/core/conversation_park_file.hpp b/include/strata/core/conversation_park_file.hpp
+new file mode 100644
+index 0000000..88d862f
+--- /dev/null
++++ b/include/strata/core/conversation_park_file.hpp
+@@ -0,0 +1,227 @@
++// tiberius (pmem park spill): the file tier of the conversation cache.  A park the RAM cache refuses is written as a
++// v1 session file on /optane (XFS dax=always) and kept here as a metadata-only entry (ids/images/used, a few MB); a
++// later request restores it with the generation-103 streamed RESTORE.  Entries hold no K/V and no running state in
++// RAM, so this tier has its own byte budget / slot count / free-space reserve and never participates in the RAM
++// cache's budget, make_room() or evictable_bytes().  Host-only (no CUDA): testable off-box.
++#pragma once
++
++#include "strata/core/conversation_cache.hpp"
++#include "strata/core/conversation_file.hpp"
++
++#include <algorithm>
++#include <cstdint>
++#include <deque>
++#include <filesystem>
++#include <string>
++#include <system_error>
++#include <utility>
++#include <vector>
++
++#if defined(_WIN32)
++#include <windows.h>
++#else
++#include <sys/statvfs.h>
++#endif
++
++namespace strata::core {
++
++// One parked conversation whose bytes live in `path` (a v1 session file).  Only the metadata needed to match a
++// prompt and validate the restore are in memory: the live conversation's ids/images and the deepest checkpoint's
++// ids/images (state arrays empty).  `serial` identifies the entry across deque index shifts.
++struct ParkedFile {
++    std::string path;
++    ConversationCheckpoint live;                      ///< ids/imgs/used only
++    std::vector<ConversationCheckpoint> checkpoints;  ///< metadata only (the deepest one, as SAVE writes it)
++    bool cvec = false;
++    int64_t live_tokens = 0;
++    uint64_t bytes = 0;    ///< the file's size
++    uint64_t serial = 0;
++    int64_t used = 0;      ///< LRU stamp (monotone: newer is larger)
++};
++
++class ConversationParkFiles {
++public:
++    // The same shape as ConversationCache::Match so the request path can compare the two candidates.
++    struct Match {
++        size_t index = SIZE_MAX;
++        int64_t tokens = 0;
++        bool live = false;
++        uint64_t serial = 0;
++    };
++
++    // `budget`/`min_free`: this tier's own bytes and the free space the pmem filesystem must keep after a write.
++    bool init(const std::string& dir, uint64_t budget, size_t slots, uint64_t min_free, std::string& why) {
++        dir_ = dir;
++        budget_ = budget;
++        slots_ = slots;
++        min_free_ = min_free;
++        enabled_ = false;
++        why.clear();
++        if (dir.empty() || budget == 0 || slots == 0) {
++            why = "no park directory / budget / slots given";
++            return false;
++        }
++        std::error_code ec;
++        if (!std::filesystem::is_directory(dir, ec)) {
++            why = "park directory " + dir + " is not a directory";
++            return false;
++        }
++        // the free-space preflight is only meaningful on a filesystem we can stat
++        uint64_t free_bytes = 0;
++        if (!fs_free_bytes(free_bytes)) {
++            why = "cannot read the free space of " + dir;
++            return false;
++        }
++        enabled_ = true;
++        return true;
++    }
++    bool enabled() const { return enabled_; }
++    const std::string& dir() const { return dir_; }
++    size_t size() const { return entries_.size(); }
++    uint64_t bytes() const { return bytes_; }
++    size_t slots() const { return slots_; }
++    uint64_t budget() const { return budget_; }
++    uint64_t evictions() const { return evictions_; }
++    bool wants(int64_t tokens) const { return tokens > 0; }
++
++    // The longest file-parked conversation, for STRATA_KV_GROW_HOLD's trim bound.
++    int64_t longest_tokens() const {
++        int64_t n = 0;
++        for (const auto& e : entries_) n = std::max<int64_t>(n, e.live_tokens);
++        return n;
++    }
++
++    // Match rules are ConversationCache::best's: live entries first, then the deepest checkpoint; equal token counts
++    // prefer the newest entry, and the caller prefers RAM on a tie.  Read-only.
++    template <class Token>
++    Match best(const std::vector<Token>& prompt, const std::vector<ConversationImageKey>& images, bool cvec) const {
++        Match best;
++        if (!enabled_) return best;
++        for (size_t i = entries_.size(); i-- > 0;) {
++            const auto& e = entries_[i];
++            if (e.cvec != cvec) continue;
++            auto consider = [&](const ConversationCheckpoint& c, bool live) {
++                const int64_t n = conversation_prefix(c, prompt, images);
++                if (n > best.tokens) best = {i, n, live, e.serial};
++            };
++            consider(e.live, true);
++            for (const auto& c : e.checkpoints) consider(c, false);
++        }
++        return best;
++    }
++    // A file entry already holds this state (no LRU effect): used by park-gain to avoid rewriting the same conversation.
++    template <class Token>
++    bool holds(const std::vector<Token>& ids, const std::vector<ConversationImageKey>& images, bool cvec) const {
++        for (const auto& e : entries_) {
++            if (e.cvec != cvec) continue;
++            if (conversation_covers(e.live, ids, images)) return true;
++            for (const auto& c : e.checkpoints) if (conversation_covers(c, ids, images)) return true;
++        }
++        return false;
++    }
++
++    // Pick a file name for a new park (caller then writes it): unique per process instance.
++    std::string next_path(uint64_t instance) const { return dir_ + "/" + std::to_string(instance) + "-" + std::to_string(serial_ + 1) + ".park"; }
++
++    // Free space / budget / slot preflight BEFORE writing `bytes`; admits the file without evicting anything (the
++    // eviction, if any, happens in put() so a failed write never destroys an existing file park).
++    bool admit(uint64_t bytes, std::string& why) const {
++        why.clear();
++        if (!enabled_) { why = "the file tier is off"; return false; }
++        if (bytes == 0) { why = "an empty park file"; return false; }
++        if (bytes > budget_) { why = "the park file would exceed the tier budget"; return false; }
++        if (slots_ == 0) { why = "no slots"; return false; }
++        uint64_t free_bytes = 0;
++        if (!fs_free_bytes(free_bytes)) { why = "cannot read the free space of " + dir_; return false; }
++        if (free_bytes < bytes || free_bytes - bytes < min_free_) {
++            why = "the filesystem has " + std::to_string(free_bytes >> 20) + " MiB free; a " +
++                  std::to_string(bytes >> 20) + " MiB park needs " + std::to_string(min_free_ >> 20) + " MiB kept free";
++            return false;
++        }
++        return true;
++    }
++    // Insert after the file was written: evict the least recently used FILE entries until slots/budget fit (never a
++    // RAM entry: this tier is separate), unlink the losers.  On failure the caller unlinks its new file.
++    bool put(ParkedFile&& f, std::string& why) {
++        why.clear();
++        if (!enabled_) { why = "the file tier is off"; return false; }
++        while ((entries_.size() >= slots_ || bytes_ + f.bytes > budget_) && !entries_.empty()) evict_front();
++        if (entries_.size() >= slots_ || bytes_ + f.bytes > budget_) {
++            why = "no slot / budget left in the file tier";
++            return false;
++        }
++        f.serial = ++serial_;
++        f.used = ++clock_;
++        bytes_ += f.bytes;
++        entries_.push_back(std::move(f));
++        return true;
++    }
++    bool get(size_t index, ParkedFile& out) const {
++        if (index >= entries_.size()) return false;
++        out = entries_[index];
++        return true;
++    }
++    // Remove the entry; `unlink_file` deletes the file (a successful take ends persistence for that copy).
++    bool erase(size_t index, bool unlink_file) {
++        if (index >= entries_.size()) return false;
++        ParkedFile e = entries_[index];
++        entries_.erase(entries_.begin() + (std::ptrdiff_t) index);
++        bytes_ -= e.bytes;
++        if (unlink_file) unlink_path(e.path);
++        return true;
++    }
++    // Drop every entry and unlink the files (the #879 nan-flush sites).
++    size_t clear() {
++        const size_t n = entries_.size();
++        for (auto& e : entries_) unlink_path(e.path);
++        entries_.clear();
++        bytes_ = 0;
++        return n;
++    }
++    // Evict until `want` bytes are freed (LRU file entries only); used when the tier is over its budget.
++    size_t evict_to(uint64_t want_bytes) {
++        size_t n = 0;
++        while (bytes_ > want_bytes && !entries_.empty()) { evict_front(); ++n; }
++        return n;
++    }
++
++private:
++    static void unlink_path(const std::string& p) {
++        std::error_code ec;
++        std::filesystem::remove(p, ec);
++    }
++    bool fs_free_bytes(uint64_t& out) const {
++        out = 0;
++        if (dir_.empty()) return false;
++#if defined(_WIN32)
++        ULARGE_INTEGER free_bytes{};
++        std::wstring w(dir_.begin(), dir_.end());
++        if (!GetDiskFreeSpaceExW(w.c_str(), &free_bytes, nullptr, nullptr)) return false;
++        out = (uint64_t) free_bytes.QuadPart;
++        return true;
++#else
++        struct statvfs s{};
++        if (::statvfs(dir_.c_str(), &s) != 0) return false;
++        out = (uint64_t) s.f_bavail * (uint64_t) s.f_frsize;
++        return true;
++#endif
++    }
++    void evict_front() {
++        if (entries_.empty()) return;
++        ParkedFile e = std::move(entries_.front());
++        entries_.pop_front();
++        bytes_ -= e.bytes;
++        unlink_path(e.path);
++        ++evictions_;
++    }
++    std::string dir_;
++    uint64_t budget_ = 0;
++    size_t slots_ = 0;
++    uint64_t min_free_ = 0;
++    bool enabled_ = false;
++    size_t bytes_ = 0;
++    uint64_t clock_ = 0, serial_ = 0, evictions_ = 0;
++    std::deque<ParkedFile> entries_;   // least recently active first
++};
++
++} // namespace strata::core
 diff --git a/include/strata/core/conversation_snapshot.hpp b/include/strata/core/conversation_snapshot.hpp
 index 27ba8c9..08ca7fc 100644
 --- a/include/strata/core/conversation_snapshot.hpp
@@ -1087,6 +1331,137 @@ index fd85f2c..f95bd76 100644
      // the configuration fingerprint: every field counts, doubles by their exact bits
      {
          SessionConfig c;
+diff --git a/src/core/conversation_park_file_test.cpp b/src/core/conversation_park_file_test.cpp
+new file mode 100644
+index 0000000..364b2f5
+--- /dev/null
++++ b/src/core/conversation_park_file_test.cpp
+@@ -0,0 +1,125 @@
++// CPU-only tests for the pmem park file tier (include/strata/core/conversation_park_file.hpp): budget/slot
++// accounting, LRU file-eviction (unlinks), matching identity (live and checkpoint prefixes, cvec), holds/scan-free
++// metadata round trip.  Built with the host-only clang/CMake test target; no CUDA, no model.
++#include "strata/core/conversation_park_file.hpp"
++
++#include <cstdio>
++#include <cstdlib>
++#include <filesystem>
++#ifndef _WIN32
++#include <unistd.h>
++#endif
++#include <fstream>
++#include <string>
++#include <vector>
++
++using namespace strata::core;
++namespace fs = std::filesystem;
++
++namespace {
++int checks = 0;
++void check(bool ok, const char* label) {
++    ++checks;
++    if (!ok) { std::fprintf(stderr, "FAIL: %s\n", label); std::exit(1); }
++}
++std::string write_file(const fs::path& dir, const char* name, size_t bytes) {
++    const fs::path p = dir / name;
++    std::ofstream f(p, std::ios::binary);
++    f << std::string(bytes, 'x');
++    f.close();
++    return p.string();
++}
++ParkedFile entry(uint64_t bytes, std::vector<int32_t> ids, std::vector<ConversationCheckpoint> checks_ = {}) {
++    ParkedFile f;
++    f.live.ids = std::move(ids);
++    f.live_tokens = (int64_t) f.live.ids.size();
++    f.checkpoints = std::move(checks_);
++    f.bytes = bytes;
++    return f;
++}
++long test_pid() {
++#if defined(_WIN32)
++    return (long) _getpid();
++#else
++    return (long) ::getpid();
++#endif
++}
++ConversationCheckpoint ck(std::vector<int32_t> ids) {
++    ConversationCheckpoint c;
++    c.ids = std::move(ids);
++    return c;
++}
++} // namespace
++
++int main() {
++    std::error_code ec;
++    const fs::path dir = fs::temp_directory_path(ec) / ("park-file-test-" + std::to_string((long long) test_pid()));
++    fs::remove_all(dir, ec);
++    fs::create_directories(dir, ec);
++    check(!ec, "temp dir");
++    std::string why;
++
++    {   // init refuses a missing directory / zero budget
++        ConversationParkFiles off;
++        check(!off.init((dir / "nope").string(), 1000, 2, 0, why) && !off.enabled(), "init refuses a missing dir");
++        check(!off.init(dir.string(), 0, 2, 0, why) && !off.enabled(), "init refuses a zero budget");
++        check(off.init(dir.string(), 300, 2, 0, why) && off.enabled(), "init accepts the dir");
++        check(off.dir() == dir.string(), "dir reported");
++    }
++    {   // slot eviction unlinks the least recently used file; budget eviction too
++        ConversationParkFiles tier;
++        check(tier.init(dir.string(), 300, 2, 0, why), "tier init");
++        const std::string p1 = write_file(dir, "a.park", 100), p2 = write_file(dir, "b.park", 100),
++                          p3 = write_file(dir, "c.park", 150), p4 = write_file(dir, "d.park", 120);
++        ParkedFile f1 = entry(100, {1, 2, 3}); f1.path = p1;
++        ParkedFile f2 = entry(100, {1, 2, 3}); f2.path = p2;
++        check(tier.put(std::move(f1), why) && tier.size() == 1 && tier.bytes() == 100, "put 1");
++        check(tier.put(std::move(f2), why) && tier.size() == 2 && tier.bytes() == 200, "put 2");
++        ParkedFile f3 = entry(150, {4, 5}); f3.path = p3;
++        check(tier.put(std::move(f3), why) && tier.size() == 2 && tier.bytes() == 250 && tier.evictions() == 1,
++              "slots evict the oldest file");
++        check(!fs::exists(p1) && fs::exists(p2) && fs::exists(p3), "eviction unlinked the evicted file");
++        ParkedFile f4 = entry(120, {6, 7}); f4.path = p4;
++        check(tier.put(std::move(f4), why) && tier.bytes() == 270 && tier.evictions() == 2, "budget evicts the oldest");
++        check(!fs::exists(p2) && fs::exists(p3) && fs::exists(p4), "budget eviction unlinked its file");
++        // take/erase: a get is a copy, an erase with unlink ends the file
++        ParkedFile got;
++        check(tier.get(0, got) && got.path == p3 && fs::exists(p3), "get copies the entry, keeps the file");
++        check(tier.erase(0, true) && !fs::exists(p3) && tier.bytes() == 120 && tier.size() == 1, "erase unlinks");
++        check(tier.erase(99, false) == false, "erase out of range");
++        // clear unlinks everything
++        check(tier.clear() == 1 && !fs::exists(p4) && tier.size() == 0 && tier.bytes() == 0, "clear unlinks all");
++    }
++    {   // matching: live prefix, deepest-checkpoint prefix, cvec; holds()
++        ConversationParkFiles tier;
++        check(tier.init(dir.string(), 1 << 20, 4, 0, why), "match tier init");
++        const std::string p5 = write_file(dir, "e.park", 10);
++        ParkedFile e5 = entry(10, {10, 11, 12, 13}, {ck({10, 11})});
++        e5.path = p5;
++        check(tier.put(std::move(e5), why), "put match entry");
++        const std::vector<int32_t> prompt = {10, 11, 12, 13, 14, 15};
++        auto m = tier.best(prompt, {}, false);
++        check(m.index == 0 && m.tokens == 4 && m.live, "best matches the live prefix");
++        auto shorter = tier.best(std::vector<int32_t>{10, 11, 99}, {}, false);
++        check(shorter.tokens == 2 && !shorter.live, "best falls back to the deepest checkpoint prefix");
++        auto cvec_miss = tier.best(prompt, {}, true);
++        check(cvec_miss.tokens == 0, "cvec mismatch does not match");
++        auto equal = tier.best(std::vector<int32_t>{10, 11, 12, 13}, {}, false);
++        check(equal.tokens == 2 && !equal.live, "an equal-length prompt matches only the shorter checkpoint (cache rule)");
++        check(tier.holds(std::vector<int32_t>{10, 11}, {}, false), "holds: a shorter state is covered");
++        check(!tier.holds(std::vector<int32_t>{10, 11, 12, 13, 14}, {}, false), "holds: a longer state is not");
++        // admit: budget/free-space
++        check(tier.admit(1000, why), "admit within the tier");
++        check(!tier.admit((1 << 20) + 1, why), "admit over the tier budget");
++        check(!tier.admit(0, why), "admit zero bytes");
++    }
++    {   // the free-space reserve is a write-time gate: init succeeds, admit() refuses
++        ConversationParkFiles tier;
++        check(tier.init(dir.string(), 1000, 2, ~uint64_t(0) / 2, why) && tier.enabled(),
++              "init allows a reserve larger than today's free space");
++        check(!tier.admit(1000, why), "admit refuses when the reserve cannot be kept");
++    }
++    fs::remove_all(dir, ec);
++    std::printf("conversation_park_file_test: %d checks passed\n", checks);
++    return 0;
++}
 diff --git a/src/core/conversation_snapshot.cpp b/src/core/conversation_snapshot.cpp
 index 0e4c440..7d95ddd 100644
 --- a/src/core/conversation_snapshot.cpp
@@ -1879,10 +2254,18 @@ index 0f2c410..56edcae 100644
                              for (size_t j = 0; j < order.size(); ++j) {
                                  const int32_t e = order[j];
 diff --git a/src/program/generate.cpp b/src/program/generate.cpp
-index e2657ae..918239c 100644
+index e2657ae..674922d 100644
 --- a/src/program/generate.cpp
 +++ b/src/program/generate.cpp
-@@ -170,6 +170,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
+@@ -28,6 +28,7 @@
+ #include "strata/core/expert_cache.hpp"
+ #include "strata/core/expert_nibble.hpp"
+ #include "strata/core/conversation_snapshot.hpp"
++#include "strata/core/conversation_park_file.hpp"   // tiberius: the pmem park file tier
+ #include "strata/core/lookup_default.hpp"
+ #if defined(STRATA_USE_HIP)
+ #include "strata/core/serve_stop_bound.hpp"
+@@ -170,6 +171,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
  #include <condition_variable>
  #include <deque>
  #include <map>
@@ -1890,7 +2273,7 @@ index e2657ae..918239c 100644
  #include <mutex>
  #include <optional>
  #include <new>
-@@ -525,6 +526,225 @@ static const char* pipe_dbg_env(const char* name) {
+@@ -525,6 +527,225 @@ static const char* pipe_dbg_env(const char* name) {
      return on ? std::getenv(name) : nullptr;
  }
  
@@ -2116,7 +2499,7 @@ index e2657ae..918239c 100644
  // The resident RAM mode and the adaptive tier.  A swap copies `in` (held in RAM) into the slot of `out` (held only
  // by that slot).  Before the slot is overwritten, `out`'s bytes are copied back from it into an exchange buffer, so
  // the CPU computes `out` from RAM while the swap is in flight; when the swap has landed, `commit_exchanges` moves
-@@ -551,6 +771,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -551,6 +772,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
      std::vector<SwapHome> used;
      std::vector<Swap> kept;
      kept.reserve(swaps.size());
@@ -2124,7 +2507,7 @@ index e2657ae..918239c 100644
      for (const Swap& s : swaps) {
          if (!src.has_resident(s.layer, s.in) || src.has_resident(s.layer, s.out)) { kept.push_back(s); continue; }
          const int64_t q = (int64_t) staged.size();
-@@ -563,8 +784,11 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -563,8 +785,11 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
          if (const cudaError_t e = cudaMemcpyAsync(src.exchange_buffer(q, s.layer), home.cache->device_slot(slot),
                              (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), cudaMemcpyDeviceToHost,
                              home.stream); e != cudaSuccess) {
@@ -2138,7 +2521,7 @@ index e2657ae..918239c 100644
              return false;
          }
          bool seen = false;
-@@ -583,10 +807,25 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -583,10 +808,25 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
          }
          for (const Staged& x : staged)
              if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) {
@@ -2167,7 +2550,54 @@ index e2657ae..918239c 100644
      }
      swaps.swap(kept);
      return true;
-@@ -9187,7 +9426,11 @@ int main(int argc, char** argv) {
+@@ -925,6 +1165,12 @@ struct Options {
+     /// (drop_superseded) after writing the same bytes once more, so on a long single conversation every turn pays a
+     /// whole-snapshot copy for nothing.  0 = park every turn, as before.
+     int64_t conversation_cache_park_gain = 0;
++    // tiberius (pmem park spill): the file tier that catches a RAM-park refusal.  Empty dir or 0 MiB = off (the
++    // deployed config runs it off until the module passes these).
++    std::string conversation_park_dir;
++    int64_t conversation_park_mib = 0;
++    int64_t conversation_park_slots = 8;
++    int64_t conversation_park_min_free_mib = 4096;
+     /// --memory-limit-mib N / STRATA_MEMORY_LIMIT_MIB: the total RAM this engine's container or cgroup may use, for a
+     /// container that cannot see its real limit (0 or unset = none; the flag wins over the variable)
+     int64_t memory_limit_mib = -1;
+@@ -1109,6 +1355,11 @@ void usage() {
+                  "                       write a whole snapshot that the next turn drops (default 0 = park every turn)\n"
+                  "  --session-min-free-mib N  --serve: disk space a SAVE must leave free (default 4096; 0 = no check)\n"
+                  "  --session-save-reclaim  --serve: reclaim unpinned host caches if SAVE needs RAM (opt-in)\n"
++                 "  --conversation-park-dir DIR  --serve: park a conversation the RAM cache refuses as a v1 session file\n"
++                 "                       under DIR (pmem); the streamed reader restores it.  Empty (default): no file tier\n"
++                 "  --conversation-park-mib N  byte budget for those files (default 0 = off; 12288 for /optane)\n"
++                 "  --conversation-park-slots N  files kept (default 8); the oldest file is unlinked first\n"
++                 "  --conversation-park-min-free-mib N  free space kept on the file tier's filesystem (default 4096)\n"
+                  "  --vram-elastic       --serve (#533, opt-in, NVIDIA): the expert cache in segments (--vram-segment-mib,\n"
+                  "                       default 512), so the command `VRAM <reserve_mib>` (the server's POST /v1/vram) can\n"
+                  "                       give VRAM back to other programs between requests and take it back later\n"
+@@ -3515,6 +3766,21 @@ int main(int argc, char** argv) {
+         else if (a == "--vision") o.vision = true;
+         else if (a == "--session-save-reclaim") o.session_save_reclaim = true;
+         else if (a == "--prompt-cache") o.prompt_cache = std::max(0, std::atoi(next("--prompt-cache")));
++        else if (a == "--conversation-park-mib" || a == "--conversation-park-slots" ||
++                 a == "--conversation-park-min-free-mib") {
++            const std::string value = next(a.c_str());
++            int64_t number = 0;
++            const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
++            const int64_t limit = a == "--conversation-park-slots" ? INT32_MAX : INT64_MAX / (1024 * 1024);
++            if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || number < 0 || number > limit) {
++                std::fprintf(stderr, "%s needs a nonnegative integer within range\n", a.c_str());
++                return 2;
++            }
++            if (a == "--conversation-park-mib") o.conversation_park_mib = number;
++            else if (a == "--conversation-park-slots") o.conversation_park_slots = number;
++            else o.conversation_park_min_free_mib = number;
++        }
++        else if (a == "--conversation-park-dir") o.conversation_park_dir = next("--conversation-park-dir");
+         else if (a == "--conversation-cache-mib" || a == "--conversation-cache-slots" ||
+                  a == "--conversation-cache-min-free-mib" || a == "--conversation-cache-min-tokens" ||
+                  a == "--conversation-cache-park-gain" ||
+@@ -9187,7 +9453,11 @@ int main(int argc, char** argv) {
              for (int64_t e = 0; e < g.n_expert; ++e) {
                  const uint64_t b = lay.blob_bytes(l);
                  total += b;
@@ -2180,7 +2610,155 @@ index e2657ae..918239c 100644
              }
          double share = total ? (double) pinned / (double) total : 1.0;
          if (const char* t = std::getenv("STRATA_TEST_PINNED_SHARE")) share = std::atof(t);   // tests: the Windows-like ring rule
-@@ -11652,6 +11895,34 @@ int main(int argc, char** argv) {
+@@ -11440,6 +11710,8 @@ int main(int argc, char** argv) {
+         strata::core::ConversationCache conversations(
+             o.prompt_cache > 0 ? (size_t) o.conversation_cache_mib * 1024 * 1024 : 0,
+             (size_t) o.conversation_cache_slots, o.conversation_cache_min_tokens);
++        // tiberius (pmem park spill): the file tier (off unless --conversation-park-dir/--conversation-park-mib are given)
++        strata::core::ConversationParkFiles park_files;
+         // Disk sessions: what a session file is bound to.  The model fingerprint samples every model input this
+         // engine loaded, by role (conversation_file.hpp), once; the config fingerprint covers the RESOLVED settings
+         // that change what the saved bytes mean - the rope (K is cached post-RoPE), the loaded control vector, the
+@@ -11514,6 +11786,27 @@ int main(int argc, char** argv) {
+             id.config = *config_fp;
+             return true;
+         };
++        // tiberius (pmem park spill): the file tier is initialised once, before the stdin loop, and warmed by computing
++        // the session identity now (the first park must not pay the model-input fingerprint on the request thread).
++        if (o.conversation_park_mib > 0 && !o.conversation_park_dir.empty()) {
++            std::string why;
++            if (!park_files.init(o.conversation_park_dir, (uint64_t) o.conversation_park_mib << 20,
++                                 (size_t) std::max<int64_t>(o.conversation_park_slots, 1),
++                                 (uint64_t) std::max<int64_t>(o.conversation_park_min_free_mib, 0) << 20, why)) {
++                std::fprintf(stderr, "strata serve: conversation park: file tier off (%s)\n", why.c_str());
++            } else {
++                std::fprintf(stderr, "strata serve: conversation park: file tier on: %s, %lld MiB, %lld slots, %lld MiB free "
++                                     "reserve\n", park_files.dir().c_str(), (long long) o.conversation_park_mib,
++                             (long long) o.conversation_park_slots, (long long) o.conversation_park_min_free_mib);
++                strata::core::SessionFileIdentity warm_id;
++                std::string e;
++                try {
++                    if (!session_identity(warm_id, e, {})) std::fprintf(stderr, "strata serve: conversation park: identity: %s\n", e.c_str());
++                } catch (const std::exception& ex) {
++                    std::fprintf(stderr, "strata serve: conversation park: identity: %s\n", ex.what());
++                }
++            }
++        }
+         // What a park captures: the main session's conversation (park_current) or an idle batch slot's (park_slot:
+         // the reply it decoded, before an admission overwrites it).  One budget / admission / snapshot path for both.
+         struct ParkSource {
+@@ -11560,6 +11853,110 @@ int main(int argc, char** argv) {
+             });
+         };
+         pool_topup();   // the first request's checkpoints find the pool full
++        // tiberius (pmem park spill): write the outgoing conversation as a v1 session file.  Called only when the RAM
++        // gate refused the park: the donor was already handed back, no RAM entry is evicted for a file (the file tier is
++        // separate) and the write streams the K/V from the authoritative pools.  Returns true when the file park landed.
++        auto park_to_pmem = [&](const ParkSource& src) -> bool {
++            if (!park_files.enabled() || !stages.empty()) return false;
++            // park-gain: this conversation already has a file copy at least as long as the outgoing state
++            if (o.conversation_cache_park_gain > 0 && park_files.holds(src.ids, src.imgs, src.cvec)) {
++                std::fprintf(stderr, "strata serve: conversation park: skip pmem (this conversation is already parked to a file)\n");
++                return false;
++            }
++            std::string why;
++            try {
++                strata::core::SessionSaveLive sl;
++                {
++                    strata::core::ConversationStateSizes z;
++                    std::string e;
++                    uint64_t state = UINT64_MAX;
++                    if (strata::core::conversation_session_sizes(g, src.session, z, e)) {
++                        const uint64_t q = (uint64_t) std::max<int64_t>(src.session.qsa_alloc, 0);
++                        const uint64_t per = (uint64_t) z.tail + z.dead + z.block_pos;
++                        if (q == 0 || per <= (UINT64_MAX - z.gdn - z.ple) / q) state = z.gdn + z.ple + q * per;
++                    }
++                    sl.state_bytes = state;
++                    sl.tokens = src.ids.size();
++                    sl.images = src.imgs.size();
++                    sl.kv_layers = (uint64_t) std::max<int64_t>(src.session.qsa_alloc, 0) + (use_mtp ? 1 : 0);
++                }
++                const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
++                auto admit = [&](uint64_t need, std::string& w) {
++                    const auto mem = strata::core::sample_host_memory();
++                    const std::optional<uint64_t> avail = mem ? std::optional<uint64_t>(mem->available) : std::nullopt;
++                    if (strata::core::conversation_memory_admit(avail, need, floor)) return true;
++                    w = "not enough RAM to capture the park (" +
++                        (need == UINT64_MAX ? std::string("unknown") : std::to_string(need >> 20)) + " MiB plus a floor of " +
++                        std::to_string((long long) o.conversation_cache_min_free_mib) + " MiB needed, " + ram_note(mem) + ")";
++                    return false;
++                };
++                std::vector<ConvCheckpoint> disk_checks;
++                if (!strata::core::session_save_checkpoints(src.checks, sl, admit, disk_checks, why)) {
++                    std::fprintf(stderr, "strata serve: conversation park: skip pmem (%s)\n", why.c_str());
++                    return false;
++                }
++                strata::core::SessionFileIdentity id;
++                std::string e;
++                if (!session_identity(id, e, {})) {
++                    std::fprintf(stderr, "strata serve: conversation park: skip pmem (identity: %s)\n", e.c_str());
++                    return false;
++                }
++                const uint64_t instance = (uint64_t) getpid();
++                const std::string path = park_files.next_path(instance);
++                const strata::core::ConversationView view{src.ids, src.imgs, disk_checks, src.cvec};
++                strata::core::SavedConversation meta;
++                std::vector<strata::core::SessionKvSource> sources;
++                strata::core::progress_at("request: parking the previous conversation (pmem)");
++                strata::core::progress_beat();
++                if (!strata::core::conversation_snapshot_sources(meta, sources, view, src.session, g,
++                        use_mtp ? &mtp.kv_state() : nullptr, e)) {
++                    std::fprintf(stderr, "strata serve: conversation park: skip pmem (%s)\n", e.c_str());
++                    return false;
++                }
++                strata::core::SessionWriteOptions wo;
++                wo.min_free_bytes = (uint64_t) std::max<int64_t>(o.conversation_park_min_free_mib, 0) << 20;
++                wo.durable = false;   // a park file is a cache: the rename is enough; no folder flush for 3.6 GB parks
++                wo.progress = [](uint64_t, uint64_t) { strata::core::progress_beat(); };
++                strata::core::SessionStatus st;
++                const auto pmem_t0 = Clock::now();
++                size_t bytes = 0;
++                if (!strata::core::session_file_write(path, meta, sources, id, bytes, e, wo, &st)) {
++                    std::fprintf(stderr, "strata serve: conversation park: skip pmem (write: %s)\n", e.c_str());
++                    return false;
++                }
++                strata::core::ParkedFile pf;
++                pf.path = path;
++                pf.live.ids = src.ids;
++                pf.live.imgs = src.imgs;
++                pf.live.used = (int64_t) src.ids.size();
++                pf.checkpoints.reserve(disk_checks.size());
++                for (auto& c : disk_checks) {   // the state arrays were only copied for the write: drop them, keep metadata
++                    c.gdn.clear(); c.ple.clear(); c.tails.clear(); c.dead.clear(); c.block_pos.clear();
++                    pf.checkpoints.push_back(std::move(c));
++                }
++                pf.cvec = src.cvec;
++                pf.live_tokens = (int64_t) src.ids.size();
++                pf.bytes = bytes;
++                if (!park_files.put(std::move(pf), why)) {
++                    std::error_code ec;
++                    std::filesystem::remove(path, ec);   // the tier could not take it: the file is not a park
++                    std::fprintf(stderr, "strata serve: conversation park: skip pmem (tier: %s)\n", why.c_str());
++                    return false;
++                }
++                const double wall = std::chrono::duration<double, std::milli>(Clock::now() - pmem_t0).count();
++                std::fprintf(stderr, "strata serve: conversation cache: parked %zu tokens to pmem in %.1f ms; file=%s bytes=%zu "
++                                     "parked=%zu bytes=%zu pmem_files=%zu pmem_bytes=%zu\n",
++                             src.ids.size(), wall, path.c_str(), bytes, conversations.size(), conversations.bytes(),
++                             park_files.size(), park_files.bytes());
++                return true;
++            } catch (const std::bad_alloc&) {
++                std::fprintf(stderr, "strata serve: conversation park: skip pmem (out of memory)\n");
++                return false;
++            } catch (const std::exception& ex) {
++                std::fprintf(stderr, "strata serve: conversation park: skip pmem (%s)\n", ex.what());
++                return false;
++            }
++        };
+         auto park_source = [&](const ParkSource& src, size_t held) -> bool {
+             // #2049: parking copies the outgoing conversation's running checkpoints and K/V into host memory, which
+             // is a silent stretch of the "request" stage; when the OS has paged that memory out it takes minutes.
+@@ -11652,6 +12049,38 @@ int main(int argc, char** argv) {
                  err.clear();
              }
              estimate += stage_estimate;
@@ -2204,18 +2782,22 @@ index e2657ae..918239c 100644
 +                if (!strata::core::conversation_memory_admit(
 +                        mem_pre ? std::optional<uint64_t>(mem_pre->available + reclaimable) : std::nullopt,
 +                        additional, floor)) {
++                    // tiberius (pmem park spill): the RAM gate refused the park; give the donor back and write the
++                    // conversation as a v1 session file instead (never evicting a RAM entry for it).  A successful file
++                    // park fails neither this line nor the caller: the transaction is complete either way.
++                    reuse.stages = std::move(stage_reuse);
++                    conversations.give_reuse(std::move(reuse));
++                    if (park_to_pmem(src)) return true;
 +                    std::fprintf(stderr, "strata serve: conversation cache: skip parking (physical RAM admission: need %zu MiB plus %lld MiB floor, %s + %zu MiB reclaimable; nothing evicted, %zu still parked)\n",
 +                                 additional >> 20, (long long) o.conversation_cache_min_free_mib,
 +                                 ram_note(mem_pre).c_str(), reclaimable >> 20, conversations.size());
-+                    reuse.stages = std::move(stage_reuse);
-+                    conversations.give_reuse(std::move(reuse));
 +                    return true;
 +                }
 +            }
              // A park carrying its own retained K/V replaces memory the cache
              // already held, so capacity is make_room's call - it runs next either
              // way, and put()'s accounting still bounds the budget. The with-reuse
-@@ -11661,23 +11932,25 @@ int main(int argc, char** argv) {
+@@ -11661,23 +12090,25 @@ int main(int argc, char** argv) {
              if (!conversations.make_room(estimate, held)) {
                  std::fprintf(stderr, "strata serve: conversation cache: skip parking (snapshot %zu MiB exceeds available budget)\n",
                               estimate >> 20);
@@ -2250,7 +2832,7 @@ index e2657ae..918239c 100644
                  size_t evicted = 0;
                  std::optional<strata::core::HostMemoryReading> mem;
                  auto admit = [&] {
-@@ -11692,6 +11965,8 @@ int main(int argc, char** argv) {
+@@ -11692,6 +12123,8 @@ int main(int argc, char** argv) {
                      std::fprintf(stderr, "strata serve: conversation cache: skip parking (physical RAM admission; need %zu MiB plus %lld MiB floor, %s; evicted %zu, %zu still parked)\n",
                                   additional >> 20, (long long) o.conversation_cache_min_free_mib, ram_note(mem).c_str(),
                                   evicted, conversations.size());
@@ -2259,7 +2841,7 @@ index e2657ae..918239c 100644
                      return true;
                  }
                  if (evicted)
-@@ -12277,6 +12552,23 @@ int main(int argc, char** argv) {
+@@ -12277,6 +12710,23 @@ int main(int argc, char** argv) {
          std::vector<void*> pin_live;   // the swaps' locked arena pages (pin_blob), unlocked once they have landed
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
@@ -2283,7 +2865,7 @@ index e2657ae..918239c 100644
          // 0.1.43 STRATA_ADAPT_OVERLAP=1 (adapt_overlap above): the single-GPU, plain-RAM-arena decode loop only
          strata::core::AdaptGate agate;
          bool aflipped = false;   // the pending swaps are in the tables and their copies may still be landing
-@@ -12358,7 +12650,10 @@ int main(int argc, char** argv) {
+@@ -12358,7 +12808,10 @@ int main(int argc, char** argv) {
              if (peer.valid()) peer.apply_pending(wait);
              if (pending.empty()) return;
              if (wait) cudaEventSynchronize(adapt_ev);
@@ -2295,7 +2877,7 @@ index e2657ae..918239c 100644
              for (auto& st : stages)
                  if (st->adapt_live) {
                      if (wait) cudaEventSynchronize(st->adapt_ev);
-@@ -12366,6 +12661,7 @@ int main(int argc, char** argv) {
+@@ -12366,6 +12819,7 @@ int main(int argc, char** argv) {
                  }
              for (auto& st : stages) st->adapt_live = false;
              unpin_blobs(pin_live);
@@ -2303,7 +2885,7 @@ index e2657ae..918239c 100644
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
              for (const auto& [i, slot] : pending) {
                  host_res[(size_t) i] = slot;
-@@ -12555,11 +12851,25 @@ int main(int argc, char** argv) {
+@@ -12555,11 +13009,25 @@ int main(int argc, char** argv) {
                  adapt_fence();
              }
              bool main_live = false;
@@ -2329,7 +2911,7 @@ index e2657ae..918239c 100644
              for (size_t si = 0; si < swaps.size(); ++si) {
                  const Swap& s = swaps[si];
                  if (aov && (si == 0 || swaps[si - 1].layer != s.layer)) {
-@@ -12575,38 +12885,172 @@ int main(int argc, char** argv) {
+@@ -12575,38 +13043,172 @@ int main(int argc, char** argv) {
                  nib::guard_raw(s.layer, "the adaptive tier's copy in");
                  const int stn = multi_gpu ? stage_of(s.layer) : 0;   // the swap stays in the layer's own cache
                  GpuStage* gs = stn > 0 ? stages[(size_t) stn - 1].get() : nullptr;
@@ -2526,7 +3108,7 @@ index e2657ae..918239c 100644
                      (void) cudaGetLastError();
                      cudaStreamSynchronize(adapt_stream);   // no callback: wait here, the gate opens at once
                      agate.landed.store((int32_t) g.n_layers, std::memory_order_release);
-@@ -12616,6 +13060,16 @@ int main(int argc, char** argv) {
+@@ -12616,6 +13218,16 @@ int main(int argc, char** argv) {
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
                  drive.d.res_dirty = true;
              }
@@ -2543,7 +3125,74 @@ index e2657ae..918239c 100644
              if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
                                                              adapt_stream, dma_mode) != cudaSuccess) {
                  std::fprintf(stderr, "strata serve: adaptive swap copy failed (batched): %s\n",
-@@ -14931,7 +15385,9 @@ int main(int argc, char** argv) {
+@@ -13086,6 +13698,66 @@ int main(int argc, char** argv) {
+             a_pl_idle = nullptr;
+             a_res_dirty = false;
+         };
++        // tiberius (pmem park spill): restore a parked file into the session with the gen-103 streamed reader.  Returns
++        // 0 = restored (`meta` holds the state copies the caller commits), 1 = refused before any device write (the
++        // live session is still valid; the caller rereads the prompt), 2 = fatal after a sink wrote (never decode).
++        auto restore_park_file = [&](const strata::core::ParkedFile& pf, strata::core::SessionStreamMeta& meta,
++                                     std::string& why) -> int {
++            strata::core::SessionFileIdentity id;
++            std::string e;
++            try {
++                if (!session_identity(id, e, {})) { why = "session identity: " + e; return 1; }
++            } catch (const std::exception& ex) {
++                why = std::string("session identity: ") + ex.what();
++                return 1;
++            }
++            strata::core::SessionReadLimits limits;
++            const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
++            limits.admit = [floor, &o](uint64_t need, std::string& w) {
++                const auto mem = strata::core::sample_host_memory();
++                const std::optional<uint64_t> avail = mem ? std::optional<uint64_t>(mem->available) : std::nullopt;
++                if (strata::core::conversation_memory_admit(avail, need, floor)) return true;
++                w = "not enough RAM to read the park file (" + std::to_string(need >> 20) + " MiB plus a floor of " +
++                    std::to_string((long long) o.conversation_cache_min_free_mib) + " MiB needed, " + ram_note(mem) + ")";
++                return false;
++            };
++            if (!strata::core::conversation_session_read_limits(
++                    limits, ss, g, use_mtp ? &mtp.kv_state() : nullptr, (uint64_t) o.max_context,
++                    (uint64_t) std::max(o.prompt_cache, 1), e)) {
++                why = e;
++                return 1;
++            }
++            strata::core::SessionStatus st;
++            strata::core::SessionStreamTarget target;
++            const strata::core::QsaState* draft = use_mtp ? &mtp.kv_state() : nullptr;
++            target.prepare = [&](const strata::core::SessionStreamMeta& m, std::string& w) -> bool {
++                if (!strata::core::conversation_snapshot_validate_meta(m, ss, g, draft, w)) return false;
++                if (!kvg_ensure((int64_t) m.image.live.ids.size() + 256, adapt_quiesce)) {
++                    w = "the K/V cannot grow to the parked conversation: no VRAM is left";
++                    return false;
++                }
++                if (!strata::core::conversation_snapshot_stream_sinks(target.kv, m, ss, g, draft, w)) return false;
++                conversations.take_reuse();   // retained K/V described the outgoing session
++                live_ok = false;
++                return true;
++            };
++            target.finish = [&](std::string& w) -> bool {
++                return strata::core::conversation_snapshot_stream_finish(
++                    target.kv, ss, g, draft, (int64_t) meta.image.live.ids.size(), w);
++            };
++            size_t bytes = 0;
++            if (!strata::core::session_file_restore_streamed(pf.path, id, target, meta, bytes, e, limits, &st)) {
++                why = e;
++                if (st.touched) return 2;
++                live_ok = true;   // the transfer was refused before any device write: the old session still stands
++                return 1;
++            }
++            if (!strata::core::conversation_checkpoint_restore(meta.image.live, ss, g, e)) {
++                why = e;
++                return 2;
++            }
++            return 0;
++        };
+         // #477: write the learned profile (between requests and at QUIT: a prompt's lent slots are back by then).
+         // A swap still in flight counts as done - its expert is resident once the copy lands.  `why`: for the log.
+         auto save_profile = [&](const char* why) {
+@@ -14931,7 +15603,9 @@ int main(int argc, char** argv) {
                              sl.state_bytes = state;
                              sl.tokens = live.size();
                              sl.images = live_imgs.size();
@@ -2554,7 +3203,7 @@ index e2657ae..918239c 100644
                          }
                          const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
                          if (o.session_save_reclaim) {
-@@ -14969,8 +15425,8 @@ int main(int argc, char** argv) {
+@@ -14969,8 +15643,8 @@ int main(int argc, char** argv) {
                          std::vector<strata::core::SessionKvSource> sources;
                          // the live running state comes off the device in one synchronous copy
                          blocking("capture", sl.state_bytes == UINT64_MAX ? 0 : sl.state_bytes);
@@ -2565,7 +3214,7 @@ index e2657ae..918239c 100644
                              refuse(err, strata::core::SessionError::io);
                              continue;
                          }
-@@ -14996,14 +15452,17 @@ int main(int argc, char** argv) {
+@@ -14996,14 +15670,17 @@ int main(int argc, char** argv) {
                                   path.c_str(), ms(), capture_ms);
                      std::printf("SAVED %zu %zu %.1f\n", live.size(), bytes, ms());
                  } else {
@@ -2585,7 +3234,7 @@ index e2657ae..918239c 100644
                          const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
                          limits.admit = [floor, &o](uint64_t need, std::string& why) {
                              const auto mem = strata::core::sample_host_memory();
-@@ -15015,64 +15474,97 @@ int main(int argc, char** argv) {
+@@ -15015,64 +15692,98 @@ int main(int argc, char** argv) {
                              return false;
                          };
                          if (!strata::core::conversation_session_read_limits(
@@ -2670,9 +3319,10 @@ index e2657ae..918239c 100644
 +                        if (nan_flush) {   // #879: the file replaced the poisoned session; the parked ones go (no slots here)
 +                            nan_flush = false;
 +                            const size_t n_parked = conversations.clear();
++                            const size_t n_files = park_files.clear();
 +                            std::fprintf(stderr, "strata serve: after non-finite logits (#879): the restored session "
-+                                                 "replaces the live one; dropped %zu parked conversation%s\n", n_parked,
-+                                         n_parked == 1 ? "" : "s");
++                                                 "replaces the live one; dropped %zu parked conversation%s and %zu pmem park file%s\n",
++                                         n_parked, n_parked == 1 ? "" : "s", n_files, n_files == 1 ? "" : "s");
 +                        }
 +                        std::fprintf(stderr, "strata serve: session restored %zu tokens, %zu checkpoints, %zu bytes from %s "
 +                                     "in %.1f ms (streamed: pass 1 + pass 2, no image)\n", live.size(), checks.size(),
@@ -2729,7 +3379,142 @@ index e2657ae..918239c 100644
                  }
                  std::fflush(stdout);
                  continue;
-@@ -17449,6 +17941,7 @@ int main(int argc, char** argv) {
+@@ -15455,6 +16166,7 @@ int main(int argc, char** argv) {
+                 checks.clear();
+                 tail_ckpt_len = -1;
+                 const size_t n_parked = conversations.clear();
++                const size_t n_files = park_files.clear();
+                 size_t n_slots = 0, n_running = 0;
+                 for (BSlot& sl : bs)
+                     if (sl.active) {   // a running slot finishes its reply, but is not kept as a cache after it
+@@ -15474,10 +16186,11 @@ int main(int argc, char** argv) {
+                         ++n_slots;
+                     }
+                 std::fprintf(stderr, "strata serve: after non-finite logits (#879): dropped the live session, %zu "
+-                                     "checkpoint%s, %zu parked conversation%s and %zu idle slot%s (%zu running slot%s "
+-                                     "not kept after their reply); reading this prompt from token 0\n", n_checks,
+-                             n_checks == 1 ? "" : "s", n_parked, n_parked == 1 ? "" : "s", n_slots,
+-                             n_slots == 1 ? "" : "s", n_running, n_running == 1 ? "" : "s");
++                                     "checkpoint%s, %zu parked conversation%s, %zu pmem park file%s and %zu idle slot%s "
++                                     "(%zu running slot%s not kept after their reply); reading this prompt from token 0\n",
++                             n_checks, n_checks == 1 ? "" : "s", n_parked, n_parked == 1 ? "" : "s", n_files,
++                             n_files == 1 ? "" : "s", n_slots, n_slots == 1 ? "" : "s", n_running,
++                             n_running == 1 ? "" : "s");
+             }
+             int64_t resume = 0;
+             bool from_live = false;
+@@ -15576,17 +16289,31 @@ int main(int argc, char** argv) {
+                 }
+             }
+             const auto parked = conversations.best(ids, req_imgs, want_cvec);
++            // tiberius (pmem park spill): a parked file restores through the streamed reader.  RAM wins ties (the
++            // file is a fallback for what RAM refused, not a faster copy of it).
++            size_t file_take = SIZE_MAX;
++            int64_t file_tokens = 0;
++            bool file_live = false;
++            if (park_files.enabled() && stages.empty()) {
++                const auto fm = park_files.best(ids, req_imgs, want_cvec);
++                if (fm.tokens > std::max(std::max(resume, slot_tokens), parked.tokens)) {
++                    file_take = fm.index;
++                    file_tokens = fm.tokens;
++                    file_live = fm.live;
++                }
++            }
++            const bool file_restore = file_take != SIZE_MAX;
+             std::optional<strata::core::SavedConversation> incoming;
+             // A checkpoint inside ANOTHER parked conversation (a sibling subagent's system prompt and tools, say) is
+             // borrowed: its K/V up to there and the checkpoint come over, and that conversation stays parked for its
+             // own next turn (ConversationCache::borrows).  Everything else is taken whole, as before.
+             // (a layer split restores whole stage images only, so it never borrows; a batch slot that holds a longer
+             // start of this prompt wins as before)
+-            bool borrow = stages.empty() && parked.tokens > std::max(resume, slot_tokens) &&
++            bool borrow = !file_restore && stages.empty() && parked.tokens > std::max(resume, slot_tokens) &&
+                           conversations.borrows(parked);
+-            if (parked.tokens > std::max(resume, slot_tokens) && !borrow)
++            if (!file_restore && parked.tokens > std::max(resume, slot_tokens) && !borrow)
+                 incoming.emplace(conversations.take(parked.index));
+-            if (incoming || borrow) slot_source = -1;
++            if (incoming || borrow || file_restore) slot_source = -1;
+             // Reject the entire image before parking/overwriting the outgoing
+             // state. Invalid entries can safely fall back to its existing prefix.
+             if (incoming && incoming->stage_images.size() != stages.size()) {
+@@ -15669,8 +16396,8 @@ int main(int argc, char** argv) {
+             // dozen tokens, cheaper to read than the prefix's whole K/V is to copy to the host - so it is not parked:
+             // N queries keep one prefix.  A request without pin=, or one that resumes anywhere else, parks as before.
+             bool pin_sibling = false;
+-            if (req_pin > 0 && req_ckpt && o.prompt_cache >= 3 && !from_live && !incoming && slot_source < 0 &&
+-                resume == req_pin && live_ok)
++            if (req_pin > 0 && req_ckpt && o.prompt_cache >= 3 && !from_live && !incoming && !file_restore &&
++                slot_source < 0 && resume == req_pin && live_ok)
+                 for (const ConvCheckpoint& c : checks)
+                     if ((int64_t) c.ids.size() == resume && c.pinned) pin_sibling = true;
+             // --conversation-cache-park-gain N: a park now would supersede the entry parked_prefix_tokens() reports (the copy
+@@ -15690,7 +16417,8 @@ int main(int argc, char** argv) {
+                 ~ParkDrops() { f = nullptr; }
+             } park_drops_reset{park_drops};
+             if (park_async_env()) {
+-                const bool drops_all = incoming.has_value() || borrow || slot_source >= 0 || want_cvec != cvec_cached;
++                const bool drops_all = incoming.has_value() || borrow || file_restore || slot_source >= 0 ||
++                                       want_cvec != cvec_cached;
+                 park_drops = [&, drops_all](const ConvCheckpoint& c) {
+                     return drops_all || (int64_t) c.ids.size() > resume || !starts_with(c.ids, c.imgs);
+                 };
+@@ -15717,7 +16445,7 @@ int main(int argc, char** argv) {
+                         return 1;
+                     }
+                 }
+-            } else if ((!from_live || incoming || slot_source >= 0) && !pin_sibling && park_worth &&
++            } else if ((!from_live || incoming || file_restore || slot_source >= 0) && !pin_sibling && park_worth &&
+                        !park_current(incoming ? incoming->bytes() : 0)) {
+                 std::printf("ERR %s\n", err.c_str());
+                 return 1;
+@@ -15811,6 +16539,45 @@ int main(int argc, char** argv) {
+                                  std::chrono::duration<double, std::milli>(Clock::now() - t0).count());
+                 }
+             }
++            if (file_take != SIZE_MAX) {
++                strata::core::ParkedFile pf;
++                if (!park_files.get(file_take, pf)) {
++                    std::fprintf(stderr, "strata serve: conversation park: discard missing file entry\n");
++                } else {
++                    const auto tf0 = Clock::now();
++                    strata::core::SessionStreamMeta fm;
++                    std::string fe;
++                    const int rr = restore_park_file(pf, fm, fe);
++                    if (rr == 0) {
++                        live = std::move(fm.image.live.ids);
++                        live_imgs = std::move(fm.image.live.imgs);
++                        checks = std::move(fm.image.checkpoints);
++                        cvec_cached = fm.image.cvec;
++                        resume = file_tokens;
++                        from_live = file_live;
++                        live_ok = true;
++                        park_files.erase(file_take, true);   // the take ends this copy's persistence
++#if defined(STRATA_HAVE_DFLASH2)
++                        if (use_df2) df2.reset();   // same drafter invalidation as a disk restore
++#endif
++                        std::fprintf(stderr, "strata serve: conversation park: restored %lld tokens (%s) from the pmem park "
++                                             "in %.1f ms (streamed: pass 1 + pass 2, no image); pmem_files=%zu pmem_bytes=%zu\n",
++                                     (long long) resume, file_live ? "live" : "checkpoint",
++                                     std::chrono::duration<double, std::milli>(Clock::now() - tf0).count(),
++                                     park_files.size(), park_files.bytes());
++                    } else if (rr == 1) {
++                        std::fprintf(stderr, "strata serve: conversation park: discard file park (%s); rereading the prompt\n",
++                                     fe.c_str());
++                        live_ok = true;
++                        resume = 0;
++                        from_live = false;
++                    } else {
++                        std::printf("ERR restoring the pmem-parked conversation: %s\n", fe.c_str());
++                        return 1;
++                    }
++                }
++                file_take = SIZE_MAX;
++            }
+             // the elastic K/V: a parked conversation is restored whole, and it may be longer than this prompt
+             // (STRATA_PARK_VRAM_MIB: the parked K/V copies in VRAM go first, then one more try)
+             if (incoming && !kvg_ensure((int64_t) incoming->live.ids.size() + 256, kv_quiesce) &&
+@@ -17449,6 +18216,7 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -2737,7 +3522,7 @@ index e2657ae..918239c 100644
              double dt_run = 0, dt_commit = 0, dt_draft = 0;
              double dt_adapt_wait = 0, dt_adapt_join = 0;   // the tier's wait before a window / join after the draft (ms, summed)
              const int64_t dt_sw0 = ajob ? a_swapped : adapt_nswaps;
-@@ -18433,6 +18926,7 @@ int main(int argc, char** argv) {
+@@ -18433,6 +19201,7 @@ int main(int argc, char** argv) {
                          if (file_left > 0) { --file_left; src.replace_resident(x.layer, x.in, x.out); }
                      }
                  }
@@ -2745,7 +3530,7 @@ index e2657ae..918239c 100644
                  if (!adapt_tick(false)) {   // --adapt-async: the round in flight moves on a step when it can
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18599,7 +19093,9 @@ int main(int argc, char** argv) {
+@@ -18599,7 +19368,9 @@ int main(int argc, char** argv) {
                      const double asw_join = std::chrono::duration<double, std::milli>(Clock::now() - taj0).count();
                      dt_adapt_join += asw_join;
                      asw_wait_ms += asw_join;
@@ -2755,7 +3540,7 @@ index e2657ae..918239c 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -18662,6 +19158,17 @@ int main(int argc, char** argv) {
+@@ -18662,6 +19433,17 @@ int main(int argc, char** argv) {
                  p += a + 1;
              }
              if (!keep_sync()) { std::printf("ERR %s\n", err.c_str()); return 1; }
@@ -2773,7 +3558,7 @@ index e2657ae..918239c 100644
              const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
              if (use_df2 && o.draft_auto && bandit_key != 0 && produced_n >= 48 && decode_ms > 0.0) {
                  DraftBandit& b = bandit[bandit_key];
-@@ -18721,6 +19228,7 @@ int main(int argc, char** argv) {
+@@ -18721,6 +19503,7 @@ int main(int argc, char** argv) {
                  }
              }
              if (drive.d.fs) std::fprintf(stderr, "strata serve: %s\n", drive.d.fs->report().c_str());
@@ -2781,7 +3566,7 @@ index e2657ae..918239c 100644
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -19806,17 +20314,33 @@ int main(int argc, char** argv) {
+@@ -19806,17 +20589,33 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
          int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
@@ -2815,7 +3600,7 @@ index e2657ae..918239c 100644
              if (trace_pending)
                  std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
              unpin_blobs(pin_live);
-@@ -19896,28 +20420,163 @@ int main(int argc, char** argv) {
+@@ -19896,28 +20695,163 @@ int main(int argc, char** argv) {
              std::vector<void*> cp_dst;
              std::vector<const void*> cp_src;
              std::vector<size_t> cp_bytes;
@@ -2990,7 +3775,7 @@ index e2657ae..918239c 100644
              }
              if (drive.d.evict_sync && !swaps.empty()) {   // the evicted ones are misses now (see the pre-launch hook)
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
-@@ -20235,6 +20894,7 @@ int main(int argc, char** argv) {
+@@ -20235,6 +21169,7 @@ int main(int argc, char** argv) {
              // (STRATA_ADAPT_NOWAIT=1: 0.1.37's non-blocking query, the A/B)
              if (adapt_nowait()) apply_pending(false);
                  else if (pending.empty() || ++pending_age >= adapt_lag()) apply_pending(true);
@@ -2998,7 +3783,7 @@ index e2657ae..918239c 100644
              if (gated_proposal) ver.set_spec_proposal(proposal.n_q ? proposal.mu.data() : nullptr, proposal.n_q);
              // the MTP's q lists judge only candidates the MTP drew: DFlash2's are a deterministic pick (exact-match path)
              else if (strata::spec::mtp_q_applies(use_mtp, spec_uses_df2, use_mtp && mtp.prob(), from_sfx, first_window, T_mtp) && o.spec_corrupt <= 0)
-@@ -20328,7 +20988,11 @@ int main(int argc, char** argv) {
+@@ -20328,7 +21263,11 @@ int main(int argc, char** argv) {
              generation = {};
              const GatedDraftLimit draft_limit(mtp, gated_proposal, S_mtp, p + a + 1, o.max_context);
              const bool drafted = !draft_on || (int64_t) produced.size() >= max_new || draft_next(T, a);
@@ -3011,7 +3796,7 @@ index e2657ae..918239c 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -20428,6 +21092,7 @@ int main(int argc, char** argv) {
+@@ -20428,6 +21367,7 @@ int main(int argc, char** argv) {
              std::printf("%-24s %lld windows, %lld with mismatches (%lld entries), %lld layer-windows with CPU experts and "
                          "no activation published\n", "residency check", (long long) res_windows,
                          (long long) res_bad_windows, (long long) res_bad, (long long) drive.d.stale_x);
