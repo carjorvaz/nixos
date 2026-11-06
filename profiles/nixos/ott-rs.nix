@@ -30,6 +30,9 @@ let
     "dazn 4"
     "dazn 5"
     "benfica tv"
+    "rtp 1"
+    "sic"
+    "tvi"
   ];
   watchlistHealthSampleCommand = pkgs.writeShellScript "ott-rs-watchlist-health" ''
     set -u
