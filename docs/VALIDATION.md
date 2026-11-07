@@ -476,6 +476,96 @@ commit, rebuild, `nixos-rebuild switch`; the pack, model shards and PLE are unto
 artifacts: `/data/bump/` (`window.log`, `{new,old}-results.json`, `prom-*.txt`, `eval-new.json`,
 `eval-compare.json`, and the cross-serve checks in `run_cross.sh`/`serve_probe.sh`).
 
+Generation 112 (2026-11-09) bumps the engine pin from v0.2.11 (`c3b3f503`, engine 0.1.57) to
+v0.2.12 (`146df3c4`, engine 0.1.58; the annotated tag's object is `123bad4a`, and both archives hash
+identically).  The release's one change that selects for this lane is upstream PR 5120
+(`f000d4a4` + `7e3fae57`), which implements natively what `avx512-bw-tier.patch` had carried since
+the 0.1.4x tier: the VBMI-free 512-bit CPU path (`cpu_vbmi_ok` / `cpu_vnni_ok` / `q2_rows_512_ok` in
+`expert_layout.{hpp,cpp}` and a run-time-selected VBMI-free q2 unpack in `expert.cpp`) plus every
+call site that selects through it.  It makes that tier OPT-IN on a CPU without VBMI
+(`STRATA_VNNI_TIER=1`, `expert_layout.cpp`) because such a CPU's 512-bit rows round differently from
+the AVX-2 rows it ran before; every CPU that has VBMI answers as before.  The module therefore sets
+`STRATA_VNNI_TIER = "1"` (`profiles/nixos/strata.nix`), so this box keeps the tier it has had, and
+`avx512-bw-tier.patch` is SHRUNK to its compile-time half: `expert.cpp`'s two 2-bit unpacks are made
+VBMI-free unconditionally with tiberius's substitute (VPERMW + VPSRLVW + VPMOVWB, byte-identical to
+VPMULTISHIFTQB, layout-verified against a scalar reference), and `-mavx512vbmi` is removed from
+`expert.cpp` and from `iq_avx512.cpp` + `nvfp4_avx512.cpp` in both CMakeLists, so no compiler can
+emit VBMI in those objects; the gate split, gate renames, call sites and bench/parity hunks are gone
+(upstreamed), and `tq_avx512.cpp` keeps its flag and `cpu_avx512_ok()`.  The same tier turns on two
+new 0.2.12 kernels here: `q50_512` (Q5_0 down rows in 512-bit lanes - this pack's expert layer 4 is
+its one Q5_0-down layer, `native_experts.txt` d_type=6, and the kernel checks itself bit-for-bit
+against this build's ggml-cpu dot on first use) and `iq4xs512` (IQ4_XS gate/up only - the pack has no
+gu type 23 on any of its 48 layers, so that kernel selects nothing here).  What does not select: the
+K-quant MMQ prompt kernels and the 32768-token `--prefill auto` ceiling (compute capability 8.0+),
+the split engine / two-card prompt path / layer-split walk (multi-GPU), the gfx12/gfx1151 default
+tables (not this build), the `STRATA_ADAPT_FETCH` PCIe-share admission (opt-in, default 0), the exact
+two-pass QSA prompt selection (`STRATA_SELECT_TWO_PASS`; sm_80+ tensor-core scorer), the IQ4 W4A8
+prompt kernels (`arch_ok()` = 8.0-8.8/12.0), the calibrated DFlash2 window (opt-in), the fused
+512-bit gate/up rows (`STRATA_IQ512_FUSED_MAX` defaults to 0), the file tier's honest page-cache
+re-check (`STRATA_UNBUFFERED_LOAD=0` returns before it) and the all-experts-resident idle policy
+(8,898 of 24,576 pairs cached).  The new Auto drafting tables and the tuned DFlash2 pack need an
+`auto` drafter / a CUDA "resident" card (>= 12,000 slots): the module names
+`drafting = "dflash2"` and this card caches ~6.3-8.9k slots, so nothing is re-chosen and the
+stock/converted pack stays.  The serve-layer tool-call/parser fixes and the Anthropic gateway's
+loaded-model fallback sit in `frontend.py`/the parser, outside the WSTAT patch's regions; 0.2.12's
+request-accounting rewrite (yielded prompt legs, the admission token) added no fifth DONE path, so
+all four `_parse_done` sites still parse WSTAT first.
+
+Rebase: `tiberius.patch` needed six "keep both" resolutions, all in `generate.cpp`: 0.2.12's
+`drive.d.in_flight` marks (STRATA_ADAPT_FETCH) moved into this patch's plan/copy-issuance split (one
+per plan, after that plan's copy is issued); the `AdaptGate::Tick` field rename (`AdaptGate* gate` ->
+`std::atomic<int32_t>* counter`, ticks initialized `{&agate.landed, layer}`) adopted while keeping the
+patch's plan-indexed layer; the new `STRATA_FOLLOW` reader (measurement only, off by default) landed
+exactly on the CUDA stop-bound port's comment/`#if`, so upstream's whole block is kept and the
+patch's unconditional stop bound stays; and upstream's new `drive.d.fetch_log` read-back block is
+kept in front of the patch's `racc.windows` counter in the second plans pass.  `serve/server.py`
+applied cleanly, `expert_source.cpp`, `prefill.cpp`, the `conversation_*` files and `prometheus.py`
+took every hunk with no fuzz, and `no-web-ui.patch` re-verified with no conflict.  The three patches
+re-applied in order with `patch -p1` onto a pristine `146df3c4` tree reproduce the rebased tree
+byte-for-byte, and all postPatch greps pass (the `cpu_avx512_vnni_ok` gate grep was replaced by a
+`STRATA_VNNI_TIER` guard, because the module's tier selection now depends on that knob).
+
+Validation: the fetch hash matches (`sha256-iMjGRmrr...`); the tiberius-native build (8m60s,
+379/379 actions) reports `strata 0.1.58`, `serve/test_wstat.py` 4/4, and the closure diff against
+generation 111 is the engine alone (`strata-engine: 0.1.57 -> 0.1.58`, +586.4 KiB; the regenerated
+config adds `env.STRATA_VNNI_TIER = "1"` and re-points three engine store paths - the only config
+delta).  The gate needed TWO isolated port-8099 windows, and the first one is kept as an honest
+harness finding rather than an engine result: gate1 derived both arms from the gen-111 config, so its
+new arm ran WITHOUT `STRATA_VNNI_TIER` (the engine logged "CPU expert kernels: AVX-2"); it measured
+188/320 vs 188/320 eval320 with all four speed-cell answers differing, and is archived at
+`/data/bump/gen112-gate1/` with a note.  Gate2 re-ran with each arm's OWN deployed config (new = the
+gen-112 config with the tier, old = the gen-111 config; one interleaved new-then-old run, production
+stopped 07:37:24 and restored 07:46:15 UTC on 2026-11-09): the new arm logs no "CPU expert kernels"
+line (0.1.58 prints it only when the VNNI tier is absent, i.e. the tier was selected) and the
+comparison is clean - all four greedy speed-cell answers bit-identical (4/4 same sha), walls
++0.2 / -0.4 / -1.4 / -0.5 % (4,252-token 8.636 vs 8.617 s; 26,134-token 21.303 vs 21.606 s), totals
+2,218.9 vs 2,199.2 tok/s prefill and 68.1 vs 67.8 tok/s decode (inside the box's ~3-5 % spread),
+eval320 187/320 = 58.4 % against the frozen gen-111 baseline 188/320 = 58.8 % (discordance 13/320,
+McNemar p = 1.000, risk difference +0.31 pp [95 % CI -1.88, +2.50] - inside the ~9-net-item
+same-stack floor, no detectable quality change), and all nine WSTAT families populated after the warm
+request (rotations 13, borrow 69.48 GB, windows 213, rows 277, accepted 227, stop-bound windows/rows
+4/4, prompt seconds 27.40).  Start config matched gen-111: 39 s to healthy, 8,898 expert slots,
+6.00 GiB DAX window, `pcie_frac 0.34`, elastic K/V (16,384 of 262,144 cells), DFlash2 `--spec 6
+--draft-conf 0.8` on the stock pack, no MMQ/FP16/split/PCIe-share/W16 lines, and q50_512's
+first-use check printed nothing (its "differ" line would mean the kernel declined).  One incident is
+recorded: during the tiberius-native build a `cudafe++` CUDA compile on the 7.4 GiB box drove the
+kernel into global OOM and killed the production engine at 2026-11-08 10:18:09 UTC;
+`Restart=on-failure` brought it back on the same 0.1.57 binary in ~87 s (no journaled request in the
+window), and a rebuild on this box should cap parallelism (`--cores 8 --max-jobs 2`) because of it.
+
+Deployed as generation 112: engine `/nix/store/xwq69054iyd2p1fzr9bxj02hd72xljfg-strata-engine-0.1.58`,
+system `/nix/store/v5c0fx5s73120dv42m07rm8b2594fkm5-nixos-system-tiberius-26.05.20260927.cf5e765`
+(switch 07:46:58 UTC); both doors and the engine healthy, warm completion "ready." (thinking off),
+the nine WSTAT families raised by a request after the switch, 8,898 slots, 6.00 GiB DAX,
+`pcie_frac 0.34`, DFlash2 stock pack, no Xid, boot default re-set to 112.  The 8090 (background) door
+holds GETs while the interactive lease is active - a `/health` probe there times out during the
+600 s lease after a POST and answers 200 when idle; that is the lease proxy's documented design, not
+a fault.  Rollback: revert `pkgs/strata-sm75/*` and `profiles/nixos/strata.nix` to `ffa932a7` and
+rebuild/switch; emergency = boot the generation-111 entry (still on the ESP and rooted).  Artifacts:
+`/data/bump/gen112/` (gate2 results/logs/proms, `gen112-gate1/` with gate1 and its note, `build.log`,
+the source tree, `paths.txt`, gcrooted store paths) and `/data/bump/gen111/` (the frozen 0.1.57 eval
+baseline, sha256 `d57acc41...`; the gen-112 eval is `db409136...`).
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

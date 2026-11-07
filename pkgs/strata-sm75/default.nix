@@ -23,43 +23,84 @@
 let
   c = cudaPackages;
 
-  # c3b3f503: v0.2.11 (2026-11-05), the current release.  The engine inside it
-  # is 0.1.57.  Since the last pin (ffa80d73 = v0.2.10 / engine 0.1.56) upstream's
-  # headline changes are the new Unsloth Dynamic V3.1 Qwen sets (app/Terminal
-  # catalog only - the engine still reads the pack prepared once on the host),
-  # the K-quant MMQ prompt kernels and the 32768-token --prefill auto ceiling
-  # (both compute capability 8.0+, so sm_75 keeps its path and the module's
-  # explicit 28160 chunk), the all-cards split engine / two-card prompt path /
-  # layer-split trim-and-spill walk (one card does not start the split engine,
-  # and the walk is multi-GPU only), the gfx12 Radeon defaults (not this build)
-  # and the FP16 weight cache for batch slots (this lane runs no --batch /
-  # --parallel slots).  What DOES reach this lane:
-  #   * the Q5_0 expert-dot fix (upstream aa678f10, CUDA): the constant -16
-  #     offset now takes the sum of the QUANTIZED activations instead of the
-  #     q8_1 block's ds.y.  The deployed UD-IQ2_XS pack's expert layer 4 has
-  #     Q5_0 as its DOWN type (native_experts.txt d_type=6), which is exactly
-  #     the path that was wrong; upstream measured the whole-expert error fall
-  #     from 2.1-3.1e-2 to 1.2e-2, every other down type's level.  Answers on
-  #     that layer move TOWARD the exact reference (an anticipated, adopted
-  #     answer change - the eval320 pass rate is the gate on the deploy).
-  #   * the serve layer: chats stored as files in the data folder, a running
-  #     agent turn taken over after a reload, stream write/disconnect bounds, a
-  #     start that stops for lack of memory retried once without a drafter, the
-  #     bounded console queue, image format/EXIF fixes.  The WSTAT patch had to
-  #     be re-merged into two wait loops (see tiberius.patch's header).
-  #   * the discrete-CUDA CPU/upload share rule (pcie_share_rule.hpp, ceiling
-  #     0.95 and k falling with the pool rate) is PcieAuto's: the module's
-  #     STRATA_PCIE_FRAC_DEFAULT=old still keeps the pool-timed refinement OFF
-  #     (the gate is `... && !pf_old` in generate.cpp), so the measured 0.1.42
-  #     share stays.  The build-time greps below fail if those gate variables
-  #     ever disappear from the source.
-  #   * vram_fit.fit_start's behaviour is unchanged (still --kv-resident only on
-  #     CUDA), so the module's `--kv-resident 0` user arg keeps suppressing the
-  #     injected window; #4677's stop-bound park fix is still HIP-only, so this
-  #     patch's CUDA port remains the only stop bound in this build.
+  # 146df3c4: v0.2.12 (2026-11-07), the current release.  The engine inside it is
+  # 0.1.58.  Since the last pin (c3b3f503 = v0.2.11 / engine 0.1.57) upstream's
+  # headline changes are the native VBMI-free AVX-512 tier for CPUs without VBMI
+  # (PR 5120, f000d4a4 + 7e3fae57: cpu_vbmi_ok / cpu_vnni_ok / q2_rows_512_ok and a
+  # run-time-selected VBMI-free q2 unpack in expert.cpp - OPT-IN on a VBMI-less CPU
+  # via STRATA_VNNI_TIER=1, because its 512-bit rows round differently from the
+  # AVX-2 rows such a CPU ran before; every CPU with VBMI answers as before), the
+  # Q5_0 down rows in 512-bit lanes and the IQ4_XS 512-bit gate/up rows that come
+  # with that tier, the tuned DFlash2 drafter pack and the Auto-only card-class
+  # defaults (12 GB streaming CUDA; a drafter chosen by name is not re-chosen), the
+  # file tier's honest page-cache re-check (on by default, I/O-path only,
+  # STRATA_FILE_TIER_HONEST=0 escapes) and its all-experts-resident idle policy,
+  # the opt-in PCIe-share admission (STRATA_ADAPT_FETCH), the opt-in exact two-pass
+  # QSA prompt selection (STRATA_SELECT_TWO_PASS; sm_80+ tensor-core path only), the
+  # opt-in calibrated DFlash2 window (STRATA_DF2_GATE), the opt-in IQ4 W4A8 prompt
+  # kernels (STRATA_IQ4_W4A8; Ampere 8.0-8.8 and Blackwell 12.0 only), the
+  # tool-call/parser fixes and the Anthropic gateway's loaded-model fallback in the
+  # serve layer, a rewrite of serve/server.py's request accounting (yielded prompt
+  # legs and the admission token), the gfx12 chunked GDN scan and the gfx1151
+  # default table (not this build), and two CUDA 12 build fixes: the moe_iq4_w4a8
+  # sm_60..75 trap guard (that new TU is compiled into the engine and its device
+  # side is a __trap() below sm_80; arch_ok() declines an sm_75 card, so it never
+  # runs here) and the qsa_select sm_70 guard.  What DOES reach this lane:
+  #   * the CPU expert tier is now selected by upstream's cpu_vnni_ok(), which is
+  #     off on this Cascade Lake part (VNNI, no VBMI) unless STRATA_VNNI_TIER=1;
+  #     the module sets it (profiles/nixos/strata.nix), so the engine runs the
+  #     same 512-bit tier the local patch has selected through 0.2.11.  Measured
+  #     2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm): ~5 % cheaper
+  #     CPU expert pool+plan per decode window, prefill and the Optane reads
+  #     unchanged, outputs numerically sound but NOT bit-identical to the AVX-2
+  #     tier on the long cells.  The compile-time half - no VBMI instruction in
+  #     expert.cpp's object - stays avx512-bw-tier.patch's business.
+  #     The tier also turns on two NEW 0.2.12 kernels here: q50_512, the 512-bit
+  #     Q5_0 down rows (from 2 tokens per expert group; the deployed UD-IQ2_XS
+  #     pack's expert layer 4 has Q5_0 as its DOWN type, native_experts.txt
+  #     d_type=6; q50_512_ok() checks the first use bit-for-bit against this
+  #     build's ggml-cpu dot - the generation-112 gate saw no "differ" line from
+  #     it and four of four speed cells came back bit-identical to the 0.1.57
+  #     arm), and iq4xs512, the IQ4_XS gate/up rows, which selects NOTHING on
+  #     this pack: its 48 layers carry gu types 16/22 only, no type 23 (the
+  #     pack's native_experts.txt checked on the box).  The opt-in fused gate/up
+  #     rows stay off
+  #     (STRATA_IQ512_FUSED_MAX defaults to 0).  Escapes: STRATA_NO_Q50_512=1,
+  #     STRATA_NO_IQ4XS512=1, STRATA_VNNI_TIER=0.
+  #   * the file tier's honest re-check does not change this lane's I/O path: the
+  #     module's STRATA_UNBUFFERED_LOAD=0 returns from file_tier_unbuffered()
+  #     before that block runs (expert_source.cpp), so the page-cache arm this box
+  #     measured stays.  The all-experts-resident idle policy is inert here (the
+  #     cache holds 6,282-7,859 of 24,576 (layer, expert) pairs, not all).  Whether
+  #     the routing-aware look-ahead (and its 0.2.12 host_res stride fix) runs in
+  #     this config is NOT measured; it sits behind the Linux file-tier defaults.
+  #   * the serve-layer accounting rewrite lands in the same Service.run region as
+  #     the WSTAT patch; the rebased patch still parses WSTAT before DONE on all
+  #     four 0.2.12 finish paths (tiberius.patch's header), but the per-request
+  #     WSTAT line must be re-checked on a probe request, not assumed - 0.2.11 had
+  #     one drain-loop consumer that silently dropped it.  0.2.12 can also report
+  #     decode_ms / generated as null for a yielded or admission leg (/metrics
+  #     request stats); the WSTAT counters are separate.  The tool-call fixes and
+  #     the Anthropic gateway fallback live in serve/frontend.py and the parser,
+  #     outside this patch's regions: no WSTAT interaction, but the agent lane's
+  #     answers can move with the parser fixes (not measured here).
+  #   * DFlash2: the module names the drafter ("drafting": "dflash2"), so the
+  #     Auto-only tables (SET_DEFAULTS / CLASS_DEFAULTS / AUTO_MTP) choose nothing
+  #     here.  The tuned pack needs a CUDA "resident" card (engine slots >= 12,000,
+  #     drafting.py CONF_STEPS); this card's cache holds ~6.3-7.9k slots, so the
+  #     stock/converted pack remains the one started.  The calibrated window
+  #     (STRATA_DF2_GATE=1) is opt-in and off.
+  #   * the gates this package pins are unchanged in 0.2.12: the
+  #     `o.pcie_frac_auto = ... && !pf_old` start-up gate (with
+  #     STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the FP16 weight cache's
+  #     batch-slots gate (o.batch >= 2), the --prefill bare-auto ceiling
+  #     (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ, the Turing kernel
+  #     series (sm75_series.hpp) and vram_fit's kv_fixed hook.  The qsa_select sm_70
+  #     guard does not change an sm_75 result: that target is above the guard
+  #     either way.
   # llama.cpp's pin is unchanged (third_party/ggml/VERSION.txt = 3cf03257), so
   # llamaRevision below still holds.
-  revision = "c3b3f5035506f3e966f1b4b7b188aeaabae92f1d";
+  revision = "146df3c468739147f520ac3816de806f71232571";
   llamaRevision = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
 
   llama = fetchzip {
@@ -91,7 +132,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.57";
+  version = "0.1.58";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -100,16 +141,17 @@ stdenv.mkDerivation {
   # instructions.  Measured 2026-10-11: the trajanus and pius builds of the
   # same drv differ in 50,132,344 bytes, and two instruction classes show up:
   #   * the engine's own AVX-512 expert kernels (expert.cpp) are built for
-  #     F/DQ/BW/VL/VNNI and selected at run time by cpu_avx512_vnni_ok() (the
-  #     VBMI-free gate avx512-bw-tier.patch adds; the trellis TU keeps the
-  #     VBMI-requiring cpu_avx512_ok()).  Before that patch the shared gate
-  #     demanded VBMI too, which made the expert tier dead code here and printed
-  #     "this CPU has no AVX-512: the expert kernels run on AVX-2" in every
-  #     deployment log; with the split gate the expert tier is TRUE on this CPU
-  #     and executes - the built object has 0 vpmultishiftqb and 492 vpsrlvw.
-  #     Measured 2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm):
-  #     ~5 % cheaper CPU expert pool+plan per decode window, prefill and the
-  #     Optane reads unchanged;
+  #     F/DQ/BW/VL/VNNI and selected at run time by upstream's cpu_vnni_ok()
+  #     (0.2.12's gate; on this VBMI-less Cascade Lake part it is true only
+  #     because the module sets STRATA_VNNI_TIER=1).  Through 0.2.11 the shared
+  #     gate demanded VBMI as well, which made the expert tier dead code here;
+  #     avx512-bw-tier.patch supplied the VBMI-free gate then, and keeps the
+  #     compile-time half now: expert.cpp and iq/nvfp4_avx512.cpp are built with
+  #     no -mavx512vbmi, so the object cannot carry VBMI code this CPU family
+  #     cannot execute (the built object has 0 vpmultishiftqb).  The trellis TU
+  #     keeps the VBMI-requiring cpu_avx512_ok().  Measured 2026-10-12 (ab18
+  #     campaign, 3 counterbalanced runs per arm): ~5 % cheaper CPU expert
+  #     pool+plan per decode window, prefill and the Optane reads unchanged;
   #   * ggml's own `*_generic` fallback dots and `ggml_vec_dot_bf16` are
   #     compiled with the BUILD host's -march=native and carry no run-time
   #     gate: the trajanus build has 262 instructions the Xeon Gold 6246
@@ -128,7 +170,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-YTKrlOqN97ISsaNZfpEqzLBAvglOI8Lq5G2KFTKQXWE=";
+    hash = "sha256-iMjGRmrr2luO7O0x5QF4iIWpOVRQp1mlSeTWFDGZEVo=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -175,6 +217,21 @@ stdenv.mkDerivation {
   # no-web-ui.patch and avx512-bw-tier.patch; upstream's 0.2.11 delta in those
   # files (the PCIe share rule, the layer-split walk, DFlash2 batch slots, the
   # chat-store/stream serve changes) sits outside every region this patch owns.
+  # The v0.2.12 bump (146df3c4) rebased all three patches.  tiberius.patch had six
+  # hunk conflicts, all in generate.cpp, resolved "keep both" (the exact regions are
+  # in its header): 0.2.12's STRATA_ADAPT_FETCH in-flight marks in the refill's plans
+  # pass and at the end of its per-swap loop, the AdaptGate::Tick field rename
+  # (AdaptGate* -> std::atomic<int32_t>*), the new STRATA_FOLLOW reader that landed
+  # on the CUDA stop-bound port's comment and HIP #if (upstream's block kept, this
+  # patch's unconditional stop bound kept), and the same marks plus upstream's
+  # fetch_log read-back in the build-path plans pass.  serve/server.py applied
+  # cleanly: 0.2.12's accounting rewrite (yielded legs, the admission token) did not
+  # touch the four WSTAT readers and added no fifth DONE path.  expert_source.cpp,
+  # prefill.cpp, the conversation_* files and prometheus.py took every hunk with no
+  # fuzz, and no-web-ui.patch re-verified with no conflict.  avx512-bw-tier.patch was
+  # SHRUNK: 0.2.12 upstreamed the VBMI-free CPU tier and its gate split (PR 5120), so
+  # only the compile-time half remains - the expert.cpp unpacks and the
+  # -mavx512vbmi removals in both CMakeLists; its header has the detail.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
@@ -302,29 +359,38 @@ stdenv.mkDerivation {
   # (--resident-budget-gib N, used by profiles/nixos/strata.nix).
   # no-web-ui.patch is the serve layer: STRATA_NO_WEB=1 turns the bundled web
   # app's pages, assets and /settings into 404s and leaves the API untouched.
-  # All three were generated against the pin above and re-applied in order onto a
-  # pristine ffa80d73 tree (bit-identical result) before this build.  tiberius.patch
-  # was regenerated again on 2026-11-04 for the transactional-park addition (built,
-  # probed and deployed as generation 101), once more for STRATA_DAX_TIMING (deployed
-  # as generation 102) and once more for the streamed session restore + draft-optional
-  # SAVE/RESTORE (deployed as generation 103), each time re-verified the same way.  The module's run config does not change: the timing
+  # All three were regenerated against the pin above for the v0.2.12 bump and
+  # re-applied in order onto a pristine v0.2.12 tree (bit-identical result) before
+  # this build.  tiberius.patch had been regenerated on 2026-11-04 for the
+  # transactional-park addition (built, probed and deployed as generation 101), once
+  # more for STRATA_DAX_TIMING (deployed as generation 102) and once more for the
+  # streamed session restore + draft-optional SAVE/RESTORE (deployed as generation
+  # 103), each time re-verified the same way.  The module's run config does not change: the timing
   # is log-only and off unless STRATA_DAX_TIMING=1 is set, which is exactly how the
   # task-8 A/B measured the rotation cost.
   #
-  # avx512-bw-tier.patch is the AVX-512 expert tier on VBMI-less CPUs.  It
-  # replaces the two VPMULTISHIFTQB 2-bit unpacks with an equivalent
-  # VPERMW + VPSRLVW + VPMOVWB form (layout-verified exhaustively against a
-  # scalar reference), removes `-mavx512vbmi` from the expert and i-quant
-  # translation units, and SPLITS the run-time gate: the expert/iq/nvfp4 kernels
-  # use the new cpu_avx512_vnni_ok() (F/DQ/BW/VL/VNNI, no VBMI), while the
-  # trellis kernel keeps the original cpu_avx512_ok() (which still requires
-  # VBMI, matching tq_avx512.cpp's flags).  Weakening the shared gate instead
-  # would let this Cascade Lake part execute VBMI trellis code - the SIGILL class
-  # in VALIDATION.md.  Measured on tiberius 2026-10-12 (ab18 campaign, 3
-  # counterbalanced runs per arm): ~5 % cheaper CPU expert pool+plan per decode
-  # window, GPU wait and Optane reads unchanged, outputs numerically sound
-  # (parity 0 failures vs the ggml references) but NOT bit-identical to the
-  # AVX-2 tier on the long cells.
+  # avx512-bw-tier.patch is the COMPILE-TIME half of the AVX-512 expert tier on
+  # VBMI-less CPUs.  0.2.12 upstreamed the run-time half (PR 5120, f000d4a4 +
+  # 7e3fae57: cpu_vbmi_ok / cpu_vnni_ok / q2_rows_512_ok in expert_layout.{hpp,cpp},
+  # the VBMI-free q2 unpack in expert.cpp, and the call sites that select it) and
+  # makes the tier OPT-IN below VBMI through STRATA_VNNI_TIER=1; the module sets that
+  # variable (profiles/nixos/strata.nix), so this box keeps the 512-bit tier the
+  # patch used to force.  The gate split, the gate renames and the call-site hunks
+  # are GONE from this patch - they were upstreamed, and carrying them again would
+  # duplicate or shadow upstream's own probes.
+  # What remains is what a run-time branch cannot promise: the compiler may still
+  # emit VBMI code in a TU built with -mavx512vbmi (the SIGILL class in
+  # VALIDATION.md).  So expert.cpp's two 2-bit unpacks are made VBMI-free
+  # unconditionally with tiberius's substitute (VPERMW + VPSRLVW + VPMOVWB,
+  # byte-identical to VPMULTISHIFTQB, layout-verified exhaustively against a scalar
+  # reference), and -mavx512vbmi is removed from expert.cpp and from iq_avx512.cpp +
+  # nvfp4_avx512.cpp in both CMakeLists (root and sycl/), while tq_avx512.cpp keeps
+  # the flag and the original cpu_avx512_ok() gate - weakening that one instead would
+  # let this Cascade Lake part execute VBMI trellis code.
+  # Measured on tiberius 2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm):
+  # ~5 % cheaper CPU expert pool+plan per decode window, GPU wait and Optane reads
+  # unchanged, outputs numerically sound (parity 0 failures vs the ggml references)
+  # but NOT bit-identical to the AVX-2 tier on the long cells.
   # See docs/exec-plans/active/tiberius-kernel-tuning.md.
   patches = [
     ./tiberius.patch
@@ -332,11 +398,14 @@ stdenv.mkDerivation {
     ./avx512-bw-tier.patch
   ];
 
-  # The module passes --resident-budget-gib and sets STRATA_REGISTER_DAX and
-  # STRATA_REFILL_PIN_SRC (both the patch's; STRATA_BF16_TC is upstream's).  Upstream
-  # treats an unknown flag as fatal: a patch that silently failed to apply would turn
-  # the whole service into a crash-loop, and a silently missing window would drop the
-  # measured prefill win without saying so.  Fail the build here instead.
+  # The module's env carries this patch's STRATA_REGISTER_DAX(+_MIB),
+  # STRATA_DAX_TIMING and STRATA_REFILL_PIN_SRC, upstream's STRATA_BF16_TC and
+  # STRATA_VNNI_TIER (the CPU-tier opt-in described above), and the rest of the
+  # lane's measured settings; hostTierGib > 0 selects upstream's resident RAM tier
+  # instead of --mmap-experts.  Upstream treats an unknown flag as fatal: a patch
+  # that silently failed to apply would turn the whole service into a crash-loop,
+  # and a silently missing window would drop the measured prefill win without
+  # saying so.  Fail the build here instead.
   postPatch = ''
     grep -q 'STRATA_NO_WEB' serve/server.py || {
       echo "no-web-ui.patch did not introduce the STRATA_NO_WEB gate" >&2
@@ -369,12 +438,16 @@ stdenv.mkDerivation {
       echo "the engine no longer reads STRATA_KV_ROT (the rotated int8 KV the module selects)" >&2
       exit 1
     }
+    # hostTierGib > 0 turns upstream's resident RAM tier back on; the deployed lane
+    # runs hostTierGib = 0 (--mmap-experts) and the module does not set these two,
+    # but keep upstream's knobs present so that option's behaviour cannot change
+    # under it silently.
     grep -q 'STRATA_RESIDENT_PIN' src/program/generate.cpp || {
-      echo "the engine no longer reads STRATA_RESIDENT_PIN (the module keeps the host tier pageable)" >&2
+      echo "the engine no longer reads STRATA_RESIDENT_PIN (the resident RAM tier's pin knob)" >&2
       exit 1
     }
     grep -q 'STRATA_RESIDENT_HEADROOM_GIB' src/program/generate.cpp || {
-      echo "the engine no longer reads STRATA_RESIDENT_HEADROOM_GIB" >&2
+      echo "the engine no longer reads STRATA_RESIDENT_HEADROOM_GIB (the resident RAM tier's headroom knob)" >&2
       exit 1
     }
     grep -q 'STRATA_UNBUFFERED_LOAD' src/core/expert_source.cpp || {
@@ -543,14 +616,17 @@ stdenv.mkDerivation {
       echo "the engine no longer has the Turing kernel series (STRATA_SM75_PERF)" >&2
       exit 1
     }
-    # avx512-bw-tier.patch splits the AVX-512 gate.  The absence checks are the
-    # SIGILL guard: if an unpack or a VBMI flag survives in a VBMI-free kernel
-    # while cpu_avx512_vnni_ok() admits this Cascade Lake part, the engine would
-    # execute VBMI (the failure class in VALIDATION.md).  The trellis TU must
-    # keep both its VBMI flag and the original gate.  Patterns are precise so
-    # they cannot match the explanatory comments the patch itself adds.
-    grep -q 'cpu_avx512_vnni_ok' include/strata/kernels/cpu/expert_layout.hpp || {
-      echo "avx512-bw-tier.patch did not add the VBMI-free gate" >&2
+    # avx512-bw-tier.patch keeps the compile-time half of the AVX-512 tier on a
+    # VBMI-less CPU (0.2.12 supplies the run-time gate split: cpu_vnni_ok() and the
+    # VBMI-free q2 unpack in expert.cpp).  The module sets STRATA_VNNI_TIER=1, which
+    # is what lets upstream's cpu_vnni_ok() admit this Cascade Lake part; the absence
+    # checks and the flag checks below are then the SIGILL guard - a VPMULTISHIFTQB
+    # unpack, or any VBMI code a -mavx512vbmi TU could emit, would execute on this
+    # box (the failure class in VALIDATION.md).  The trellis TU must keep both its
+    # VBMI flag and the original gate.  Patterns are precise so they cannot match
+    # the explanatory comments the patch itself adds.
+    grep -q 'STRATA_VNNI_TIER' src/kernels/cpu/expert_layout.cpp || {
+      echo "upstream's VBMI-less CPU tier no longer reads STRATA_VNNI_TIER (the module's expert-tier opt-in)" >&2
       exit 1
     }
     if grep -q 'multishift_epi64_epi8' src/kernels/cpu/expert.cpp; then

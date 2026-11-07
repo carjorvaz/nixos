@@ -5,6 +5,11 @@
 # would be written beside the read-only store config is never reached).  Upstream added
 # /tool-media/ to the same router in 0.2.5, so the 404 block sits above it and returns.
 #
+# RE-VERIFIED 2026-11-08 against 146df3c4 (v0.2.12, engine 0.1.58): applies with no hunk conflicts and the
+# GET/POST router region is untouched by 0.2.12's serve delta (the tool-call/parser fixes, the Anthropic
+# gateway fallback, the chat store).  Re-audited: every bundled-app surface is still "" or under /web/ or
+# /fonts/, and /api-monitor and /settings are still the only non-API pages at the root.
+#
 # RE-VERIFIED 2026-11-05 against c3b3f503 (v0.2.11, engine 0.1.57): applies with no hunk conflicts.
 # 0.2.11's serve/server.py delta (the chat store, the stream/lifecycle changes) leaves this GET/POST router
 # region untouched; re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, and
@@ -15,11 +20,12 @@
 # block guards.  Re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, /api-monitor and
 # /settings are still the only non-API pages at the root, and the API routes (/v1/*, /status, /slots, ...) are
 # untouched by the block.
+
 diff --git a/serve/server.py b/serve/server.py
-index f690d618..98db55fa 100644
+index b5eed400..2fc165c1 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -7436,6 +7436,10 @@ def make_handler(svc: Service):
+@@ -7808,6 +7808,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -30,7 +36,7 @@ index f690d618..98db55fa 100644
              if path.startswith("/tool-media/"):
                  if not self._authorized():
                      return
-@@ -7827,6 +7831,9 @@ def make_handler(svc: Service):
+@@ -8199,6 +8203,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
              path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
@@ -40,7 +46,7 @@ index f690d618..98db55fa 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -8716,6 +8723,11 @@ def _name_in(name: str, names) -> bool:
+@@ -9093,6 +9100,11 @@ def _name_in(name: str, names) -> bool:
      return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
  
  

@@ -437,6 +437,31 @@ let
         # added nothing on top of the series, and STRATA_ATTN_DAILY with
         # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
         STRATA_SM75_PERF = "1";
+        # tiberius: the AVX-512 expert tier on a VNNI CPU without VBMI (Cascade Lake).
+        # Through v0.2.11 this package carried the gate split itself
+        # (avx512-bw-tier.patch's cpu_avx512_vnni_ok()); 0.2.12 upstreamed it (PR 5120:
+        # cpu_vbmi_ok / cpu_vnni_ok / q2_rows_512_ok and the VBMI-free q2 unpack) but makes
+        # the tier OPT-IN on such a CPU, because its 512-bit rows round differently from the
+        # AVX-2 rows the same CPU ran before (expert_layout.cpp: cpu_vnni_ok() is false below
+        # VBMI unless STRATA_VNNI_TIER=1; every CPU that has VBMI answers as before).  This
+        # box has run that tier by default through the local patch - the ab18 campaign
+        # measured it ~5% cheaper CPU expert pool+plan per decode window, numerically sound
+        # but NOT bit-identical to the AVX-2 tier on the long cells (/data/ab18*,
+        # docs/exec-plans/active/tiberius-kernel-tuning.md) - so =1 keeps the selection it
+        # has had.  What it enables here: the 512-bit Q2_0 rows, the 512-bit activation
+        # quantizer and the iq_avx512 512-bit i-quant rows (the kernels the patch selected
+        # through 0.2.11), plus 0.2.12's q50_512 Q5_0 down rows (self-checked bit-exact
+        # against this build's ggml dot on first use; the UD-IQ2_XS pack's expert layer 4 is
+        # its one Q5_0 down; the generation-112 gate saw its first-use bit check pass
+        # silently and bit-identical answers to 0.1.57) and iq4xs512 (IQ4_XS only - the
+        # pack's 48 layers carry gu types 16/22 and no type 23, so it selects nothing
+        # here), while iq512_fused_gu_rows stays off (STRATA_IQ512_FUSED_MAX=0).  The
+        # compile-time half - no VBMI instruction in expert.cpp's object - stays
+        # avx512-bw-tier.patch's business; this variable only selects the tier at run time,
+        # and it is also what default.nix's postPatch checks for (STRATA_VNNI_TIER in
+        # expert_layout.cpp), so a bump that drops the knob fails the build instead of
+        # silently turning the tier off here.
+        STRATA_VNNI_TIER = "1";
         # STRATA_PF_FUSED_SM75 (the fused int8 prompt experts on Turing) is not
         # carried: without STRATA_PF_FUSED it is inert on this native pack
         # (requested() needs =1; the engine printed no fused-path line in the

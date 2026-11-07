@@ -728,6 +728,42 @@ generation 111 (engine `/nix/store/x4jdmab9180v31xc5fx725py1z9mv6l7-strata-engin
 the nine WSTAT families verified after the switch.  Rollback: revert the pin and the three patch
 files to the previous commit, rebuild, `nixos-rebuild switch`; the pack/model are untouched.
 
+### Round 14: engine pin bump to v0.2.12 (2026-11-09, generation 112)
+
+v0.2.12 (`146df3c4`, engine 0.1.58) was taken over the v0.2.11 pin (`c3b3f503`, engine 0.1.57).
+The release upstreamed the local AVX-512 work (PR 5120, `f000d4a4` + `7e3fae57`: the VBMI-free q2
+unpack, `cpu_vbmi_ok` / `cpu_vnni_ok` / `q2_rows_512_ok`, and the tier OPT-IN below VBMI through
+`STRATA_VNNI_TIER=1`).  `avx512-bw-tier.patch` therefore shrank to its compile-time half (the
+unconditional VBMI-free unpacks in `expert.cpp`, `-mavx512vbmi` removed from
+`expert.cpp`/`iq_avx512.cpp`/`nvfp4_avx512.cpp` in both CMakeLists; the trellis TU unchanged), and
+the module sets `STRATA_VNNI_TIER = "1"` to keep the tier.  New kernels that come with it here:
+`q50_512` (layer 4's one Q5_0 down; its first-use bit check passed silently) and `iq4xs512` (inert:
+the pack has no gu type 23 on any of its 48 layers).  What does not select: the 8.0+ MMQ / prefill
+auto ceiling, the multi-GPU split paths, the gfx12/gfx1151 tables, the opt-in ADAPT_FETCH,
+SELECT_TWO_PASS, IQ4_W4A8, DF2_GATE and IQ512_FUSED paths, the file tier's honest re-check
+(`STRATA_UNBUFFERED_LOAD=0` returns first), and the Auto/tuned DFlash2 paths (named drafter; tuned
+pack needs >= 12,000 slots).  Serve layer: tool-call/parser fixes; the request-accounting rewrite
+added no fifth DONE path, so all four WSTAT readers still parse it.  Rebase: six "keep both"
+conflicts in `generate.cpp` (the in_flight marks in the plans split, the AdaptGate `counter` field,
+STRATA_FOLLOW vs the stop-bound port, fetch_log vs the racc counter), `serve/server.py` clean; the
+patch sequence re-applies byte-for-byte.
+
+Gate: the staging window exposed a harness defect - gate1 (2026-11-08) derived both arms from the
+gen-111 config, so its new arm ran the AVX-2 CPU tier instead of the deployed one ("CPU expert
+kernels: AVX-2" in its log); it is archived at `/data/bump/gen112-gate1/` with a note and was not
+used for the decision.  Gate2 (2026-11-09, each arm's own deployed config, production down 8m51s)
+is the record: new 0.1.58 and old 0.1.57 have bit-identical greedy answers on all four speed cells,
+walls -1.4..+0.2 %, totals 2,218.9/68.1 vs 2,199.2/67.8 tok/s prefill/decode (inside the box's
+spread), eval320 187/320 vs the 188/320 gen-111 baseline (McNemar p = 1.0, RD +0.31 pp
+[-1.88, +2.50]), and all nine WSTAT families populated after the warm request.  Deployed as
+generation 112 (engine `xwq69054...`, system `v5c0fx5s...`); warm "ready.", WSTAT after the switch,
+boot default 112, no Xid.  Incident: the tiberius-native build OOM-killed the production engine once
+(2026-11-08 10:18:09 UTC - a `cudafe++` CUDA compile on the 7.4 GiB box); it auto-restarted on 0.1.57
+in ~87 s, and rebuilds on this box should cap parallelism (`--cores 8 --max-jobs 2`).  Open:
+whether 0.2.12's routing-aware look-ahead runs in this config is unmeasured; q50_512/iq4xs512
+performance is not separately measured (the gate shows no regression overall); the agent lane can
+move with the tool-call/parser fixes.  Artifacts: `/data/bump/gen112/`, `/data/bump/gen111/`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
