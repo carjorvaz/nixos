@@ -811,6 +811,75 @@ reproducible to under 0.5 % (93 tokens: 1,464 / 1,466 / 1,465 ms).  (2) An arm t
 must be judged end-to-end on its own stream - which is what the table above reports - and the
 profiled `pool + plan` / `wait for the GPU` split is the clean way to attribute a delta.
 
+### Round 15: engine pin bump to v0.2.13 (2026-11-09, generation 113)
+
+v0.2.13 (`d2f0964`, engine 0.1.59) was taken over the v0.2.12 pin (`146df3c4`, engine 0.1.58).
+The release is mostly app/Control and Qwen4 groundwork (per-card DFlash2 defaults on Strix Halo and
+Blackwell cc 12.0, the Strix Halo Windows reserve floor, Intel Arc's fixed-order bf16 products, the
+app's start time, the signed feed's model list and the `strata-q4-<shape>` engines); upstream
+publishes no speed claim for 0.1.59 on this card.  **What selects for this lane:** on Linux CUDA,
+0.1.59 defaults `STRATA_HC_Q8=1` when the native dense GGUF carries its hyper-connection projections
+as Q8_0 (Unsloth UD-* files) - the deployed `UD-IQ2_XS` dense file does, so the lane moves from the
+BF16 read 0.1.58 used to the file's own Q8_0 bytes.  The gate carried a third diagnostic arm
+(`STRATA_HC_Q8=0`) that was bit-identical to 0.1.58 on all four speed cells, proving that switch is
+the bump's only answer-affecting change.  The module pins `STRATA_HC_Q8 = "1"` as adopted.  **What
+does not select:** the launcher-env stacks (the GDN pair moved into the engine as the same
+`STRATA_GDN_TC=1`/`STRATA_GDN_CONVL2=2` values 0.1.58's serve set, and `STRATA_GDN_TC` is arch-gated
+off on sm_75; the parallel stack needs 2+ batch slots, this lane runs one and pins the GDN pair
+explicitly now), the #5327 arena file-cache credit (`ArenaExpertSource` only; this lane runs
+`--mmap-experts`/`FileExpertSource`), the Auto-only DFlash2 card tables (named drafter, Turing card,
+stock pack), the geometry default (`flash_next`, unchanged build), and the removed
+`STRATA_DF2_GATE`/`STRATA_DF2_ROW_MS`/`STRATA_MMVQ_*`/`STRATA_GR_Q32_PL`/`STRATA_METAL_*` opt-ins
+(unset here).  The serve layer's tool-call parser is now picked from the chat template - outside the
+gate's cells, so the agent lane's answers can move with it.
+
+Rebase: **zero hunk conflicts in all three patches.** Every 0.2.13 change in the files they own
+(generate.cpp's compiled geometry and engine-side defaults, prefill.cpp's geometry widths,
+expert_source.cpp's #5327 credit, serve/server.py's parser selection and launcher-env removal) sits
+outside their regions, so the bodies are unchanged - only hunk offsets and `index` blobs were
+refreshed.  `avx512-bw-tier.patch` was retargeted for the build reorganisation: root
+`CMakeLists.txt` is now split into `cmake/backends/*.cmake`, the per-TU kernel flag lists moved
+verbatim into `cmake/backends/cpu.cmake`, and the package's postPatch guarantees follow them (with
+new sycl mirrors); `expert.cpp` is unchanged upstream.  WSTAT audit unchanged: four `_parse_done`
+sites, all four parse WSTAT before DONE, no fifth finisher.  The package now builds against the
+vendored `third_party/strata-ggml` (llama.cpp `3cf03257`, same pin) with no llama.cpp fetch, and
+asserts both the vendored pin and the `flash_next` geometry default in postPatch.
+
+Gate (isolated port-8099 window, each arm from its own deployed config; 12m14s production down
+because of the third arm and its 346 s eval320 pass; the first two attempts aborted before any engine
+start on stale paths in the wrapper and the trap restored production in ~43 s each):
+- start config: new 9,140 expert slots (14.64 GiB VRAM) vs old 8,898 (14.26) - the 0.63 GiB Q8_0
+  hyper-connection copy replaces the BF16 copy and frees 0.39 GiB for the cache (+242 slots);
+  both arms keep the 6.00 GiB DAX window over the 39.38 GiB pack, `pcie_frac 0.34`, elastic K/V
+  16,384/262,144, DFlash2 stock pack `--spec 6 --draft-conf 0.8`; engine up 42 vs 39 s.
+- speed: within the box's spread - P1 4,252-token read 8.611 vs 8.715 s, P2 26,134-token read 21.404
+  vs 21.342 s; per-request totals 67.3 vs 67.4 tok/s decode and 2,188.2 vs 2,189.4 tok/s prefill.
+- answers: new differs from 0.1.58 on 4/4 cells; new0 (=0) is bit-identical on 4/4.
+- quality: eval320 189/320 = 59.1 % vs the gen-112 baseline 187/320 = 58.4 % (discordance 10/320,
+  McNemar p = 0.754, RD -0.62 pp [-2.50, +1.25]) - no detectable change, so HC_Q8 is adopted.
+- WSTAT: all nine families populated after the cells (rotations 13, borrow 69.48 GB, windows 215,
+  rows 209, accepted 167, stop-bound 2/2, prompt seconds 27.78).
+
+Deployed as generation 113 (engine `7nk2w1ip...0.1.59`, system `v14n6p6n...`; switch 18:10:39 UTC):
+both doors, the warm completion, the nine WSTAT families, 9,140 slots, the pinned HC_Q8/GDN env,
+boot default `nixos-generation-113.conf` and no Xid all verified.  Rollback: revert the package files
+and `profiles/nixos/strata.nix` to `0822608`, rebuild/switch; emergency = boot generation 112.
+Artifacts: `/data/bump/gen113/` (results, engine logs, proms, eval, window/build/switch logs,
+`paths.txt`, source tree, gcroots).  Open: HC_Q8's effect on long-context sessions (250k) was not
+measured - only the P1/P2 cells, where the Q8_0 read is 0.63 GiB of a path the route prior keeps off
+the critical path; the new tool-call parser's effect on the agent lane is outside the gate; and
+upstream did not measure 0.1.59 speeds on the final release packages.  Follow-up candidates, in
+measured-cost order: (1) re-sweep the `--prefill 28160` intercept - it was chosen at 0.1.40 against
+the old borrow accounting, and the Q8_0 read now frees 0.39 GiB / +242 slots, which moves where a
+chunk halving lands; (2) screen HC_Q8 on a long-context cell (P27 or a 100k+ session), where the
+0.63 GiB verify read is a larger share of a window than on P1/P2; (3) if answer drift is ever
+tolerated, challenge the pinned `STRATA_GDN_CONVL2=2` against `=1` (upstream's "not bitwise on
+CUDA" pair; =2 has been running since the 0.1.58 serve stack, so this is a provenance check, not a
+new default); 0.2.13 added no new runtime opt-ins for this backend (the only added env surface is
+`STRATA_ARENA_FILE_CACHE`, inert on this `--mmap-experts` lane, plus the build-time
+`STRATA_GEOMETRY*`/`STRATA_BUILD_DSV41`), and retired the 0.2.12 switches the gen-112 screen had
+already rejected.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.

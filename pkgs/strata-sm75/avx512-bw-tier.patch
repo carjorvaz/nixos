@@ -1,6 +1,18 @@
-# tiberius: the AVX-512 expert tier built with no VBMI in the translation unit, against upstream 146df3c4
-# (v0.2.12, engine 0.1.58).
-# REBASED 2026-11-08.  WHAT UPSTREAM NOW HAS ITSELF (PR 5120, commits f000d4a4 + 7e3fae57 in 0.2.12): the
+# tiberius: the AVX-512 expert tier built with no VBMI in the translation unit, against upstream d2f09647
+# (v0.2.13, engine 0.1.59).
+# REBASED 2026-11-09.  WHAT v0.2.13 DID TO THE BUILD: the monolithic root CMakeLists.txt was cut into
+# cmake/backends/{cpu,cuda,hip,metal,sycl}.cmake plus cmake/strata_ggml*.cmake, and the root now carries no
+# -mavx512vbmi at all (`grep -c mavx512vbmi CMakeLists.txt` = 0).  The per-translation-unit kernel flag lists
+# this patch edits moved VERBATIM (comments and formatting unchanged from 0.2.12) into cmake/backends/cpu.cmake:
+# the expert.cpp COMPILE_OPTIONS list in the strata_cpu_kernels section, and the iq_avx512.cpp + nvfp4_avx512.cpp
+# and tq_avx512.cpp lists inside macro(strata_cpu_native_experts).  This rebase therefore retargets the old
+# root-CMakeLists hunks to cmake/backends/cpu.cmake and adds nothing back to the root.  sycl/CMakeLists.txt still
+# carries its own three lists; upstream's 0.2.13 changes to that file are elsewhere (the cmake/strata_ggml.cmake
+# include and the vendored-ggml resolution), so those hunks were re-applied by context at a line offset.
+# expert.cpp did not change between 0.2.12 and 0.2.13, so its hunks are unchanged.
+# FILES THIS PATCH TOUCHES: cmake/backends/cpu.cmake, sycl/CMakeLists.txt, src/kernels/cpu/expert.cpp.
+#
+# WHAT UPSTREAM NOW HAS ITSELF (PR 5120, commits f000d4a4 + 7e3fae57 in 0.2.12): the
 # VBMI-free q2 unpack (expert.cpp's unpack64_q2_0_sw, selected at run time by cpu_vbmi_ok()), the split gates
 # (cpu_vbmi_ok / cpu_vnni_ok / q2_rows_512_ok in expert_layout.{hpp,cpp}) and every call site that selects the
 # VBMI-free rows through them.  It also makes the tier OPT-IN on a CPU without VBMI: cpu_vnni_ok() requires
@@ -21,15 +33,16 @@
 #     (VPERMW + VPSRLVW + VPMOVWB, byte-identical to VPMULTISHIFTQB, layout verified against a scalar
 #     reference when written and deployed since the 0.1.x tier).  Upstream's run-time pair
 #     (unpack64_q2_0_ms / unpack64_q2_0_sw + the cpu_vbmi_ok() branch) is replaced by that one form.
-#   * CMakeLists.txt (root and sycl/): -mavx512vbmi removed from expert.cpp and from the
-#     iq_avx512.cpp + nvfp4_avx512.cpp flag lists; KEPT on tq_avx512.cpp, which keeps cpu_avx512_ok().
-#     iq_avx512.cpp and nvfp4_avx512.cpp hold no VBMI intrinsic (checked: no multishift / vpermb /
-#     vperm2b / vpmadd52 / vpcompress / vpexpand in either file), so the flag removal cannot remove
-#     something they need.
+#   * cmake/backends/cpu.cmake and sycl/CMakeLists.txt: -mavx512vbmi removed from expert.cpp and from the
+#     iq_avx512.cpp + nvfp4_avx512.cpp flag lists; KEPT on tq_avx512.cpp, which keeps cpu_avx512_ok()
+#     (src/kernels/cpu/tq_cpu.cpp still dispatches through cpu_avx512_ok()).
+#     iq_avx512.cpp and nvfp4_avx512.cpp hold no VBMI intrinsic (re-checked on 0.2.13: no multishift /
+#     zmm permute of bytes / vperm2b / vpmadd52 / vpcompress / vpexpand in either file), so the flag removal
+#     cannot remove something they need.
 # The CONSEQUENCE the package asserts at build time (postPatch): expert.cpp contains no
 # VPMULTISHIFTQB/multishift intrinsic, contains the VBMI-free shift form (_mm512_srlv_epi16), and neither
-# expert.cpp nor iq/nvfp4_avx512.cpp carries -mavx512vbmi in either CMakeLists, while tq_avx512.cpp still
-# does.  After editing the flag lists, objdump the built object:
+# expert.cpp nor iq/nvfp4_avx512.cpp carries -mavx512vbmi in the CPU-backend cmake or in sycl/CMakeLists.txt,
+# while tq_avx512.cpp still does.  After editing the flag lists, objdump the built object:
 #   objdump -d <expert.cpp.o> | grep -cE 'vpermb|vpermt2b|vpermi2b|vpmultishiftqb|vpmadd52|vpcompress|vpexpand'
 # must be 0 (VBMI, VBMI2, IFMA).  cpu_vbmi_ok() is left in place (upstream's probe, now unused by this TU).
 # NOT changed: expert.hpp's CpuFeatures::usable() still requires VBMI (upstream), which only the native
@@ -41,19 +54,20 @@
 # See docs/exec-plans/active/tiberius-kernel-tuning.md.
 #
 # HISTORY: REBASED 2026-11-03 onto ffa80d73 and RE-VERIFIED 2026-11-05 onto c3b3f503 (then still carrying the
-# gate split and the call-site hunks that 0.2.12 has since upstreamed).
+# gate split and the call-site hunks that 0.2.12 has since upstreamed).  REBASED 2026-11-09 onto d2f09647
+# (v0.2.13): CMake split only, CPU flag lists moved to cmake/backends/cpu.cmake; no semantic change.
 
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 57d6b6a3..42a009d6 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -2065,14 +2065,24 @@ else()
+diff --git a/cmake/backends/cpu.cmake b/cmake/backends/cpu.cmake
+index 651e4da3..84fd07c3 100644
+--- a/cmake/backends/cpu.cmake
++++ b/cmake/backends/cpu.cmake
+@@ -173,14 +173,23 @@ if(STRATA_CPU_X86 AND NOT STRATA_NATIVE_EXPERTS)
+   endif()
  endif()
- target_include_directories(strata_kernels_cpu PUBLIC include)
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
 -# and the engine picks the kernels at run time (cpu_avx512_ok).
-+# and the engine picks the kernels at run time (cpu_vnni_ok for the VBMI-free ones (the tier is opt-in below VBMI: STRATA_VNNI_TIER=1), cpu_avx512_ok for
-+# the trellis kernels).
++# and the engine picks the kernels at run time: cpu_vnni_ok for the VBMI-free rows (the tier is opt-in below
++# VBMI: STRATA_VNNI_TIER=1), cpu_avx512_ok for the trellis kernels.
  if(MSVC)
    set_source_files_properties(src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
@@ -62,11 +76,10 @@ index 57d6b6a3..42a009d6 100644
 +  # GCC/Clang spell it differently.  `-mavx512vbmi` is deliberately absent: the tier's only VBMI user was the
 +  # 2-bit unpack in expert.cpp, which now expands its fixed shift pattern with F/BW shifts, so dropping the
 +  # flag cannot silently remove a VPMULTISHIFTQB the code still needs, and a VBMI-less CPU (Cascade Lake) can
-+  # run these kernels - cpu_vnni_ok() is their gate, with STRATA_VNNI_TIER=1 on this box.  Upstream 0.2.12 (PR 5120)
-+  # keeps -mavx512vbmi and picks its substitute unpack at RUN TIME; this patch removes that flag instead,
-+  # so the compiler cannot emit VBMI anywhere in the translation unit.  After editing this list, verify
-+  # the built object
-+  # is clean:
++  # run these kernels - cpu_vnni_ok() is their gate, with STRATA_VNNI_TIER=1 on this box.  Upstream (since
++  # 0.2.12, PR 5120) keeps -mavx512vbmi and picks its substitute unpack at RUN TIME; this patch removes that
++  # flag instead, so the compiler cannot emit VBMI anywhere in the translation unit.  After editing this list,
++  # verify the built object is clean:
 +  #   objdump -d <expert.cpp.o> | grep -cE 'vpermb|vpermt2b|vpermi2b|vpmultishiftqb|vpmadd52|vpcompress|vpexpand'
 +  # must be 0 (VBMI, VBMI2, IFMA).  tq_avx512.cpp keeps -mavx512vbmi and the full gate (cpu_avx512_ok).
    set_source_files_properties(src/kernels/cpu/expert.cpp
@@ -75,13 +88,14 @@ index 57d6b6a3..42a009d6 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -2209,12 +2219,16 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -247,12 +256,17 @@ macro(strata_cpu_native_experts)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
 +    # No VBMI here either: the i-quant and NVFP4 512-bit kernels use F/DQ/BW/VL/VNNI only, and both files are
-+    # gated by cpu_vnni_ok() (STRATA_VNNI_TIER on a VBMI-less CPU).  Dropping the flag stops a build host from emitting VBMI this CPU family
-+    # (Cascade Lake) cannot execute; the trellis TU below keeps -mavx512vbmi and the full gate.
++    # gated by cpu_vnni_ok() (STRATA_VNNI_TIER on a VBMI-less CPU).  Dropping the flag stops a build host from
++    # emitting VBMI this CPU family (Cascade Lake) cannot execute; the trellis TU below keeps -mavx512vbmi and
++    # the full gate.
      set_source_files_properties(src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp PROPERTIES COMPILE_OPTIONS
 -                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")
 +                                "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")
@@ -233,29 +247,29 @@ index 4bd62890..a4d59ae1 100644
  inline void scales8(const uint8_t* wscales, const ActQ& a, int b0, int nb, __m512& p, __m512& dd) {
      const __mmask8 m8 = nb >= 8 ? (__mmask8) 0xFF : (__mmask8) ((1u << nb) - 1u);
 diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index ccfe6450..2d1c8189 100644
+index 12ee53bf..3e430af1 100644
 --- a/sycl/CMakeLists.txt
 +++ b/sycl/CMakeLists.txt
-@@ -149,8 +149,10 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
+@@ -150,8 +150,10 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
  strata_resolve(_cpu src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp src/kernels/cpu/expert_layout.cpp
                      src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)   # hadamard.cpp: expert_layout.cpp reads hadamard.txt
  add_library(strata_kernels_cpu STATIC ${_cpu})
-+# Same lists as the top-level build: expert.cpp is VBMI-free (the kernel runs on the opt-in VNNI tier, STRATA_VNNI_TIER),
-+# so no -mavx512vbmi here.
++# Same lists as the top-level build (cmake/backends/cpu.cmake): expert.cpp is VBMI-free (the kernel runs on the
++# opt-in VNNI tier, STRATA_VNNI_TIER), so no -mavx512vbmi here.
  set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS
 -  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
 +  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mf16c;-mfma")
  set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  # AVX-VNNI copies of the AVX-2 expert kernels (q2_avx2.cpp, iq_avx2.cpp), taken at run time where the CPU has them
  include(CheckCXXSourceCompiles)
-@@ -215,8 +217,9 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -196,8 +198,9 @@ if(STRATA_NATIVE_EXPERTS)
                               src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp src/kernels/cpu/tq_avx512.cpp)   # Gyro trellis CPU rows (native_expert.cpp calls them; the SYCL GPU path does not run these types)
    target_sources(strata_kernels_cpu PRIVATE ${_cpu_native})
    target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
 +  # i-quant / NVFP4 are VBMI-free too (the VNNI tier); tq_avx512.cpp below keeps -mavx512vbmi.
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/iq_avx512.cpp ${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx512.cpp
 -    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")   # (as the root CMakeLists.txt: iq_avx512.cpp uses pdep / pext / vpopcnt)
-+    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")   # tiberius: no -mavx512vbmi (the VBMI-free tier), as the root CMakeLists.txt: iq_avx512.cpp uses pdep / pext / vpopcnt
++    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")   # tiberius: no -mavx512vbmi (the VBMI-free tier); as cmake/backends/cpu.cmake: iq_avx512.cpp uses pdep / pext / vpopcnt
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/nvfp4_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
    set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS

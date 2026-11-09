@@ -583,6 +583,104 @@ i.e. that module pin is inert on this lane; and `STRATA_VERIFY_PROFILE`/`STRATA_
 decode, so they stay off.  Evidence: `/data/bump/measure/` (and `/data/bump/gen112/measure/`); the
 window breakdown is in the round-14 section of `strata-tuning-next.md`.
 
+Generation 113 (2026-11-09) bumps the engine pin from v0.2.12 (`146df3c4`, engine 0.1.58) to
+v0.2.13 (`d2f0964`, engine 0.1.59; the annotated tag's object is `fb57f747`, tagged 2026-11-09
+11:12 +0100).  The release itself is mostly app/Control and Qwen4 groundwork - the per-card DFlash2
+defaults (Strix Halo; Blackwell cc 12.0 with >= 48 GB), the Strix Halo Windows reserve floor, the
+Intel Arc fixed-order bf16 products, the app's start time and fit label, the signed feed's model list
+and the separate `strata-q4-<shape>` engines.  The changes that reach this lane: **the Q8_0
+hyper-connection read is now the CUDA default for Unsloth UD files**, the launcher-env stacks moved
+into the engine, the Linux expert-arena file-cache credit (#5327 / PR #5531), the serve-layer
+tool-call parser selection, and a build reorganisation (backend-split CMake, vendored ggml,
+configure-time model geometry).  Upstream publishes no speed claim for 0.1.59 on this card.
+
+What selects for this lane: on Linux CUDA, 0.1.59 turns `STRATA_HC_Q8` on by itself when the native
+dense GGUF carries the hyper-connection projections as Q8_0 (`generate.cpp`, guarded by
+`NativeDense::gguf_carries_q8_hc()`, tensor type 8).  The deployed `UD-IQ2_XS` dense file does carry
+them that way - `output_hc_*` and `blk.*.hc_{attn,ffn}_{down,up}` are type 8 in its GGUF header
+(checked on tiberius 2026-11-09; shard 2 is where they live) - and 0.1.58 read the same tensors
+through the dequantized-BF16 path, because only setup.py's `unsloth_default_env` ever set the
+switch and this lane never ran it.  The gen-113 gate carried a third, diagnostic arm (`new0`: the
+gen-113 config plus `STRATA_HC_Q8=0`) to attribute the drift.  Nothing else selects: the parallel
+stack needs `o.batch >= 2` and this lane runs one slot; the GDN stack (now the engine's own
+`arch_defaults.cpp` default) is the same `STRATA_GDN_TC=1` / `STRATA_GDN_CONVL2=2` pair that 0.1.58's
+`serve/server.py` set as `GDN_STACK_CUDA` for this very config (no `arch` key -> qwen4exp,
+backend != hip), and `STRATA_GDN_TC` is arch-gated off on sm_75 anyway; #5327 is
+`ArenaExpertSource::open()` and this lane runs `--mmap-experts` (`FileExpertSource`), so it is inert
+(`STRATA_ARENA_FILE_CACHE=0` is its escape); the per-card DFlash2 tables are Auto-only and this lane
+names the drafter; the geometry default is `flash_next`, the shape already compiled here (upstream
+reports the default Flash-Next build unchanged: CUDA SASS 3573/3573); and the removed opt-ins
+(`STRATA_DF2_GATE`, `STRATA_DF2_ROW_MS`, `STRATA_MMVQ_PF/SG`, `STRATA_GR_Q32_PL`, `STRATA_METAL_*`)
+are set by neither package nor module.  The module now pins `STRATA_HC_Q8 = "1"` (the adopted
+default) and the GDN pair explicitly in `profiles/nixos/strata.nix`.
+
+Rebase: all three local patches re-based with **zero hunk conflicts** - 0.2.13's changes in the files
+they own (generate.cpp's geometry and engine defaults, prefill.cpp's geometry widths,
+expert_source.cpp's #5327 credit, serve/server.py's parser selection and launcher-env removal) sit
+outside every region they own, so only hunk offsets and `index` blobs were refreshed and the
+added/removed line set is byte-identical to the v0.2.12 patches.  `avx512-bw-tier.patch` was retargeted
+because 0.2.13 split the monolithic root `CMakeLists.txt` into `cmake/backends/*.cmake`: the per-TU
+kernel flag lists moved verbatim to `cmake/backends/cpu.cmake`, and the patch (plus the package's
+postPatch guarantees, now also mirrored for `sycl/CMakeLists.txt`) follow them;
+`src/kernels/cpu/expert.cpp` is unchanged upstream and its hunks are byte-identical.  The WSTAT audit
+is unchanged: `serve/server.py` still has exactly four `_parse_done` call sites and all four parse the
+WSTAT line before DONE - 0.2.13 added no fifth finisher.  The patch sequence re-applies in order with
+`patch -p1` to a pristine `d2f0964` tree (no fuzz, no rejects) and the package's full postPatch
+catalog passes on the result; the installed `serve/test_wstat.py` passes 4/4.
+
+Build: the derivation now uses the vendored `third_party/strata-ggml` (llama.cpp `3cf03257`, the same
+pin as before) and fetches no llama.cpp; `-DSTRATA_GGML_DIR`, the separate `fetchzip` and
+`llamaRevision` are gone.  The fetch hash is `sha256-ygLtDY...`; the tiberius-native build
+(`--cores 8 --max-jobs 2`, 379/379 actions) reports `strata 0.1.59` and `strata --geometry` prints
+`flash_next`; the installed binary is an ELF executable, the payload (`serve/`, `tools/`,
+`strata_control/`, both expert profiles, `gguf_fingerprints.json`) is complete, and the engine closure
+contains no llama.cpp path.  The SIGILL guard was checked on the objects inside the live build
+sandbox: `expert.cpp.o` has 0 VBMI/VBMI2/IFMA instructions while carrying the VBMI-free unpack form
+(980 `vpsrlvw`/`vpermw`), `iq_avx512.cpp.o` and `nvfp4_avx512.cpp.o` have 0, and `tq_avx512.cpp.o` is
+compiled with `-mavx512vbmi` (the flag is kept; its gate still requires it).  The closure diff against
+generation 112 is the engine plus the config-derived units and system paths
+(`strata-engine: 0.1.58 -> 0.1.59`); no other package moved.
+
+Gate (isolated port-8099 window 17:55:46-18:08:00 UTC = 12m14s production down, trap-restored;
+each arm from its OWN deployed config: new = the gen-113 config with 0.1.59, old = the gen-112 config
+with 0.1.58, new0 = the gen-113 config + `STRATA_HC_Q8=0`): the new arm is up in 42 s (old 39 s) with
+9,140 expert slots / 14.64 GiB of VRAM against 8,898 / 14.26 GiB - the Q8_0 hyper-connection copy
+(0.63 GiB, logged as `STRATA_HC_Q8=1: 0.63 GiB of Q8_0 hyper-connection projections for the verify
+read`) replaces the BF16 copy and frees 0.39 GiB for the cache (+242 slots, +2.7 %).  Both arms keep
+the deployed start config: 6.00 GiB DAX sliding window over the 39.38 GiB pack, `pcie_frac 0.34`,
+elastic K/V 16,384 of 262,144 cells, DFlash2 stock pack `--spec 6 --draft-conf 0.8`, mmap experts, no
+MMQ/FP16/split/PCIe-share lines.  Speed is unchanged inside the box's ~3-5 % spread: P1 4,252-token
+fresh read 8.611 vs 8.715 s (-1.2 %), P2 26,134-token read 21.404 vs 21.342 s (+0.3 %); per-request
+totals 67.3 vs 67.4 tok/s decode and 2,188.2 vs 2,189.4 tok/s prefill (the new0 arm 67.6 / 2,148.6,
+also inside it).  The new arm's greedy answers differ from 0.1.58 on all four speed cells, while the
+new0 arm is **bit-identical to 0.1.58 on all four** - the Q8_0 HC read is the only answer-affecting
+change in the bump.  eval320 (frozen protocol: temperature 0, thinking off, max 96): new
+189/320 = 59.1 % against the gen-112 baseline 187/320 = 58.4 % (discordance 10/320 = 3.1 %, McNemar
+exact p = 0.754, risk difference -0.62 pp [95 % CI -2.50, +1.25]) - no detectable quality change, so
+the Q8_0 read is adopted and pinned.  The nine WSTAT families were all populated after the gate cells
+(rotations 13, borrow 69.48 GB, verify windows 215 / rows 209 / accepted 167, stop-bound 2/2, prefill
+seconds 27.78, drafts offered 209 accepted 167).  The window needed three attempts: the first two
+aborted BEFORE any engine start on path typos in the gate wrapper (`bump3.py`/`mkconfig3.py` looked
+up under `/data/bump` instead of `/data/bump/gen113`); the trap restored production in ~43 s each time
+and no measurement was taken from those attempts.  The 12m14s window is longer than gen-112's 8m51s
+because it carried the third arm and its 346 s eval320 pass.
+
+Deployed as generation 113: engine `/nix/store/7nk2w1ip12ir53rgaaqjyfknvh1mq2ia-strata-engine-0.1.59`,
+system `/nix/store/v14n6p6nwdbn9frym4czxfrc5scvs9gr-nixos-system-tiberius-26.05.20260927.cf5e765`
+(switch 18:10:39 UTC, engine ready 18:11:25).  The deployed config is the gate's new arm with the
+defaults pinned explicitly (`STRATA_HC_Q8=1`, `STRATA_GDN_TC=1`, `STRATA_GDN_CONVL2=2` - the config
+JSON carries all three).  Verified after the switch: both doors 200, warm completion "ready."
+(thinking off), 29 `strata:*` metric families and all nine WSTAT families raised by that request
+(rotations 0, borrow 13.9 GB, windows 3 / rows 3, stop-bound 1/1, prefill seconds 0.37), 9,140 expert
+slots / 14.64 GiB, DFlash2 stock pack, no Xid, boot default `nixos-generation-113.conf`.  The 8090
+background door keeps its documented lease behaviour.  Rollback: revert `pkgs/strata-sm75/*` and
+`profiles/nixos/strata.nix` to `0822608` and rebuild/switch; emergency = boot the generation-112
+entry (still on the ESP and rooted).  Artifacts: `/data/bump/gen113/` (`new3`/`old3`/`new03` results,
+the three engine logs, `prom-*.txt`, `eval-new3.json`, `eval-compare3.json`, `summary3.json`,
+`window3.log` plus the two aborted `window3-attempt*.log`, `bump-build-gen113.log`,
+`bump-switch-gen113.log`, `paths.txt`, the source tree, gcroots); the gen-112 eval baseline is
+`/data/bump/gen112/eval-new2.json`.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

@@ -462,6 +462,36 @@ let
         # expert_layout.cpp), so a bump that drops the knob fails the build instead of
         # silently turning the tier off here.
         STRATA_VNNI_TIER = "1";
+        # 0.2.13 moved the two launcher-env stacks into the engine
+        # (src/core/arch_defaults.cpp: apply_parallel_defaults_cuda and
+        # apply_gdn_defaults_cuda).  0.1.58's serve/server.py set the GDN pair as
+        # GDN_STACK_CUDA for this exact config (Linux CUDA, no "arch" key -> qwen4exp,
+        # backend != hip), so =1/=2 are the values this lane has been running and
+        # pinning them keeps them if a later release flips a default.  On this card
+        # STRATA_GDN_TC=1 is arch-gated off (tensor-core scan needs sm_80+; the gate
+        # falls back to the old kernels), so the one that selects here is
+        # STRATA_GDN_CONVL2=2 (conv + SiLU + q/k L2 norm in one pass; upstream notes it
+        # is not bitwise on CUDA - the numbers were measured with it on, which is why
+        # its 0.1.58 provenance above matters).  The parallel stack needs
+        # o.batch >= 2 and this lane runs one slot: it selects nothing, matching the
+        # 0.1.58 serve (parallel_slots() = 0).
+        STRATA_GDN_TC = "1";
+        STRATA_GDN_CONVL2 = "2";
+        # 0.2.13 turns STRATA_HC_Q8 on by itself on Linux CUDA when the native dense
+        # GGUF carries the hyper-connection projections as Q8_0 (Unsloth UD-* files;
+        # generate.cpp -> NativeDense::gguf_carries_q8_hc(), tensor type 8).  The
+        # deployed UD-IQ2_XS dense file does carry them that way (output_hc_* and
+        # blk.*.hc_{attn,ffn}_{down,up}), so 0.1.59 would move this lane from the
+        # dequantized-BF16 read 0.1.58 used to the file's own Q8_0 bytes.  Pinned =1
+        # so a later release cannot flip it back; the gen-113 gate measured it (each
+        # arm from its own deployed config, plus a diagnostic =0 arm): answer-changing
+        # (all four speed cells' greedy answers differ) but speed-neutral (totals 67.3
+        # vs 67.4 tok/s decode, 2188 vs 2189 tok/s prefill, P1/P2 walls within the
+        # box's spread) and quality-neutral (eval320 189/320 = 59.1 % against the
+        # gen-112 baseline 187/320 = 58.4 %, McNemar p = 0.754), while it frees
+        # 0.39 GiB of VRAM (expert cache 9,140 slots against 8,898, +2.7 %).  The =0
+        # arm reproduced 0.1.58's answers bit-for-bit on all four speed cells.
+        STRATA_HC_Q8 = "1";
         # STRATA_PF_FUSED_SM75 (the fused int8 prompt experts on Turing) is not
         # carried: without STRATA_PF_FUSED it is inert on this native pack
         # (requested() needs =1; the engine printed no fused-path line in the
