@@ -566,6 +566,23 @@ rebuild/switch; emergency = boot the generation-111 entry (still on the ESP and 
 the source tree, `paths.txt`, gcrooted store paths) and `/data/bump/gen111/` (the frozen 0.1.57 eval
 baseline, sha256 `d57acc41...`; the gen-112 eval is `db409136...`).
 
+A post-bump option screen on 0.1.58 (2026-11-09, three isolated port-8099 windows, production
+trap-restored) measured every 0.2.12 opt-in that can select on this lane against the deployed
+config: `STRATA_VNNI_TIER=0`, `STRATA_IQ512_FUSED_MAX=8` (fused gate/up rows), `STRATA_ADAPT_FETCH=1`,
+`STRATA_DF2_GATE=1` (default and `STRATA_DF2_ROW_MS` 5/6), the file-tier auto decision
+(`STRATA_UNBUFFERED_LOAD` deleted) and the new profiling knobs.  No option showed a gain and none was
+adopted (generation 112's config is unchanged).  Findings: with the route prior's 99.2 % expert-cache
+hit rate the CPU expert pool sees ~0.8 % of rows, so the AVX-512 tier, `q50_512` and the fused rows
+all measure as zero (profiled pool+plan per decode window: 4.020 ms tier-on vs 4.016 ms AVX-2 on the
+same request; the apparent +4 % decode for `STRATA_VNNI_TIER=0` is a draft-acceptance artifact of its
+different answer stream); `STRATA_ADAPT_FETCH=1` costs 2-4 % and changes answers; `STRATA_DF2_GATE=1`
+with its Mac-tuned default `row_ms` costs ~5 % (windows widen, acceptance 91 % -> ~56 %), tuned to
+5-6 ms it is merely neutral; deleting `STRATA_UNBUFFERED_LOAD` changes nothing because the file-tier
+buffering decision is not applied without `--resident-budget-gib` (`hostTierGib=0` -> `--mmap-experts`),
+i.e. that module pin is inert on this lane; and `STRATA_VERIFY_PROFILE`/`STRATA_ROUTE_STATS` cost ~6 %
+decode, so they stay off.  Evidence: `/data/bump/measure/` (and `/data/bump/gen112/measure/`); the
+window breakdown is in the round-14 section of `strata-tuning-next.md`.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is

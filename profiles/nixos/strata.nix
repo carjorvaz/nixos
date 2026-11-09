@@ -493,6 +493,13 @@ let
         # tok/s, and 26,919 ms on the deployed 0.1.38 stack) with the page cache -
         # the file tier's reads and the DAX window's registered pages want the file
         # cache, which is what 0.1.38's default was.  Upstream's force arm.
+        # MEASURED INERT ON THIS LANE (2026-11-09): generate.cpp applies the
+        # file-tier buffering decision only when --resident-budget-gib is set
+        # (`if (o.resident_budget > 0)`; without it the decision is not called at
+        # all), and hostTierGib = 0 passes --mmap-experts - so deleting this pin
+        # changes nothing (option screen: P1 fresh read 7.15 s against 7.12-7.24 s,
+        # P2 21.61 s against 21.58/21.66; /data/bump/measure/).  It stays for the
+        # hostTierGib > 0 option, where it was load-bearing at 0.1.38-0.1.40.
         STRATA_UNBUFFERED_LOAD = "0";
         # tiberius: a small pinned staging ring (4) still wins, but by ~1% at
         # v0.1.40.2 rather than the 16% of the 2026-09-30 measurement: the default

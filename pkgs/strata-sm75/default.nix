@@ -53,8 +53,13 @@ let
   #     2026-10-12 (ab18 campaign, 3 counterbalanced runs per arm): ~5 % cheaper
   #     CPU expert pool+plan per decode window, prefill and the Optane reads
   #     unchanged, outputs numerically sound but NOT bit-identical to the AVX-2
-  #     tier on the long cells.  The compile-time half - no VBMI instruction in
-  #     expert.cpp's object - stays avx512-bw-tier.patch's business.
+  #     tier on the long cells.  Re-measured 2026-11-09 on 0.1.58: the tier now
+  #     makes NO measurable difference - the route prior keeps a 99.2 % expert-cache
+  #     hit rate, so the CPU pool sees ~0.8 % of the window's expert rows and the
+  #     profiled pool+plan per decode window is identical with the tier on and off
+  #     (4.020 vs 4.016 ms); it is kept for the rounding continuity it already has.
+  #     The compile-time half - no VBMI instruction in expert.cpp's object - stays
+  #     avx512-bw-tier.patch's business.
   #     The tier also turns on two NEW 0.2.12 kernels here: q50_512, the 512-bit
   #     Q5_0 down rows (from 2 tokens per expert group; the deployed UD-IQ2_XS
   #     pack's expert layer 4 has Q5_0 as its DOWN type, native_experts.txt
@@ -67,11 +72,14 @@ let
   #     rows stay off
   #     (STRATA_IQ512_FUSED_MAX defaults to 0).  Escapes: STRATA_NO_Q50_512=1,
   #     STRATA_NO_IQ4XS512=1, STRATA_VNNI_TIER=0.
-  #   * the file tier's honest re-check does not change this lane's I/O path: the
-  #     module's STRATA_UNBUFFERED_LOAD=0 returns from file_tier_unbuffered()
-  #     before that block runs (expert_source.cpp), so the page-cache arm this box
-  #     measured stays.  The all-experts-resident idle policy is inert here (the
-  #     cache holds 6,282-7,859 of 24,576 (layer, expert) pairs, not all).  Whether
+  #   * the file tier's honest re-check cannot reach this lane's I/O path at all:
+  #     without --resident-budget-gib (hostTierGib = 0 passes --mmap-experts) the
+  #     file-tier buffering decision is not applied (`if (o.resident_budget > 0)`
+  #     in generate.cpp), so the module's STRATA_UNBUFFERED_LOAD=0 is INERT here -
+  #     deleting it changed nothing in the 2026-11-09 option screen (P1 fresh read
+  #     7.15 s against 7.12-7.24 s; P2 21.61 s against 21.58/21.66; kept for the
+  #     hostTierGib > 0 option).  The all-experts-resident idle policy is inert
+  #     here too (the cache holds 6,282-7,859 of 24,576 (layer, expert) pairs).  Whether
   #     the routing-aware look-ahead (and its 0.2.12 host_res stride fix) runs in
   #     this config is NOT measured; it sits behind the Linux file-tier defaults.
   #   * the serve-layer accounting rewrite lands in the same Service.run region as

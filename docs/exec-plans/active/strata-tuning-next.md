@@ -764,6 +764,53 @@ whether 0.2.12's routing-aware look-ahead runs in this config is unmeasured; q50
 performance is not separately measured (the gate shows no regression overall); the agent lane can
 move with the tool-call/parser fixes.  Artifacts: `/data/bump/gen112/`, `/data/bump/gen111/`.
 
+#### Post-bump option screen on 0.1.58 (2026-11-09; measurement only, no config change)
+
+Three isolated port-8099 windows (08:12-08:22, 08:24-08:33, 08:34-08:41 UTC, production
+trap-restored each time) screened every 0.2.12 opt-in that can select on this lane, each arm a
+fresh isolated engine from the gen-112 config (deployed env `STRATA_VNNI_TIER=1` + one override),
+same protocol as the bump gate: P1 = 4,252-token prompt, P2 = 26,134-token, 2 reps each, greedy
+256, thinking off; a warm request ahead of them.  Artifacts: `/data/bump/measure/` (per-arm
+results JSON, `prom-*.txt`, engine logs, `window{,2,3}.log`) and archived under
+`/data/bump/gen112/measure/`.
+
+**Result: none of the 0.2.12 opt-ins buys anything measurable on this lane; nothing was adopted.**
+
+| arm (vs deployed env) | decode (ms/tok) | reading |
+|---|---|---|
+| base / base2 (no profile) | 67.1 / 68.5 tok/s (14.90 / 14.60 ms/tok); window-2 repeat 68.7 / 67.3 | run-to-run noise ~±1.5 % when the answer stream differs |
+| `STRATA_VNNI_TIER=0` | 70.5 / 70.6 tok/s (14.19 / 14.16) | apparent +4 % is a STREAM artifact: the AVX-2 tier answers differ (rounding), so draft acceptance is 82.8 % vs 78 %; profiled arms show the CPU pool is identical (below) |
+| `STRATA_IQ512_FUSED_MAX=8` (new fused gate/up rows) | 68.3 tok/s (14.64); identical answers to base on the fresh cells | no effect: too few CPU-pool rows to exercise it |
+| `STRATA_ADAPT_FETCH=1` (new) | 65.8 / 66.5 tok/s (15.19 / 15.03) | -2..-4 %, and it CHANGES answers (first-request sha `ec55e8…` vs `aed6d7…`): admission alters residency -> rounding |
+| `STRATA_DF2_GATE=1` (new; default row_ms 3.0, Mac-tuned) | 64.6 / 64.5 tok/s (15.47 / 15.50) | reproducibly -5 %: windows widen (drafts offered 46 -> 91-105/request) and acceptance falls 91 % -> ~56 % |
+| same, `STRATA_DF2_ROW_MS=6` / `=5` | 68.5 / 69.0 tok/s | neutral / within noise at best; no gain |
+| `STRATA_UNBUFFERED_LOAD` deleted (0.2.12 honest re-check path) | P1 read 7.15 s (vs 7.12-7.24 base), P2 read 21.61 s (vs 21.58/21.66) | no effect at all: without `--resident-budget-gib` (`hostTierGib=0` -> `--mmap-experts`) the file-tier buffering decision is not applied (`generate.cpp:7743`), so the module's pin is INERT on this lane |
+| `STRATA_VERIFY_PROFILE=1` + `STRATA_ROUTE_STATS=1` (new measurement knobs) | 63.1 tok/s vs 67-68.7 unprofiled | cost ~6 % decode - keep them off in production; they work and gave the window breakdown below |
+
+Profiled arms (window 3) isolate the CPU tier cleanly - pool+plan per decode window is the SAME with
+the VNNI tier, AVX-2, and the fused rows, and the profiled baselines repeat to 0.5 %:
+
+| per-window stage metric | pbase (tier on) | ptieroff (AVX-2) | pfused (fused on) | pbase2 |
+|---|---|---|---|---|
+| P1 rep2 (113 gen): pool+plan | 4.020 ms | 4.016 ms | 4.013 ms | 4.043 ms |
+| P2 rep1: pool+plan | 3.509 ms | 3.667 ms | 3.514 ms | 3.611 ms |
+| P2 rep2: pool+plan | 3.158 ms | 3.231 ms | 3.115 ms | 3.172 ms |
+| wait for the GPU (same cells) | 22.28-22.53 ms | 22.41-23.09 | 22.36-22.69 | 22.36-22.64 |
+
+Mechanism: the route prior keeps the decode at a 99.2 % expert-cache hit rate, so the CPU expert
+pool sees ~0.8 % of the window's expert rows; "pool + plan" is dominated by planning, not by the
+512-bit kernels - which is why the AVX-512 tier (ab18's ~5 % CPU-pool win was measured at the
+pre-route-prior 68-80 % hit rates), q50_512 and the fused rows all measure as zero today.  The new
+kernels are effectively dormant on this lane, not expensive; keeping the tier costs nothing.
+
+Two methodology notes for future windows: (1) answer streams are not reproducible across arms -
+identical configs can differ on the second fresh request and on warm-cache repeats (residency and
+refill state move the rounding), so cross-arm decode tok/s must not be read as a kernel delta; when
+the output IS identical (for example the first request after an engine start), decode timing is
+reproducible to under 0.5 % (93 tokens: 1,464 / 1,466 / 1,465 ms).  (2) An arm that changes output
+must be judged end-to-end on its own stream - which is what the table above reports - and the
+profiled `pool + plan` / `wait for the GPU` split is the clean way to attribute a delta.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
