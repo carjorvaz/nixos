@@ -15,6 +15,26 @@ let
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
   healthStateLockPath = "${healthDir}/health-state.lock";
+  # switch-to-configuration-ng starts changed services from the previously
+  # loaded unit; a service-side hook cannot call systemctl (unprivileged), so an
+  # activation script schedules a short-lived root oneshot that compares the new
+  # unit's ExecStart arguments with the running argv and restarts on mismatch.
+  servingParityScript = pkgs.writeShellScript "ott-rs-serving-parity" ''
+    export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
+    for unit in ott-rs-client-api.service ott-rs-web.service; do
+      current=$(readlink -f "/run/current-system/etc/systemd/system/$unit" 2>/dev/null) || continue
+      want_cmd=$(sed -n "s/^ExecStart=//p" "$current" | head -n 1)
+      [ -n "$want_cmd" ] || continue
+      pid=$(/run/current-system/sw/bin/systemctl show -p MainPID --value "$unit" 2>/dev/null) || continue
+      [ -n "$pid" ] && [ "$pid" != 0 ] || continue
+      want_args=$(printf "%s" "$want_cmd" | cut -d" " -f2-)
+      have_args=$(tr "\0" " " < "/proc/$pid/cmdline" | cut -d" " -f2-)
+      [ "$want_args" = "$have_args" ] && continue
+      /run/current-system/sw/bin/logger -t ott-rs-serving-parity "restarting $unit: running command differs from the new unit" || true
+      /run/current-system/sw/bin/systemctl restart "$unit" || true
+    done
+  '';
+
   watchlistChannels = [
     "sport tv 1"
     "sport tv 2"
@@ -148,6 +168,13 @@ in
       };
 
     };
+  };
+
+  system.activationScripts.ott-rs-serving-parity = {
+    deps = [ "etc" ];
+    text = ''
+      ${config.systemd.package}/bin/systemd-run --on-active=30 --unit=ott-rs-serving-parity --collect ${servingParityScript}
+    '';
   };
 
   environment.persistence."/persist".directories = [

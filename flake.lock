@@ -1102,11 +1102,11 @@
         "nixpkgs": "nixpkgs_9"
       },
       "locked": {
-        "lastModified": 1794247066,
-        "narHash": "sha256-68T8QHAkudRBVxF15FVQ6kAfsnyAd2XqpFy1Ot4Y9CU=",
+        "lastModified": 1794253018,
+        "narHash": "sha256-7i28tFDvAywI+ejyGCd9teclGiJ1FxygxGFT63CKhgM=",
         "ref": "refs/heads/master",
-        "rev": "b6a68ad340f913f02dd5320cf972afd9aa449826",
-        "revCount": 218,
+        "rev": "6954848d6ad9cb9a5c405ee55c715b7e503c2012",
+        "revCount": 223,
         "type": "git",
         "url": "ssh://git@github.com/carjorvaz/ott-rs.git"
       },
