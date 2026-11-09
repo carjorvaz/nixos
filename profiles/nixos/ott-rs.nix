@@ -11,7 +11,6 @@ let
   webHost = "ott-web.vaz.ovh";
   telegramSecretGroup = "telegram-secrets";
   ottRsPackage = inputs.ott-rs.packages.${pkgs.system}.default;
-  ottRs = "${ottRsPackage}/bin/ott-rs";
   healthDir = "/var/lib/ott-rs/health";
   auditDir = "/var/lib/ott-rs/audit";
   healthStatePath = "${healthDir}/health-state.json";
@@ -34,24 +33,6 @@ let
     "sic"
     "tvi"
   ];
-  watchlistHealthSampleCommand = pkgs.writeShellScript "ott-rs-watchlist-health" ''
-    set -u
-    for channel in ${lib.concatMapStringsSep " " lib.escapeShellArg watchlistChannels}; do
-      ${ottRs} health-sample \
-        --input ${auditDir}/channel-selection.json \
-        --output ${healthDir}/health-sample.json \
-        --state-input ${healthStatePath} \
-        --state-output ${healthStatePath} \
-        --state-lock ${healthStateLockPath} \
-        --playback-forward-all-headers \
-        --limit 1 --offset 0 --strategy focus \
-        --channel-exact "$channel" \
-        --candidates-per-channel 3 \
-        --selected-failure-threshold 2 \
-        --replacement-alive-threshold 2 \
-        --timeout 8 --read-seconds 6
-    done
-  '';
 in
 {
   users = {
@@ -106,6 +87,14 @@ in
       interval = "*-*-* *:00/30:00";
       randomizedDelaySec = "1m";
       unitStartTimeout = "20min";
+      channels = watchlistChannels;
+      extraArgs = [ "--state-lock" healthStateLockPath ];
+      candidatesPerChannel = 3;
+      selectedFailureThreshold = 2;
+      replacementAliveThreshold = 2;
+      timeoutSeconds = 8;
+      forwardAllPlaybackHeaders = true;
+      # readSeconds defaults to the deployed 6 s in module.nix.
     };
 
     doctor = {
@@ -158,7 +147,6 @@ in
         };
       };
 
-      ott-rs-health-sample.serviceConfig.ExecStart = lib.mkForce "${watchlistHealthSampleCommand}";
     };
   };
 
