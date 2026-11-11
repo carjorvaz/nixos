@@ -5,12 +5,37 @@
 # would be written beside the read-only store config is never reached).  Upstream added
 # /tool-media/ to the same router in 0.2.5, so the 404 block sits above it and returns.
 #
-# Regenerated against c62d5e3a (v0.2.9).
+# RE-VERIFIED 2026-11-09 against d2f0964 (v0.2.13, engine 0.1.59), on top of the rebased tiberius.patch: applies
+# with no hunk conflicts and the GET/POST router region is untouched by 0.2.13's serve delta (the tool-parser
+# selection via parser_for_template, the drafting fetch hint, the launcher-env stack removal into the engine's
+# arch_defaults.cpp, and the tokenizer's UnknownPreTokenizer refusal).  Re-audited: every bundled-app surface is
+# still "" (index.html) or /api-monitor (monitor.html) or under /web/ (flat files, locales, vendored KaTeX) or
+# /fonts/ (the Outfit font) - all covered by the guard - and /api-monitor and /settings are still the only non-API
+# pages at the root.  /config, /mcp, /api/requests and every /v1/* / /status / /props / /slots route stay API and
+# untouched by the block.
+#
+# HISTORY: the paragraphs below document the earlier bumps of this same patch stack (kept as-is).
+#
+# RE-VERIFIED 2026-11-08 against 146df3c4 (v0.2.12, engine 0.1.58): applies with no hunk conflicts and the
+# GET/POST router region is untouched by 0.2.12's serve delta (the tool-call/parser fixes, the Anthropic
+# gateway fallback, the chat store).  Re-audited: every bundled-app surface is still "" or under /web/ or
+# /fonts/, and /api-monitor and /settings are still the only non-API pages at the root.
+#
+# RE-VERIFIED 2026-11-05 against c3b3f503 (v0.2.11, engine 0.1.57): applies with no hunk conflicts.
+# 0.2.11's serve/server.py delta (the chat store, the stream/lifecycle changes) leaves this GET/POST router
+# region untouched; re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, and
+# /api-monitor and /settings are still the only non-API pages at the root.
+#
+# Regenerated against ffa80d73 (v0.2.10, engine 0.1.56).  The patch applied cleanly: 0.2.10 rewrote parts of
+# serve/server.py (the split engine's server keys, the drafting plan) but not the GET/POST router shape this
+# block guards.  Re-audited: every bundled-app surface is still "" or under /web/ or /fonts/, /api-monitor and
+# /settings are still the only non-API pages at the root, and the API routes (/v1/*, /status, /slots, ...) are
+# untouched by the block.
 diff --git a/serve/server.py b/serve/server.py
-index 768f6bc..4f6419f 100644
+index 8b635b8f..9ada535e 100644
 --- a/serve/server.py
 +++ b/serve/server.py
-@@ -7026,6 +7026,10 @@ def make_handler(svc: Service):
+@@ -7839,6 +7839,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -21,7 +46,7 @@ index 768f6bc..4f6419f 100644
              if path.startswith("/tool-media/"):
                  if not self._authorized():
                      return
-@@ -7417,6 +7421,9 @@ def make_handler(svc: Service):
+@@ -8230,6 +8234,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
              path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
@@ -31,7 +56,7 @@ index 768f6bc..4f6419f 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -8300,6 +8307,11 @@ def _name_in(name: str, names) -> bool:
+@@ -9124,6 +9131,11 @@ def _name_in(name: str, names) -> bool:
      return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
  
  

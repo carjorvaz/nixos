@@ -33,6 +33,9 @@ let
     "libnvjitlink"
     "libnvvm"
     "nvidia-kernel-modules"
+    # NVIDIA 610.43.03 firmware images fetched at build time for the volatile
+    # TU102 tensor-core unlock (pkgs/turing-unlock; never committed).
+    "turing-unlock-firmware"
     "nvidia-persistenced"
     "nvidia-settings"
     "nvidia-x11"

@@ -64,7 +64,9 @@ Measured: 46.84 GiB written in **under five minutes** (2026-10-28 12:53-12:57,
 
 ## Measured after the fix (0.1.49.2 / v0.2.4.2, production config)
 
-Same cells as the ab11/ab24 campaigns (real corpus, greedy, thinking off):
+Same cells as the ab11/ab24 campaigns (real corpus, greedy, thinking off).
+Multi-run cells in this document's tables are means over the stated runs, with
+[min-max] where a spread is shown - not medians.
 
 | cell | before | after |
 | --- | --- | --- |
@@ -245,9 +247,14 @@ that a 250k disk restore needs and the 4,276 MiB a 250k park needs; one module i
 each of the six channels (P0_MC0/C1 _DIM_CH_A0/B0/C0/D0/E0/F0) fills the board's
 bandwidth, A1 being channel A's second slot.  Upstream is
 `github.com/Niko1221/Strata` (the URL `serve/server.py` itself cites for #481);
-on 2026-11-01 `main` was `c62d5e3a` = v0.2.9 = this pin, so there are no newer
-commits to take: a park or restore fix has to be written here, and the unpacked
-trees under `/persist/strata-src` are a convenience, not a fallback.
+on 2026-11-01 `main` was `c62d5e3a` = v0.2.9, and on 2026-11-03 the pin moved to
+`ffa80d73` = v0.2.10 (engine 0.1.56, built and smoke-tested, not yet deployed).
+0.2.10's #4677 (a parked conversation refused on the next turn, ~6% of the
+prompt re-read) is HIP-only: `stop_bound` and both call sites in `generate.cpp`
+sit inside `#if defined(STRATA_USE_HIP)`, so this CUDA build has no upstream
+park fix and the conclusion stands - a park/restore fix has to be written here.
+The unpacked trees under `/persist/strata-src` are a convenience, not a
+fallback.
 
 **Lease front end (deployed 2026-11-01, generation 94).**  `pkgs/strata-lease-proxy.py`
 now fronts the loopback engine (`127.0.0.1:8081`) with two doors - `:8080`
@@ -280,6 +287,16 @@ asked for 3,727 MiB plus the floor against 2,050 MiB available and was refused.
 The disk path therefore restores conversations whose image fits free RAM (~50k
 and below: 391 MB plus the floor) and survives both a background request and a
 restart, which parking does not, but it does not rescue 250k on this box.
+
+**Corrected 2026-11-04 (generation 103).** The SAVE/RESTORE numbers above were measured on the
+MTP lane, which had `--mtp` loaded. After DFlash2 replaced MTP on 2026-11-04 the deployed lane runs
+without `--mtp`, and SAVE passed `mtp.kv_state()` unconditionally - an empty QsaState there - so
+every SAVE failed `conversation snapshot: invalid K/V extent` and disk sessions had never worked on
+the deployed lane (the empty `/optane/strata-data/sessions` was the symptom). Generation 103 makes
+the draft layer optional in both directions and streams RESTORE (240k: 5,240 ms, VmHWM +259 MiB,
+continuation sha equal; corrupt/truncated/header files refused before any device write), so the
+paragraph above now describes the MTP lane, not the current one. The refusal-destruction root cause
+below is unaffected by this and still stands for the DFlash2 lane.
 
 **Why a refusal destroys the copy (root cause, v0.2.9).**  `park_source`
 (`generate.cpp:10655-10694`) runs `drop_superseded`, then `make_room`, then the
@@ -320,6 +337,13 @@ merged tree byte for byte before the build.  Deployed as generation 86.
 | 26,134 read / decode | 1,156 / 50.1 | 1,146 / 51.3 |
 | chat turn 2 (2,399 -> 2,443 tokens) | 2,392 reused, 557 ms | 2,392 reused, 561 ms |
 
+That 0.1.55 column predates the 2026-11-01 `--kv-grow` config; the current
+baseline is the ab26 0.1.55 arm below (491.2 / 56.9, 405.7 / 64.4, 1,250.8),
+which matches the kv-grow figures in `profiles/nixos/strata.nix`.  ("Greedy"
+in these rows is temperature 0 plus the server's qwen4exp model-card defaults -
+a non-thinking request also gets `presence_penalty 1.5`, because the run
+config's `sampling` block pins only temperature.)
+
 The reads are 1-2.4% slower and the decode equal to 2.4% faster, all inside this
 harness's spread; the chat turn's answer is the same sha as on 0.1.54.  Upstream's
 headline for Linux NVIDIA - the Gated DeltaNet prompt kernels on the tensor cores,
@@ -335,6 +359,170 @@ measuring it: `nix build --no-link` outputs are collected by the box's daily
 `nix-gc.timer` within minutes, so the first 0.1.55 build vanished before it could
 be measured; deploys use `nixos-rebuild switch`, whose generation pins the
 closure.
+
+### v0.2.10 (engine 0.1.56)
+
+The pin moved to `ffa80d73` (v0.2.10, engine 0.1.56) on 2026-11-03.  The rebase
+needed two keep-both resolutions in `generate.cpp` (0.2.10's new `keep_sync()`
+at the request-ending pin release, and the `use_mtp` -> `draft_on` rename in the
+`drafted` guard); `no-web-ui.patch` and `avx512-bw-tier.patch` applied cleanly,
+and the regenerated set applied to the fetched tree reproduces the merged tree
+byte for byte.  A tiberius-native build succeeded and the binary reports 0.1.56
+with the DAX-window, refill-pin and SM75-series markers.  Measured 2026-11-03
+(`ab26`: production config, three counterbalanced fresh-engine runs per arm, the
+ab25 cells; read in tok/s, decode in tok/s):
+
+| cell | 0.1.55 (A) | 0.1.56 (B) |
+| --- | --- | --- |
+| 4,252 read / decode | 491.2 [482.1-498.2] / 56.93 [56.70-57.20] | 490.4 [487.6-492.0] / 58.77 [58.60-59.00] |
+| 3,477 read / decode | 405.7 [403.1-408.4] / 64.40 [63.90-64.90] | 401.8 [393.8-407.7] / 62.07 [61.90-62.30] |
+| 26,134 read / 8 gen | 1,250.8 [1,248.6-1,254.1] / 47.47 | 1,249.4 [1,246.2-1,253.0] / 49.57 |
+
+Reads are flat: -0.2% / -1.0% / -0.1%, and the 3,477 B spread overlaps A.  No
+decode claim is made: the generated content differs between arms (below), and
+the draft acceptance moves with it (P1 49/76 vs 49/72, P2 45/68 vs 34/50).
+Answers are bit-identical within an arm across its three runs, but differ
+between arms on the 4,252 and 3,477 cells (the 26,134 cell's 8 generated tokens
+match).  Two controls bound the cause, and it is not one change:
+`data/expert-profile.bin` is byte-identical in the two packages
+(`8f59b4aa...`), so the routing input is not it; and 0.1.56 with
+`STRATA_PENALTY_PROMPT=1` (the old penalty window) does not reproduce 0.1.55 -
+it keeps B's 4,252 answer (`9c40d17d...`, 84 tokens), gives a third 3,477 answer
+(`034405e6...`, 86 tokens), and differs from B on 3,477 and 26,134.  The server
+does apply the qwen4exp model card's `presence_penalty 1.5` to a non-thinking
+request (the run config's `sampling` block only pins temperature; all three
+server versions default the family to qwen4exp), so #4590 does move tokens (the
+control differs from B), and upstream's other 0.1.56 engine changes - the
+verify/expert-grouped/gemm rewrites among them - move them too.  The divergence
+is accepted with the bump; `STRATA_PENALTY_PROMPT=1` is the documented window
+escape, not a parity switch.  Quality: eval80 scores 61/80 (A) against 59/80
+(B; the 59 is the later fit-pinned MTP start, `/data/ab32-eval-M.log`, while
+`/data/ab26-eval-B.log` scored 58/80 on the pre-fit-pin start with
+`--kv-resident 4096` and `--kv-grow` off) - arithmetic 19 vs 16
+and logic 10 vs 11 in that pair - 2 tasks, inside the set's binomial noise
+(1 sigma about 5.4 tasks).  Net: no speed or quality win on this card; the bump is taken for
+the serve-layer tool-call fixes and #4590, with the deterministic answer change
+recorded.  #4677 does not touch these cells: the stop-bound park fix is HIP-only
+(see the box note above), so the local park/restore work still has no upstream
+counterpart.
+DFlash2 (CUDA 8.6+) and the all-cards split engine (two or more cards) do not
+select for this card.  Two start-time checks on deploy: 0.2.10's serve runs
+`drafting.apply` (the chosen drafter must resolve as intended: MTP at the time
+of this check, DFlash2 after 2026-11-04) and
+`vram_fit.fit_start`, whose only CUDA knob is `--kv-resident` - a KV window
+turns `--kv-grow` off in the engine, so if the journal prints `KV window ...`
+the 262144 start lost the module's elastic-KV win and the fitter's estimate
+needs a look.  An offline pre-check of 0.1.56's `engine_args()` returned the
+production args byte-identical (no `--kv-resident`; drafting resolves to MTP),
+but that is not what a real start does: `fit_start` prices the card with the GPU
+idle and its `drafting_vram_mib()` then sees memory the offline check did not.
+The first 0.1.56 start (generation 97) printed `short of GPU memory ... (KV
+window 4096 tokens in VRAM)` and ran with `--kv-resident 4096`: `--kv-grow` was
+off (the engine logged it) and the DAX window fell to 2.70 GiB (the register
+call shrank 5.52 -> 4.58 -> 3.64 -> 2.70).  A restart reproduced it.  Fixed by
+pinning the fitter off this knob with `user_args = [ "--kv-resident" "0" ]` in
+the run config: the fitter treats a `user_args` value as the person's, and 0 is
+the engine's unset value (`o.kv_resident <= 0` keeps `--kv-grow` allowed).
+Verified on generation 98: the engine args carry `--kv-grow` and
+`--kv-resident 0`, the log prints `elastic K/V: 16384 of 262144` and no
+`--kv-grow is off`, and the DAX window is back to layers 0..5 / 5.52 GiB.  The
+fitter still prints its `short of GPU memory` line although it changes nothing -
+cosmetic.
+
+### Post-bump experiments (2026-11-04)
+
+**DFlash2 on sm_75 (adopted).**  Upstream's table calls sm_75 "untested"
+(`hardware_support` still answers can_run) and the engine carries the code
+(`STRATA_HAVE_DFLASH2`), but the Nix package does not ship
+`data/draft_vocab*.bin`, so the feature was inert here.  Built the drafter from
+the pinned source: incoai/Qwen3.8-Flash-Next-DFlash2 revision a22a1744,
+`model.safetensors` 1,206,140,008 B sha `d6723f2a...`; `tools/dflash2_pack.py
+--q4_0` produced 522,458,112 B sha `cda40d62...` and `--convert-selector`
+339,694,592 B sha `4a42b98...`; the English draft vocabulary sits beside them.
+The files live in `/optane/strata-data/dflash2/` (runtime data, like the MTP
+layer), and the module sets `drafting = "dflash2"`.
+
+3+3 counterbalanced (production config, the same 0.1.56 server, DFlash2 against
+the MTP; read tok/s, decode tok/s):
+
+| cell | MTP | DFlash2 |
+| --- | --- | --- |
+| 4,252 read / decode | 493.8 / 57.1 | 495.4 / 59.9 |
+| 3,477 read / decode | 402.9 / 59.6 | 397.6 / 62.4 |
+| 26,134 read / 8 gen | 1,252.9 / 51.7 | 1,251.4 / 53.7 |
+
+Prompts flat (+0.3% / -1.3% / -0.1%), decode +4.8% / +4.7% / +3.9% (on the
+different generated sequences - 105 / 80 tokens against 85 / 61 - so this is
+the drafter's rate on that workload; per-token gen_ms/gen agrees, ~3-5%);
+DFlash2 accepts far more drafts (P1 52/67 against 49/72, P2 32/35 against 30/49) and
+frees the MTP layer's VRAM (7,859 expert slots against 7,762; drafter 492 MiB).
+eval80: 58/80 against the MTP's 59/80, inside the set's noise.  It serves one
+request at a time (the lane runs no `--batch`), and a missing pack falls back
+to the MTP with a line.
+
+**Sampling: the model card's defaults (adopted).**  The lane had pinned
+temperature 0, but the serve layer still merged the qwen4exp card's
+`presence_penalty 1.5` (and top_p/top_k) for a non-thinking request, so
+"greedy" was the argmax of penalized logits, not the model's.  Removed the pin:
+requests that name no sampling get the card's values (non-thinking
+0.7 / 0.8 / 20 / 1.5, thinking 1.0 / 0.95 / 20).  One engine start (fit-pinned,
+DFlash2), four request-level arms, eval80: greedy+penalty (the old default)
+58/80, pure greedy (presence 0) 60/80, card 59/80, card without penalty 63/80 -
+all inside the set's binomial noise (1 sigma about 5.4), the repetition probe
+flat.  The card preset is the upstream/owner choice; card-without-penalty's 63
+is one noise step and not the model card's recommendation.  Campaigns
+that need determinism send `temperature: 0` per request (`/data/ab25.py` now
+does).
+
+**Other levers screened.**  The Turing opt-ins outside `STRATA_SM75_PERF`:
+`STRATA_PF_FUSED_SM75=1` looked like +2.2% on the 4,252 cell in a first screen,
+but that arm was inert - the native pack takes the fused path only through
+`STRATA_PF_FUSED=1` (`requested()`), and the engine logged no fused-path line.
+With both flags set (2 runs an arm, alternating): read -2.5% / -0.9% / -0.3% at
+4,252 / 3,477 / 26,134, answers identical, and still no fused-path line, so
+neither flag is carried.  `STRATA_PA_V2T=1` and `STRATA_SELECT_SIMT=2` changed
+the answers and showed no consistent win in one run each, so they stay off.
+Not applicable on this card: the
+all-cards split engine (2+ cards), the parallel-request stack
+(`--batch`/`--parallel` >= 2; the lane serves one request), the 0.2.9 GDN
+tensor-core prompt kernels (`GDN_TC` is gated at compute capability 8+ in the
+engine; `GDN_CONVL2=2` is applied by the serve layer already), the 8 GB/128K
+ladder (22 GB card), and the Windows/AMD/Mac paths.  Already on: the Turing
+series, the residency router
+(1.2 here), BF16 tensor-core GEMMs, `--kv-grow`, `STRATA_KV_ROT`, the DAX
+window and the refill pin.
+
+**NVIDIA tables that never reach sm_75.**  `nv_defaults.cpp` applies its
+answer-preserving stacks only on sm_86 / sm_60 / sm_121; none loads here.
+Their generic code paths were screened under DFlash2 (one run an arm, base
+runs bracketing): `STRATA_SIDE_MIXER=2` (P1/P2 +1.4 / +1.3%, 26,134 -3.1%),
+`STRATA_HC_UPMIX=1` (+1.6 / +1.5 / -0.4%), `STRATA_GR_UP75=1
+STRATA_GU_SWIGLU=1` (+0.9 / -1.6 / -0.4%) and `STRATA_CPU_IQ_ALL_EXACT1=1
+STRATA_B6_MMVQ_ROWS=1` (-1.3 / +1.6 / -0.5%) all sit inside the base runs'
+spread (P1 484.7-498.8, P2 399.0-405.8) with the answers identical, while
+`STRATA_ADAPT_NOWAIT=1 STRATA_ADAPT_LAG=2` changed the answers on all three
+cells - none is carried.  `STRATA_SPEC_COST=1` is MTP-only
+(`if (spec_cost && use_mtp)`) and inert with DFlash2.  Suffix drafting is
+already on: `suffix_draft` defaults to 3 (the DFlash2 runs log `suffix drafts`),
+but wide lookup windows are OFF: `default_lookup_max_t` returns 0 when dflash2
+is set (`include/strata/core/lookup_default.hpp:23-30`), the deployed start
+passes no `--lookup-max-t`, and the "16 measured flat" result is the MTP-era
+measurement.  An explicit `--lookup-max-t` is a new campaign arm.  The serve
+layer picks `--draft-conf 0.8` from its slot estimate for
+this card; upstream's own slot table puts ~7.9k slots nearer 0.5, so 0.5 and
+0.65 were tested (2 runs each, alternating): reads within +0.7 / +0.3 / +0.3%
+and -0.3 / -1.6 / -0.1% (P1 / P2 / 26,134), per-token decode mixed (P1
+slower at both, P2 faster), and both change the answers (98/95 tokens against
+105/80), so the server's 0.8 stays.
+
+Deployed as generation 100 (2026-11-04): the run config has no `sampling`
+block, `drafting = "dflash2"` and `user_args = [ "--kv-resident" "0" ]`;
+the start logs DFlash2 on the selected Q4_0-selector pack (no MTP layer),
+7,859 expert slots, `elastic K/V: 16384 of 262144`, and the DAX window at
+layers 0..5 / 5.52 GiB, with no `KV window` line from `fit_start` (its
+generic "short of GPU memory" note still prints).  Two identical creative
+requests returned different text, confirming the card sampling.  Generation
+99 was the same stack with the then-assumed PF switch; 98 the fit pin alone.
 
 ### Other 0.2.7 findings
 

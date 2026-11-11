@@ -92,6 +92,20 @@ let
       fi
     '';
   };
+
+  # Wake the lab TV (`bravia-3`: Sony K-65S3, wired Ethernet, MAC
+  # 58:18:62:43:79:1b) on the apartment LAN. The set must have Sony Remote
+  # start enabled in network-standby mode; it answers a magic packet from
+  # deep standby in about two seconds. See ott-rs docs/tv-client.md.
+  wakeTv = pkgs.writeShellApplication {
+    name = "wake-tv";
+    runtimeInputs = [ pkgs.wol ];
+    text = ''
+      # wol 0.7 defaults to UDP port 40000; Wake-on-LAN standard is port 9.
+      wol -p 9 -h 192.168.1.255 58:18:62:43:79:1b
+      echo "sent Wake-on-LAN magic packet for 58:18:62:43:79:1b"
+    '';
+  };
 in
 {
   home-manager.backupFileExtension = "hm-backup";
@@ -546,6 +560,7 @@ in
     pkgs.iperf3
     pkgs.python3Packages.huggingface-hub
     pkgs.usbutils
+    wakeTv
   ];
 
   age.secrets = {

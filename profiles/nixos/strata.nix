@@ -86,9 +86,19 @@ let
       defaultContext = 131072;
     };
     iq3-s = {
-      pack = "iq3_s";
-      models = "IQ3_S";
-      shard1 = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf";
+      # Round 9 (2026-11-05): the pack is now Unsloth Dynamic V3.1 UD-IQ2_XS
+      # (3 shards: metadata, model, PLE) instead of Qwen's GSQ-RCO IQ3_S.  The
+      # lane/profile/model-name stay the same so clients and the expert profile
+      # are unchanged.  Measured on tiberius: prefill read -14.8 % P1 (4.2k) and
+      # -11.5 % P8K (8.3k), -16.3 % L-live read, decode +4.1 %, P27 neutral;
+      # eval320 quality within noise of the old pack (-0.2 pp mean, 3 passes);
+      # the smaller 39.38 GiB expert pack removes the DAX register fallbacks.
+      pack = "ud-iq2_xs";
+      models = "UD-IQ2_XS";
+      shard1 = "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf";
+      midShards = [ "Qwen3.8-Flash-Next-UD-IQ2_XS-00002-of-00003.gguf" ];
+      pleShard = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
+      pleFile = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
       profile = "expert-profile.bin";
       modelName = "qwen3.8-flash-next-iq3_s";
       defaultContext = 262144;
@@ -117,10 +127,14 @@ let
   # ...IQ1_M-00002-of-00002.gguf (shard 2 of 2)" (reproduced 2026-10-03).  Bumping
   # the split number in lane.shard1 reproduces the engine's derivation for every
   # lane; for iq3-s it yields exactly the name this used to hardcode.
-  pleShard = lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1;
+  pleShard = lane.pleShard or (lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1);
   # The file on disk is one shared table (the Coder release ships no shard 2 of
-  # its own), linked per lane under the derived name above.
-  pleFile = "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+  # its own), linked per lane under the derived name above.  A lane may name it
+  # explicitly (UD-IQ2_XS has its PLE in shard 3 of 3).
+  pleFile = lane.pleFile or "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf";
+  # Models split into 3+ shards have middle shards that must sit beside --native
+  # under their own split names as well; empty for the 2-shard lanes.
+  midShards = lane.midShards or [ ];
 
   strataJson = pkgs.writeText "strata-${cfg.model}.json" (
     builtins.toJSON {
@@ -148,6 +162,22 @@ let
         "${cfg.package}/share/strata/data/${lane.profile}"
         "--expert-cache"
         "auto"
+        # pmem park tier (validated 2026-11-05): when the RAM park pre-check
+        # refuses, the conversation is written as a v1 session file on the
+        # Optane and the next turn restores it with the streamed reader.
+        # Measured: 4.5 s / 3.6 GB capture per 250k park, 5.15 s restore
+        # (225,280-token stable checkpoint), answer shas identical; the RAM
+        # path is unchanged.  Costs: a blocking capture on the request thread
+        # and Optane write volume/thermal headroom - the telemetry module
+        # watches this lane; disable by dropping these four flags.
+        "--conversation-park-dir"
+        "${cfg.dataDir}/parks"
+        "--conversation-park-mib"
+        "6144"
+        "--conversation-park-slots"
+        "4"
+        "--conversation-park-min-free-mib"
+        "4096"
         "--prefill"
         # Upstream's prompt path streams, per chunk, the union of the experts that
         # chunk's tokens route to, and above ~2K tokens that union is nearly the
@@ -178,7 +208,16 @@ let
         # The boundary moves with the expert cache and the borrow accounting, so
         # re-measure it whenever the KV, context or engine changes - and read the
         # engine's own `prompt chunk X -> Y` line rather than assuming the value you
-        # asked for is the value in force.
+        # asked for is the value in force.  Re-screened 2026-11-04 on the current
+        # 0.1.56/DFlash2 stack (fresh engine per arm, P1/P2/P27): 16384 costs
+        # +2.9/+3.3/+10.3% read, 8192 costs +1.5/+4.9/+56.3%, and reserving the prompt
+        # buffers (--no-prefill-borrow) frees no intercept while collapsing the expert
+        # cache 7,859 -> 4,959 slots (-37%, P27 read +52%); 28160 with the borrow stays.
+        # A fresh-prompt sweep puts the fixed cost at ~5.1 s + 0.60 ms/token
+        # (1,672 tok/s), and STRATA_PREFILL_TIMING attributes 37% of a 4.2k prompt's
+        # GPU timeline to `wait copy` (the DAX pack stream), so the remaining win is
+        # rotation/copy overlap, not a chunk flag.  Evidence:
+        # docs/exec-plans/active/strata-tuning-next.md "Round 2 campaign results".
         "28160"
         "--spec"
         "4"
@@ -310,17 +349,52 @@ let
       # printer runs, so the flag is dead in this config; the per-request
       # figures come from serve's own stderr lines and STRATA_SPLIT_TIMING=1.
       ;
+      # 0.2.10's serve layer runs vram_fit.fit_start on every engine start; on
+      # CUDA its only knob is --kv-resident.  Its estimate does not model
+      # --kv-grow, so the first 0.1.56 start (2026-11-03) declared this card
+      # short and injected `--kv-resident 4096`: --kv-grow is off whenever a KV
+      # window is set, and the DAX window fell from 5.52 to 2.70 GiB.
+      # `--kv-resident 0` is the engine's unset value (kv_grow stays allowed),
+      # and as a user_arg it makes fit_start's kv_fixed skip the knob.
+      # Screened on the same stack 2026-11-04 and NOT carried: --spec 8 (-2.9% L-live
+      # decode: more tokens/verify-window but slower windows), --lookup-max-t 8 (a
+      # no-op - the verify window stays 8) and 12 (-1.4%), finer --draft-conf, and
+      # --draft-cap (the serve layer strips it; the cap follows --spec).  k8v4 on the
+      # 26k long-context cell was +2.6% decode (below the 3% gate), -10.7% on L-live,
+      # +10.5% P27 read, with answers drifting, so int8 stays.  Model-card sampling
+      # beat card0 (presence_penalty 0) 58.67 vs 58.00 over 3 eval80 passes; keep the
+      # card.  Evidence: docs/exec-plans/active/strata-tuning-next.md results section.
+      user_args = [
+        "--kv-resident"
+        "0"
+      ];
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
       model_name = lane.modelName;
-      # v0.1.45 changed the default sampling of a request that names none: a
-      # config without a "sampling" block now gets the model card's values
-      # (thinking 1.0/0.95, instruct 0.7/0.8) instead of greedy.  The lane's
-      # clients and every measured campaign here were greedy, so pin it
-      # explicitly; a client that sends sampling keys still overrides this.
-      sampling = {
-        temperature = 0;
-      };
+      # DFlash2 is the drafter on this card (measured 2026-11-04): engine 0.1.56
+      # runs it on sm_75, where upstream's table says "untested".  The pack was
+      # converted here from the pinned source (incoai/Qwen3.8-Flash-Next-DFlash2
+      # revision a22a1744; Q4_0 pack sha cda40d62..., selector pack
+      # 4a42b98...) and lives in ${cfg.dataDir}/dflash2 beside draft_vocab.bin,
+      # the English subset.  Against the MTP, 3+3 counterbalanced: prompts flat
+      # (-1.3% / -0.1% at 3.5K / 26K, +0.3% at 4.2K), decode +4.8% / +4.7% /
+      # +3.9%, expert cache 7,859 vs 7,762 slots, eval80 58/80 vs 59/80 (the
+      # set's noise).  DFlash2 serves one request at a time (no --batch, which
+      # this lane does not use); a missing pack falls back to the MTP with a
+      # line in the log.
+      drafting = "dflash2";
+      # The served default is the model card's sampling (owner decision,
+      # 2026-11-04): a request that names no sampling gets Qwen3.8's card
+      # values - non-thinking 0.7 / top_p 0.8 / top_k 20 / presence_penalty 1.5,
+      # thinking 1.0 / 0.95 / 20 - as upstream's serve layer implements them
+      # (`MODEL_CARD_SAMPLING`, and the family defaults to qwen4exp when the
+      # config names none).  The old pin here was temperature 0, which made the
+      # lane greedy; measured 2026-11-04 (eval80, one fit-pinned DFlash2 start,
+      # request sampling overrides): greedy+penalty 58/80, pure greedy 60, card
+      # 59, card without penalty 63 - all inside the set's binomial noise
+      # (1 sigma about 5.4), and the repetition probe showed no cost.  A client
+      # that sends sampling keys still wins; campaigns that need determinism
+      # send temperature 0 per request.
       log = "${cfg.stateDir}/strata-${cfg.model}.log";
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
@@ -363,6 +437,70 @@ let
         # added nothing on top of the series, and STRATA_ATTN_DAILY with
         # STRATA_ATTN_V3=0 was within noise, so the series stays one switch.
         STRATA_SM75_PERF = "1";
+        # tiberius: the AVX-512 expert tier on a VNNI CPU without VBMI (Cascade Lake).
+        # Through v0.2.11 this package carried the gate split itself
+        # (avx512-bw-tier.patch's cpu_avx512_vnni_ok()); 0.2.12 upstreamed it (PR 5120:
+        # cpu_vbmi_ok / cpu_vnni_ok / q2_rows_512_ok and the VBMI-free q2 unpack) but makes
+        # the tier OPT-IN on such a CPU, because its 512-bit rows round differently from the
+        # AVX-2 rows the same CPU ran before (expert_layout.cpp: cpu_vnni_ok() is false below
+        # VBMI unless STRATA_VNNI_TIER=1; every CPU that has VBMI answers as before).  This
+        # box has run that tier by default through the local patch - the ab18 campaign
+        # measured it ~5% cheaper CPU expert pool+plan per decode window, numerically sound
+        # but NOT bit-identical to the AVX-2 tier on the long cells (/data/ab18*,
+        # docs/exec-plans/active/tiberius-kernel-tuning.md) - so =1 keeps the selection it
+        # has had.  What it enables here: the 512-bit Q2_0 rows, the 512-bit activation
+        # quantizer and the iq_avx512 512-bit i-quant rows (the kernels the patch selected
+        # through 0.2.11), plus 0.2.12's q50_512 Q5_0 down rows (self-checked bit-exact
+        # against this build's ggml dot on first use; the UD-IQ2_XS pack's expert layer 4 is
+        # its one Q5_0 down; the generation-112 gate saw its first-use bit check pass
+        # silently and bit-identical answers to 0.1.57) and iq4xs512 (IQ4_XS only - the
+        # pack's 48 layers carry gu types 16/22 and no type 23, so it selects nothing
+        # here), while iq512_fused_gu_rows stays off (STRATA_IQ512_FUSED_MAX=0).  The
+        # compile-time half - no VBMI instruction in expert.cpp's object - stays
+        # avx512-bw-tier.patch's business; this variable only selects the tier at run time,
+        # and it is also what default.nix's postPatch checks for (STRATA_VNNI_TIER in
+        # expert_layout.cpp), so a bump that drops the knob fails the build instead of
+        # silently turning the tier off here.
+        STRATA_VNNI_TIER = "1";
+        # 0.2.13 moved the two launcher-env stacks into the engine
+        # (src/core/arch_defaults.cpp: apply_parallel_defaults_cuda and
+        # apply_gdn_defaults_cuda).  0.1.58's serve/server.py set the GDN pair as
+        # GDN_STACK_CUDA for this exact config (Linux CUDA, no "arch" key -> qwen4exp,
+        # backend != hip), so =1/=2 are the values this lane has been running and
+        # pinning them keeps them if a later release flips a default.  On this card
+        # STRATA_GDN_TC=1 is arch-gated off (tensor-core scan needs sm_80+; the gate
+        # falls back to the old kernels), so the one that selects here is
+        # STRATA_GDN_CONVL2=2 (conv + SiLU + q/k L2 norm in one pass; upstream notes it
+        # is not bitwise on CUDA - the numbers were measured with it on, which is why
+        # its 0.1.58 provenance above matters).  The parallel stack needs
+        # o.batch >= 2 and this lane runs one slot: it selects nothing, matching the
+        # 0.1.58 serve (parallel_slots() = 0).
+        STRATA_GDN_TC = "1";
+        STRATA_GDN_CONVL2 = "2";
+        # 0.2.13 turns STRATA_HC_Q8 on by itself on Linux CUDA when the native dense
+        # GGUF carries the hyper-connection projections as Q8_0 (Unsloth UD-* files;
+        # generate.cpp -> NativeDense::gguf_carries_q8_hc(), tensor type 8).  The
+        # deployed UD-IQ2_XS dense file does carry them that way (output_hc_* and
+        # blk.*.hc_{attn,ffn}_{down,up}), so 0.1.59 would move this lane from the
+        # dequantized-BF16 read 0.1.58 used to the file's own Q8_0 bytes.  Pinned =1
+        # so a later release cannot flip it back; the gen-113 gate measured it (each
+        # arm from its own deployed config, plus a diagnostic =0 arm): answer-changing
+        # (all four speed cells' greedy answers differ) but speed-neutral (totals 67.3
+        # vs 67.4 tok/s decode, 2188 vs 2189 tok/s prefill, P1/P2 walls within the
+        # box's spread) and quality-neutral (eval320 189/320 = 59.1 % against the
+        # gen-112 baseline 187/320 = 58.4 %, McNemar p = 0.754), while it frees
+        # 0.39 GiB of VRAM (expert cache 9,140 slots against 8,898, +2.7 %).  The =0
+        # arm reproduced 0.1.58's answers bit-for-bit on all four speed cells.
+        STRATA_HC_Q8 = "1";
+        # STRATA_PF_FUSED_SM75 (the fused int8 prompt experts on Turing) is not
+        # carried: without STRATA_PF_FUSED it is inert on this native pack
+        # (requested() needs =1; the engine printed no fused-path line in the
+        # first screen), and with both set (2 runs an arm, 2026-11-04, DFlash2
+        # on) prompt read was -2.5% / -0.9% / -0.3% at 4,252 / 3,477 / 26,134
+        # with the answers identical and still no fused-path line.  The other
+        # opt-ins outside the series (STRATA_PA_V2T, STRATA_SELECT_SIMT) changed
+        # the answers and showed no consistent win in the screen, so they stay
+        # off too.
         # The 1 GiB resident host tier (--resident-budget-gib, STRATA_RESIDENT_PIN
         # and STRATA_RESIDENT_HEADROOM_GIB with it) is gone with hostTierGib = 0:
         # it is mutually exclusive with --kv-grow, and the elastic K/V above buys
@@ -385,6 +523,13 @@ let
         # tok/s, and 26,919 ms on the deployed 0.1.38 stack) with the page cache -
         # the file tier's reads and the DAX window's registered pages want the file
         # cache, which is what 0.1.38's default was.  Upstream's force arm.
+        # MEASURED INERT ON THIS LANE (2026-11-09): generate.cpp applies the
+        # file-tier buffering decision only when --resident-budget-gib is set
+        # (`if (o.resident_budget > 0)`; without it the decision is not called at
+        # all), and hostTierGib = 0 passes --mmap-experts - so deleting this pin
+        # changes nothing (option screen: P1 fresh read 7.15 s against 7.12-7.24 s,
+        # P2 21.61 s against 21.58/21.66; /data/bump/measure/).  It stays for the
+        # hostTierGib > 0 option, where it was load-bearing at 0.1.38-0.1.40.
         STRATA_UNBUFFERED_LOAD = "0";
         # tiberius: a small pinned staging ring (4) still wins, but by ~1% at
         # v0.1.40.2 rather than the 16% of the 2026-09-30 measurement: the default
@@ -392,6 +537,11 @@ let
         # measured 26564 ms (1038.4 tok/s) against 26282 ms (1049.5) with 4
         # (2026-10-08, 2 runs/arm).  Kept at 4.
         STRATA_STAGER_RING = "4";
+        # STRATA_PREFILL_ROUTED_STREAM was screened 2026-11-04 and is NOT carried: it is
+        # active on this build (its own log line) but costs +39..+88% prompt read on
+        # >=1k-token chunks and +38% at 26,134 (both depths), i.e. it serialises the
+        # copies the ordinary DAX walk overlaps.  Evidence: strata-tuning-next.md,
+        # "Round 2 campaign results" (block A).
         # tiberius: the routed-only staging override is RETIRED as of the v0.1.40.2
         # bump.  It pinned the streamed ring to 8 slots (STAGE) for every chunk
         # size, which won 19% fewer streamed bytes at v0.1.38 (2026-09-30: 2409 tok
@@ -645,15 +795,15 @@ in
       ];
       default = "iq3-s";
       description = ''
-        Which lane to serve.  `iq3-s` is the quality lane and the default: the
-        original IQ3_S pack (24,576 experts, "matches the full model") and the
-        one the box serves.  `coder` is the low-footprint alternative (IQ1_M,
-        half the experts, 23.4 GiB pack); measured 2026-10-03 at 131072 context
-        it does 1.73x / 1.12x the prefill and 1.66x / 1.63x the decode of iq3-s
-        (790.7 / 1129.9 tok/s prefill, 39.6 / 34.3 tok/s decode at 4344 / 27575
-        tokens at 94.1 / 91.3% hit), at the cost of the documented quality trade
-        (91.3% of the full model's SWE-bench Verified, weaker outside code
-        including CJK).  Not taken here on purpose.
+        Which lane to serve.  `iq3-s` is the only provisioned lane and the
+        default: since round 9 (2026-11-05) it serves the Unsloth Dynamic V3.1
+        UD-IQ2_XS pack (IQ2_S experts, 39.38 GiB experts.bin, 8,898 cache
+        slots) instead of Qwen's GSQ-RCO IQ3_S pack - measured eval320 quality
+        parity with the old pack and prefill read -14.8 % P1 / -11.5 % P8K /
+        -16.3 % L-live, decode +4.1 %.  `coder` is the old low-footprint IQ1_M
+        alternative; it is NOT provisioned on this box (its pack, model shards
+        and shared PLE were removed by that switch), and selecting it trips an
+        assertion with the restore procedure.
       '';
     };
 
@@ -667,13 +817,14 @@ in
       type = lib.types.str;
       default = "/data/strata-models";
       description = ''
-        Root of the raw shard directories.  Each lane's directory holds shard 1
-        ONLY, under its own `-00001-of-00002.gguf` name; the service symlinks it
-        (and the shared PLE shard) into stateDir/native/<lane>/ on every start,
-        because upstream's gguf_split_paths() makes a missing sibling shard fatal
-        and refuses a shard file opened as a whole model.  Shard 2 is fed in
-        through --ple-gguf from that same directory, so the engine's shard list
-        names it exactly once.
+        Root of the raw shard directories.  Each lane's directory holds its model
+        shards under their real split names; the service symlinks shard 1, the
+        lane's middle shards (lane.midShards) and the shared PLE shard into
+        stateDir/native/<lane>/ on every start, because upstream's
+        gguf_split_paths() makes a missing sibling shard fatal and refuses a
+        shard file opened as a whole model.  The PLE shard is fed in through
+        --ple-gguf from that same directory, so the engine's shard list names it
+        exactly once.
       '';
     };
 
@@ -784,6 +935,24 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.model != "coder";
+        message = ''
+          The coder lane is not provisioned on tiberius.  Round 9 (2026-11-05)
+          switched the served pack to Unsloth UD-IQ2_XS and removed the coder
+          lane's pack (coder-iq1_m), its model shards (/data/strata-models/
+          coder-IQ1_M) and the GSQ-RCO IQ3_S shard-2 PLE it shared.  Keep
+          services.tiberius-strata.model = "iq3-s".  To restore the coder lane:
+          download ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF IQ1_M
+          shards 1-2 and ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF IQ3_S
+          shard 2 (the PLE), rebuild its pack with tools/iq_pack.py --experts-bin
+          --compat-bf16, then restore lanes.coder.pleFile/shard fields before
+          selecting it.
+        '';
+      }
+    ];
+
     environment.systemPackages = [
       cfg.package
       pkgs.libndctl
@@ -909,6 +1078,11 @@ in
             # point inside it.  ln -sfn is idempotent and replaces a stale link.
             "${pkgs.coreutils}/bin/mkdir -p ${nativeDir}"
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${lane.shard1} ${nativeDir}/${lane.shard1}"
+          ]
+          ++ map (
+            s: "${pkgs.coreutils}/bin/ln -sfn ${cfg.modelsRoot}/${lane.models}/${s} ${nativeDir}/${s}"
+          ) midShards
+          ++ [
             "${pkgs.coreutils}/bin/ln -sfn ${cfg.dataDir}/ple/${pleFile} ${nativeDir}/${pleShard}"
             # Disk sessions (POST /slots/0?action=save|restore).  A SAVE streams
             # the K/V straight from the pools into the file ("without a full host
@@ -920,6 +1094,15 @@ in
             # below) - and, unlike a park, it survives a background request and a
             # restart.
             "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}/sessions"
+            # pmem park tier (round 7/8, validated 2026-11-05): a refused RAM
+            # park is written as a v1 session file under this directory and
+            # restored streamed on a later turn.  Boot re-admission of *.park
+            # files is not implemented, so pre-clean anything an unclean
+            # shutdown left behind; the engine recreates the tier's metadata
+            # at start.  6 GiB / 4 slots keeps one long (~3.6 GB) park resident
+            # plus short ones; the 4096 MiB reserve keeps session/SAVE space.
+            "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}/parks"
+            "${pkgs.findutils}/bin/find ${cfg.dataDir}/parks -maxdepth 1 -name '*.park' -delete"
           ];
           ExecStart = lib.escapeShellArgs [
             "${python}/bin/python3"
