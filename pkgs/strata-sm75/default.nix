@@ -23,77 +23,68 @@
 let
   c = cudaPackages;
 
-  # d2f0964: v0.2.13 (2026-11-09), the current release.  The engine inside it is
-  # 0.1.59.  Since the last pin (146df3c4 = v0.2.12 / engine 0.1.58) the release is
-  # mostly app/Control and Qwen4-groundwork work; the engine-side changes this lane
-  # can see are:
-  #   * the build: root CMakeLists.txt split into cmake/backends/*.cmake (the per-TU
-  #     kernel flag lists moved verbatim), the ggml sources the engine builds
-  #     vendored in third_party/strata-ggml (llama.cpp 3cf03257 - the same pin, so
-  #     the derivation fetches no llama.cpp), and the model shape fixed at configure
-  #     time (-DSTRATA_GEOMETRY, default flash_next - the shape this lane serves;
-  #     upstream reports the default Flash-Next build unchanged: CUDA SASS 3573/3573,
-  #     no kernel changes).
-  #   * STRATA_HC_Q8: on Linux CUDA a GGUF that carries the hyper-connection
-  #     projections as Q8_0 (Unsloth's UD-* files) now reads them as Q8_0 by default
-  #     (was setup.py's unsloth_default_env).  The deployed UD-IQ2_XS dense file does
-  #     carry them that way (output_hc_* and blk.*.hc_{attn,ffn}_{down,up} are type 8
-  #     in its GGUF header, checked on the box 2026-11-09), so this lane - which never
-  #     ran the setup env - moves from the dequantized BF16 read to the Q8_0 bytes:
-  #     an answer-rounding change and less VRAM.  STRATA_HC_Q8=0 is upstream's
-  #     escape; the generation-113 gate measured the move speed- and quality-neutral
-  #     (docs/VALIDATION.md) and the module pins STRATA_HC_Q8=1 explicitly so a later
-  #     release cannot flip it back.
-  #   * the launcher-env stacks moved engine-side: the exact parallel-request stack
-  #     (only at 2+ batch slots; this lane runs one) and the GDN stack
-  #     (STRATA_GDN_TC=1 / STRATA_GDN_CONVL2=2 on Linux CUDA) - the GDN values are the
-  #     ones 0.1.58's serve/server.py already set for this config (no "arch" key), so
-  #     that half is unchanged.
-  #   * #5327 (PR #5531): on Linux an expert-arena shortfall that free pages plus the
-  #     droppable file cache (or the reserved hugetlb pool) can serve now loads
-  #     through the file cache instead of falling back to --mmap.  That is
-  #     ArenaExpertSource's open only; this lane runs --mmap-experts (hostTierGib = 0)
-  #     and uses FileExpertSource, so it is INERT here.  STRATA_ARENA_FILE_CACHE=0
-  #     restores the 0.1.56 refusal.
-  #   * serve layer: the tool-call parser is picked from the chat template
-  #     (serve/toolformat.py), the tokenizer refuses an UnknownPreTokenizer, and the
-  #     launcher-env stacks above were removed from serve/server.py.  The WSTAT
-  #     readers are untouched: 0.2.13 still has exactly four `_parse_done` sites and
-  #     all four parse WSTAT before DONE - no fifth finisher.  The agent lane's
-  #     answers can move with the parser.
-  #   * DFlash2: this release's per-card defaults (Strix Halo; Blackwell cc 12.0 with
-  #     >= 48 GB: window 8, conf 0.55 for IQ3_S) are Auto-only, and this lane names
-  #     the drafter ("drafting": "dflash2") on a Turing card, so nothing is re-chosen
-  #     and the stock/converted pack stays.  The tuned pack still needs >= 12,000
-  #     engine slots (drafting.py CONF_STEPS); this card's cache holds ~6.3-8.9k.
-  #   * removed opt-ins: STRATA_DF2_GATE / STRATA_DF2_ROW_MS / STRATA_MMVQ_PF /
-  #     STRATA_MMVQ_SG / STRATA_GR_Q32_PL / STRATA_METAL_* - none is set by this
-  #     package or the module (0.2.12's DF2 screen had left the config unchanged).
-  #   * not this lane: the Strix Halo Windows UMA reserve floor, Intel Arc's
-  #     fixed-order bf16 products (SYCL), the gfx1100/1201 hipBLASLt table rule, the
-  #     gfx1151 defaults and the Mac fp16 windows; `strata --geometry` is a query
-  #     only and prints flash_next here.
-  #   * the gates this package pins are unchanged in 0.2.13: the
+  # c7757280: v0.2.15 (2026-11-16), the current release.  The release ships
+  # engines 0.1.60 - the v0.2.14 files, carried by absolute url - while the
+  # v0.2.15 source tree declares 0.1.61 (upstream's post-release development
+  # bump); the engine delta between the two tags is 146 lines of serve layer,
+  # tests and an MSVC-only test stack option, so this build reports 0.1.61 with
+  # the 0.1.60 engine code plus #5979/#6055.  Since the last pin (d2f0964 = v0.2.13 / engine 0.1.59) the
+  # engine changes this lane can see are:
+  #   * the build: llama.cpp's MMQ prompt kernels are now OFF by default
+  #     (-DSTRATA_MMQ=ON is the old path).  The prompt path takes Strata's own
+  #     fused expert kernels where they cover a layer and the FP16 path
+  #     elsewhere; Turing (RTX 20) has its own fused i-quant prompt path
+  #     (f-sm75-iq-b19) and, on 8 GB cards, the layer-major walk (f-small-walk) -
+  #     this card is not one of those, so only the fused kernels select.
+  #   * STRATA_OWN_CPU_QUANT=ON: the CPU expert pool's dots, activation
+  #     quantizers and the --mtp-q4 requantizer come from the new Strata quant
+  #     layer (src/quant, no ggml-cpu in the pool) instead of ggml-cpu's type
+  #     traits.  Its x86 AVX-512 tier is compiled for F/DQ/BW/VL+VNNI and no
+  #     VBMI - this Cascade Lake part's exact ISA - and is selected behind
+  #     caps(), so the pool now has a 512-bit tier upstream ships rather than
+  #     only the one this package patches in.  The quant layer also changes the
+  #     pool's arithmetic (bit-exact against the GCC 13.3 AVX2 reference in
+  #     upstream's oracle tests, not necessarily against the ggml-cpu this
+  #     build compiles), so the gate, not this comment, decides whether it stays.
+  #   * conversation memory and parks: a segment pool for the K/V buffers of
+  #     parked conversations and a checkpoint pool, both on by default and
+  #     sized from the conversation cache (STRATA_PARK_SEGPOOL_MIB /
+  #     STRATA_CKPT_POOL_* are the escapes); #5697 hands an evicted park's
+  #     freed heap back (release_free_heap) so the physical-RAM gate sees it.
+  #     Upstream measured a 55K-token park at 283 ms with 1 GiB and 117 ms with
+  #     2 GiB.  tiberius.patch's pmem park-file tier still hooks the refusal
+  #     path (patch history below); reply_replaced joins the condition that
+  #     decides whether parking is worth it.
+  #   * prefill: fused experts (down-rotation, FP16-down and the P1A state per
+  #     host thread), the prompt's new K/V cells moved to the host copy by one
+  #     DMA per array, and - on two-socket Linux - the engine pinned to the
+  #     graphics card's NUMA node.  Page-cache drop and GPU pause-time helpers
+  #     are new; the KFD quiet switches are AMD-only.
+  #   * serve layer: upstream's stop bound (#4677) now runs on every backend,
+  #     so tiberius.patch's CUDA port is RETIRED - the patch keeps only the
+  #     WSTAT counters around upstream's call.  The 0.2.15 tree adds #5979 (a
+  #     declared boolean tool argument written True/False is the boolean) and
+  #     #6055 (a request arriving while the engine closes is refused, not cut
+  #     off); the shipped 0.1.60 engine files predate both.
+  #   * not this lane: the image/vision stack (strata-llama, the Qwen picture
+  #     reader; vendored but not built here), every AMD/HIP/SYCL/Metal change,
+  #     and the DSV41 engine, which left the root build - the standalone
+  #     dsv41-*-probe.nix files under this directory are stale against this pin
+  #     and are not referenced by the flake.
+  #   * the gates this package pins are unchanged in 0.2.15: the
   #     `o.pcie_frac_auto = ... && !pf_old` start-up gate (with
   #     STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the FP16 weight cache's
   #     batch-slots gate (o.batch >= 2), the --prefill bare-auto ceiling
   #     (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ, the Turing kernel
-  #     series (sm75_series.hpp) and vram_fit's kv_fixed hook.  The qsa_select sm_70
-  #     guard does not change an sm_75 result: that target is above the guard either
-  #     way.
-  # The AVX-512 expert tier this package patches is unchanged: upstream's gate split
-  # (cpu_vnni_ok() / q2_rows_512_ok(), OPT-IN below VBMI through STRATA_VNNI_TIER=1 -
-  # the module sets it) and avx512-bw-tier.patch's compile-time half (no VBMI in the
-  # expert/iq/nvfp4 TUs).  The gen-112 screen measured the tier, q50_512 and
-  # iq4xs512 as zero effect on the post-route-prior lane (the CPU pool sees ~0.8 % of
-  # the window's expert rows); the tier is kept for rounding continuity.
-  # The ggml sources the engine links are vendored in third_party/strata-ggml at
-  # llama.cpp 3cf03257f219afbe7334045ff7c6a06ac68c627d (UPSTREAM.md; the same
-  # pin as third_party/ggml/VERSION.txt), so 0.2.13 needs no llama.cpp fetch:
-  # cmake/strata_ggml.cmake resolves the vendored tree when STRATA_GGML_DIR is
-  # unset.  That is the path the release engines are built from; the override
-  # (with its configure-time TQ overlay) is only kept upstream for two releases.
-  revision = "d2f096475817d4666c364c820b0ca830f751cfc5";
+  #     series (sm75_series.hpp), the AVX-512 tier's STRATA_VNNI_TIER opt-in
+  #     and vram_fit's kv_fixed hook - all asserted in postPatch below.
+  # The ggml sources the engine links stay vendored in third_party/strata-ggml
+  # at llama.cpp 3cf03257f219afbe7334045ff7c6a06ac68c627d (UPSTREAM.md; the same
+  # pin as third_party/ggml/VERSION.txt), so the derivation fetches no
+  # llama.cpp: cmake/strata_ggml.cmake resolves the vendored tree when
+  # STRATA_GGML_DIR is unset.  0.2.14/0.2.15 add third_party/strata-llama for
+  # the picture reader, which this package does not build.
+  revision = "c77572806996349b49995e4f98d41b5294d36a21";
 
   # nixpkgs splits the CUDA toolkit into many outputs and CMake's
   # find_package(CUDAToolkit) wants one root with nvcc, the CRT headers and the
@@ -119,7 +110,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.59";
+  version = "0.1.61";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -157,7 +148,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-ygLtDYyrwfRKez46xKnPkO7BtY0Q4uMwxlvh3JyUHbE=";
+    hash = "sha256-ehbQHpljUeclywp0ubGcrGG+xQ35SppRoosVWZLJiDY=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -238,6 +229,20 @@ stdenv.mkDerivation {
   # fetch) and to a configure-time compiled geometry (STRATA_GEOMETRY, default
   # flash_next - the release's own check reports the default Flash-Next build
   # unchanged), both asserted in postPatch below.
+  # The v0.2.15 bump (c7757280) rebased all three patches in one pass.  tiberius.patch
+  # needed eight resolutions: one in conversation_cache.hpp (evictable_bytes() beside
+  # upstream's drop_oldest()/release_free_heap() rewrite for #5697 - both kept) and
+  # seven in generate.cpp: the include comment, the park-pool block (upstream's segment
+  # and checkpoint pools kept, this patch's ConversationParkFiles declaration appended
+  # after them), the physical-RAM refusal comment (merged), the parking condition
+  # (upstream's reply_replaced kept beside this patch's file_restore), and the
+  # stop-bound block - upstream 0.1.60 runs serve_stop_bound on every backend, so this
+  # patch's CUDA port and its private bool are RETIRED; only the WSTAT
+  # sb_windows/sb_rows counters around upstream's serve_hold_remaining() calls remain.
+  # no-web-ui.patch applied cleanly.  avx512-bw-tier.patch applied cleanly to
+  # src/kernels/cpu/expert.cpp and cmake/backends/cpu.cmake; its sycl/CMakeLists.txt
+  # hunks were retargeted by hand (0.1.60 moved the two flag lists), and the patch
+  # still keeps -mavx512vbmi on tq_avx512.cpp in both builds.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
@@ -324,7 +329,8 @@ stdenv.mkDerivation {
   #     the deepest chain checkpoint >=1024 tokens below the live state, keeps the whole
   #     chain as metadata, and prefers a file candidate over a full reread) and enabled
   #     the tier in generation 107 (system 3i99wsnk..., engine gci3izr...; 6 GiB / 4 slots
-  #     / 4096 MiB reserve + stale-*.park cleanup).  Round 8b added the CUDA #4677 stop bound and
+  #     / 4096 MiB reserve + stale-*.park cleanup).  Round 8b added the CUDA #4677 stop bound (upstream's own since
+  #     0.1.60) and
   #     the per-request WSTAT telemetry counters (nine strata:* families + verify-window histogram +
   #     prefill phases on /metrics/prometheus and JSON /metrics; answers unchanged, counters
   #     reconcile with the engine log) and was deployed as generation 108 (system 7nac9cgx...,
@@ -350,12 +356,15 @@ stdenv.mkDerivation {
   #     prompt from token 0 now takes a file candidate; STRATA_PARK_DEBUG=1 logs, per request, the candidates vs
   #     resume/slot/parked and, at capture, the chain's token lengths and the chosen one.  Metadata only: session
   #     format v1 untouched.
-  #   * round 8b (added 2026-11-05): (a) upstream #4677's stop bound is ported to CUDA - a verify window that would
+  #   * round 8b (added 2026-11-05): (a) upstream #4677's stop bound was ported to CUDA - a verify window that would
   #     commit past an EOS inside it commits to the stop token instead (same serve_stop_bound as HIP, unconditional;
-  #     STRATA_SERVE_STOP_BOUND=0 still turns it off), and (b) a per-request `WSTAT` stdout line carries the counters
+  #     STRATA_SERVE_STOP_BOUND=0 still turns it off).  RETIRED at the v0.2.15 rebase: upstream 0.1.60 runs the
+  #     stop bound on every backend itself, so the port is gone and the call sites use upstream's
+  #     serve_hold_remaining() form; and (b) a per-request `WSTAT` stdout line carries the counters
   #     serve/server.py aggregates on /metrics/prometheus: DAX rotations/request, the prompt path's borrowed bytes,
-  #     verify windows/rows/accepted, the CUDA stop-bound clips, the prompt read seconds, windows by size and (with
-  #     STRATA_PREFILL_TIMING=1) the prefill phase timeline.  Counters only: no answer or token change.
+  #     verify windows/rows/accepted, the CUDA stop-bound clips (still counted here, around upstream's call), the
+  #     prompt read seconds, windows by size and (with STRATA_PREFILL_TIMING=1) the prefill phase timeline.
+  #     Counters only: no answer or token change.
   # The dense-GEMM-on-FP16-tensor-cores change that used to live here was retired at
   # an earlier bump: upstream 0.1.39+ has the same path natively (bf16_path() in
   # gemm.cu, #540/#655) and the module now selects it with upstream's STRATA_BF16_TC=1.
@@ -590,7 +599,8 @@ stdenv.mkDerivation {
       echo "tiberius.patch lost the pmem park saved-checkpoint matching" >&2
       exit 1
     }
-    # round 8b: the CUDA stop_bound port and its telemetry, and the server-side WSTAT counters.
+    # round 8b: the stop-bound telemetry (upstream's call since 0.1.60; the CUDA port is
+    # retired) and the server-side WSTAT counters.
     grep -q 'STRATA_SERVE_STOP_BOUND' src/program/generate.cpp || {
       echo "tiberius.patch lost the stop bound (STRATA_SERVE_STOP_BOUND)" >&2
       exit 1
@@ -732,6 +742,14 @@ stdenv.mkDerivation {
     "-DSTRATA_BUILD_TESTS=OFF"
     "-DCMAKE_CUDA_ARCHITECTURES=75"
     "-DCMAKE_CUDA_COMPILER=${cudaHome}/bin/nvcc"
+    # The two build-level choices the gen-114 gate measured, named here so a
+    # later upstream default flip cannot move this box silently: the MMQ prompt
+    # kernels stay out (the shipped 0.1.60 engine is built without them;
+    # -DSTRATA_MMQ=ON is the A/B path) and the CPU expert pool stays on the
+    # Strata quant layer (the AVX-512 F/DQ/BW/VL+VNNI tier whose arithmetic the
+    # gate compared).  Both are upstream defaults at this pin.
+    "-DSTRATA_MMQ=OFF"
+    "-DSTRATA_OWN_CPU_QUANT=ON"
   ];
 
   installPhase = ''
