@@ -68,9 +68,9 @@ let
   #     off); the shipped 0.1.60 engine files predate both.
   #   * not this lane: the image/vision stack (strata-llama, the Qwen picture
   #     reader; vendored but not built here), every AMD/HIP/SYCL/Metal change,
-  #     and the DSV41 engine, which left the root build - the standalone
-  #     dsv41-*-probe.nix files under this directory are stale against this pin
-  #     and are not referenced by the flake.
+  #     and the DSV41 engine, which left the root build - the stale
+  #     dsv41-*-probe.nix files and their patches were removed with this bump's
+  #     follow-up.
   #   * the gates this package pins are unchanged in 0.2.15: the
   #     `o.pcie_frac_auto = ... && !pf_old` start-up gate (with
   #     STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the FP16 weight cache's

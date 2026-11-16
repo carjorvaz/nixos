@@ -515,6 +515,17 @@ let
         # ~17 slots for the 2.4k interactive conversation, so this is cheap at the
         # size that matters here.
         STRATA_KV_GROW_HOLD = "1";
+        # 0.1.60's park pools: the segment pool is on by default upstream, sized
+        # min(2 GiB, a quarter of the conversation cache) = 512 MiB here, and its
+        # bytes count against the 2,048 MiB cache budget.  Measured on the deployed
+        # 0.1.61 engine (2026-11-16, /data/bump/window5b.log): the default kept
+        # 512 MiB resident with 454 MiB idle after the 4.3k park (57 MiB live), and
+        # parks took 90-147 ms (4.3k) / 328 ms (26k); with the pool off they took
+        # 104-164 ms / 360 ms.  The 32 ms on the large park is worth far less than
+        # 512 MiB of image budget on this 8 GB box (one more parked conversation),
+        # so the pool is off here.  Upstream's escape hatch; the checkpoint pool is
+        # left at its default.
+        STRATA_PARK_SEGPOOL_MIB = "0";
         # v0.1.40 changed the file tier's default: on Linux the reads go unbuffered
         # when the file cache cannot keep the returning experts (#1194), and this box
         # (7.4 GiB RAM, shared with whatever is parked) is decided that way.  Unbuffered
