@@ -706,8 +706,9 @@ Prefill gains per-thread fused state (down-rotation, FP16-down, P1A) and one DMA
 array; two-socket Linux pins the engine to the graphics card's NUMA node.  The stop bound
 (#4677) now runs on every backend upstream, so `tiberius.patch`'s CUDA port is **retired** -
 only its WSTAT counters around upstream's `serve_hold_remaining()` call remain.  The DSV41
-engine left the root build (`dsv41-*-probe.nix` is stale and unreferenced), and the
-image/vision stack is vendored (`third_party/strata-llama`) but not built here.
+engine left the root build (its stale probe files and patches were removed in the
+follow-up), and the image/vision stack is vendored (`third_party/strata-llama`) but not
+built here.
 
 Rebase: `tiberius.patch` needed **eight** resolutions - one in `conversation_cache.hpp`
 (`evictable_bytes()` beside upstream's `drop_oldest()`/`release_free_heap()` rewrite of #5697)
@@ -767,10 +768,28 @@ no other package moved.  Verified after the switch: 8080 and 8081 health 200, wa
 "ready.", 9,156 expert slots / 14.66 GiB, the park file tier on, 29 `strata:*` families with
 all nine WSTAT series raised by the probe requests (rotations 6, borrow 27.73 GB, verify
 windows 53 / rows 44 / accepted 37, stop bound 2/2, prefill 7.316 s, drafts 44/37), and no
-Xid.  Rollback: revert `pkgs/strata-sm75/*` to the commit before `6729ee8` and rebuild/switch;
+Xid.
+
+Follow-up screen (2026-11-16, isolated port-8099 window 15:14-15:27 UTC, arms on the deployed
+0.1.61 engine): the park segment pool at its default sat 512 MiB resident / 454 MiB idle after
+the 4.3k park (57 MiB live), and its bytes count against the 2,048 MiB conversation cache;
+parks measured 90-147 ms (4.3k) and 328 ms (26k).  With `STRATA_PARK_SEGPOOL_MIB=0` the same
+parks took 104-164 ms and 360 ms - 32 ms more on the 26k park, against 512 MiB returned to the
+image budget - so the pool is pinned **0** in the module.  The `--prefill` re-screen (28160 vs
+56320 vs 22528) was flat: P1 8.40-8.54 s and P2 20.71-21.15 s across every arm (the 56320 arm
+clamping to the same chunk), so 28160 stays.  The stale `dsv41-*-probe.nix` files and their
+patches were deleted (the DSV41 build left 0.1.60).  Deployed as generation 115 (2026-11-16
+15:28:24): system `/nix/store/v8l7igkphhcahf7dbjb78hyapn40k0hq-nixos-system-tiberius-26.05.20260927.cf5e765`;
+the diff to generation 114 is the engine's config JSON alone (-38.5 KiB), and the unit's config
+carries `STRATA_PARK_SEGPOOL_MIB=0`.  Health 200 on 8080/8081, warm completion, 9,156 slots,
+park tier on.
+
+Rollback: revert `pkgs/strata-sm75/*` to the commit before `6729ee8` (and
+`profiles/nixos/strata.nix` to before `1035a63` for the pool pin) and rebuild/switch;
 emergency = boot the generation-113 entry (still on the ESP and rooted).  Artifacts:
 `/data/bump/gen114/` (scripts), `/data/bump/{old4,new4}-results.json`, `eval-{old,new}4.json`,
-`summary4.json`, `eval-compare4.json`, `window4.log`, `prom-*.txt`, and the deployed-binary
+`summary4.json`, `eval-compare4.json`, `window4.log`, `prom-*.txt`, the follow-up screen
+(`window5b.log`, `{dep,seg0,pf56,pf22}5-results.json`, `screen5.json`), and the deployed-binary
 probe lines in `/persist/strata/strata-iq3-s.log`.
 
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by

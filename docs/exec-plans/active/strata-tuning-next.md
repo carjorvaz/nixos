@@ -919,10 +919,13 @@ c=4, McNemar p=1.000, RD +0.31 pp [-1.56, +2.19]) - no detectable quality change
 mostly fresh pages) - the only move against the bump, kept as upstream's default.  29 `strata:*`
 families, stop-bound and verify counters populated.
 
-Follow-ups: (1) decide whether to pin `STRATA_PARK_SEGPOOL_MIB` for the pmem-tier lane (the 26k
-park regression lives inside the default 512 MiB pool); (2) re-screen `--prefill 28160` on the
-MMQ-less prompt path, whose fused-kernel intercepts differ from the 0.1.40-era chunk; (3) the
-0.2.15 serve fixes (#5979) are in the source build, not in the shipped 0.1.60 engine files.
+Follow-ups: (1) **resolved 2026-11-16**: the park segment pool is pinned off
+(`STRATA_PARK_SEGPOOL_MIB=0`, generation 115) - the default's 512 MiB counted against the
+2,048 MiB image budget for 32 ms on the 26k park, and the 4.3k park was inside the spread;
+(2) **resolved**: the `--prefill` re-screen (28160 vs 56320 vs 22528) was flat (P1 8.40-8.54 s,
+P2 20.71-21.15 s), so 28160 stays; (3) the 0.2.15 serve fixes (#5979) are in the source build,
+not in the shipped 0.1.60 engine files.  The stale `dsv41-*-probe.nix` files and patches were
+removed (the DSV41 build left 0.1.60).
 
 ## Source-level patch roadmap
 
