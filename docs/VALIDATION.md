@@ -823,6 +823,19 @@ with the same conclusions to within 0.1-0.3%; the numbers above are the native
 run's.  Evidence: `/data/ab10*` + `/data/ab10n*` (driver `/data/ab10.py`,
 `/data/ab10-arms.sh`, per-run engine logs and `/metrics`).
 
+The pair was re-validated on 2026-11-16 against the agent-lane concern (a report of
+"faster but dumber" long tool-calling turns after an update).  Two counterbalanced
+port-8099 windows ran the voxel-pagoda tool trace and eval320 with the adaptive tier on:
+the thread's failure did not reproduce (8/8 trace turns valid, no truncations; the
+pagoda task is not a quality discriminator - 0 of 3 artifacts usable, three different
+failure modes), and greedy eval320 is **194/320 with the deployed pins against 193/320
+with both knobs off** (8 A-only / 7 B-only, 305/320 items agree, exact McNemar
+p = 1.0000, ~4x wall).  The 18.75 pp eval80 gap the campaign saw under `--adapt-swaps 0`
+is a feature-by-placement interaction, not a flag effect: pinning the tier freezes
+`ROUTE_PRIOR`'s premise.  The deployed pins stay, and `--adapt-swaps` must not be pinned
+in production.  The completed campaign plan is kept as a private note (not checked in,
+per `docs/PLANS.md`); artifacts `/data/qg/` on tiberius.
+
 v0.1.43's adaptive overlap (the tier's copies landing while the next verify
 window runs) was measured before adopting.  On Linux CUDA upstream turns it on
 by default, but it is skipped in the resident RAM mode this box runs unless
