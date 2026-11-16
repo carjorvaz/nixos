@@ -880,6 +880,50 @@ new default); 0.2.13 added no new runtime opt-ins for this backend (the only add
 `STRATA_GEOMETRY*`/`STRATA_BUILD_DSV41`), and retired the 0.2.12 switches the gen-112 screen had
 already rejected.
 
+### Round 16: engine pin bump to v0.2.15 (2026-11-16, generation 114)
+
+v0.2.15 (`c7757280`) was taken over the v0.2.13 pin (`d2f0964`).  The release ships engines
+**0.1.60** (the v0.2.14 files, carried by absolute url); the v0.2.15 tree declares **0.1.61**,
+and its engine delta over v0.2.14 is 146 lines of serve layer, tests and an MSVC-only test stack
+option, so this from-source build reports 0.1.61 with the 0.1.60 engine code plus #5979 (boolean
+tool arguments) and #6055 (drain refusal).  Upstream publishes no speed claim for 0.1.60 on this
+card.  **What selects for this lane:** llama.cpp's MMQ prompt kernels are off by default, and the
+prompt path runs Strata's fused kernels (47 of 48 layers and 1 int8 above 1,024-token chunks, the
+staged fused entry below); the CPU expert pool moves to the new `src/quant` layer whose AVX-512
+tier is F/DQ/BW/VL+VNNI and no VBMI (this Cascade Lake part); the park segment/checkpoint pools
+are on by default and sized from the 2,048 MiB cache (512 MiB segment pool); #5697 hands an
+evicted park's heap back and `reply_replaced` stops parking a replaced reply; prefill has
+per-thread fused state and one DMA per K/V array.  The DSV41 engine left the root build
+(`dsv41-*-probe.nix` is stale and unreferenced) and the image/vision stack is not built here.
+**What does not select:** the stop bound is upstream's on every backend since 0.1.60 (this
+patch's CUDA port retired), the parallel stack still needs 2+ slots, and the 8 GB layer-major
+walk does not apply to this card.  The package pins `-DSTRATA_MMQ=OFF` and
+`-DSTRATA_OWN_CPU_QUANT=ON` explicitly so a later default flip cannot move the lane; the
+module's runtime config is unchanged.
+
+Rebase: eight resolutions (one in `conversation_cache.hpp`: `evictable_bytes()` beside upstream's
+`drop_oldest()`/`release_free_heap()` #5697 rewrite; seven in `generate.cpp`: include comment,
+park block, refusal comment, parking condition, stop-bound block).  `no-web-ui.patch` clean;
+`avx512-bw-tier.patch` clean on `expert.cpp`/`cpu.cmake`, its sycl flag lists retargeted
+(`tq_avx512.cpp` keeps VBMI in both builds).  Applying the three patches in order reproduces the
+resolved tree exactly (verified by tree hash) and passes the full postPatch catalog; the WSTAT
+audit still finds four `_parse_done` sites, all parsing WSTAT before DONE.
+
+Gate (isolated port-8099 window 14:34:12-14:48:44 UTC = 14m32s production down, trap-restored and
+health-checked; both arms from the same deployed config, only the engine path swapped): up 42 s
+vs 45 s; 9,156 slots / 14.66 GiB vs 9,140 / 14.64 GiB; P1 4,252-token read 8.46 vs 8.55 s
+(-1.1 %), P2 26,134 21.13 vs 21.47 s (-1.6 %); request totals decode 68.5 vs 66.9 tok/s, prefill
+2,237.1 vs 2,187.7 tok/s.  Answers differ on all four cells; eval320 192/320 vs 193/320 (b=5,
+c=4, McNemar p=1.000, RD +0.31 pp [-1.56, +2.19]) - no detectable quality change.  Parks 4.3k
+143 vs 148 ms, 26k 431 vs 319 ms (the segment pool is 512 MiB of the cache, so a 26k park is
+mostly fresh pages) - the only move against the bump, kept as upstream's default.  29 `strata:*`
+families, stop-bound and verify counters populated.
+
+Follow-ups: (1) decide whether to pin `STRATA_PARK_SEGPOOL_MIB` for the pmem-tier lane (the 26k
+park regression lives inside the default 512 MiB pool); (2) re-screen `--prefill 28160` on the
+MMQ-less prompt path, whose fused-kernel intercepts differ from the 0.1.40-era chunk; (3) the
+0.2.15 serve fixes (#5979) are in the source build, not in the shipped 0.1.60 engine files.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.

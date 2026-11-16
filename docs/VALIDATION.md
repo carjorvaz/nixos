@@ -681,6 +681,98 @@ the three engine logs, `prom-*.txt`, `eval-new3.json`, `eval-compare3.json`, `su
 `bump-switch-gen113.log`, `paths.txt`, the source tree, gcroots); the gen-112 eval baseline is
 `/data/bump/gen112/eval-new2.json`.
 
+### Generation 114 (2026-11-16): engine pin v0.2.15 (engine 0.1.61)
+
+Generation 114 bumps the engine pin from v0.2.13 (`d2f0964`, engine 0.1.59) to v0.2.15
+(`c7757280`).  The release ships engines **0.1.60** - the v0.2.14 files, carried by absolute
+url - while the v0.2.15 source tree declares **0.1.61** (upstream's post-release development
+bump); the engine delta between the two tags is 146 lines of serve layer, tests and an
+MSVC-only test stack option, so this from-source build reports `strata 0.1.61` with the 0.1.60
+engine code plus #5979 (a declared boolean tool argument written True/False is the boolean)
+and #6055 (a request arriving while the engine closes is refused, not cut off).  Upstream
+publishes no speed claim for 0.1.60 on this card.
+
+What selects for this lane: llama.cpp's MMQ prompt kernels are **off by default**
+(`STRATA_MMQ=ON` is the old path), and the prompt path runs Strata's fused kernels - the new
+engine prints "47 of 48 layers on the fused kernels and 1 on the int8 kernels" for chunks of
+1,024 tokens or more, and the staged fused entry below that.  `STRATA_OWN_CPU_QUANT=ON` moves
+the CPU expert pool's dots, activation quantizers and the `--mtp-q4` requantizer to the new
+`src/quant` layer; its x86 AVX-512 tier is compiled for F/DQ/BW/VL+VNNI and no VBMI (this
+Cascade Lake part's exact ISA) and is selected behind `caps()`.  A segment pool for parked
+conversations' K/V and a checkpoint pool are on by default, sized from the conversation cache
+(`STRATA_PARK_SEGPOOL_MIB` / `STRATA_CKPT_POOL_*` are the escapes); #5697 hands an evicted
+park's freed heap back and `reply_replaced` stops parking a reply the request replaces.
+Prefill gains per-thread fused state (down-rotation, FP16-down, P1A) and one DMA per K/V
+array; two-socket Linux pins the engine to the graphics card's NUMA node.  The stop bound
+(#4677) now runs on every backend upstream, so `tiberius.patch`'s CUDA port is **retired** -
+only its WSTAT counters around upstream's `serve_hold_remaining()` call remain.  The DSV41
+engine left the root build (`dsv41-*-probe.nix` is stale and unreferenced), and the
+image/vision stack is vendored (`third_party/strata-llama`) but not built here.
+
+Rebase: `tiberius.patch` needed **eight** resolutions - one in `conversation_cache.hpp`
+(`evictable_bytes()` beside upstream's `drop_oldest()`/`release_free_heap()` rewrite of #5697)
+and seven in `generate.cpp`: the include comment, the park-pool block (upstream's pools kept,
+this patch's `ConversationParkFiles` declaration appended), the physical-RAM refusal comment
+(merged), the parking condition (upstream's `reply_replaced` kept beside this patch's
+`file_restore`), and the stop-bound block (upstream's call and `stop_skip` kept).  The rest of
+the patch applied directly.  `no-web-ui.patch` applied cleanly.  `avx512-bw-tier.patch`
+applied cleanly to `src/kernels/cpu/expert.cpp` and `cmake/backends/cpu.cmake`; its
+`sycl/CMakeLists.txt` hunks were retargeted by hand (0.1.60 moved the two flag lists) and
+`tq_avx512.cpp` keeps `-mavx512vbmi` in both builds.  The three patches re-apply in order to a
+pristine `c7757280` tree and reproduce the resolved tree exactly (tree hash verified), and the
+package's full postPatch catalog passes on the result.  The WSTAT audit holds:
+`serve/server.py` has exactly four `_parse_done` call sites and all four parse WSTAT before
+DONE.
+
+Build: fetch hash `sha256-ehbQHpljUeclywp0ubGcrGG+xQ35SppRoosVWZLJiDY=`; the tiberius-native
+build (`--cores 8 --max-jobs 2`) finished 367/367 actions (`buildPhase completed in 6 minutes
+13 seconds`) and reports `strata 0.1.61`, `strata --geometry` = `flash_next`.  The payload is
+complete (`serve/`, `tools/`, `strata_control/`, both expert profiles,
+`gguf_fingerprints.json`), the output is 59 MB and its closure has no llama.cpp path.  The
+SIGILL guard on the installed binary: `objdump -d` has 0 `vpmultishiftqb` / `vpermt2b` /
+`vdpbf16ps` instructions and 1,537 `vpsrlvw`/`vpermw` (the VBMI-free expert unpack), and the
+installed `serve/test_wstat.py` passes 4/4.  The package names the gate's two build-level
+choices explicitly (`-DSTRATA_MMQ=OFF`, `-DSTRATA_OWN_CPU_QUANT=ON`), so a later upstream
+default flip cannot move the lane.
+
+Gate (isolated port-8099 window 14:34:12-14:48:44 UTC = 14m32s production down, trap-restored
+and health-checked; both arms from the SAME deployed gen-113 config JSON, only the engine store
+path swapped): old = 0.1.59, new = 0.1.61.  Up in 42 s vs 45 s; 9,156 expert slots / 14.66 GiB
+of VRAM vs 9,140 / 14.64 GiB.  Speed is inside the box's spread and slightly the new arm's
+way: P1 4,252-token fresh read 8.46 vs 8.55 s (-1.1 %), P2 26,134-token read 21.13 vs 21.47 s
+(-1.6 %); request totals decode 68.5 vs 66.9 tok/s and prefill 2,237.1 vs 2,187.7.  The greedy
+answers differ on all four speed cells (a new engine, as expected); eval320 (frozen protocol)
+is **192/320 = 60.0 % new against 193/320 = 60.3 % old**, discordant b=5/c=4, exact McNemar
+**p = 1.000**, risk difference +0.31 pp [95 % CI -1.56, +2.19] - no detectable quality change.
+Parks: 4.3k tokens 143 vs 148 ms; 26k 431 vs 319 ms (the one move against the bump - the
+segment pool is 512 MiB of the 2,048 MiB cache, so a 26k park is mostly fresh pages; not
+gate-blocking, upstream's default is kept).  29 `strata:*` families, the stop-bound and
+verify counters populated; no MMQ line, the fused-kernel path instead.
+
+The gate arm's binary and the pinned derivation's binary are **not bit-identical** (same
+source, patches and flags; `.text`/`.rodata` byte-identical, the delta is confined to the CUDA
+fatbin container, +480 bytes); the only recorded build difference is parallelism (the gate
+build ran `-j24`, the pinned one `-j8`), so the build is not bit-reproducible.  The deployed
+binary was therefore behaviour-checked rather than trusted: with the gate harness's warm-up
+request first, as the harness always does, the deployed engine returns the gate's exact P1
+answer sha (`23009150...`, 87 tokens, prompt 4,252 tokens).  Without that warm-up the same
+binary answers deterministically from a cold first request (86 tokens) - a state effect, not a
+binary difference.
+
+Deployed as generation 114 (2026-11-16 14:58:02): engine
+`/nix/store/2nwms0p9ixlw64s8asjj41glnd6rj4a5-strata-engine-0.1.61`, system
+`/nix/store/xkj3b227iv9i31y8vzg48cmq7np7162k-nixos-system-tiberius-26.05.20260927.cf5e765`.
+The switch's closure diff is the engine alone (`strata-engine: 0.1.59 -> 0.1.61`, -47.7 MiB);
+no other package moved.  Verified after the switch: 8080 and 8081 health 200, warm completion
+"ready.", 9,156 expert slots / 14.66 GiB, the park file tier on, 29 `strata:*` families with
+all nine WSTAT series raised by the probe requests (rotations 6, borrow 27.73 GB, verify
+windows 53 / rows 44 / accepted 37, stop bound 2/2, prefill 7.316 s, drafts 44/37), and no
+Xid.  Rollback: revert `pkgs/strata-sm75/*` to the commit before `6729ee8` and rebuild/switch;
+emergency = boot the generation-113 entry (still on the ESP and rooted).  Artifacts:
+`/data/bump/gen114/` (scripts), `/data/bump/{old4,new4}-results.json`, `eval-{old,new}4.json`,
+`summary4.json`, `eval-compare4.json`, `window4.log`, `prom-*.txt`, and the deployed-binary
+probe lines in `/persist/strata/strata-iq3-s.log`.
+
 The module holds `STRATA_PREFILL_CPU_SHARE=0`. v0.1.41 turns the CPU share on by
 default for chunks below 1,024 tokens on one NVIDIA GPU, which changes the last
 bits of an answer (upstream's mean first-token KL against the share off is
