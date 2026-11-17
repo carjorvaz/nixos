@@ -59,8 +59,8 @@ in
   ++ users;
   "ovh.age".publicKeys = systems ++ users;
 
-  # cl-olx-scraper (webhook/URL pairs, see flake.nix for format)
-  "cl-olx-scraper-config.age".publicKeys = [
+  # olx-scraper (webhook/URL pairs, see flake.nix for format)
+  "olx-scraper-config.age".publicKeys = [
     piusSystem
   ]
   ++ users;

@@ -63,7 +63,7 @@ in
     "${self}/profiles/nixos/acme/dns-vaz-ovh.nix"
     "${self}/profiles/nixos/audiobookshelf.nix"
     "${self}/profiles/nixos/bazarr.nix"
-    "${self}/profiles/nixos/cl-olx-scraper.nix"
+    "${self}/profiles/nixos/olx-scraper.nix"
     "${self}/profiles/nixos/ott-rs.nix"
     "${self}/profiles/nixos/terreno.nix"
     "${self}/profiles/nixos/telegram-mirror.nix"

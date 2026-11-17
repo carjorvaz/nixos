@@ -53,8 +53,8 @@
 
     simple-nixos-mailserver.url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
 
-    cl-olx-scraper.url = "github:carjorvaz/cl-olx-scraper";
-    cl-olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
+    olx-scraper.url = "github:carjorvaz/olx-scraper-rs";
+    olx-scraper.inputs.nixpkgs.follows = "nixpkgs-unstable";
 
     cl-ultimate-tic-tac-toe.url = "github:carjorvaz/cl-ultimate-tic-tac-toe";
     cl-ultimate-tic-tac-toe.inputs.nixpkgs.follows = "nixpkgs-unstable";
@@ -299,7 +299,7 @@
           modules = baseModules ++ [
             inputs.ott-rs.nixosModules.ott-rs
             inputs.strava-trophy-rs.nixosModules.terreno
-            inputs.cl-olx-scraper.nixosModules.default
+            inputs.olx-scraper.nixosModules.default
             inputs.pdf-translator.nixosModules.pdf-translator
             inputs.telegram-mirror-rs.nixosModules.default
             ./hosts/pius.nix

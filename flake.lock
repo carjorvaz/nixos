@@ -70,26 +70,6 @@
         "type": "github"
       }
     },
-    "cl-olx-scraper": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs-unstable"
-        ]
-      },
-      "locked": {
-        "lastModified": 1765228310,
-        "narHash": "sha256-zy1BHuT7PPCUzA0vTHYWhIFzIvXkj8on25hb1NmiXus=",
-        "owner": "carjorvaz",
-        "repo": "cl-olx-scraper",
-        "rev": "05c6c25bef76529faf573cdecbbe9519d9ee056f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "carjorvaz",
-        "repo": "cl-olx-scraper",
-        "type": "github"
-      }
-    },
     "cl-ultimate-tic-tac-toe": {
       "inputs": {
         "nixpkgs": [
@@ -1096,6 +1076,26 @@
         "type": "github"
       }
     },
+    "olx-scraper": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-unstable"
+        ]
+      },
+      "locked": {
+        "lastModified": 1795079271,
+        "narHash": "sha256-X5AxSKkGKvA9A3pxy3ZMsEBD63yo38bxxJKPaRdFG54=",
+        "owner": "carjorvaz",
+        "repo": "olx-scraper-rs",
+        "rev": "c0d0db0d1fe5784163fd5007b820f0a1436d63f8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "carjorvaz",
+        "repo": "olx-scraper-rs",
+        "type": "github"
+      }
+    },
     "ott-rs": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -1215,7 +1215,6 @@
     "root": {
       "inputs": {
         "agenix": "agenix",
-        "cl-olx-scraper": "cl-olx-scraper",
         "cl-ultimate-tic-tac-toe": "cl-ultimate-tic-tac-toe",
         "disko": "disko",
         "firefox-addons": "firefox-addons",
@@ -1237,6 +1236,7 @@
         "nixpkgs-darwin": "nixpkgs-darwin",
         "nixpkgs-mobile": "nixpkgs-mobile",
         "nixpkgs-unstable": "nixpkgs-unstable",
+        "olx-scraper": "olx-scraper",
         "ott-rs": "ott-rs",
         "pdf-translator": "pdf-translator",
         "rustab": "rustab",
