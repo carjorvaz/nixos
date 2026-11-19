@@ -108,7 +108,10 @@ in
       randomizedDelaySec = "1m";
       unitStartTimeout = "20min";
       channels = watchlistChannels;
-      extraArgs = [ "--state-lock" healthStateLockPath ];
+      extraArgs = [
+        "--state-lock"
+        healthStateLockPath
+      ];
       candidatesPerChannel = 3;
       selectedFailureThreshold = 2;
       replacementAliveThreshold = 2;
