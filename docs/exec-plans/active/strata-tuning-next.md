@@ -27,7 +27,8 @@ is the IQ1_M half-expert (12,288 of 24,576), coding/tool/vision-pruned variant -
 prefill at 4,344, 1.66x the decode) but 91.3 % of the full model's SWE-bench and weaker outside code
 including CJK, i.e. exactly the trade the owner does not want; its pack/shards/shared PLE stay deleted
 and it is not to be rebuilt unless asked.  DAX rotation pipelining was measured and rejected, with its
-log-only timing seam kept.
+log-only timing seam kept; the 6,784 MiB larger-window arm (2026-11-18) is
+also rejected, numbers in `docs/VALIDATION.md`.
 Started 2026-11-04, after the generation-100 stack (engine 0.1.56 + DFlash2 + model-card sampling)
 was measured. Round 1 is
 `docs/exec-plans/active/strata-pack-restore.md`; this plan starts from the regime that record ends
@@ -204,6 +205,8 @@ doubles the driver work, and the overlap does not pay it back on short/mid promp
 only the log-only `STRATA_DAX_TIMING` instrumentation is retained** (patch sha `cd67094e...`,
 one marker grep; default-off, zero run-config change) as the seam for a future, different
 mechanism. Evidence: `/data/dax-ab/` (results, per-run logs with every timing line, DECISION.md).
+
+
 
 ### eval320 / McNemar / PPL harness - landed (C9 met)
 
@@ -622,7 +625,8 @@ pressure, more cache slots); arm A remains the quality-first option if a later e
 edge. Deployed as generation 109: `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PLE shard 3 under
 `/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the lane config gained
 `midShards`/`pleShard`/`pleFile` for 3-shard models (native dir links all shards) and the API
-`model_name` is unchanged for client compatibility. Verified: service healthy on both doors, expert
+`model_name` was kept unchanged for client compatibility at the switch; renamed 2026-11-19 to name
+the pack (`strata-model-name.md`). Verified: service healthy on both doors, expert
 cache 8,898 slots, warm request answers, telemetry active, no Xid, boot default re-set to 109.
 Follow-ups: DFlash2 drafter refit for the UD pack; rollback procedure (old source GGUFs/PLE are
 redownloadable, old pack rebuildable from them); coder lane needs its own PLE again. Full data:
@@ -635,7 +639,8 @@ redownloadable, old pack rebuildable from them); coder lane needs its own PLE ag
 `...-00002-of-00002.gguf` (28,800,138,432 B, LFS sha256 `316b46f3...`; this shard is both the old
 shared PLE and the coder lane's PLE). Rollback: download both, put shard 1 under
 `/data/strata-models/IQ3_S/` and the PLE under `/optane/strata-data/ple/` under the old name, revert
-`lanes.iq3-s` (pack `iq3_s`, models `IQ3_S`, old shard1, no `midShards`, old `pleShard`/`pleFile`),
+`lanes.general` (named `lanes.iq3-s` before 2026-11-19; pack `iq3_s`, models `IQ3_S`, old shard1, no
+`midShards`, old `pleShard`/`pleFile`),
 rebuild `pack` with `tools/iq_pack.py --gguf <shard1> --out /optane/strata-data/packs/iq3_s
 --experts-bin` (GSQ does not need `--compat-bf16`), and `nixos-rebuild switch`. The coder lane stays
 unavailable unless its own IQ1_M pack/model are restored as well; the module assertion documents

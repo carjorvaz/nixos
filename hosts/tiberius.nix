@@ -861,10 +861,11 @@ in
     ];
   };
 
-  # Strata (Qwen3.8-Flash-Next IQ3_S) is the boot engine on this host: the
-  # experts are mmapped from the Optane PMEM (126 GiB fsdax, dax=always) and the
-  # 262K-context int8-KV configuration measures 20-21 tok/s decode and 457-1034
-  # tok/s prefill (4.3K-27.5K tokens; the lane note below has the exact cells).
+  # Strata (Qwen3.8-Flash-Next, Unsloth UD-IQ2_XS) is the boot engine on this
+  # host: the experts are mmapped from the Optane PMEM (126 GiB fsdax,
+  # dax=always) and the 262K-context int8-KV configuration measures 20-21 tok/s
+  # decode and 457-1034 tok/s prefill (4.3K-27.5K tokens; the lane note below
+  # has the exact cells).
   # It was briefly parked on 2026-10-11 (the 27B vLLM lane took the boot slot)
   # until an on-box A/B of the exact hindsight refresh job put the two lanes in
   # the same envelope - 283 s here against the 27B's 67-617 s, the reflect loop
@@ -890,16 +891,17 @@ in
     tiberius-strata = {
       enable = true;
       package = pkgs.strata-sm75;
-      # IQ3_S is the served lane, by choice: it is the quality pack (24,576
-      # experts, "matches the full model") and this box exists to run it.  The
-      # Coder lane (model = "coder") stays one option away and is faster - measured
-      # 2026-10-03 at 131072 context: 1.73x/1.12x its prefill and 1.66x/1.63x its
-      # decode of IQ3_S (790.7/1129.9 tok/s prefill, 39.6/34.3 tok/s decode at
-      # 4344/27575 tokens, 94.1/91.3% hit vs 456.6/1004.5 and 23.9/21.0 at
-      # 82.6/81.8%) - but it halves the expert count and trades quality (91.3% of
-      # the full model's SWE-bench Verified, weaker outside code including CJK).
-      # Not taken on purpose.
-      model = "iq3-s";
+      # The `general` lane is served, by choice: since generation 109 it loads
+      # Unsloth UD-IQ2_XS, which measured eval320 quality parity with the
+      # GSQ-RCO IQ3_S pack while reading less per prompt (docs/VALIDATION.md).
+      # The Coder lane (model = "coder") stays one option away and is faster -
+      # measured 2026-10-03 against the IQ3_S pack this lane served then:
+      # 1.73x/1.12x its prefill and 1.66x/1.63x its decode (790.7/1129.9 tok/s
+      # prefill, 39.6/34.3 tok/s decode at 4344/27575 tokens, 94.1/91.3% hit vs
+      # 456.6/1004.5 and 23.9/21.0 at 82.6/81.8%) - but it halves the expert
+      # count and trades quality (91.3% of the full model's SWE-bench Verified,
+      # weaker outside code including CJK).  Not taken on purpose.
+      model = "general";
       # 262K is the model's trained window (qwen4exp.context_length) and no
       # --rope-scaling flag is passed, so the engine follows the model file's rope
       # keys; nothing above the trained window is valid.  Measured on this box

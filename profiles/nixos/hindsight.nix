@@ -14,6 +14,7 @@ let
   databaseUrl = "postgresql://${postgresqlUser}@/${postgresqlDatabase}?host=/run/postgresql";
   postgresqlUnit = "postgresql.service";
   postgresqlSetupUnit = "postgresql-setup.service";
+  strataModel = import ./strata-model.nix;
   vectorInitScript = pkgs.writeShellScript "hindsight-vector-init" ''
     set -euo pipefail
 
@@ -40,8 +41,9 @@ in
       inherit port;
       stateDir = "/var/lib/hindsight";
       inherit databaseUrl;
-      # The Strata engine (Qwen3.8-Flash-Next IQ3_S) on tiberius,
-      # OpenAI-compatible on the tailnet. The endpoint needs no key (the
+      # The Strata engine (Qwen3.8-Flash-Next, Unsloth UD-IQ2_XS) on tiberius,
+      # OpenAI-compatible on the tailnet.  The model name is written once in
+      # profiles/nixos/strata-model.nix.  The endpoint needs no key (the
       # module's placeholder is what it gets); thinking is disabled for every
       # call because the served template defaults to it; the engine generates
       # one request at a time, so client concurrency is pinned to 1 and the
@@ -54,7 +56,7 @@ in
       # The tailnet policy allows pius outbound TCP to tiberius:8080 (verified
       # 2026-10-09 from pius: TCP connect and /health both succeed).
       llmProvider = "openai";
-      llmModel = "qwen3.8-flash-next-iq3_s";
+      llmModel = strataModel.general;
       llmBaseUrl = "http://tiberius:8080/v1";
       embeddingsProvider = "onnx";
       tenantApiKeyFile = config.age.secrets.hindsightApiToken.path;
@@ -67,7 +69,7 @@ in
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
         HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai";
-        HINDSIGHT_API_REFLECT_LLM_MODEL = "qwen3.8-flash-next-iq3_s";
+        HINDSIGHT_API_REFLECT_LLM_MODEL = strataModel.general;
         HINDSIGHT_API_LLM_EXTRA_BODY = ''{"chat_template_kwargs":{"enable_thinking":false}}'';
         HINDSIGHT_API_LLM_TIMEOUT = "600";
         HINDSIGHT_API_LLM_MAX_CONCURRENT = "1";

@@ -8,6 +8,7 @@
 
 let
   hindsightModule = ../modules/nixos/hindsight.nix;
+  strataModel = import ../profiles/nixos/strata-model.nix;
   tenantExtension = "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension";
   expectedLocalDatabaseUrl = "postgresql://hindsight@127.0.0.1:5432/hindsight";
   expectedLocalLLMBaseUrl = "http://127.0.0.1:8080/v1";
@@ -381,7 +382,7 @@ let
   piusHindsightBindAddressLoopback = piusHindsightServiceConfig.bindAddress == "127.0.0.1";
   piusHindsightPortMatches = piusHindsightServiceConfig.port == 8889;
   piusHindsightLlmBaseUrlMatches = piusHindsightServiceConfig.llmBaseUrl == "http://tiberius:8080/v1";
-  piusHindsightLlmModelMatches = piusHindsightServiceConfig.llmModel == "qwen3.8-flash-next-iq3_s";
+  piusHindsightLlmModelMatches = piusHindsightServiceConfig.llmModel == strataModel.general;
   displayDeployValue = value: if value == null then "<null>" else toString value;
 
   # The eval check asserts TIKTOKEN_CACHE_DIR only when the package declares a
@@ -929,7 +930,7 @@ in
     fi
 
     if [ "${lib.boolToString piusHindsightLlmModelMatches}" != true ]; then
-      echo "Deployed pius services.hindsight.llmModel must be qwen3.8-flash-next-iq3_s; got:" ${lib.escapeShellArg piusHindsightServiceConfig.llmModel} >&2
+      echo "Deployed pius services.hindsight.llmModel must be ${strataModel.general}; got:" ${lib.escapeShellArg piusHindsightServiceConfig.llmModel} >&2
       exit 1
     fi
 

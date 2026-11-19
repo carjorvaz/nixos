@@ -19,6 +19,7 @@ let
   simplexChatDb = "${simplexDbPrefix}_chat.db";
   simplexFilesDir = "${simplexStateDir}/files";
   simplexTempDir = "${simplexStateDir}/tmp";
+  strataModel = import ./strata-model.nix;
   # Hermes 0.17.0-0.19.x rejected numeric contact IDs on SimpleX DM send
   # paths; we patched the adapter locally. Upstream ships the structured
   # `/_send … json` form itself now, so only the attachment-path fixes remain
@@ -324,11 +325,12 @@ in
     workingDirectory = hermesWorkspace;
     extraPackages = hermesBrowserPackages;
     settings = {
-      # The default model is Strata (Qwen3.8-Flash-Next IQ3_S) on tiberius,
-      # reached over the tailnet (MagicDNS) as an OpenAI-compatible endpoint.
+      # The default model is Strata (Qwen3.8-Flash-Next, Unsloth UD-IQ2_XS) on
+      # tiberius, reached over the tailnet (MagicDNS) as an OpenAI-compatible
+      # endpoint.  The name is written once in profiles/nixos/strata-model.nix.
       # A named provider entry owns the endpoint, so no model.base_url here.
       model = {
-        default = "qwen3.8-flash-next-iq3_s";
+        default = strataModel.general;
         provider = "tiberius-strata";
         # Displaces the stale codex URL the live config carried before the
         # switch; the named provider above owns the real endpoint.
@@ -337,7 +339,7 @@ in
       providers."tiberius-strata" = {
         api = "http://tiberius:8080/v1";
         transport = "chat_completions";
-        default_model = "qwen3.8-flash-next-iq3_s";
+        default_model = strataModel.general;
         # The server refuses, rather than truncates, a request whose prompt
         # plus max_tokens exceeds the window it advertises in /v1/models. Its
         # own fit_max_tokens escape hatch is a server-config key (strata-*.json)

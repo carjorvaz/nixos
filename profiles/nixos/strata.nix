@@ -5,23 +5,33 @@
   ...
 }:
 
-# Strata (Qwen3.8-Flash-Next) on the Optane PMEM, two model lanes.  Measured
-# 2026-10-03 on the deployed v0.1.38 stack (same harness, 131072 context, fresh
-# engine per cell, cold cache, /data/coderlane):
+# Strata (Qwen3.8-Flash-Next) on the Optane PMEM, two model lanes.  The served
+# lane is `general`; since generation 109 (2026-11-05) it loads the Unsloth
+# Dynamic V3.1 UD-IQ2_XS pack - 39.38 GiB of IQ2_S experts, 8,898 slots - on
+# measured quality parity with the GSQ-RCO IQ3_S pack it replaced and less read
+# per prompt (docs/VALIDATION.md, generation 109).  Its public model name says
+# which pack that is, and is written once in profiles/nixos/strata-model.nix.
+#
+# The measurements below are the 2026-10-03 record of the packs served then -
+# IQ3_S on this lane, IQ1_M on `coder` - kept as the last same-harness
+# comparison of the two lanes (131072 context, fresh engine per cell, cold
+# cache, /data/coderlane):
 #
 #   * `coder`  -- the Coder IQ1_M release: half the experts (12,288), coding/
 #                 tool/vision-pruned, 23.4 GiB pack.  790.7 tok/s prefill at
 #                 4344 tokens and 1129.9 at 27575; 39.6 / 34.3 tok/s decode at
 #                 94.1 / 91.3% VRAM expert hit; the 6 GiB DAX window covers layers
 #                 0..12, so a prompt needs only 4 rotations.  That is 1.73x /
-#                 1.12x the prefill and 1.66x / 1.63x the decode of iq3-s at the
-#                 same window - the prefill lead collapses with length because
-#                 this lane stops being byte-bound (its read is attention/GDN/
-#                 dense GEMM).  The quality trade is documented upstream: 91.3%
-#                 of the full model's SWE-bench Verified, weaker outside code
-#                 including CJK (#438) - use iq3-s for prose.
-#   * `iq3-s`  -- the original IQ3_S (24,576 experts, "matches the full model"),
-#                 46.8 GiB pack.  456.6 tok/s prefill at 4344 tokens / 1004.5 at
+#                 1.12x the prefill and 1.66x / 1.63x the decode of the IQ3_S
+#                 lane at the same window - the prefill lead collapses with
+#                 length because this lane stops being byte-bound (its read is
+#                 attention/GDN/dense GEMM).  The quality trade is documented
+#                 upstream: 91.3% of the full model's SWE-bench Verified, weaker
+#                 outside code including CJK (#438) - use the general lane for
+#                 prose.
+#   * `iq3-s`  -- the lane now called `general`, then serving the original
+#                 IQ3_S (24,576 experts, "matches the full model"), a 46.8 GiB
+#                 pack.  456.6 tok/s prefill at 4344 tokens / 1004.5 at
 #                 27575 with 23.9 / 21.0 tok/s decode at 131072 (82.6 / 81.8%
 #                 hit); the deployed 262144 reads 457.0 / 996.8 tok/s and decodes
 #                 ~20 tok/s at 77% hit, each extra 64K of window costing ~414
@@ -39,7 +49,7 @@
 #   * the fsdax namespace + XFS(dax=always) mount (idempotent prepare unit),
 #   * the OpenAI/Anthropic server over serve/server.py with the measured flags
 #     (mmap experts from the Optane, the KV the host selects - `k8v4` by
-#     default, `int8` on tiberius - MTP4 + suffix drafts, the
+#     default, `int8` on tiberius - a DFlash2 drafter + suffix drafts, the
 #     layer-order staging ring at 4, the rank-capped host expert tier, and the
 #     6144 MiB sliding DAX window that DMA-copies the streaming layer),
 #   * the driver's libcuda.so.1 on the loader path and LimitMEMLOCK=infinity,
@@ -49,6 +59,7 @@
 # namespace or a filesystem it does not recognise unless it is set.
 let
   cfg = config.services.tiberius-strata;
+  strataModel = import ./strata-model.nix;
 
   # The engine only ever listens here.  The two doorways clients use - 8080
   # (interactive) and 8090 (background) - belong to the lease proxy below,
@@ -85,14 +96,17 @@ let
       modelName = "qwen3.8-flash-next-coder-iq1_m";
       defaultContext = 131072;
     };
-    iq3-s = {
-      # Round 9 (2026-11-05): the pack is now Unsloth Dynamic V3.1 UD-IQ2_XS
-      # (3 shards: metadata, model, PLE) instead of Qwen's GSQ-RCO IQ3_S.  The
-      # lane/profile/model-name stay the same so clients and the expert profile
-      # are unchanged.  Measured on tiberius: prefill read -14.8 % P1 (4.2k) and
-      # -11.5 % P8K (8.3k), -16.3 % L-live read, decode +4.1 %, P27 neutral;
-      # eval320 quality within noise of the old pack (-0.2 pp mean, 3 passes);
-      # the smaller 39.38 GiB expert pack removes the DAX register fallbacks.
+    general = {
+      # Round 9 (2026-11-05) switched this lane's pack from Qwen's GSQ-RCO IQ3_S
+      # to Unsloth Dynamic V3.1 UD-IQ2_XS (3 shards: metadata, model, PLE).
+      # Measured on tiberius: prefill read -14.8 % P1 (4.2k) and -11.5 % P8K
+      # (8.3k), -16.3 % L-live read, decode +4.1 %, P27 neutral; eval320
+      # quality within noise of the old pack (-0.2 pp mean, 3 passes); the
+      # smaller 39.38 GiB expert pack removes the DAX register fallbacks.  The
+      # lane id and the public model name were renamed with the pack on
+      # 2026-11-19 so neither names a pack the lane no longer loads (the name
+      # is in profiles/nixos/strata-model.nix; the serve layer still answers a
+      # client that asks for the old one).
       pack = "ud-iq2_xs";
       models = "UD-IQ2_XS";
       shard1 = "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf";
@@ -100,7 +114,7 @@ let
       pleShard = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
       pleFile = "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf";
       profile = "expert-profile.bin";
-      modelName = "qwen3.8-flash-next-iq3_s";
+      modelName = strataModel.general;
       defaultContext = 262144;
     };
   };
@@ -123,10 +137,10 @@ let
   # upstream's gguf_split_paths() derives the sibling shard's name from --native's
   # own "-00001-of-00002" suffix and demands it beside it, so the shared PLE table
   # must be linked under THAT name.  A hardcoded IQ3_S name only satisfies the
-  # iq3-s lane: `model = "coder"` then dies at startup with "missing model shard
+  # general lane: `model = "coder"` then dies at startup with "missing model shard
   # ...IQ1_M-00002-of-00002.gguf (shard 2 of 2)" (reproduced 2026-10-03).  Bumping
   # the split number in lane.shard1 reproduces the engine's derivation for every
-  # lane; for iq3-s it yields exactly the name this used to hardcode.
+  # lane; for the general lane it yields exactly the name this used to hardcode.
   pleShard = lane.pleShard or (lib.replaceStrings [ "-00001-of-" ] [ "-00002-of-" ] lane.shard1);
   # The file on disk is one shared table (the Coder release ships no shard 2 of
   # its own), linked per lane under the derived name above.  A lane may name it
@@ -145,16 +159,13 @@ let
         "--native"
         "${nativeDir}/${lane.shard1}"
         "--ple-gguf"
-        # Shared by both lanes on purpose: the PLE table (shard 2) is common to
-        # the IQ3_S and Coder releases, and the coder has no shard 2 of its own
-        # (verified 2026-09-30 on the box: /optane/strata-data/ple/ holds only
-        # this file and the coder's models dir holds only its shard 1).  The
-        # engine appends this shard to the dense tensors, which both lanes rely
-        # on.  It is fed
-        # from nativeDir so the path string equals the one the engine derives
-        # from --native's split name (see nativeDir above; the per-lane name is
-        # derived in pleShard, and the coder lane measured 1,129.9 tok/s prefill
-        # at 27575 tokens on 2026-10-03).
+        # Per-lane PLE table (pleShard/pleFile in `lanes`): shard 3 of 3 for the
+        # general lane's UD-IQ2_XS.  The coder lane's was the GSQ-RCO IQ3_S
+        # shard 2 of 2 it shared with the old pack, deleted in the Round 9
+        # switch (hence the module's assertion).  It is fed from nativeDir so
+        # the path string equals the one the engine derives from --native's
+        # split name (see nativeDir above; the per-lane name is derived in
+        # pleShard).
         "${nativeDir}/${pleShard}"
         "--ple-io"
         "mmap"
@@ -802,19 +813,21 @@ in
     model = lib.mkOption {
       type = lib.types.enum [
         "coder"
-        "iq3-s"
+        "general"
       ];
-      default = "iq3-s";
+      default = "general";
       description = ''
-        Which lane to serve.  `iq3-s` is the only provisioned lane and the
+        Which lane to serve.  `general` is the only provisioned lane and the
         default: since round 9 (2026-11-05) it serves the Unsloth Dynamic V3.1
         UD-IQ2_XS pack (IQ2_S experts, 39.38 GiB experts.bin, 8,898 cache
         slots) instead of Qwen's GSQ-RCO IQ3_S pack - measured eval320 quality
         parity with the old pack and prefill read -14.8 % P1 / -11.5 % P8K /
-        -16.3 % L-live, decode +4.1 %.  `coder` is the old low-footprint IQ1_M
-        alternative; it is NOT provisioned on this box (its pack, model shards
-        and shared PLE were removed by that switch), and selecting it trips an
-        assertion with the restore procedure.
+        -16.3 % L-live, decode +4.1 %.  The lane was called `iq3-s` until
+        2026-11-19; its public model name follows the pack and is written once
+        in profiles/nixos/strata-model.nix.  `coder` is the old low-footprint
+        IQ1_M alternative; it is NOT provisioned on this box (its pack, model
+        shards and shared PLE were removed by that switch), and selecting it
+        trips an assertion with the restore procedure.
       '';
     };
 
@@ -851,8 +864,9 @@ in
       description = ''
         Maximum context in tokens.  Measured on the Coder (2026-10-03, 131072,
         fresh engine, cold cache): 790.7 / 1129.9 tok/s prefill and 39.6 / 34.3
-        tok/s decode at 4344 / 27575 tokens (94.1 / 91.3% hit).  On iq3-s
-        (2026-10-03, k8v4, fresh engine per cell): prefill is
+        tok/s decode at 4344 / 27575 tokens (94.1 / 91.3% hit).  On the IQ3_S
+        pack this lane served then (2026-10-03, k8v4, fresh engine per cell):
+        prefill is
         ~flat in prompt length (644-706 tok/s from 14K to 110K tokens), 131K
         decodes ~21 tok/s at 81% hit and 262K ~18 tok/s at 78%, and each extra
         131K of window costs ~830 expert-cache slots.  Above 262K the prompt is
@@ -954,7 +968,7 @@ in
           switched the served pack to Unsloth UD-IQ2_XS and removed the coder
           lane's pack (coder-iq1_m), its model shards (/data/strata-models/
           coder-IQ1_M) and the GSQ-RCO IQ3_S shard-2 PLE it shared.  Keep
-          services.tiberius-strata.model = "iq3-s".  To restore the coder lane:
+          services.tiberius-strata.model = "general".  To restore the coder lane:
           download ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF IQ1_M
           shards 1-2 and ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF IQ3_S
           shard 2 (the PLE), rebuild its pack with tools/iq_pack.py --experts-bin
