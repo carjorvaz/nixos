@@ -135,7 +135,14 @@ in
     "${self}/profiles/nixos/emacs.nix"
     "${self}/profiles/nixos/comma.nix"
     "${self}/profiles/nixos/home-assistant.nix"
-    "${self}/profiles/nixos/hermes.nix"
+    # BROUGHT DOWN 2026-11-19: the 24/7 gateway, SimpleX transport and Desktop
+    # backend (hermes-agent/-backend/-simplex + release-notify timer) were
+    # stopped and their state archived to
+    # ~/Documents/archive/hermes-2026-11-19/trajanus on air. Re-enable by
+    # uncommenting; /var/lib/hermes was left in place at stop time (it is no
+    # longer declaratively owned, so a re-enable reuses the archived identity
+    # only after copying it back).
+    # "${self}/profiles/nixos/hermes.nix"
     "${self}/profiles/nixos/nginx/common.nix"
     "${self}/profiles/nixos/valetudo.nix"
     "${self}/profiles/nixos/syncthing.nix"

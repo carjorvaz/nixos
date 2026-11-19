@@ -105,98 +105,6 @@ let
     </fontconfig>
   '';
 
-  # 0.21.5 split the sudo command rewrite into tools/terminal_tool_sudo.py
-  # (_transform_sudo_command) and moved the gateway callback wiring into
-  # tui_gateway/agent_callbacks.py, so both anchors are re-spelled: the early
-  # return still precedes any prompt or `sudo -S` rewrite, and the gateway
-  # prompt stays unwired under HERMES_DESKTOP_NATIVE_SUDO.
-  hermesTerminalSudoAnchor = "    has_configured_password = _configured_password is not None";
-  hermesTerminalNativeSudoReplacement = lib.concatStringsSep "\n" [
-    hermesTerminalSudoAnchor
-    ""
-    "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") == \"1\" and not has_configured_password:"
-    "        return command, None"
-  ];
-  hermesGatewaySudoCallbackLine = lib.concatStringsSep "\n" [
-    "    set_sudo_password_callback(lambda: _ask("
-    "        \"sudo\", sid, {\"command\": _redact_approval_command(get_sudo_prompt_command())}, timeout=120))"
-  ];
-  hermesGatewayNativeSudoReplacement = lib.concatStringsSep "\n" [
-    "    import os"
-    "    if os.environ.get(\"HERMES_DESKTOP_NATIVE_SUDO\") != \"1\":"
-    "        set_sudo_password_callback(lambda: _ask("
-    "            \"sudo\", sid, {\"command\": _redact_approval_command(get_sudo_prompt_command())}, timeout=120))"
-  ];
-
-  # The Desktop sudo overlay cannot hand off to macOS Touch ID. Keep Desktop on
-  # native sudo unless Hermes has been configured with an explicit SUDO_PASSWORD.
-  hermesAgentSource = pkgs.applyPatches {
-    name = "hermes-agent-native-sudo-source";
-    src = inputs.hermes-agent;
-    postPatch = ''
-      substituteInPlace tools/terminal_tool_sudo.py \
-        --replace-fail \
-          ${lib.escapeShellArg hermesTerminalSudoAnchor} \
-          ${lib.escapeShellArg hermesTerminalNativeSudoReplacement}
-
-      substituteInPlace tui_gateway/agent_callbacks.py \
-        --replace-fail \
-          ${lib.escapeShellArg hermesGatewaySudoCallbackLine} \
-          ${lib.escapeShellArg hermesGatewayNativeSudoReplacement}
-
-      # nixpkgs 26.11 deprecates the platform shortcuts; the pinned Hermes
-      # source predates the rename, so silence the evaluation warnings here.
-      substituteInPlace nix/hermes-agent.nix \
-        --replace-fail 'stdenv.isLinux' 'stdenv.hostPlatform.isLinux'
-    '';
-  };
-
-  # uv2nix 5a836d3 (pinned by hermes-agent) still reads the deprecated
-  # stdenv.isDarwin / stdenv.isLinux shortcuts. Upstream fixed this rename in
-  # 4b59abb2; apply the same rename to the pinned source instead of bumping
-  # uv2nix for the whole Hermes venv.
-  hermesUv2nix =
-    let
-      base = inputs.hermes-agent.inputs.uv2nix;
-      patchedSrc = pkgs.applyPatches {
-        name = "uv2nix-host-platform";
-        src = base.outPath;
-        postPatch = ''
-          substituteInPlace lib/build.nix \
-            --replace-fail 'stdenv.isDarwin' 'stdenv.hostPlatform.isDarwin' \
-            --replace-fail 'stdenv.isLinux' 'stdenv.hostPlatform.isLinux'
-        '';
-      };
-    in
-    (import "${patchedSrc}/flake.nix").outputs {
-      self = hermesUv2nix;
-      inherit (base.inputs) nixpkgs pyproject-nix;
-    };
-
-  hermesAgentPackage = pkgs.callPackage "${hermesAgentSource}/nix/hermes-agent.nix" {
-    uv2nix = hermesUv2nix;
-    inherit (inputs.hermes-agent.inputs) pyproject-nix pyproject-build-systems;
-    npm-lockfile-fix =
-      inputs.hermes-agent.inputs.npm-lockfile-fix.packages.${pkgs.stdenv.hostPlatform.system}.default;
-    rev = inputs.hermes-agent.rev or null;
-  };
-  # Hermes pins the Firecrawl SDK via lazy_deps; keep the Nix-managed wrapper
-  # satisfying that exact pin so web_extract works with lazy installs disabled.
-  hermesAgentFirecrawlPy = pkgs.python312Packages.firecrawl-py.overridePythonAttrs (_old: rec {
-    version = "4.17.0";
-    src = pkgs.fetchPypi {
-      pname = "firecrawl_py";
-      inherit version;
-      hash = "sha256-m1fg+5G39xFoKoJd1k1RCQ/vnotU6v7njBQTPV3q7Vc=";
-    };
-    sourceRoot = null;
-  });
-  hermesAgentPythonPath = pkgs.python312Packages.makePythonPath [
-    pkgs.python312Packages.ddgs
-    hermesAgentFirecrawlPy
-  ];
-  hermesAgentBrowser = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
-
   pipxFixed = pkgs.pipx.overridePythonAttrs (old: {
     # pipx 1.8.0's URL-specifier tests still expect packaging's older
     # no-space spelling around "@". packaging 26 keeps the canonical space,
@@ -206,111 +114,6 @@ let
       "test_parse_specifier_for_metadata"
     ];
   });
-
-  hermesCliTools =
-    pkgs.runCommandLocal "hermes-agent-cli-tools"
-      {
-        nativeBuildInputs = [ pkgs.makeWrapper ];
-      }
-      ''
-        mkdir -p "$out/bin"
-
-        makeHermesWrapper() {
-          local source="$1"
-          local target="$2"
-          makeWrapper "$source" "$target" \
-            --prefix PYTHONPATH : ${lib.escapeShellArg hermesAgentPythonPath} \
-            --set-default AGENT_BROWSER_EXECUTABLE_PATH ${lib.escapeShellArg hermesAgentBrowser}
-        }
-
-        makeHermesWrapper ${lib.escapeShellArg "${hermesAgentPackage}/bin/hermes"} "$out/bin/hermes-cli"
-
-        for bin in hermes-agent hermes-acp; do
-          source=${lib.escapeShellArg "${hermesAgentPackage}/bin"}/"$bin"
-          if [ -e "$source" ]; then
-            makeHermesWrapper "$source" "$out/bin/$bin"
-          fi
-        done
-      '';
-
-  hermesDesktopPackage = pkgs.callPackage ../pkgs/hermes-desktop.nix {
-    inherit inputs;
-    hermesAgent = hermesAgentPackage;
-    hermesCliPath = "${hermesCliTools}/bin/hermes-cli";
-    remoteUrl = "https://hermes.trajanus.vaz.ovh";
-    remoteTokenFile = config.age.secrets.hermesDashboardSessionToken.path;
-  };
-
-  hermesCommand = pkgs.writeShellApplication {
-    name = "hermes";
-    text = ''
-            if [ "$#" -gt 0 ] && { [ "$1" = "desktop" ] || [ "$1" = "gui" ]; }; then
-              shift
-              while [ "$#" -gt 0 ]; do
-                case "$1" in
-                  --cwd)
-                    shift
-                    if [ "$#" -eq 0 ]; then
-                      echo "hermes desktop: --cwd requires a path" >&2
-                      exit 2
-                    fi
-                    export HERMES_DESKTOP_CWD="$1"
-                    ;;
-                  --cwd=*)
-                    export HERMES_DESKTOP_CWD="''${1#--cwd=}"
-                    ;;
-                  --fake-boot)
-                    export HERMES_DESKTOP_BOOT_FAKE=1
-                    ;;
-                  --ignore-existing)
-                    export HERMES_DESKTOP_IGNORE_EXISTING=1
-                    ;;
-                  --skip-build|--force-build|--source)
-                    echo "hermes desktop: $1 is unnecessary for the Nix-built desktop; ignoring it." >&2
-                    ;;
-                  --build-only)
-                    echo "hermes desktop: already built by Nix at ${lib.getExe hermesDesktopPackage}"
-                    exit 0
-                    ;;
-                  -h|--help)
-                    cat <<'HELP'
-      usage: hermes desktop [--cwd PATH] [--fake-boot] [--ignore-existing]
-
-      Launch the Nix-built Hermes Desktop app.
-
-      The upstream source-build flags (--skip-build, --force-build, --source,
-      --build-only) are not needed here because nix-darwin builds the Electron app.
-      You can also run: hermes-desktop
-      HELP
-                    exit 0
-                    ;;
-                  *)
-                    echo "hermes desktop: unsupported Nix wrapper argument: $1" >&2
-                    exit 2
-                    ;;
-                esac
-                shift
-              done
-
-              exec ${lib.getExe hermesDesktopPackage}
-            fi
-
-            remote_command="exec hermes-service"
-            for arg in "$@"; do
-              escaped="''${arg//\'/\'\\\'\'}"
-              remote_command+=" '$escaped'"
-            done
-            exec ${lib.getExe pkgs.openssh} -t trajanus "$remote_command"
-    '';
-  };
-
-  hermesAgent = pkgs.symlinkJoin {
-    name = "hermes-agent-air";
-    paths = [
-      hermesCommand
-      hermesDesktopPackage
-    ];
-  };
 
   braveBpcExtensionId = "lkbebcjgcmobigpeffafkodonchffocl";
   braveManagedPolicyPlist = pkgs.writeText "com.brave.Browser.plist" (
@@ -391,12 +194,6 @@ in
 # - https://github.com/LnL7/nix-darwin
 #   - https://daiderd.com/nix-darwin/manual/index.html#sec-options
 {
-  age.secrets.hermesDashboardSessionToken = {
-    file = "${self}/secrets/hermesDashboardSessionToken.age";
-    owner = "cjv";
-    mode = "0400";
-  };
-
   home-manager.backupFileExtension = "hm-backup";
 
   imports = [
@@ -504,7 +301,6 @@ in
       yt-dlp
       cospend-cli
       org-daily-scratch
-      hermesAgent
       inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
 
       # HM's mpv module doesn't support package = null, so reference its
@@ -568,16 +364,19 @@ in
     # As brew would update them by unninstalling and installing the newest
     # version, it could lead to data loss.
     casks = [
+      "ardia" # Chromium (Helium-patched) with an Arc-style sidebar; trial only, see notes in the reply
       "balenaetcher"
       "brave-browser"
       "claude-code@latest"
       "cmux"
       "comfy"
       "codex"
+      "deepseek-harness" # Plugin-based desktop agent; auto-updates itself.
       "feather"
       "firefox"
       "flux-app"
       "ghostty"
+      "hermes-desktop" # Upstream Hermes Desktop (self-updating app + its own installer); replaced the Nix-built desktop 2026-11-19.
       "karabiner-elements" # STATE: Rebind right-command to right-option
       "keepingyouawake" # Simple open-source menu bar wrapper around caffeinate. If I want a more custom toggle later, SwiftBar plus a small plugin is a good fallback.
       # "microsoft-office" # Only have installed when needed (has some sinister telemetry).
@@ -597,6 +396,7 @@ in
       "unnaturalscrollwheels"
       "utm"
       "whatsapp"
+      "zen"
       "zoom"
     ];
 
@@ -795,6 +595,7 @@ in
       "${self}/profiles/home-manager/neovim.nix"
       "${self}/profiles/home-manager/ssh.nix"
       "${self}/profiles/home-manager/yt-dlp.nix"
+      "${self}/profiles/home-manager/zen.nix"
     ];
 
     home = {
