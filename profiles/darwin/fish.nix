@@ -11,6 +11,15 @@
       "${self}/profiles/home-manager/shell/fish.nix"
     ];
 
+    # Upstream installers publish launchers into ~/.local/bin (Hermes' `hermes`,
+    # Ardia's CLI). This line is also load-bearing for the Hermes bootstrap: its
+    # wire_shell_path step appends exactly this to ~/.config/fish/config.fish
+    # unless the file already matches `^[[:space:]]*fish_add_path.*\.local/bin`,
+    # and appending to this Home Manager symlink is a permission error. Keep the
+    # spelling; the nix-darwin-level `programs.fish` above writes
+    # /etc/fish/config.fish, which the installer never looks at.
+    programs.fish.shellInit = ''fish_add_path "$HOME/.local/bin"'';
+
     programs.fish.plugins = [
       {
         name = "done";
