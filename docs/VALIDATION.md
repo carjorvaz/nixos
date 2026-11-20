@@ -803,6 +803,21 @@ control above the window is unchanged. The prompt path is bounded by the Optane
 read of the pack, not by the PCIe stream the share relieves, so the pin stays;
 unsetting the variable adopts upstream's default.
 
+Re-confirmed on the 0.1.61 deployment (2026-11-18, live `/metrics` and direct
+requests, no restart): 5,877 / 39,857 / 156,872-token new prompts read in
+8.2 / 26.5 / 94.8 s; a repeated prompt reused 5,870 / 39,850 / 156,865 tokens
+in 89 / 100 / 78 ms.  A 4K repeat at 99.7 % expert-cache hit and 51 MB read
+still took 8.5 s, so the fixed term is the DAX pack-stream copy wait (2,626 ms
+of the 7,111 ms GPU timeline at 4,245 tok in the 2026-11-04 breakdown), not
+expert-cache misses.  No flag removed it: the 2026-11-04 campaign rejected
+`STRATA_PREFILL_ROUTED_STREAM=1` (+32.6..+87.9 % read on >=1,024-token cells)
+and the `--prefill 8192/16384` / `--no-prefill-borrow` arms.  The larger
+6,784 MiB DAX window was then tried (2026-11-18, three counterbalanced
+fresh-engine runs): P1/P2/P27 reads +1.43 / +1.25 / +0.53 %, rotations 20 vs
+20, and the P1/P2 answer sha changed; rejected.  The DAX route is closed on
+this box; the 4K floor is structural and the conversation cache is the
+practical lever.
+
 v0.1.42's two new CUDA decode defaults were measured the same way and split.
 The rank-7 verify tail skip (`STRATA_ROUTE_TAIL_SKIP=7`, upstream's default,
 set explicitly so a future default flip cannot move the box) won big here:
@@ -976,6 +991,124 @@ nix eval .#checks.x86_64-linux --apply builtins.attrNames
 The current-system check names include `tiberius-strata-module-eval`, which
 asserts the rendered unit's `[Unit]` start-limit keys, its `After=` ordering,
 the prepare unit's ordering, and the kernel patch/parameter wiring.
+
+### Generation 116 (2026-11-20): engine pin v0.2.16 (engine 0.1.62)
+
+Generation 116 bumps the engine pin from v0.2.15 (`c7757280`, engine 0.1.61) to v0.2.16
+(`64524fb9`, engine 0.1.62).  This release restructures the repository: the engine tree moved
+from the root into `engine/`, and the Python side the service runs (`serve/`, `strata_control/`,
+`tools/`, `data/`) into `terminal/` (`app/` is the desktop app and is not built).  The
+derivation keeps the repository root as `sourceRoot`, configures cmake with
+`cmakeDir = ../engine`, installs the serve layer from `terminal/serve`, and the three patches
+now carry `a/engine/...` and `a/terminal/...` paths; the installed
+`$out/share/strata/{serve,strata_control,tools,data}` layout is unchanged.
+
+What selects for this lane:
+
+- llama.cpp's MMQ prompt kernels are **gone from the tree** (upstream: "MMQ comparison builds
+  come from the v0.2.15 tag"): every CUDA build compiles Strata's own prompt kernels
+  (`strata_pf_own`) and the FP16 path, so there is no `-DSTRATA_MMQ` option left.  The deployed
+  0.1.61 ran with it OFF already, so this lane's prompt kernels are the ones it had; the
+  package now names only `-DSTRATA_OWN_CPU_QUANT=ON` of the gate's two build-level choices.
+- A release engine **links no ggml at all**: with tests off and the Strata quant pool on,
+  `engine/CMakeLists.txt` skips `strata_ggml_configure_root()` ("Strata: no ggml in this build
+  (own CPU pool, no MMQ, tests off)").  `engine/third_party/strata-ggml` is still carried and its
+  llama.cpp pin is still asserted, but nothing from it is compiled into the service binary -
+  which retires the builder-codegen hazard class the 0.1.41 build carried in ggml's
+  `-march=native` generic kernels.
+- **Three of this package's hunks are superseded** and dropped: session SAVE / RESTORE / capture
+  now take a nullable draft (`generate.cpp`'s `session_draft`, `const QsaState*` in the
+  conversation API), which is exactly the no-MTP overload this patch had added;
+  `ConversationCache::evictable_bytes()` arrives upstream (#2253) as the same pre-check; and the
+  DNS-rebinding host/origin helpers this patch carried were upstreamed into
+  `serve/server_parts` (only `web_disabled()` and the 404 gate remain this package's).
+- One new upstream default is pinned **off**: `--conversation-spill-mib 0`.  0.2.16 adds a
+  conversation-cache SSD tier - a park the RAM tier evicts, or a capture the RAM floor refuses,
+  becomes a session file under `<dataDir>/conversation-spill`, budget a quarter of free space
+  capped at 32 GiB, i.e. ~12.5 GiB on this box's 50 GiB free /optane.  The pmem park tier
+  already covers the refusal path this lane measured (round 7/8), so the tier waits for its own
+  campaign.
+
+Rebase: `tiberius.patch` needed 21 content resolutions (12 in `generate.cpp`, 4 in
+`conversation_state.cpp`, 2 in `conversation_snapshot.hpp`, 3 in `terminal/serve/server.py`)
+plus three file-location ones (the park-file header, its test and `test_wstat.py` are new files
+added into directories upstream renamed, so they land at the new paths).  The `generate.cpp`
+resolutions are the park pools, the serve setup (upstream's `ConversationSpill` beside this
+patch's park-file tier), the physical-RAM refusal message, the #879 nan flush, the slot-read
+block, and the borrow/take guards, which now carry BOTH upstream's `!from_ssd` and this patch's
+`!file_restore`.  `no-web-ui.patch` shared the two `server.py` resolutions;
+`avx512-bw-tier.patch` applied cleanly (the flag lists in `cmake/backends/cpu.cmake` and
+`expert.cpp`'s hunks are unchanged upstream, the sycl lists moved with the tree).  Two
+duplicate-definition build failures were fixed during the rebase (the patch's own
+`evictable_bytes()` and a doubled `n_parked` in the #879 flush) - both are upstream code this
+patch no longer needs.
+
+Build: fetch hash `sha256-g6TO9zC2jt41B5oADYrypIrXpb73/QzXmqjUuzBe9E4=`; the tiberius-native
+build (`--cores 8 --max-jobs 2`) finished 321/321 actions (`buildPhase completed in 4 minutes
+11 seconds`) and reports `strata 0.1.62`, `strata --geometry` = `flash_next`.  The payload is
+complete (`serve/`, `tools/`, `strata_control/`, both expert profiles,
+`gguf_fingerprints.json`), the serve modules import with the module's python env, and
+`serve/test_wstat.py` passes 4/4.  The output is 60 MB and its closure has no llama.cpp or ggml
+path.  The SIGILL guard on the installed binary: `objdump -d` has 0 `vpmultishiftqb` /
+`vpermt2b` / `vdpbf16ps`, and exactly the deployed 0.1.61's AVX-512 counts (490 `vpsrlvw`,
+1,047 `vpermw`, 848 `vpdpbusd`) - the CPU expert tier is the same VBMI-free code.
+
+Gate (isolated port-8099, GPU lock, production stopped only inside the windows and
+trap-restored + health-checked; both arms from the SAME deployed gen-115 config JSON, only the
+engine store path swapped, the new arm with the SSD tier pinned off).  The first window
+(07:48:53-08:04:31) measured the old arm and then aborted when the new engine's store path had
+been garbage-collected; the new arm and the tier probe ran in a second window
+(08:09:56-08:19:38).  Up in 45 s both arms.  Fresh reads are +2.4..+3.3% on the new engine (P1
+8.64 vs 8.37 s, P2 21.10 vs 20.59 s), prefill flat (2,293 vs 2,285 tok/s).  The per-request
+decode rate reads ~6% lower on the arm totals (65.8 vs 70.1 tok/s) but over different answer
+lengths (414 vs 392 tokens), so this protocol cannot separate that from content noise - the
+previous gates carry the same caveat.  eval320 (frozen protocol) is **197/320 = 61.6% new
+against 188/320 = 58.8% old**, discordant b=3 (old-only) / c=12 (new-only), risk difference
+-2.81 pp [95% CI -5.31, -0.62], exact McNemar **p = 0.035** - the new engine is better on this
+set, not worse.  The answers differ on all four speed cells (a new engine, as expected).
+`/metrics` has 35 `strata:*` families on the new arm against 29 on the old: #6081's
+conversation-cache families (parked, parks, restores, evictions, refused by reason) join, and
+all nine WSTAT series stay populated (rotations 13, borrow 69.3 GB, verify windows 246 / rows
+217 / accepted 168, stop bound 1/1, prefill 26.51 s).
+
+SSD tier probe (0.1.62 with the tier left ON, `--conversation-cache-mib 768`, 26k-token
+conversations): the tier comes up (`SSD tier in /optane/strata-data/conversation-spill/<pid>-
+<hash>, up to 13,784 MiB`); a 512 MiB RAM cache skipped every park ("snapshot 579 MiB exceeds
+available budget"), which is how the first probe came back empty-handed; at 768 MiB the third
+conversation evicts the first park and the spill folder grows, and the repeat of that prompt
+restores **26,121 of 26,128 tokens in 257 ms (0.41 s wall) against 19.4 s fresh**.  The tier is
+pinned off for the deploy; its value on this box (and its answer-neutrality) needs its own
+campaign.
+
+Deployed as generation 116 (2026-11-20 08:25:46 WET): engine
+`/nix/store/8ssk1gii0df05mc03jpqdlprz95lywzj-strata-engine-0.1.62`, system
+`/nix/store/als39zsf5ilgj2095bskflrp37zgmqx2-nixos-system-tiberius-26.05.20260927.cf5e765`
+(`--target-host` and `--build-host` both tiberius, so the gate-tested binary is the deployed
+one).  The switch's closure diff to generation 115 is the engine (`0.1.61 -> 0.1.62`, +1.2 MiB),
+34.8 KiB of config source, and the lane JSON's rename (`strata-general.json` in,
+`strata-iq3-s.json` out - the model-name change of commit `9740d5e`, which this deploy carried);
+no other package moved.  Verified after the switch: both doors healthy (`8080` through the
+lease proxy, `8081` the engine's own), the model `qwen3.8-flash-next-unsloth-ud-iq2_xs` loaded,
+a warm completion "ready.", 9,156 expert slots / 14.66 GiB of VRAM, the park file tier on, the
+engine's command line carrying `--conversation-spill-mib 0` and no "SSD tier in ..." start-up
+line, 34 `strata:*` metric lines with the WSTAT series populated (verify windows 3, stop bound
+1), and no Xid.
+
+The switch itself exited 4 on `tiberius-strata-lease.service`: it cannot bind :8080 because the
+transient `lease-cors` service holds the front door (the drift recorded on 2026-11-17 - the
+declared unit had been stopped and a `systemd-run` proxy with the uncommitted CORS diff serves
+it).  The declared unit was stopped again after the switch to return it to its pre-deploy state;
+the transient proxy answers :8080 and health is 200.  This is unaffected by the engine bump and
+still wants the CORS diff committed (or retired) one way or the other.
+
+Rollback: `nixos-rebuild switch --rollback` on tiberius (generation 115: engine
+`/nix/store/2nwms0p9ixlw64s8asjj41glnd6rj4a5-strata-engine-0.1.61`, system
+`/nix/store/v8l7igkphhcahf7dbjb78hyapn40k0hq-nixos-system-tiberius-26.05.20260927.cf5e765`),
+or boot that generation's entry.  The strata bump alone reverts with
+`git revert 25ec55d` plus a rebuild; the spill pin lives in `profiles/nixos/strata.nix`.  Artifacts:
+`/data/bump/gen116/` (scripts), `/data/bump/{old6,new6}-results.json`, `eval-{old,new}6.json`,
+`eval-compare6.json`, `summary6.json`, `spill6-results.json`, `window6.log`,
+`prom-{old,new}6.txt`, `/data/bump/logs/`.
 
 ### DeepSeek-V4.1-Flash IQ1_M: not runnable on this fleet (checked 2026-10-24)
 

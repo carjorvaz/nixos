@@ -375,8 +375,20 @@ let
       # +10.5% P27 read, with answers drifting, so int8 stays.  Model-card sampling
       # beat card0 (presence_penalty 0) 58.67 vs 58.00 over 3 eval80 passes; keep the
       # card.  Evidence: docs/exec-plans/active/strata-tuning-next.md results section.
+      # 0.2.16 turns on a conversation-cache SSD tier by default
+      # (conversation_spill.hpp: a park the RAM tier evicts, or a capture the
+      # RAM floor refuses, is written as a session file under
+      # <dataDir>/conversation-spill and read back on a later turn).  Its
+      # default budget is a quarter of free space, capped at 32 GiB - ~12 GiB on
+      # /optane's 50 GiB free, beside the 4 GiB of parks and the session files
+      # this lane already keeps there.  The pmem park tier below already catches
+      # the refusal path this lane measured (round 7/8), so the tier is pinned
+      # OFF until its own campaign measures it; --conversation-spill-mib 0 is the
+      # engine's off switch and -1 restores upstream's automatic budget.
       user_args = [
         "--kv-resident"
+        "0"
+        "--conversation-spill-mib"
         "0"
       ];
       cwd = "${cfg.package}/share/strata";

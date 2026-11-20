@@ -10,11 +10,12 @@
 
 # The Strata engine, built for Turing (sm_75) from the pinned source revision.
 #
-# The pin is the whole stack: the engine source (which since 0.2.13 carries the
-# ggml sources it builds, vendored in third_party/strata-ggml at llama.cpp
-# 3cf03257 - no separate download) and the CUDA toolkit.  Only the engine is
-# built here -- the model files (pack, experts.bin, PLE GGUF, MTP) are prepared
-# once on the host by the setup flow and live on /optane, not in the store.
+# The pin is the whole stack: the engine source (which carries the ggml tree
+# vendored in engine/third_party/strata-ggml at llama.cpp 3cf03257 - no separate
+# download; a release build compiles none of it, see below) and the CUDA
+# toolkit.  Only the engine is built here -- the model files (pack, experts.bin,
+# PLE GGUF, MTP) are prepared once on the host by the setup flow and live on
+# /optane, not in the store.
 #
 # tiberius: CUDA 12.9 from nixpkgs, sm_75 only.  The 22 GB RTX 2080 Ti runs the
 # engine with --mmap-experts, so this build only needs the sm_75 i-quant kernels
@@ -23,68 +24,76 @@
 let
   c = cudaPackages;
 
-  # c7757280: v0.2.15 (2026-11-16), the current release.  The release ships
-  # engines 0.1.60 - the v0.2.14 files, carried by absolute url - while the
-  # v0.2.15 source tree declares 0.1.61 (upstream's post-release development
-  # bump); the engine delta between the two tags is 146 lines of serve layer,
-  # tests and an MSVC-only test stack option, so this build reports 0.1.61 with
-  # the 0.1.60 engine code plus #5979/#6055.  Since the last pin (d2f0964 = v0.2.13 / engine 0.1.59) the
-  # engine changes this lane can see are:
-  #   * the build: llama.cpp's MMQ prompt kernels are now OFF by default
-  #     (-DSTRATA_MMQ=ON is the old path).  The prompt path takes Strata's own
-  #     fused expert kernels where they cover a layer and the FP16 path
-  #     elsewhere; Turing (RTX 20) has its own fused i-quant prompt path
-  #     (f-sm75-iq-b19) and, on 8 GB cards, the layer-major walk (f-small-walk) -
-  #     this card is not one of those, so only the fused kernels select.
-  #   * STRATA_OWN_CPU_QUANT=ON: the CPU expert pool's dots, activation
-  #     quantizers and the --mtp-q4 requantizer come from the new Strata quant
-  #     layer (src/quant, no ggml-cpu in the pool) instead of ggml-cpu's type
-  #     traits.  Its x86 AVX-512 tier is compiled for F/DQ/BW/VL+VNNI and no
-  #     VBMI - this Cascade Lake part's exact ISA - and is selected behind
-  #     caps(), so the pool now has a 512-bit tier upstream ships rather than
-  #     only the one this package patches in.  The quant layer also changes the
-  #     pool's arithmetic (bit-exact against the GCC 13.3 AVX2 reference in
-  #     upstream's oracle tests, not necessarily against the ggml-cpu this
-  #     build compiles), so the gate, not this comment, decides whether it stays.
-  #   * conversation memory and parks: a segment pool for the K/V buffers of
-  #     parked conversations and a checkpoint pool, both on by default and
-  #     sized from the conversation cache (STRATA_PARK_SEGPOOL_MIB /
-  #     STRATA_CKPT_POOL_* are the escapes); #5697 hands an evicted park's
-  #     freed heap back (release_free_heap) so the physical-RAM gate sees it.
-  #     Upstream measured a 55K-token park at 283 ms with 1 GiB and 117 ms with
-  #     2 GiB.  tiberius.patch's pmem park-file tier still hooks the refusal
-  #     path (patch history below); reply_replaced joins the condition that
-  #     decides whether parking is worth it.
-  #   * prefill: fused experts (down-rotation, FP16-down and the P1A state per
-  #     host thread), the prompt's new K/V cells moved to the host copy by one
-  #     DMA per array, and - on two-socket Linux - the engine pinned to the
-  #     graphics card's NUMA node.  Page-cache drop and GPU pause-time helpers
-  #     are new; the KFD quiet switches are AMD-only.
-  #   * serve layer: upstream's stop bound (#4677) now runs on every backend,
-  #     so tiberius.patch's CUDA port is RETIRED - the patch keeps only the
-  #     WSTAT counters around upstream's call.  The 0.2.15 tree adds #5979 (a
-  #     declared boolean tool argument written True/False is the boolean) and
-  #     #6055 (a request arriving while the engine closes is refused, not cut
-  #     off); the shipped 0.1.60 engine files predate both.
+  # 64524fb9: v0.2.16 (2026-11-17), the current release, engine 0.1.62 - the
+  # tag and its engine agree at this pin (the 0.2.15 tag shipped 0.1.60 binaries
+  # while declaring 0.1.61; 0.1.62 is both the tree's PROJECT_VERSION and the
+  # released engine).  Two structural things to know before reading the rest of
+  # this file:
+  #   * the repository was restructured: the engine tree (src, include, cmake,
+  #     third_party, sycl, tests) moved from the root into engine/, and the
+  #     Python side the service runs (serve/, strata_control/, tools/, data/)
+  #     moved into terminal/.  app/ is the desktop app and is not built here.
+  #     This derivation keeps the repository root as sourceRoot, configures cmake
+  #     with cmakeDir = ../engine, installs the serve layer from terminal/serve,
+  #     and all three patches carry the a/engine/... and a/terminal/... paths.
+  #     The installed layout is unchanged - $out/share/strata/{serve,
+  #     strata_control,tools,data} - which is what the module's ExecStart and the
+  #     engine's runtime paths expect.
+  #   * llama.cpp's MMQ prompt kernels are GONE from the tree (engine/CMakeLists
+  #     .txt: "MMQ comparison builds come from the v0.2.15 tag"): every CUDA and
+  #     HIP build compiles Strata's own prompt kernels (strata_pf_own) and the
+  #     FP16 path, so there is no -DSTRATA_MMQ option left to set.  The deployed
+  #     0.1.61 build ran with it OFF already, so this lane keeps the prompt
+  #     kernels it had; the flag is dropped from cmakeFlags below.
+  # Since the last pin (c7757280 = v0.2.15 / engine 0.1.61) the changes this lane
+  # can see are:
+  #   * the build: a release engine links NO ggml at all.  With
+  #     -DSTRATA_BUILD_TESTS=OFF and -DSTRATA_OWN_CPU_QUANT=ON,
+  #     engine/CMakeLists.txt skips strata_ggml_configure_root() ("Strata: no
+  #     ggml in this build (own CPU pool, no MMQ, tests off)").  The vendored
+  #     engine/third_party/strata-ggml is still carried and its llama.cpp pin is
+  #     still asserted in postPatch (a tests-on build uses it as the oracle), but
+  #     nothing from it is compiled into the service binary - which retires the
+  #     build-host hazard class documented at the build block: the 262 AVX-512
+  #     VBMI / AVX512-BF16 instructions a builder-built 0.1.41 carried in ggml's
+  #     -march=native generic kernels cannot exist at this pin.
+  #   * session SAVE / RESTORE / capture take a NULLABLE draft (generate.cpp's
+  #     session_draft, const QsaState* in the conversation API): upstream now
+  #     supports the no-MTP lane natively, which superseded this package's own
+  #     draft-optional overloads (patch history below) - they are dropped, and
+  #     the deployed DFlash2 lane's session files still hold the QSA layers only.
+  #   * serve layer: the conversation cache grew an SSD tier
+  #     (conversation_spill.hpp: a park the RAM tier evicts, or a capture the RAM
+  #     floor refuses, is written as a session file and read back on a later
+  #     request) with #6081's conversation-cache counters on /metrics/prometheus;
+  #     --conversation-cache-rewind-keep (skip the park when a request resumes the
+  #     conversation with few live tokens past the resume point); a
+  #     STRATA_SLOT_READ in-slot turn read; #6055 (a request arriving while the
+  #     engine closes is refused, not cut off - the cut-off fix this package used
+  #     to carry) and the RESUME reused-prefix line.  server.py was split into
+  #     serve/server_parts: this patch's DNS-rebinding host/origin helpers were
+  #     upstreamed into it, so only web_disabled() and the 404 gate remain this
+  #     package's.
+  #   * engine: 72 files under engine/src differ from v0.2.15's src/, and none of
+  #     them moved a default this package pins.  The gates below are unchanged in
+  #     0.2.16 and asserted in postPatch: the `o.pcie_frac_auto = ... && !pf_old`
+  #     start-up gate (with STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the
+  #     FP16 weight cache's batch-slots gate (o.batch >= 2), the --prefill
+  #     bare-auto ceiling (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ,
+  #     the Turing kernel series (sm75_series.hpp), the AVX-512 tier's
+  #     STRATA_VNNI_TIER opt-in, the parked pools' escapes
+  #     (STRATA_PARK_SEGPOOL_MIB / STRATA_CKPT_POOL_*) and vram_fit's kv_fixed
+  #     hook.  Every env var the module sets is still read by 0.1.62, and
+  #     -DSTRATA_OWN_CPU_QUANT is still an option (default ON).
   #   * not this lane: the image/vision stack (strata-llama, the Qwen picture
-  #     reader; vendored but not built here), every AMD/HIP/SYCL/Metal change,
-  #     and the DSV41 engine, which left the root build - the stale
-  #     dsv41-*-probe.nix files and their patches were removed with this bump's
-  #     follow-up.
-  #   * the gates this package pins are unchanged in 0.2.15: the
-  #     `o.pcie_frac_auto = ... && !pf_old` start-up gate (with
-  #     STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the FP16 weight cache's
-  #     batch-slots gate (o.batch >= 2), the --prefill bare-auto ceiling
-  #     (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ, the Turing kernel
-  #     series (sm75_series.hpp), the AVX-512 tier's STRATA_VNNI_TIER opt-in
-  #     and vram_fit's kv_fixed hook - all asserted in postPatch below.
-  # The ggml sources the engine links stay vendored in third_party/strata-ggml
-  # at llama.cpp 3cf03257f219afbe7334045ff7c6a06ac68c627d (UPSTREAM.md; the same
-  # pin as third_party/ggml/VERSION.txt), so the derivation fetches no
-  # llama.cpp: cmake/strata_ggml.cmake resolves the vendored tree when
-  # STRATA_GGML_DIR is unset.  0.2.14/0.2.15 add third_party/strata-llama for
-  # the picture reader, which this package does not build.
-  revision = "c77572806996349b49995e4f98d41b5294d36a21";
+  #     reader; vendored under engine/third_party but not built here), every
+  #     AMD/HIP/SYCL/Metal change, and app/ (the desktop app).
+  # The ggml tree stays vendored at engine/third_party/strata-ggml, llama.cpp
+  # 3cf03257f219afbe7334045ff7c6a06ac68c627d (UPSTREAM.md; the same pin as
+  # third_party/ggml/VERSION.txt), so the derivation fetches no llama.cpp:
+  # cmake/strata_ggml.cmake resolves the vendored tree when STRATA_GGML_DIR is
+  # unset.
+  revision = "64524fb9fc82222ddce554c0643b64f056ec8366";
 
   # nixpkgs splits the CUDA toolkit into many outputs and CMake's
   # find_package(CUDAToolkit) wants one root with nvcc, the CRT headers and the
@@ -110,7 +119,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.61";
+  version = "0.1.62";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -148,7 +157,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-ehbQHpljUeclywp0ubGcrGG+xQ35SppRoosVWZLJiDY=";
+    hash = "sha256-g6TO9zC2jt41B5oADYrypIrXpb73/QzXmqjUuzBe9E4=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -243,6 +252,51 @@ stdenv.mkDerivation {
   # src/kernels/cpu/expert.cpp and cmake/backends/cpu.cmake; its sycl/CMakeLists.txt
   # hunks were retargeted by hand (0.1.60 moved the two flag lists), and the patch
   # still keeps -mavx512vbmi on tq_avx512.cpp in both builds.
+  #
+  # The v0.2.16 bump (64524fb9) rebased all three patches onto the restructured
+  # repository: the engine tree now sits at engine/ and the Python side at
+  # terminal/, so every hunk was retargeted by the rebase itself (git followed
+  # the directory rename; only the content changes under it needed decisions).
+  # tiberius.patch needed 21 content resolutions plus three file-location ones
+  # (conversation_park_file.hpp, its test and test_wstat.py are new files this
+  # patch adds into directories upstream had renamed; they land at the new
+  # paths):
+  #   * conversation_state.cpp and conversation_snapshot.hpp: upstream gave the
+  #     session API a NULLABLE draft (const QsaState*, generate.cpp's
+  #     session_draft) in 0.1.62 - exactly what this patch had added as a second,
+  #     pointer-taking overload for the no-MTP lane (QSA layers only).
+  #     SUPERSEDED: the patch's overloads and their comments are dropped,
+  #     upstream's pointer form is used, and the deployed DFlash2 lane's
+  #     behaviour is unchanged.
+  #   * generate.cpp (12 conflicts, all in the serve loop): the park pools
+  #     (upstream's segment + checkpoint pools beside this patch's
+  #     ConversationParkFiles declaration and its init block), the serve setup
+  #     where upstream's ConversationSpill (the new SSD tier) initialises beside
+  #     this patch's park-file tier, the physical-RAM refusal message (upstream's
+  #     no_progress/cannot_help arguments plus this patch's reuse give-back on
+  #     the skip path), the #879 nan flush (upstream's conversations.clear() +
+  #     spill_clear() plus this patch's park_files.clear()), the slot-read block
+  #     (upstream's STRATA_SLOT_READ kept before this patch's park-file candidate
+  #     selection), and the borrow / take guards, which now carry BOTH upstream's
+  #     !from_ssd and this patch's !file_restore; the park-worth condition
+  #     combines upstream's !keep_branch with this patch's file_restore.  The
+  #     non-streamed RESTORE block this patch replaced with
+  #     session_file_restore_streamed stays deleted (upstream's additions to that
+  #     block go with it); the draft arguments in the streamed SAVE path keep
+  #     upstream's session_draft.
+  #   * terminal/serve/server.py (3 conflicts): upstream moved the DNS-rebinding
+  #     host/origin helpers this patch had added into serve/server_parts and
+  #     imports them, so the patch's copies are DROPPED - its web_disabled()
+  #     stays and is now the only helper it adds.  The GET router keeps both
+  #     upstream's /v1 _foreign_page check and this patch's STRATA_NO_WEB 404
+  #     gate, and /metrics/prometheus merges upstream's #6081 conversation-cache
+  #     families with this patch's WSTAT histogram and numeric-row filter.
+  # no-web-ui.patch applied with those same two server.py resolutions (its
+  # /settings POST gate and its web_disabled() insert were otherwise clean).
+  # avx512-bw-tier.patch applied cleanly: the flag lists in
+  # cmake/backends/cpu.cmake and expert.cpp's hunks are unchanged upstream, and
+  # the sycl lists moved with the tree (still retargeted by hand at the 0.2.15
+  # bump).
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
@@ -424,34 +478,34 @@ stdenv.mkDerivation {
   # and a silently missing window would drop the measured prefill win without
   # saying so.  Fail the build here instead.
   postPatch = ''
-    grep -q 'STRATA_NO_WEB' serve/server.py || {
+    grep -q 'STRATA_NO_WEB' terminal/serve/server.py || {
       echo "no-web-ui.patch did not introduce the STRATA_NO_WEB gate" >&2
       exit 1
     }
-    grep -q 'resident-budget-gib' src/program/generate.cpp || {
+    grep -q 'resident-budget-gib' engine/src/program/generate.cpp || {
       echo "the engine source has no --resident-budget-gib (upstream's resident tier)" >&2
       exit 1
     }
-    grep -q 'STRATA_REGISTER_DAX' src/core/expert_source.cpp || {
+    grep -q 'STRATA_REGISTER_DAX' engine/src/core/expert_source.cpp || {
       echo "tiberius.patch did not introduce the STRATA_REGISTER_DAX sliding window" >&2
       exit 1
     }
-    grep -q 'STRATA_BF16_TC' src/prefill/gemm.cu || {
+    grep -q 'STRATA_BF16_TC' engine/src/prefill/gemm.cu || {
       echo "the engine no longer reads STRATA_BF16_TC (the dense FP16 tensor-core path)" >&2
       exit 1
     }
-    grep -q 'STRATA_REFILL_PIN_SRC' src/program/generate.cpp || {
+    grep -q 'STRATA_REFILL_PIN_SRC' engine/src/program/generate.cpp || {
       echo "tiberius.patch did not introduce the STRATA_REFILL_PIN_SRC refill path" >&2
       exit 1
     }
     # Every other env var the module sets must still be consumed at the pinned
     # revision.  Upstream ignores unknown env vars silently, so a rebase that
     # dropped one would change serving behaviour with no build failure.
-    grep -q 'STRATA_SPLIT_TIMING' src/program/generate.cpp || {
+    grep -q 'STRATA_SPLIT_TIMING' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_SPLIT_TIMING (serve stage timing)" >&2
       exit 1
     }
-    grep -q 'STRATA_KV_ROT' src/program/generate.cpp || {
+    grep -q 'STRATA_KV_ROT' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_KV_ROT (the rotated int8 KV the module selects)" >&2
       exit 1
     }
@@ -459,31 +513,31 @@ stdenv.mkDerivation {
     # runs hostTierGib = 0 (--mmap-experts) and the module does not set these two,
     # but keep upstream's knobs present so that option's behaviour cannot change
     # under it silently.
-    grep -q 'STRATA_RESIDENT_PIN' src/program/generate.cpp || {
+    grep -q 'STRATA_RESIDENT_PIN' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_RESIDENT_PIN (the resident RAM tier's pin knob)" >&2
       exit 1
     }
-    grep -q 'STRATA_RESIDENT_HEADROOM_GIB' src/program/generate.cpp || {
+    grep -q 'STRATA_RESIDENT_HEADROOM_GIB' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_RESIDENT_HEADROOM_GIB (the resident RAM tier's headroom knob)" >&2
       exit 1
     }
-    grep -q 'STRATA_UNBUFFERED_LOAD' src/core/expert_source.cpp || {
+    grep -q 'STRATA_UNBUFFERED_LOAD' engine/src/core/expert_source.cpp || {
       echo "the engine no longer reads STRATA_UNBUFFERED_LOAD (the file tier's page-cache arm)" >&2
       exit 1
     }
-    grep -q 'STRATA_STAGER_RING' src/prefill/prefill.cpp || {
+    grep -q 'STRATA_STAGER_RING' engine/src/prefill/prefill.cpp || {
       echo "the engine no longer reads STRATA_STAGER_RING (the measured staging ring)" >&2
       exit 1
     }
-    grep -q 'STRATA_PREFILL_CPU_SHARE' src/prefill/prefill.cpp || {
+    grep -q 'STRATA_PREFILL_CPU_SHARE' engine/src/prefill/prefill.cpp || {
       echo "the engine no longer reads STRATA_PREFILL_CPU_SHARE (the module pins the CPU share off)" >&2
       exit 1
     }
-    grep -q 'STRATA_ROUTE_TAIL_SKIP' src/program/generate.cpp || {
+    grep -q 'STRATA_ROUTE_TAIL_SKIP' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_ROUTE_TAIL_SKIP (the measured decode default)" >&2
       exit 1
     }
-    grep -q 'STRATA_PCIE_FRAC_DEFAULT' src/program/generate.cpp || {
+    grep -q 'STRATA_PCIE_FRAC_DEFAULT' engine/src/program/generate.cpp || {
       echo "the engine no longer reads STRATA_PCIE_FRAC_DEFAULT (the pinned start-up share)" >&2
       exit 1
     }
@@ -494,7 +548,7 @@ stdenv.mkDerivation {
     # the new rule (it moved the share up and cost 5-7% decode when measured on
     # this box in the 0.1.42 campaigns).
     for v in STRATA_PCIE_AUTO_SPLIT STRATA_PCIE_K_RULE STRATA_PCIE_SHARE_MAX; do
-      grep -q "$v" src/program/generate.cpp || {
+      grep -q "$v" engine/src/program/generate.cpp || {
         echo "the engine no longer reads $v (the 0.2.11 CPU/upload share gates)" >&2
         exit 1
       }
@@ -504,133 +558,133 @@ stdenv.mkDerivation {
     # `o.pcie_frac_auto = ... && !pf_old`.  A rebase that re-enables the
     # refinement (or renames the gate) changes this lane's decode share - fail
     # the build instead of accepting it silently.
-    grep -A3 'o.pcie_frac_auto = ' src/program/generate.cpp | grep -q '!pf_old' || {
+    grep -A3 'o.pcie_frac_auto = ' engine/src/program/generate.cpp | grep -q '!pf_old' || {
       echo "the STRATA_PCIE_FRAC_DEFAULT=old gate no longer disables PcieAuto" >&2
       exit 1
     }
     # 0.2.11's FP16 weight cache is a value-changing default that selects only
     # with batch slots (--batch/--parallel >= 2); this lane runs none.  Keep the
     # gate, so a later default cannot move this card's outputs.
-    grep -q 'set_w16_auto_default' src/program/generate.cpp && grep -q 'o.batch >= 2' src/program/generate.cpp || {
+    grep -q 'set_w16_auto_default' engine/src/program/generate.cpp && grep -q 'o.batch >= 2' engine/src/program/generate.cpp || {
       echo "the FP16 weight cache is no longer gated on batch slots (o.batch >= 2)" >&2
       exit 1
     }
     # 0.2.11's 32768-token --prefill auto ceiling is compute capability 8.0+ only
     # and this lane passes an explicit --prefill; keep the bare-auto gate present
     # so a later bump cannot silently raise this lane's chunk.
-    grep -q 'prefill_auto_bare' src/program/generate.cpp || {
+    grep -q 'prefill_auto_bare' engine/src/program/generate.cpp || {
       echo "the --prefill auto ceiling gate (prefill_auto_bare) disappeared" >&2
       exit 1
     }
     # 0.2.11's K-quant MMQ prompt kernels are compute capability 8.0+ only; the
     # sm_75 build must keep the variable behind nv_defaults.cpp's cc gate.
-    grep -q 'STRATA_MMQ_KQ' src/core/nv_defaults.cpp || {
+    grep -q 'STRATA_MMQ_KQ' engine/src/core/nv_defaults.cpp || {
       echo "the K-quant MMQ default gate (STRATA_MMQ_KQ) disappeared from nv_defaults.cpp" >&2
       exit 1
     }
     # The module's `--kv-resident 0` user arg keeps 0.2.11's fit_start from
     # injecting a KV window (which would turn --kv-grow off).  The fitter's
     # kv_fixed path is the hook; fail if it disappears.
-    grep -q 'kv_fixed' strata_control/vram_fit.py || {
+    grep -q 'kv_fixed' terminal/strata_control/vram_fit.py || {
       echo "vram_fit lost the kv_fixed hook (the module's --kv-resident 0 workaround)" >&2
       exit 1
     }
-    grep -q 'STRATA_REGISTER_DAX_MIB' src/core/expert_source.cpp || {
+    grep -q 'STRATA_REGISTER_DAX_MIB' engine/src/core/expert_source.cpp || {
       echo "tiberius.patch lost the STRATA_REGISTER_DAX_MIB window budget" >&2
       exit 1
     }
     # tiberius.patch's env-gated per-rotation DAX timing (log-only, off by default).  It is the only
     # place the window rotation's cost is attributed, so a rebase that drops it silently would take the
     # measurement seam with it - fail here instead.
-    grep -q 'STRATA_DAX_TIMING' src/core/expert_source.cpp || {
+    grep -q 'STRATA_DAX_TIMING' engine/src/core/expert_source.cpp || {
       echo "tiberius.patch lost the per-rotation DAX timing (STRATA_DAX_TIMING)" >&2
       exit 1
     }
     # tiberius.patch's transactional park: the distinct refusal line is its marker (no upstream line has
     # these words).  A rebase that drops the pre-check but keeps the old eviction loop must fail the build
     # here rather than silently bring back the destructive refusal.
-    grep -q 'nothing evicted' src/program/generate.cpp || {
+    grep -q 'nothing evicted' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the transactional-park pre-check in park_source()" >&2
       exit 1
     }
-    grep -q 'evictable_bytes' include/strata/core/conversation_cache.hpp || {
+    grep -q 'evictable_bytes' engine/include/strata/core/conversation_cache.hpp || {
       echo "tiberius.patch lost the ConversationCache::evictable_bytes() pre-check helper" >&2
       exit 1
     }
     # tiberius.patch's streamed session restore (round 5): the API name and the pass-1/pass-2 marker strings.  A
     # rebase that drops the streaming would silently go back to the whole-image read, which refuses the 250k session.
-    grep -q 'session_file_restore_streamed' src/program/generate.cpp || {
+    grep -q 'session_file_restore_streamed' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the streamed session restore (generate.cpp)" >&2
       exit 1
     }
-    grep -q 'SessionStreamMeta' include/strata/core/conversation_file.hpp || {
+    grep -q 'SessionStreamMeta' engine/include/strata/core/conversation_file.hpp || {
       echo "tiberius.patch lost SessionStreamMeta (the streamed restore's metadata pass)" >&2
       exit 1
     }
-    grep -q "drafter's position/tags" src/program/generate.cpp || {
+    grep -q "drafter's position/tags" engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the DFlash2 invalidate-after-restore" >&2
       exit 1
     }
     # tiberius.patch's pmem park-spill file tier (round 7): the option, the tier class and its log marker.  A rebase
     # that drops the fallback would silently go back to refusing the park (the long-conversation re-read).
-    grep -q 'conversation-park-dir' src/program/generate.cpp || {
+    grep -q 'conversation-park-dir' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the --conversation-park-dir option" >&2
       exit 1
     }
-    grep -q 'ConversationParkFiles' include/strata/core/conversation_park_file.hpp || {
+    grep -q 'ConversationParkFiles' engine/include/strata/core/conversation_park_file.hpp || {
       echo "tiberius.patch lost the ConversationParkFiles file tier" >&2
       exit 1
     }
-    grep -q 'tokens to pmem in' src/program/generate.cpp || {
+    grep -q 'tokens to pmem in' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the park-to-pmem write path / its log marker" >&2
       exit 1
     }
-    grep -q 'restore_park_file' src/program/generate.cpp || {
+    grep -q 'restore_park_file' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the request-path pmem park restore" >&2
       exit 1
     }
     # tiberius.patch's pmem park checkpoint match (round 8): the saved-checkpoint selection and its debug
     # instrumentation.  A rebase that drops them brings back the full-reread after an ordinary-turn park.
-    grep -q 'STRATA_PARK_DEBUG' src/program/generate.cpp || {
+    grep -q 'STRATA_PARK_DEBUG' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the pmem park debug instrumentation (STRATA_PARK_DEBUG)" >&2
       exit 1
     }
-    grep -q 'saved_tokens' include/strata/core/conversation_park_file.hpp || {
+    grep -q 'saved_tokens' engine/include/strata/core/conversation_park_file.hpp || {
       echo "tiberius.patch lost the pmem park saved-checkpoint matching" >&2
       exit 1
     }
     # round 8b: the stop-bound telemetry (upstream's call since 0.1.60; the CUDA port is
     # retired) and the server-side WSTAT counters.
-    grep -q 'STRATA_SERVE_STOP_BOUND' src/program/generate.cpp || {
+    grep -q 'STRATA_SERVE_STOP_BOUND' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the stop bound (STRATA_SERVE_STOP_BOUND)" >&2
       exit 1
     }
-    grep -q 'WSTAT rot=' src/program/generate.cpp || {
+    grep -q 'WSTAT rot=' engine/src/program/generate.cpp || {
       echo "tiberius.patch lost the per-request WSTAT telemetry line" >&2
       exit 1
     }
-    grep -q 'prefill_last_phase_times' include/strata/prefill/prefill.hpp || {
+    grep -q 'prefill_last_phase_times' engine/include/strata/prefill/prefill.hpp || {
       echo "tiberius.patch lost the prefill phase timeline accessor" >&2
       exit 1
     }
-    grep -q 'verify_window_tokens' serve/prometheus.py || {
+    grep -q 'verify_window_tokens' terminal/serve/prometheus.py || {
       echo "tiberius.patch lost the /metrics/prometheus WSTAT counters" >&2
       exit 1
     }
-    grep -q '_last_wstat' serve/server.py || {
+    grep -q '_last_wstat' terminal/serve/server.py || {
       echo "tiberius.patch lost the WSTAT stash that survives the DONE parse" >&2
       exit 1
     }
     # Upstream's surface since v0.1.42 (its take of PR #1283, a26fcbcd): the `src`
     # argument the prompt-path sizing takes, and that tiberius.patch's call sites use.
-    grep -q 'bool src' include/strata/prefill/prefill.hpp || {
+    grep -q 'bool src' engine/include/strata/prefill/prefill.hpp || {
       echo "the bytes_needed signatures no longer take src" >&2
       exit 1
     }
     # the RTX 20 kernel series the perf campaign selects.  It lives in a header
     # upstream owns; a rebase that drops it must fail here rather than silently
     # turning STRATA_SM75_PERF into an ignored variable.
-    grep -q 'STRATA_SM75_PERF' include/strata/core/sm75_series.hpp || {
+    grep -q 'STRATA_SM75_PERF' engine/include/strata/core/sm75_series.hpp || {
       echo "the engine no longer has the Turing kernel series (STRATA_SM75_PERF)" >&2
       exit 1
     }
@@ -643,62 +697,64 @@ stdenv.mkDerivation {
     # box (the failure class in VALIDATION.md).  The trellis TU must keep both its
     # VBMI flag and the original gate.  Patterns are precise so they cannot match
     # the explanatory comments the patch itself adds.
-    grep -q 'STRATA_VNNI_TIER' src/kernels/cpu/expert_layout.cpp || {
+    grep -q 'STRATA_VNNI_TIER' engine/src/kernels/cpu/expert_layout.cpp || {
       echo "upstream's VBMI-less CPU tier no longer reads STRATA_VNNI_TIER (the module's expert-tier opt-in)" >&2
       exit 1
     }
-    if grep -q 'multishift_epi64_epi8' src/kernels/cpu/expert.cpp; then
+    if grep -q 'multishift_epi64_epi8' engine/src/kernels/cpu/expert.cpp; then
       echo "avx512-bw-tier.patch did not remove the VPMULTISHIFTQB 2-bit unpacks" >&2
       exit 1
     fi
-    grep -q '_mm512_srlv_epi16' src/kernels/cpu/expert.cpp || {
+    grep -q '_mm512_srlv_epi16' engine/src/kernels/cpu/expert.cpp || {
       echo "avx512-bw-tier.patch did not introduce the VBMI-free unpack" >&2
       exit 1
     }
     # 0.2.13 split the monolithic CMakeLists.txt: the per-TU kernel flag lists
-    # now live in cmake/backends/cpu.cmake (moved verbatim; the root file keeps
-    # none).  The sycl build keeps its own three lists in sycl/CMakeLists.txt.
+    # now live in engine/cmake/backends/cpu.cmake (moved verbatim; the root file keeps
+    # none).  The sycl build keeps its own three lists in engine/sycl/CMakeLists.txt.
     # The ;-delimited form is used there because the patched iq/nvfp4 flag line
     # carries a trailing comment that mentions -mavx512vbmi by name.
-    if grep -A1 'src/kernels/cpu/expert.cpp' cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi'; then
+    if grep -A1 'src/kernels/cpu/expert.cpp' engine/cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi'; then
       echo "avx512-bw-tier.patch left -mavx512vbmi on expert.cpp" >&2
       exit 1
     fi
-    if grep -A1 'iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp' cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi'; then
+    if grep -A1 'iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp' engine/cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi'; then
       echo "avx512-bw-tier.patch left -mavx512vbmi on iq/nvfp4_avx512.cpp" >&2
       exit 1
     fi
-    grep -A1 'src/kernels/cpu/tq_avx512.cpp PROPERTIES' cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi' || {
+    grep -A1 'src/kernels/cpu/tq_avx512.cpp PROPERTIES' engine/cmake/backends/cpu.cmake | grep -q -- '-mavx512vbmi' || {
       echo "avx512-bw-tier.patch dropped VBMI from the trellis TU (its gate requires it)" >&2
       exit 1
     }
-    if grep -A1 'cpu/expert.cpp' sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;'; then
+    if grep -A1 'cpu/expert.cpp' engine/sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;'; then
       echo "avx512-bw-tier.patch left -mavx512vbmi on expert.cpp (sycl)" >&2
       exit 1
     fi
-    if grep -A1 'cpu/iq_avx512.cpp' sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;'; then
+    if grep -A1 'cpu/iq_avx512.cpp' engine/sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;'; then
       echo "avx512-bw-tier.patch left -mavx512vbmi on iq/nvfp4_avx512.cpp (sycl)" >&2
       exit 1
     fi
-    grep -A1 'src/kernels/cpu/tq_avx512.cpp PROPERTIES' sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;' || {
+    grep -A1 'src/kernels/cpu/tq_avx512.cpp PROPERTIES' engine/sycl/CMakeLists.txt | grep -q -- ';-mavx512vbmi;' || {
       echo "avx512-bw-tier.patch dropped VBMI from the trellis TU (sycl)" >&2
       exit 1
     }
-    grep -q 'cpu_avx512_ok' src/kernels/cpu/tq_cpu.cpp || {
+    grep -q 'cpu_avx512_ok' engine/src/kernels/cpu/tq_cpu.cpp || {
       echo "the trellis kernel no longer uses the VBMI gate" >&2
       exit 1
     }
-    # 0.2.13's two build-resolution facts this package now relies on: the ggml the
-    # engine links is the vendored tree (third_party/strata-ggml at the llama.cpp pin
-    # above, so the derivation fetches no llama.cpp), and the model shape is compiled
-    # in at configure time with flash_next - the shape this lane serves - as the
-    # default.  A later bump that moved either silently would build an engine for
-    # another shape or against another ggml; fail here instead.
-    grep -q '3cf03257f219afbe7334045ff7c6a06ac68c627d' third_party/strata-ggml/UPSTREAM.md || {
+    # 0.2.13's two build-resolution facts this package now relies on: which ggml
+    # tree the sources carry (engine/third_party/strata-ggml, at the llama.cpp pin
+    # above, so the derivation fetches no llama.cpp - a release build does not
+    # compile it, but a tests-on or STRATA_OWN_CPU_QUANT=OFF build does, so the
+    # pin must stay known), and the model shape compiled in at configure time with
+    # flash_next - the shape this lane serves - as the default.  A later bump that
+    # moved either silently would build an engine for another shape or against
+    # another ggml; fail here instead.
+    grep -q '3cf03257f219afbe7334045ff7c6a06ac68c627d' engine/third_party/strata-ggml/UPSTREAM.md || {
       echo "the vendored ggml is no longer at llama.cpp 3cf03257 (the package pins it)" >&2
       exit 1
     }
-    grep -q 'set(STRATA_GEOMETRY "flash_next"' cmake/strata_geometry.cmake || {
+    grep -q 'set(STRATA_GEOMETRY "flash_next"' engine/cmake/strata_geometry.cmake || {
       echo "the compiled-geometry default is no longer flash_next (this lane serves flash_next)" >&2
       exit 1
     }
@@ -737,18 +793,22 @@ stdenv.mkDerivation {
     NIX_ENFORCE_NO_NATIVE = "0";
   };
 
+  # 0.2.16's repository layout: the engine is no longer at the root.  The cmake
+  # hook runs from ./build under sourceRoot, so its source directory is
+  # ../engine (cmakeDir's default, "..", would configure the root - which has no
+  # CMakeLists.txt any more).  The binary still lands in ./build/strata.
+  cmakeDir = "../engine";
+
   cmakeFlags = [
     "-DSTRATA_ENABLE_CUDA=ON"
     "-DSTRATA_BUILD_TESTS=OFF"
     "-DCMAKE_CUDA_ARCHITECTURES=75"
     "-DCMAKE_CUDA_COMPILER=${cudaHome}/bin/nvcc"
-    # The two build-level choices the gen-114 gate measured, named here so a
-    # later upstream default flip cannot move this box silently: the MMQ prompt
-    # kernels stay out (the shipped 0.1.60 engine is built without them;
-    # -DSTRATA_MMQ=ON is the A/B path) and the CPU expert pool stays on the
-    # Strata quant layer (the AVX-512 F/DQ/BW/VL+VNNI tier whose arithmetic the
-    # gate compared).  Both are upstream defaults at this pin.
-    "-DSTRATA_MMQ=OFF"
+    # The build-level choice the gen-114 gate measured, named here so a later
+    # upstream default flip cannot move this box silently: the CPU expert pool
+    # stays on the Strata quant layer (the AVX-512 F/DQ/BW/VL+VNNI tier whose
+    # arithmetic the gate compared), which is also upstream's default.  MMQ is
+    # not set: the prompt kernels left the tree in 0.2.16 (see the pin comment).
     "-DSTRATA_OWN_CPU_QUANT=ON"
   ];
 
@@ -762,11 +822,16 @@ stdenv.mkDerivation {
     # hipblaslt_tuning, vision_reader, draft_layer, drafting, user_args,
     # gpu_roles), and strata_control.models resolves data/ relative to the
     # package root.  A service built without either dies at import time.
-    cp -r "$src/serve" "$src/tools" "$src/strata_control" $out/share/strata/
+    # 0.2.16 moved all of this into terminal/ (the repository root holds only
+    # the three project folders now).  The installed layout is the same as
+    # before: ROOT for server.py is the parent of serve/, so server.py's
+    # sys.path entries (ROOT, ROOT/tools), its ROOT/serve/{web,chat_template
+    # .jinja} assets and strata_control's data/ resolution all keep working.
+    cp -r "$src/terminal/serve" "$src/terminal/tools" "$src/terminal/strata_control" $out/share/strata/
     mkdir -p $out/share/strata/data
-    install -m644 "$src/data/expert-profile.bin" $out/share/strata/data/
-    install -m644 "$src/data/expert-profile-coder.bin" $out/share/strata/data/
-    install -m644 "$src/data/gguf_fingerprints.json" $out/share/strata/data/
+    install -m644 "$src/terminal/data/expert-profile.bin" $out/share/strata/data/
+    install -m644 "$src/terminal/data/expert-profile-coder.bin" $out/share/strata/data/
+    install -m644 "$src/terminal/data/gguf_fingerprints.json" $out/share/strata/data/
     runHook postInstall
   '';
 

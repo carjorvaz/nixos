@@ -1,8 +1,8 @@
-diff --git a/serve/server.py b/serve/server.py
-index 3d7d1c03..e2d05547 100644
---- a/serve/server.py
-+++ b/serve/server.py
-@@ -7922,6 +7922,10 @@ def make_handler(svc: Service):
+diff --git a/terminal/serve/server.py b/terminal/serve/server.py
+index c1efc7e9..f38f6724 100644
+--- a/terminal/serve/server.py
++++ b/terminal/serve/server.py
+@@ -6664,6 +6664,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -10,10 +10,10 @@ index 3d7d1c03..e2d05547 100644
 +                                   path.startswith(("/web/", "/fonts/"))):
 +                self._json(404, {"error": {"message": "not found"}})
 +                return
+             if path.startswith("/v1/") and self._foreign_page(body=False):
+                 return
              if path.startswith("/tool-media/"):
-                 if not self._authorized():
-                     return
-@@ -8313,6 +8317,9 @@ def make_handler(svc: Service):
+@@ -7065,6 +7069,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
              path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
@@ -23,8 +23,8 @@ index 3d7d1c03..e2d05547 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -9213,6 +9220,11 @@ def _name_in(name: str, names) -> bool:
-     return name in names or any(n.startswith(".") and (name.endswith(n) or name == n[1:]) for n in names)
+@@ -7909,6 +7916,11 @@ def lan_addresses() -> list[str]:
+     return ([first] if ok(first) else []) + sorted(ip for ip in ips if ok(ip) and ip != first)
  
  
 +def web_disabled() -> bool:
@@ -32,6 +32,6 @@ index 3d7d1c03..e2d05547 100644
 +    return os.environ.get("STRATA_NO_WEB", "") not in ("", "0")
 +
 +
- def allowed_hosts_of(value, env: str = "") -> list[str]:
-     """The config's allowed_hosts (a name or a list) plus $STRATA_ALLOWED_HOSTS (comma-separated): host names, "*" or
-     ".example.com" (it and every name below it).  A scheme, port or path is dropped ("https://a.example.com:8443/"
+ def host_names_for(bind_host: str, allowed_hosts=(), trusted_origins=()) -> set[str]:
+     """Every name this server answers to besides an IP address: localhost, the address it listens on, the config's
+     allowed_hosts and trusted_origins' hosts, and - listening beyond this PC (0.0.0.0 or a LAN address) - this PC's

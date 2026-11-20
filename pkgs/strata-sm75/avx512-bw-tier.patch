@@ -1,8 +1,8 @@
-diff --git a/cmake/backends/cpu.cmake b/cmake/backends/cpu.cmake
-index 5297309d..35c65797 100644
---- a/cmake/backends/cpu.cmake
-+++ b/cmake/backends/cpu.cmake
-@@ -182,14 +182,23 @@ if(STRATA_CPU_X86 AND NOT STRATA_NATIVE_EXPERTS)
+diff --git a/engine/cmake/backends/cpu.cmake b/engine/cmake/backends/cpu.cmake
+index 68ccaa05..6c286f22 100644
+--- a/engine/cmake/backends/cpu.cmake
++++ b/engine/cmake/backends/cpu.cmake
+@@ -185,14 +185,23 @@ if(STRATA_CPU_X86 AND NOT STRATA_NATIVE_EXPERTS)
    endif()
  endif()
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
@@ -29,7 +29,7 @@ index 5297309d..35c65797 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -256,12 +265,17 @@ macro(strata_cpu_native_experts)
+@@ -259,12 +268,17 @@ macro(strata_cpu_native_experts)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -49,10 +49,10 @@ index 5297309d..35c65797 100644
      set_source_files_properties(src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
      set_source_files_properties(src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS
                                  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512vnni;-mavx512vbmi;-mavx2;-mfma;-mf16c")
-diff --git a/src/kernels/cpu/expert.cpp b/src/kernels/cpu/expert.cpp
+diff --git a/engine/src/kernels/cpu/expert.cpp b/engine/src/kernels/cpu/expert.cpp
 index 4bd62890..a4d59ae1 100644
---- a/src/kernels/cpu/expert.cpp
-+++ b/src/kernels/cpu/expert.cpp
+--- a/engine/src/kernels/cpu/expert.cpp
++++ b/engine/src/kernels/cpu/expert.cpp
 @@ -111,21 +111,37 @@ void quantize_oracle_q8_0(const float* x, int n, ActQ& a) {
      }
  }
@@ -187,11 +187,11 @@ index 4bd62890..a4d59ae1 100644
  // For blocks [b0, b0+nb) (nb <= 8): p[2i+h] = d_{b0+i} * xscale[2(b0+i)+h], dd[2i+h] = d_{b0+i}.
  inline void scales8(const uint8_t* wscales, const ActQ& a, int b0, int nb, __m512& p, __m512& dd) {
      const __mmask8 m8 = nb >= 8 ? (__mmask8) 0xFF : (__mmask8) ((1u << nb) - 1u);
-diff --git a/sycl/CMakeLists.txt b/sycl/CMakeLists.txt
-index 2ce41183..ed10743e 100644
---- a/sycl/CMakeLists.txt
-+++ b/sycl/CMakeLists.txt
-@@ -164,8 +164,10 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
+diff --git a/engine/sycl/CMakeLists.txt b/engine/sycl/CMakeLists.txt
+index 28155cba..9b785eb9 100644
+--- a/engine/sycl/CMakeLists.txt
++++ b/engine/sycl/CMakeLists.txt
+@@ -174,8 +174,10 @@ target_link_libraries(strata_spec PUBLIC strata_includes)
  strata_resolve(_cpu src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp src/kernels/cpu/expert_layout.cpp
                      src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)   # hadamard.cpp: expert_layout.cpp reads hadamard.txt
  add_library(strata_kernels_cpu STATIC ${_cpu})
@@ -203,7 +203,7 @@ index 2ce41183..ed10743e 100644
  set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  # AVX-VNNI copies of the AVX-2 expert kernels (q2_avx2.cpp, iq_avx2.cpp), taken at run time where the CPU has them
  include(CheckCXXSourceCompiles)
-@@ -210,8 +212,9 @@ if(STRATA_NATIVE_EXPERTS)
+@@ -232,8 +234,9 @@ if(STRATA_NATIVE_EXPERTS)
                               src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp src/kernels/cpu/tq_avx512.cpp)   # Gyro trellis CPU rows (native_expert.cpp calls them; the SYCL GPU path does not run these types)
    target_sources(strata_kernels_cpu PRIVATE ${_cpu_native})
    target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
