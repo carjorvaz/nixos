@@ -40,6 +40,7 @@ class FakeClient:
         self.create_category_calls = []
         self.category_exception = None
         self.next_category_id = 900
+        self.project_balance = {"18": 0.0, "19": 0.0}
 
     def projects(self):
         return self.project_data
@@ -75,6 +76,11 @@ class FakeClient:
         if bill_id in self.bill_data:
             return self.bill_data[bill_id]
         return self.created_bill
+
+    def project_info(self, project_id):
+        info = dict(self.project_data[0])
+        info["balance"] = self.project_balance
+        return info
 
     def create_category(self, project_id, payload):
         self.create_category_calls.append((project_id, payload))
@@ -296,10 +302,13 @@ class CospendCliTests(unittest.TestCase):
         self.assertIn("Add mode requires", stderr)
         self.assertEqual(fake.create_calls, [])
 
-    def test_weighted_bill_split_truncates_then_assigns_residue(self):
+    def test_weighted_bill_split_is_exact(self):
         members = {18: {"weight": 1}, 19: {"weight": 2}}
         bill = {"id": 1, "amount": 10.00, "payer_id": 18, "owerIds": [18, 19]}
-        self.assertEqual(MODULE.bill_ower_cents(bill, members), {18: 333, 19: 667})
+        owed = MODULE.bill_ower_amounts(bill, members)
+        self.assertEqual(sum(owed.values()), Decimal("10.00"))
+        self.assertEqual(owed[18].quantize(Decimal("0.01")), Decimal("3.33"))
+        self.assertEqual(owed[19].quantize(Decimal("0.01")), Decimal("6.67"))
 
     def test_custom_ower_amounts_are_honoured(self):
         members = {18: {"weight": 1}, 19: {"weight": 1}}
@@ -310,13 +319,13 @@ class CospendCliTests(unittest.TestCase):
             "owerIds": [18, 19],
             "ower_amounts": [{"ower_id": 19, "amount": "7.25"}],
         }
-        self.assertEqual(MODULE.bill_ower_cents(bill, members), {19: 725})
+        self.assertEqual(MODULE.bill_ower_amounts(bill, members), {19: Decimal("7.25")})
 
     def test_unknown_bill_member_fails_closed(self):
         members = {18: {"weight": 1}}
         bill = {"id": 1, "amount": 10.00, "payer_id": 18, "owerIds": [99]}
         with self.assertRaises(MODULE.CospendError):
-            MODULE.bill_ower_cents(bill, members)
+            MODULE.bill_ower_amounts(bill, members)
 
     def test_balance_computation_matches_paid_minus_owed(self):
         members = {
@@ -331,9 +340,51 @@ class CospendCliTests(unittest.TestCase):
         self.assertEqual(balances, {18: -13600, 19: 13600})
         self.assertEqual(MODULE.settlement_plan(balances), [(18, 19, 13600)])
 
+    def test_balance_rounds_half_up_like_the_web_app(self):
+        members = {18: {"id": 18, "weight": 1}, 19: {"id": 19, "weight": 1}}
+        bills = [{"id": 1, "amount": 100.01, "payer_id": 18, "owerIds": [18, 19]}]
+        # Exact shares are 50.005 each; the web app displays 50.01 / -50.01.
+        self.assertEqual(MODULE.compute_balances(members, bills), {18: 5001, 19: -5001})
+
+    def test_balance_keeps_exact_shares_until_final_rounding(self):
+        members = {18: {"id": 18, "weight": 1}, 19: {"id": 19, "weight": 1}}
+        bills = [
+            {"id": 1, "amount": 171.59, "payer_id": 18, "owerIds": [19]},
+            {"id": 2, "amount": 4.23, "payer_id": 19, "owerIds": [18, 19]},
+            {"id": 3, "amount": 15.67, "payer_id": 18, "owerIds": [18, 19]},
+            {"id": 4, "amount": 13.29, "payer_id": 18, "owerIds": [18, 19]},
+        ]
+        # 171.59 - 2.115 + 7.835 + 6.645 = 183.955 exactly ... != whole cents
+        balances = MODULE.compute_balances(members, bills)
+        self.assertEqual(sum(balances.values()), 0)
+        self.assertEqual(balances[18], 18396)
+
     def test_three_member_settlement_plan_matches_greedily(self):
         plan = MODULE.settlement_plan({1: -3000, 2: -1000, 3: 4000})
         self.assertEqual(plan, [(1, 3, 3000), (2, 3, 1000)])
+
+    def test_app_balance_text_matches_the_web_app(self):
+        # Half-up on the exact decimal (171.585 -> 171.59) but the app rounds the
+        # raw server float, so a float just under the half stays put.
+        self.assertEqual(MODULE.app_balance_text(171.58500000000001), "171.59")
+        self.assertEqual(MODULE.app_balance_text(-171.58500000000004), "-171.59")
+        self.assertEqual(MODULE.app_balance_text(-0.0049999999999954525), "0.00")
+        self.assertEqual(MODULE.app_balance_text(0.004999999999967031), "0.00")
+        self.assertEqual(MODULE.app_balance_text(0.0), "0.00")
+
+    def test_balance_mode_reports_app_formatted_server_balance(self):
+        fake = FakeClient()
+        fake.project_balance = {"18": -171.58500000000004, "19": 171.58500000000004}
+        code, stdout, _ = self.invoke_with(fake, ["balance", "--project", "china-2026"])
+        self.assertEqual(code, 0)
+        report = json.loads(stdout)
+        self.assertEqual(
+            [entry["balance"] for entry in report["balances"]], ["-171.59", "171.59"]
+        )
+        self.assertEqual(
+            report["suggested_transfers"],
+            [{"from": "Carlos Vaz", "to": "Mafalda Ribeiro", "amount": "171.59"}],
+        )
 
     def test_balance_mode_is_read_only_and_reports_zeroed_books(self):
         fake = FakeClient()
@@ -479,6 +530,7 @@ class CospendCliTests(unittest.TestCase):
 
     def test_unbalanced_books_omit_transfers(self):
         fake = FakeClient()
+        fake.project_balance = {"18": 10.0, "19": -4.0}
         fake.bills_responses = [
             [
                 {

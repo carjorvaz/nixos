@@ -20,7 +20,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP
 from typing import Any
 
 DEFAULT_BASE_URL = "https://cloud.vaz.one"
@@ -162,22 +162,27 @@ def bill_cents(bill: dict[str, Any]) -> int:
     return int(Decimal(str(bill["amount"])).quantize(CENT) * 100)
 
 
-def bill_ower_cents(
+def bill_ower_amounts(
     bill: dict[str, Any], members: dict[int, dict[str, Any]]
-) -> dict[int, int]:
-    """Owed cents per member id for one bill (custom amounts or weighted split)."""
+) -> dict[int, Decimal]:
+    """Exact amount owed per member for one bill (custom amounts or weighted split).
+
+    Shares are deliberately not rounded here: the Cospend web app sums exact
+    shares and rounds only the final balance, so rounding each bill's share
+    would drift by cents.
+    """
     custom = bill.get("ower_amounts") or bill.get("owerAmounts")
     if custom:
-        owed: dict[int, int] = {}
+        owed: dict[int, Decimal] = {}
         for entry in custom:
             ower_id = int(entry.get("ower_id", entry.get("owerId")))
             if ower_id not in members:
                 raise CospendError(
                     f"Bill {bill.get('id')} references unknown custom ower {ower_id}"
                 )
-            owed[ower_id] = owed.get(ower_id, 0) + int(
-                Decimal(str(entry["amount"])).quantize(CENT) * 100
-            )
+            owed[ower_id] = owed.get(ower_id, Decimal("0")) + Decimal(
+                str(entry["amount"])
+            ).quantize(CENT)
         return owed
     ower_ids = [int(value) for value in (bill.get("owerIds") or [])]
     if not ower_ids:
@@ -195,32 +200,35 @@ def bill_ower_cents(
             )
         weights.append(weight)
     total_weight = sum(weights, Decimal("0"))
-    total = bill_cents(bill)
+    amount = Decimal(str(bill["amount"])).quantize(CENT)
     owed = {}
-    allocated = 0
-    for index, ower_id in enumerate(ower_ids):
-        if index == len(ower_ids) - 1:
-            share = total - allocated
-        else:
-            share = int(Decimal(total) * weights[index] / total_weight)
-            allocated += share
-        owed[ower_id] = owed.get(ower_id, 0) + share
+    for ower_id, weight in zip(ower_ids, weights):
+        share = amount * weight / total_weight
+        owed[ower_id] = owed.get(ower_id, Decimal("0")) + share
     return owed
 
 
 def compute_balances(
     members: dict[int, dict[str, Any]], bills: list[dict[str, Any]]
 ) -> dict[int, int]:
-    """Reconstruct every member balance in cents from raw bills (paid minus owed)."""
-    balances = {member_id: 0 for member_id in members}
+    """Reconstruct every member balance in cents from raw bills (paid minus owed).
+
+    Exact shares are summed and rounded once, at the end, half-up: that is what
+    the Cospend web app displays (a running balance of 171.585 shows as 171.59).
+    Rounding per bill would drift by a cent instead of matching the app.
+    """
+    balances = {member_id: Decimal("0") for member_id in members}
     for bill in bills:
         payer_id = int(bill["payer_id"])
         if payer_id not in balances:
             raise CospendError(f"Bill {bill.get('id')} has unknown payer {payer_id}")
-        balances[payer_id] += bill_cents(bill)
-        for ower_id, cents in bill_ower_cents(bill, members).items():
-            balances[ower_id] -= cents
-    return balances
+        balances[payer_id] += Decimal(str(bill["amount"])).quantize(CENT)
+        for ower_id, share in bill_ower_amounts(bill, members).items():
+            balances[ower_id] -= share
+    return {
+        member_id: int((balance * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        for member_id, balance in balances.items()
+    }
 
 
 def settlement_plan(balances: dict[int, int]) -> list[tuple[int, int, int]]:
@@ -399,6 +407,10 @@ class CospendClient:
     def bill(self, project_id: str, bill_id: int) -> dict[str, Any]:
         quoted = urllib.parse.quote(project_id, safe="")
         return self.request("GET", f"/projects/{quoted}/bills/{bill_id}")
+
+    def project_info(self, project_id: str) -> dict[str, Any]:
+        quoted = urllib.parse.quote(project_id, safe="")
+        return self.request("GET", f"/projects/{quoted}")
 
 
 def values(collection: Any) -> list[dict[str, Any]]:
@@ -615,12 +627,47 @@ def record_view(
     }
 
 
+def app_balance_text(value: float) -> str:
+    """Render a balance the way the Cospend web app renders it.
+
+    The app formats the server balance with Number.prototype.toFixed(2) and
+    collapses a formatted zero to "0.00" (see AppNavigationMemberItem's
+    balanceCounter). Reproducing the browser's rounding keeps this CLI and the
+    app in agreement down to the cent, including half-cent artifacts.
+    """
+    exact = Decimal(value)
+    quantum = Decimal("0.01")
+    lower = exact.quantize(quantum, rounding=ROUND_FLOOR)
+    upper = lower + quantum
+    chosen = lower if (exact - lower) < (upper - exact) else upper
+    text = format(chosen, ".2f")
+    return "0.00" if Decimal(text) == 0 else text
+
+
 def run_balance(args: argparse.Namespace) -> int:
     client, _, project = connect(args)
     check_bot_contract(project)
     members_by_id = {int(member["id"]): member for member in project.get("members", [])}
     bills = client.recent_bills(project["id"])
-    balances = compute_balances(members_by_id, bills)
+    info = client.project_info(project["id"])
+    raw_balance = info.get("balance") if isinstance(info, dict) else None
+    if isinstance(raw_balance, dict) and raw_balance:
+        balances_text: dict[int, str] = {}
+        for key, value in raw_balance.items():
+            member_id = int(key)
+            if member_id not in members_by_id:
+                raise CospendError(
+                    f"Project balance references unknown member {member_id}"
+                )
+            balances_text[member_id] = app_balance_text(float(value))
+    else:
+        balances_text = {
+            member_id: format(Decimal(cents) / 100, ".2f")
+            for member_id, cents in compute_balances(members_by_id, bills).items()
+        }
+    balances = {
+        member_id: int(Decimal(text) * 100) for member_id, text in balances_text.items()
+    }
     total = sum(balances.values())
 
     paid: dict[int, int] = {}
@@ -653,7 +700,7 @@ def run_balance(args: argparse.Namespace) -> int:
             for member_id in sorted(members_by_id)
         ],
         "balances": [
-            {"member": name(member_id), "balance": money(balances[member_id])}
+            {"member": name(member_id), "balance": balances_text[member_id]}
             for member_id in sorted(members_by_id)
         ],
         "sum_check": money(total),
