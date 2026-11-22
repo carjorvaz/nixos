@@ -46,10 +46,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import contextvars
 import ipaddress
 import json
 import math
 import os
+import re
 import signal
 import socket
 import sys
@@ -169,6 +171,35 @@ def rebuild(start, lines, drop=(), add=()):
         out.append(line)
     out.extend(add)
     return b"\r\n".join(out) + b"\r\n\r\n"
+
+
+CORS_ORIGIN = contextvars.ContextVar("cors_origin", default=None)
+
+CORS_ORIGIN_RE = re.compile(r"http://(?:127\.0\.0\.1|localhost)(?::\d{1,5})?\Z")
+
+
+def cors_origin(headers):
+    """The request's Origin if it is a local page, else None.
+
+    The proxy has no authentication, so CORS is deliberately limited to
+    loopback origins: a page served from the user's own machine may call the
+    engine, a random website may not.
+    """
+    values = headers.get(b"origin") or []
+    if not values:
+        return None
+    origin = values[0].decode("latin-1").strip()
+    return origin if CORS_ORIGIN_RE.match(origin) else None
+
+
+def cors_lines(origin):
+    return [
+        b"Access-Control-Allow-Origin: " + origin.encode("latin-1"),
+        b"Access-Control-Allow-Methods: GET, POST, OPTIONS",
+        b"Access-Control-Allow-Headers: Content-Type, Authorization",
+        b"Access-Control-Max-Age: 600",
+        b"Vary: Origin",
+    ]
 
 
 def is_chunked(values):
@@ -469,6 +500,15 @@ class LeaseProxy:
 
     async def dispatch(self, reader, writer, door, source, request):
         headers = header_index(request.headers)
+        origin = cors_origin(headers)
+        CORS_ORIGIN.set(origin)
+        if (
+            request.method.upper() == "OPTIONS"
+            and origin
+            and b"access-control-request-method" in headers
+        ):
+            await self.preflight(writer, origin)
+            return "204"
 
         # The back door is machine traffic by construction and keeps holding
         # everything it is given.  A background *source* on the front door is
@@ -591,9 +631,11 @@ class LeaseProxy:
         body_kind, body_length = response_body_kind(
             request.method, response.code, header_index(response.headers)
         )
-        writer.write(
-            rebuild(response.start, response.headers, drop=(b"connection",), add=(b"Connection: close",))
-        )
+        add = [b"Connection: close"]
+        origin = CORS_ORIGIN.get()
+        if origin:
+            add.extend(cors_lines(origin))
+        writer.write(rebuild(response.start, response.headers, drop=(b"connection",), add=tuple(add)))
         if not await flush(writer):
             upstream_writer.close()
             return str(response.code)
@@ -638,7 +680,17 @@ class LeaseProxy:
         ]
         if retry_after is not None:
             head.append(b"Retry-After: " + str(int(retry_after)).encode())
+        origin = CORS_ORIGIN.get()
+        if origin:
+            head.extend(cors_lines(origin))
         writer.write(b"\r\n".join(head) + b"\r\n\r\n" + body)
+        await flush(writer)
+
+    async def preflight(self, writer, origin):
+        head = [b"HTTP/1.1 204 No Content"]
+        head.extend(cors_lines(origin))
+        head.append(b"Connection: close")
+        writer.write(b"\r\n".join(head) + b"\r\n\r\n")
         await flush(writer)
 
     async def discard_body(self, reader, headers):
