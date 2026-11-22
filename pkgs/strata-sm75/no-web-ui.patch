@@ -1,8 +1,8 @@
 diff --git a/terminal/serve/server.py b/terminal/serve/server.py
-index c1efc7e9..f38f6724 100644
+index 3d6807d2a..670177167 100644
 --- a/terminal/serve/server.py
 +++ b/terminal/serve/server.py
-@@ -6664,6 +6664,10 @@ def make_handler(svc: Service):
+@@ -6627,6 +6627,10 @@ def make_handler(svc: Service):
  
          def do_GET(self):
              path = self.path.split("?")[0].rstrip("/")
@@ -13,7 +13,7 @@ index c1efc7e9..f38f6724 100644
              if path.startswith("/v1/") and self._foreign_page(body=False):
                  return
              if path.startswith("/tool-media/"):
-@@ -7065,6 +7069,9 @@ def make_handler(svc: Service):
+@@ -7042,6 +7046,9 @@ def make_handler(svc: Service):
                  return
              path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
              path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
@@ -23,7 +23,7 @@ index c1efc7e9..f38f6724 100644
              if path.startswith("/v1/") and self._foreign_page():
                  return
              if path == "/settings":
-@@ -7909,6 +7916,11 @@ def lan_addresses() -> list[str]:
+@@ -7897,6 +7904,11 @@ def lan_addresses() -> list[str]:
      return ([first] if ok(first) else []) + sorted(ip for ip in ips if ok(ip) and ip != first)
  
  

@@ -24,9 +24,9 @@
 let
   c = cudaPackages;
 
-  # 64524fb9: v0.2.16 (2026-11-17), the current release, engine 0.1.62 - the
+  # 028e6826: v0.2.17 (2026-11-20), the current release, engine 0.1.63 - the
   # tag and its engine agree at this pin (the 0.2.15 tag shipped 0.1.60 binaries
-  # while declaring 0.1.61; 0.1.62 is both the tree's PROJECT_VERSION and the
+  # while declaring 0.1.61; 0.1.63 is both the tree's PROJECT_VERSION and the
   # released engine).  Two structural things to know before reading the rest of
   # this file:
   #   * the repository was restructured: the engine tree (src, include, cmake,
@@ -93,7 +93,7 @@ let
   # third_party/ggml/VERSION.txt), so the derivation fetches no llama.cpp:
   # cmake/strata_ggml.cmake resolves the vendored tree when STRATA_GGML_DIR is
   # unset.
-  revision = "64524fb9fc82222ddce554c0643b64f056ec8366";
+  revision = "028e6826bdb152be2d0579818c2ede6fe7da984c";
 
   # nixpkgs splits the CUDA toolkit into many outputs and CMake's
   # find_package(CUDAToolkit) wants one root with nvcc, the CRT headers and the
@@ -119,7 +119,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.62";
+  version = "0.1.63";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -157,7 +157,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-g6TO9zC2jt41B5oADYrypIrXpb73/QzXmqjUuzBe9E4=";
+    hash = "sha256-P6V8EDElMtohpT60Ya94Hb2ebUz1ZjzJbb8O/L12ybE=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -297,6 +297,14 @@ stdenv.mkDerivation {
   # cmake/backends/cpu.cmake and expert.cpp's hunks are unchanged upstream, and
   # the sycl lists moved with the tree (still retargeted by hand at the 0.2.15
   # bump).
+  # The v0.2.17 bump (028e6826) needed ONE content resolution: upstream added the
+  # kq_avx512.cpp COMPILE_OPTIONS line (with -mavx512vbmi) exactly where
+  # avx512-bw-tier.patch adds it, so the duplicate was dropped and upstream's line
+  # and comment kept.  tiberius.patch applied with no conflicts (17 files,
+  # +3215/-140), no-web-ui.patch cleanly, and every postPatch env assertion still
+  # held - the rebase found no upstream change inside any region these patches own.
+  # Engine 0.1.63: the expert cache at start is 9,156 slots (14.66 GiB, up from
+  # 8,898) and the elastic K/V starts at 16,384 of 262,144 cells.
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
