@@ -229,7 +229,31 @@ let
         # GPU timeline to `wait copy` (the DAX pack stream), so the remaining win is
         # rotation/copy overlap, not a chunk flag.  Evidence:
         # docs/exec-plans/active/strata-tuning-next.md "Round 2 campaign results".
-        "28160"
+        #
+        # 2026-11-20: 16384, BECAUSE THE CHUNK BOUNDS THE WINDOW.  The elastic K/V
+        # may take expert-cache slots only BELOW the prompt path's loan
+        # (engine/include/strata/core/kv_grow_rules.hpp: `top` is "the slot the K/V
+        # may take room below (the prompt path's loan starts there)"), and the loan
+        # is `lend_slots(chunk)` - the chunk's own buffers.  Measured on 0.1.62:
+        # "the prompt path borrows 8057 CUDA0 cache slots (12.91 GiB)" at 28160,
+        # i.e. 8057 of the 9156 slots, leaving the K/V slots 0..1098 (971 above the
+        # 128-slot floor).  So the K/V tops out at 180,224 of the 262,144 cells and
+        # the next 8192-cell step dies in the decode window (generate.cpp's
+        # `ERR the K/V cannot grow: no VRAM is left`, return 1):
+        #   "the elastic K/V could not map 2 chunks (the driver has no VRAM left)"
+        #   "the K/V could not grow to 188416 cells (no error)"
+        # Three retries of one 178,985-token conversation re-read the prompt (111 s
+        # each) and died at the same cell.  262,144 int8 cells are 3.09 GiB (1056
+        # B/cell x the 12 full-attention layers) against the 2.24 GiB that 180,224
+        # cells reach, and the cache has nothing more to give at its floor.
+        # At 16384 the loan scales with the chunk (~4,700 of 9156 slots), the K/V
+        # gets slots 0..~4467 (~6.9 GiB) and maps the whole window with margin.
+        # The price is the read screened above (+2.9/+3.3/+10.3%), ~3-11 s on a
+        # 180K read that the client pays once per engine start.  The window is the
+        # binding constraint here, so the chunk gives way - and --no-prefill-borrow
+        # is NOT the alternative: its own buffers leave the cache at 4,959 slots
+        # and cost +52% P27 read, which is the same door by another wall.
+        "16384"
         "--spec"
         "4"
         "--spec-min-p"
@@ -375,21 +399,29 @@ let
       # +10.5% P27 read, with answers drifting, so int8 stays.  Model-card sampling
       # beat card0 (presence_penalty 0) 58.67 vs 58.00 over 3 eval80 passes; keep the
       # card.  Evidence: docs/exec-plans/active/strata-tuning-next.md results section.
-      # 0.2.16 turns on a conversation-cache SSD tier by default
-      # (conversation_spill.hpp: a park the RAM tier evicts, or a capture the
-      # RAM floor refuses, is written as a session file under
-      # <dataDir>/conversation-spill and read back on a later turn).  Its
-      # default budget is a quarter of free space, capped at 32 GiB - ~12 GiB on
-      # /optane's 50 GiB free, beside the 4 GiB of parks and the session files
-      # this lane already keeps there.  The pmem park tier below already catches
-      # the refusal path this lane measured (round 7/8), so the tier is pinned
-      # OFF until its own campaign measures it; --conversation-spill-mib 0 is the
-      # engine's off switch and -1 restores upstream's automatic budget.
+      # 0.2.16's conversation-cache SSD tier, measured on this lane 2026-11-22
+      # and turned ON at a bounded 8 GiB (conversation_spill.hpp: a park the RAM
+      # tier evicts is written as a session file under
+      # <dataDir>/conversation-spill and read back on a later turn; upstream's
+      # default budget is a quarter of free space, capped at 32 GiB - ~13.8 GiB
+      # here - and `-1` restores it).  Why on: evictions, not refusals, are the
+      # production failure mode on this box - 442 park events in the two days of
+      # gen 116/117, 409 of them with evictions (up to 172 in one event), and 98
+      # restores whose median is 15,453 tokens and whose largest is 180,445.
+      # Measured on the 0.1.62 build, five 26k conversations so the 2,048 MiB RAM
+      # cache evicts: the tier writes 579 MiB per evicted park in the background
+      # (0.7-4.7 s) and the repeat of the evicted conversation restores 26,121
+      # tokens (checkpoint) in 152 ms - 0.85 s wall against 20.14 s for the full
+      # re-read with the tier off.  A 180k park is ~4 GiB, so 8 GiB holds one
+      # long conversation plus short ones; /optane has 50 GiB free beside the
+      # 4 GiB of parks.  The pmem park tier below is unchanged: it catches the
+      # refusals (3 in the same two days), this tier catches the evictions.
+      # Rollback is the one flag: --conversation-spill-mib 0.
       user_args = [
         "--kv-resident"
         "0"
         "--conversation-spill-mib"
-        "0"
+        "8192"
       ];
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";

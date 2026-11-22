@@ -1118,6 +1118,59 @@ or boot that generation's entry.  The strata bump alone reverts with
 `eval-compare6.json`, `summary6.json`, `spill6-results.json`, `window6.log`,
 `prom-{old,new}6.txt`, `/data/bump/logs/`.
 
+### Generation 118 (2026-11-22): SSD tier on, lease proxy declared, tuned DFlash2 rejected
+
+Generation 118 changes one thing in the running system: the lane's config JSON gains
+`--conversation-spill-mib 8192`.  The engine store path is unchanged (`8ssk1gii...`, 0.1.62), and
+so is the lease proxy (`l1c2f...`) - the CORS support it was already running had been built from
+the working tree at generation 117 and is now committed (`f133ce8`), so a clean-tree build keeps
+it.  The transient `lease-cors` unit (the Nov-16 workaround) was stopped and the declared
+`tiberius-strata-lease` serves :8080 again, enabled at boot; the switch restarts it cleanly.
+
+Follow-up measurements behind this generation (artifacts in `/data/bump/camp11/`, scripts and
+`analysis11.json`; one isolated port-8099 window, production trap-restored):
+
+- **The gen-116 gate's decode -6% is refuted.**  Same deployed config, both engines, 3 x L-live
+  (the round-10 structured cell, 768 generated each - the cell's 40-object array exceeds the cap,
+  so no `ignore_eos` is needed and every run is directly comparable): 0.1.61 **110.7** against
+  0.1.62 **111.0 tok/s** on the warm runs (+0.3%), and the draft acceptance is identical, **85.3 %
+  (1827/2142) on both**.  The gate's number came from comparing totals over different answer
+  lengths; there is no decode regression to chase.
+- **Upstream's tuned DFlash2 drafter is a regression on this pack and is rejected.**
+  `qwen3.8-flash-next-dflash2.strata1.q4_0-selq4.pack` (the feed's 340 MB file, sha256
+  `4df2e5ab...`, fetched from the v0.2.16 release) measured against the stock pack on the same
+  engine and config: acceptance **78.2 %** at `--draft-conf 0.8` and **77.3 %** at 0.7 against
+  the stock pack's **85.3 %**, and decode **104.7 / 104.2** against **111.0 tok/s** (-5.7 / -6.1 %).
+  The tuned weights were fine-tuned on 4-bit targets' outputs; this lane serves a ~2-bit pack
+  (UD-IQ2_XS), which is the distance the tuned pack does not close - the same 98 -> 85 acceptance
+  drop the UD switch measured.  With the round-10 spec sweep already bounding the alternative
+  (`--spec 4` recovers acceptance to 91.6 % but costs 1.2 % decode), **99 % acceptance is not
+  reachable with the available drafters on this pack**; the stock pack at `--spec 6
+  --draft-conf 0.8` stays.
+- **The conversation SSD tier is enabled at a bounded 8,192 MiB.**  In the same window, five
+  distinct 26k conversations fill the 2,048 MiB RAM park cache and evict: with the tier off the
+  repeat of the first conversation is a full **20.14 s** re-read; with it on the engine writes the
+  evicted park in the background (579 MiB, 0.7-4.7 s) and the repeat **restores 26,121 tokens in
+  152 ms** - **0.85 s wall**.  This lane's two days on gen 116/117 logged **442 park events, 409
+  of them with evictions** (up to 172 in one event) and 98 restores (median 15,453 tokens, max
+  180,445), against only 3 physical-RAM refusals - evictions, not refusals, are the failure mode,
+  and the pmem park tier already covers the refusals.  The cap keeps the disk cost bounded (the
+  upstream default here would be ~13.8 GiB of /optane's 54 GiB free; one 180k park is ~4 GiB).
+  Rollback is the one flag: `--conversation-spill-mib 0`.
+
+Deployed as generation 118 (2026-11-22 17:46:35): system
+`/nix/store/a0annahhch237svrk645ach32fp6ilrv-nixos-system-tiberius-26.05.20260927.cf5e765`; the
+closure diff to generation 117 is `strata-general.json` (`jp7prmi0` -> `wr99rh14`) alone.  Verified
+after the switch: the engine's command line carries `--conversation-spill-mib 8192`, the start-up
+line reports `SSD tier in /optane/strata-data/conversation-spill/<pid>-<hash>, up to 8192 MiB`, the
+old campaign folder was removed as an ended engine, both doors are 200 (8080 through the declared
+lease proxy), the preflight from `http://localhost:5173` answers 204 with
+`Access-Control-Allow-Origin` and a non-loopback origin gets no CORS header, and there is no Xid.
+
+Rollback: `nixos-rebuild switch --rollback` on tiberius (generation 117), or set
+`--conversation-spill-mib 0` in `profiles/nixos/strata.nix` and rebuild.  The tuned pack stays at
+`/optane/strata-data/dflash2/*.strata1.*.pack` (unused; 340 MB) for a future re-test.
+
 ### DeepSeek-V4.1-Flash IQ1_M: not runnable on this fleet (checked 2026-10-24)
 
 The smallest official set (`ist-das-1.75bpw`, ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF)
