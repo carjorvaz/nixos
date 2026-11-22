@@ -1071,6 +1071,14 @@ conversation-cache families (parked, parks, restores, evictions, refused by reas
 all nine WSTAT series stay populated (rotations 13, borrow 69.3 GB, verify windows 246 / rows
 217 / accepted 168, stop bound 1/1, prefill 26.51 s).
 
+A blind spot this gate shares with the previous bumps: it exercises 4.2k and 26k prompts only,
+so it cannot see the elastic K/V's window ceiling.  On 0.1.62 the K/V may take expert-cache
+slots only below the prompt path's loan, which is `lend_slots(chunk)` - at `--prefill 28160`
+the loan is 8,057 of the 9,156 slots and the K/V tops out at 180,224 of the 262,144 cells,
+failing "the K/V could not grow to 188416 cells" on a 178,985-token conversation (found
+2026-11-20 after this deploy).  A future bump's gate should include a >180k-token cell, or the
+ceiling moves silently.
+
 SSD tier probe (0.1.62 with the tier left ON, `--conversation-cache-mib 768`, 26k-token
 conversations): the tier comes up (`SSD tier in /optane/strata-data/conversation-spill/<pid>-
 <hash>, up to 13,784 MiB`); a 512 MiB RAM cache skipped every park ("snapshot 579 MiB exceeds
