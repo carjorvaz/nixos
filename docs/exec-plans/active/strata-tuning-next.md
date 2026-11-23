@@ -947,6 +947,33 @@ lane** - the 8-row cap is structural. The refit side is scoped in
 `dflash2-refit-scope.md`. Artifacts: `/data/ab53-window.log`, `/data/ab53-{base,lk12,lk9}.log`,
 `/data/ab53-metrics-*.json`, harness `/data/ab53.py` + `/data/ab53-base.json`.
 
+### Round 17b: the draft-skip knob (2026-11-23, same day)
+
+The last in-cap knob: `STRATA_DF2_LOOKUP_SKIP=N` (`spec/window_rule.hpp`,
+`skip_draft_for_lookup`) skips the DFlash2 draft round when the suffix finds a match of at least
+N tokens and lets the draft policy take the lookup window directly; the draft is deferred to the
+next round, not lost. Same harness and cells, arms base2 / skip8 (`=8`),
+counterbalanced base, skip, skip, base, `STRATA_DRAFT_LOG=1` in both arms. Window
+09:43:00-09:49:08, production restored and healthy at 09:49:57.
+
+| arm | copy cold / warm tok/s | edit cold / warm |
+|---|---|---|
+| base2 (2 runs) | 111.2 / 123.6, 111.1 / 123.2 | 113.7 / 118.6, 110.4 / 117.0 |
+| skip8 (2 runs) | 113.1 / 125.0, 113.0 / 126.0 | 111.2 / 119.0, 113.5 / 120.1 |
+
+Means: copy cold 111.15 -> 113.05 (**+1.7 %**), warm 123.4 -> 125.5 (**+1.7 %**), while
+the copy text stays byte-identical (sha `b112adf5...`) and the two base arms stay inside
+0.3 %. The draft log shows the mechanism and the size: the same 76-77 rounds for 512 tokens,
+decode_ms 4,603/4,608 -> 4,527/4,531 cold and 4,141/4,156 -> 4,096/4,065 warm, i.e. **~1 ms
+per round** - the DFlash2 draft call. Edit is inconclusive inside that cell's 7 % spread
+(means +0.3 % cold, +1.5 % warm); prose is inert here (no 8+ token match fires) and its answer
+length drifts.
+
+**Verdict: real but small, and below the +4 % gate - not deployed.** It is env-only, leaves
+the copy/edit text unchanged and cannot fire on short-match text, so it is safe to carry in
+the next generation if one happens for another reason; it is not worth a generation on its
+own. Artifacts: `/data/ab53-skip.log`, `/data/ab53-{base2,skip8a,skip8b,base2b}.log`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -1118,7 +1145,9 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   `STRATA_SPEC_COST`/MTP knobs (no MTP layer); `STRATA_PF_FUSED[_SM75]` (inert, no win);
   PA_V2T/SELECT_SIMT/ADAPT_NOWAIT/LAG (answers move, no win); batch/parallel/layer split/GDN tensor
   cores/YaRN 1M/`--resident-budget-gib` (not applicable); CPU governor/pool/ISA and prompt-cache
-  root/tail/spread families (conclusive null for this shape).
+  root/tail/spread families (conclusive null for this shape); `--lookup-max-t` > 8 with DFlash2
+  (`native ERR dflash2: draft rows out of range`, round 17); `STRATA_DF2_LOOKUP_SKIP=8` (+1.7 %
+  copy-only, ~1 ms/round, below the gate, round 17b).
 - **Harness/quality (landed 2026-11-04)**: eval320 + paired McNemar + PPL + test-retest are in
   `/data/eval320/`; answer-changing arms can now be ranked (5.9% same-stack variance floor, ~2.8 pp
   detectable net edge). Still open: per-window counters on `/metrics` and tuning the telemetry
@@ -1217,6 +1246,7 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   vs 113.85 tok/s with DFlash2 = the drafter already buys 1.83x; perfect-acceptance ceiling
   ~+15 % decode (mean) and no prefill gain, so no refit. See round-12 section.
 - **2026-11-23, round 17 / copy-heavy lookup screen (0.1.63)**: the last acceptance lever closed. `--lookup-max-t` 9/12 with DFlash2 starts and captures the wide window, but the first copy request ends the draft (`native ERR dflash2: draft rows out of range`, HTTP 400): the 8-row block cannot feed a longer window, so 9+ rows are unsupported, not slow. The copy cell at the 8-row cap already measures 97.5 % acceptance (436/447) and 123.9 tok/s warm against 85.3 %/111 on chat - the near-perfect regime, worth ~+12 %, i.e. the round-12 +15 % bound as measured. No deploy. Refit scoping in `dflash2-refit-scope.md`: 600 M drafter, 51.2 KB/token tap capture through `STRATA_TAP_FILE`, 1 M tokens = 51 GB / 2.5 h, upstream ~800 K samples; a real 10-50 M-token attempt is 3-6 weeks for ~+3-8 pp, so not recommended now.
+- **2026-11-23, round 17b / draft-skip knob**: `STRATA_DF2_LOOKUP_SKIP=8` (skip the DFlash2 draft when a suffix match of 8+ tokens exists, take the lookup window directly) is real but small: copy 111.15 -> 113.05 cold / 123.4 -> 125.5 warm (+1.7 % both), same 76-77 rounds and ~1 ms/round less decode (4,603 -> 4,527 ms cold), copy text byte-identical; edit inconclusive in a 7 % spread; prose inert by design. Below the +4 % gate, not deployed; safe to carry in the next generation if one happens for another reason. Artifacts `/data/ab53-skip.log`.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
