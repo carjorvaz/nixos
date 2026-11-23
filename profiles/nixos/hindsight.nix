@@ -67,7 +67,15 @@ in
         HINDSIGHT_API_STORE_DOCUMENT_TEXT = "false";
         HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID = "intfloat/multilingual-e5-small";
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
-        HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
+        HINDSIGHT_API_RERANKER_PROVIDER = "flashrank";
+        HINDSIGHT_API_RERANKER_FLASHRANK_CACHE_DIR = "/var/cache/hindsight/flashrank";
+        # Rerank only the coarse-retrieval top slice: measured ~45 ms/pair on
+        # pius' CPU (quantized MiniLM-L-12, batch 32), so the global default of
+        # 300 candidates scored costs 12-14 s even at low budget. Tiered caps
+        # keep relevance (cross-encoder reorders the top slice) at ~1-4 s.
+        HINDSIGHT_API_RERANKER_MAX_CANDIDATES_LOW = "24";
+        HINDSIGHT_API_RERANKER_MAX_CANDIDATES_MID = "48";
+        HINDSIGHT_API_RERANKER_MAX_CANDIDATES_HIGH = "96";
         HINDSIGHT_API_REFLECT_LLM_PROVIDER = "openai";
         HINDSIGHT_API_REFLECT_LLM_MODEL = strataModel.general;
         HINDSIGHT_API_LLM_EXTRA_BODY = ''{"chat_template_kwargs":{"enable_thinking":false}}'';

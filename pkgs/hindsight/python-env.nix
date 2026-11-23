@@ -305,6 +305,30 @@ in
       pythonImportsCheck = [ "copilot" ];
     };
 
+    # FlashRank: pure-python ONNX cross-encoder (deps already in the closure;
+    # its llama-cpp-python path is an optional extra we do not need).
+    flashrank = python-prev.buildPythonPackage rec {
+      pname = "FlashRank";
+      version = "0.2.10";
+      pyproject = true;
+      build-system = [ python-final.setuptools ];
+      src = unstablePkgs.fetchzip {
+        # fetchPypi capitalises the first-char URL slot (.../F/FlashRank/...)
+        # which PyPI 404s; the real path keeps the lowercase first char.
+        url = "https://files.pythonhosted.org/packages/source/f/FlashRank/FlashRank-${version}.tar.gz";
+        hash = "sha256-UJm/L7B6owhoK8ZA7O3gSShDNGfjqZrcsBKo0XcmRb8=";
+      };
+      dependencies = [
+        python-final.tokenizers
+        python-final.onnxruntime
+        python-final.numpy
+        python-final.requests
+        python-final.tqdm
+      ];
+      doCheck = false;
+      pythonImportsCheck = [ "flashrank" ];
+    };
+
     # toktok-rs: Rust/maturin extension. The sdist is unpacked here (rather
     # than via fetchPypi) so that its Cargo.lock is a plain path for
     # importCargoLock. That lock has only crates.io dependencies with

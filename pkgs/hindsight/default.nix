@@ -41,6 +41,7 @@ let
     import tokenizers
     import transformers
     import huggingface_hub
+    import flashrank
     import hindsight_api.engine.embeddings
 
     print("hindsight installCheck: ONNX embeddings stack imported")
@@ -120,6 +121,7 @@ let
     onnxruntime
     tokenizers
     transformers
+    flashrank
   ];
 
   cl100kBaseTiktoken = fetchurl {
