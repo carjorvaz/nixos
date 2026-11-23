@@ -64,3 +64,17 @@ Prefer structural, high-signal review tools where available:
 - `statix` and `deadnix` as advisory Nix cleanup tools, not automatic proof of correctness.
 
 Do not make tooling layers compete as sources of truth. Nix owns the environment, `scripts/validate` owns default validation, `justfile` exposes the menu, JJ owns local change manipulation, and Git owns remote publication.
+
+## Builds and boot defaults
+
+- **Never build a NixOS system closure on the Mac.** Its store is small and the
+  APFS container has come within a gigabyte of full (a local pius build died
+  with ENOSPC on 2026-11-23); an ENOSPC there also risks the rest of the
+  machine. Use `nixos-rebuild --build-host root@<host>` (or build on the target)
+  and keep the Mac to evaluation.
+- **Never leave an explicit `LoaderEntryDefault` EFI variable behind.** It
+  outranks both Lanzaboote's `default nixos-*` and the per-generation
+  `loader.conf` that the classic systemd-boot installer rewrites on every
+  switch, so it silently freezes the boot choice at an old generation. When one
+  is found pointing at the past, clear it with `bootctl set-default ""`; do not
+  repoint it, which just re-pins.
