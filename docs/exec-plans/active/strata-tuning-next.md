@@ -627,7 +627,7 @@ edge. Deployed as generation 109: `/data/strata-models/UD-IQ2_XS/{shard1,shard2}
 `/optane/strata-data/ple/`, pack `/optane/strata-data/packs/ud-iq2_xs`; the lane config gained
 `midShards`/`pleShard`/`pleFile` for 3-shard models (native dir links all shards) and the API
 `model_name` was kept unchanged for client compatibility at the switch; renamed 2026-11-19 to name
-the pack (`strata-model-name.md`). Verified: service healthy on both doors, expert
+the pack (`docs/VALIDATION.md`, generation 116). Verified: service healthy on both doors, expert
 cache 8,898 slots, warm request answers, telemetry active, no Xid, boot default re-set to 109.
 Follow-ups: DFlash2 drafter refit for the UD pack; rollback procedure (old source GGUFs/PLE are
 redownloadable, old pack rebuildable from them); coder lane needs its own PLE again. Full data:

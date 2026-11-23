@@ -1783,12 +1783,12 @@ The database is an external PostgreSQL (`hindsight` on the local socket), the
 embeddings are the packaged ONNX provider, and the LLM lane is the Strata engine
 on tiberius (`http://tiberius:8080/v1`, thinking disabled, concurrency pinned to
 1; the 27B vLLM lane stays installed as the parked fast/interactive lane). The
-model is `qwen3.8-flash-next-iq3_s` there: the repository has named it
-`qwen3.8-flash-next-unsloth-ud-iq2_xs` since generation 116, but pius still runs
-the old string until its next switch (110 commits behind on 2026-11-23). The
-reflect wall clock is raised to 1800 s: a
-mental-model refresh runs the reflect pipeline (tool-call iterations over a
-9.5-28K-token prompt) and the 300 s default killed every refresh since
+model is `qwen3.8-flash-next-unsloth-ud-iq2_xs`: the repository renamed it from
+`qwen3.8-flash-next-iq3_s` on 2026-11-19 (generation 116 on tiberius), and pius
+adopted the name in generation 838 (2026-11-23) - a 3.87 KiB closure diff that
+restarted only `hindsight` (and `polkit`). The reflect wall clock is raised to
+1800 s: a mental-model refresh runs the reflect pipeline (tool-call iterations
+over a 9.5-28K-token prompt) and the 300 s default killed every refresh since
 2026-07-03 - on both engines. With it raised, both engines complete the job in
 the same envelope (283 s on strata, 67-617 s on the 27B), so the 2026-10-11
 engine swap was not what fixed hindsight - the clock was. Mental-model pages

@@ -122,7 +122,7 @@ Deployment (generation 109): `/data/strata-models/UD-IQ2_XS/{shard1,shard2}`, PL
 per-lane native dir. API `model_name` stayed `qwen3.8-flash-next-iq3_s` at the switch so clients kept
 working; amended 2026-11-19: it now names the pack (`qwen3.8-flash-next-unsloth-ud-iq2_xs`, written
 once in `profiles/nixos/strata-model.nix`), the lane is `general`, and no alias keeps the old
-spelling (`docs/exec-plans/active/strata-model-name.md`).
+spelling (`docs/VALIDATION.md`, generation 116).
 DFlash2 still runs with the existing drafter; refititing it for the UD pack (or disabling it) is the
 obvious next optimisation. Rollback: the old GSQ-RCO IQ3_S source GGUFs and PLE shard were deleted
 to make room (both redownloadable from the pinned HF/S3 source); rollback = re-download, rebuild the
