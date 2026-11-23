@@ -1754,9 +1754,12 @@ Hindsight 0.10.2 runs on pius: `pkgs/hindsight.override { withLocalOnnx = true; 
 through `modules/nixos/hindsight.nix`, configured by `profiles/nixos/hindsight.nix`.
 The database is an external PostgreSQL (`hindsight` on the local socket), the
 embeddings are the packaged ONNX provider, and the LLM lane is the Strata engine
-on tiberius (`http://tiberius:8080/v1`, `qwen3.8-flash-next-iq3_s`, thinking
-disabled, concurrency pinned to 1; the 27B vLLM lane stays installed as the
-parked fast/interactive lane). The reflect wall clock is raised to 1800 s: a
+on tiberius (`http://tiberius:8080/v1`, thinking disabled, concurrency pinned to
+1; the 27B vLLM lane stays installed as the parked fast/interactive lane). The
+model is `qwen3.8-flash-next-iq3_s` there: the repository has named it
+`qwen3.8-flash-next-unsloth-ud-iq2_xs` since generation 116, but pius still runs
+the old string until its next switch (110 commits behind on 2026-11-23). The
+reflect wall clock is raised to 1800 s: a
 mental-model refresh runs the reflect pipeline (tool-call iterations over a
 9.5-28K-token prompt) and the 300 s default killed every refresh since
 2026-07-03 - on both engines. With it raised, both engines complete the job in

@@ -1,7 +1,8 @@
 # Strata served-model name: `iq3_s` -> the pack the lane actually loads
 
-Status: **tiberius deployed in generation 116 (2026-11-20); pius and the Mac
-Hermes app still name the old id** (verified 2026-11-23).
+Status: **tiberius deployed in generation 116 (2026-11-20); pius deferred to its
+next maintenance switch; the Mac Hermes app has picked up the new id itself**
+(verified 2026-11-23).
 
 ## Why
 
@@ -49,22 +50,27 @@ exist only to keep saying `iq3_s`.
   completion, no Xid (`docs/VALIDATION.md`, generation 116). `GET /v1/models`
   now lists that id only; `GET /props?model=<old>` 404s, and chat completions
   still serve a request that names the old id.
-- The Mac Hermes app still has the old id in `~/.hermes/config.yaml`
-  (`model.default`, `providers.tiberius-strata.default_model`) and in
-  `~/.hermes/ui-preferences.json`; repoint it in the app or with the app closed
-  (the files are app-managed, not Nix-managed).
+- The Mac Hermes app has already rewritten both model keys to the new id
+  (verified 2026-11-23: `model.default`, `providers.tiberius-strata.default_model`,
+  and its model cache all name `qwen3.8-flash-next-unsloth-ud-iq2_xs`). The one
+  remnant is the `hermes.desktop.model-presets` key in
+  `~/.hermes/ui-preferences.json`, still keyed to the old id: cosmetic
+  app-managed state, not a request name; leave it to the app or drop it with
+  the app closed.
 
 ## Deploy / rollback
 
 tiberius: done as generation 116 (2026-11-20); the generated config/log names
 are `strata-general.*`.
 
-pius: not deployed as of 2026-11-23 - `systemctl show hindsight` still reports
-`HINDSIGHT_API_LLM_MODEL=qwen3.8-flash-next-iq3_s`, and the reflect model with
-it. Requests still work (the serve layer answers the old name), so this is a
-naming lag, not an outage. When pius is next switched, update the "Hindsight
-runtime (pius)" section of `docs/VALIDATION.md`, which still describes the
-running old id accurately.
+pius: deferred. On 2026-11-23 it was still on system generation 781
+(2026-11-02) and **110 commits behind this line**, so a switch now would carry
+the mail, fail2ban, blocky and ott-rs changes committed since, not just this
+rename - that is a maintenance deploy, not a tidy-up, and it should be done
+deliberately. Until then pius runs `HINDSIGHT_API_LLM_MODEL=qwen3.8-flash-next-iq3_s`
+and the reflect model with it; requests work because the serve layer answers
+the old name. When pius is next switched, update the "Hindsight runtime (pius)"
+section of `docs/VALIDATION.md`, which describes that running old string.
 
 Rollback: switch tiberius to a generation from before 116 (or revert the commit
 and switch). Nothing on disk was renamed - the pack stayed `ud-iq2_xs`, and
