@@ -21,8 +21,9 @@ log. Round 9 tested both Unsloth Dynamic V3.1 packs and switched production to U
 -14.8 % P1 / -11.5 % P8K / -16.3 % L-live, decode +4.1 %, the 39.38 GiB expert pack removes the DAX
 register fallbacks and raises the expert cache to 8,898 slots. The UD-IQ3_XXS arm measured +1.4 pp
 quality (not significant) with neutral speed and is kept as an optional quality-first alternative.
-Open: the DFlash2 drafter refit for the UD pack (its L-live acceptance fell 98 % -> 85 %) and rollback
-pack reconstruction if ever needed.  The coder lane is **closed as not wanted** (owner, 2026-11-05): it
+Open: the DFlash2 drafter refit for the UD pack (its L-live acceptance fell 98 % -> 85 %; scoped in
+`dflash2-refit-scope.md` and not recommended - ~+3-8 % decode for 3-6 weeks) and rollback pack
+reconstruction if ever needed.  The coder lane is **closed as not wanted** (owner, 2026-11-05): it
 is the IQ1_M half-expert (12,288 of 24,576), coding/tool/vision-pruned variant - fast (790.7 tok/s
 prefill at 4,344, 1.66x the decode) but 91.3 % of the full model's SWE-bench and weaker outside code
 including CJK, i.e. exactly the trade the owner does not want; its pack/shards/shared PLE stay deleted
@@ -99,7 +100,7 @@ answer sha, means with [min-max], production restored by trap. *Bitwise* = the b
 |---|---|---|---|---|---|---|---|---|
 | 1 | prompt-path fixed cost (C1) | base; `--prefill 16384`; `8192`; `8192 --no-prefill-borrow` (`user_args`); `STRATA_PREFILL_TIMING=1` diagnostic | fresh-prompt sweep 18/128/256/512/1024/2048/4252/8192/16384/26134 (+1 P1 repeat); reserve arms P1/P2/P27 | 1 sweep engine + 2/reserve arm | remove >=3 s of the 5.9 s intercept at >=97% hit; 41% of wall time | mostly bitwise (buffer reservations), but a borrow change shifts expert slots and can drift answers (ab11) - sha gate | adopt if a flag removes >=3 s/request at >=97% hit and <=1% decode cost; if timing puts >=2 s in an engine-internal phase, open the patch item with those phase numbers | measured 2026-11-04: no flag removed the fixed cost - `16384`/`8192`/`8192 --no-prefill-borrow` cost +10.3/+56.3/+52.0% P27 read and no-borrow drops to 4,959 slots; closed for flags, prompt-path patch item (DAX pack-stream/copy wait) |
 | 2 | routed-stream | `STRATA_PREFILL_ROUTED_STREAM=1`; then `=1` + `_DEPTH=32`; confirm the engine's "streamed prompt chunk drops the experts no token routes to" line | same sweep + P27 | 3 counterbalanced | -8..-25% read on the 1.1-4.3k chunks that dominate live traffic; -3..-5% at 28,160 (upstream 2K -20 / 4K -8 / 32K -5%) | bitwise per source (same slots, same order); sha + hit unchanged | adopt if read improves >=3% on >=2 chunk sizes with identical sha; else close | measured 2026-11-04: active, but +32.6..+87.9% read on every cell >=1024 tok (P27 +37.8%); rejected |
-| 3 | DFlash2 window axis (lookup) | `--lookup-max-t 8`, then `12` (`user_args`), `--draft-conf 0.8`; default is **0** under DFlash2 (`lookup_default.hpp:23-30`), so no lookup windows run today; explicit N raises `--spec` to min(N,16), spec_cap 16 (9-16-row windows = two groups of 8) | P1/P2/L-live (structured/code prompt >=600 tok, `ignore_eos`, max 768; base acceptance >=85%) | 3+3; finalist 5-6 | +3-10% decode on rewrite/edit-heavy text, ~1% on prose; 26k smaller | answer-drift (wider windows change sampling acceptance; greedy sequence-parity gate) | adopt if L-live decode +>=4% in >=2/3 runs, reads within +/-1.5%, eval80 not >8 tasks worse | measured 2026-11-04: `--lookup-max-t 8` is a no-op (verify window stays 8), `12` is -1.4% L-live decode; default 0 kept |
+| 3 | DFlash2 window axis (lookup) | `--lookup-max-t 8`, then `12` (`user_args`), `--draft-conf 0.8`; default is **0** under DFlash2 (`lookup_default.hpp:23-30`), so no lookup windows run today; explicit N raises `--spec` to min(N,16), spec_cap 16 (9-16-row windows = two groups of 8) | P1/P2/L-live (structured/code prompt >=600 tok, `ignore_eos`, max 768; base acceptance >=85%) | 3+3; finalist 5-6 | +3-10% decode on rewrite/edit-heavy text, ~1% on prose; 26k smaller | answer-drift (wider windows change sampling acceptance; greedy sequence-parity gate) | adopt if L-live decode +>=4% in >=2/3 runs, reads within +/-1.5%, eval80 not >8 tasks worse | measured 2026-11-04: `--lookup-max-t 8` is a no-op (verify window stays 8), `12` is -1.4% L-live decode; default 0 kept. 2026-11-23 (DFlash2, 0.1.63): 9/12 rows error with `native ERR dflash2: draft rows out of range` - the arm cannot run; copy text already runs 97.5 % acceptance at the 8-row cap. **Closed for this lane** (round 17) |
 | 4 | spec / draft-cap / conf | `--spec 4`, `--spec 8`, `--draft-cap 8`, then `--draft-conf 0.7` and `0.9` at the best width. Serve injects `--spec 6 --draft-conf 0.8` and strips the config `--spec`, so overrides go in `user_args` | P1/P2/L-live | 3; finalists 5-6 | 0-4% decode (window width on a GPU-bound loop); conf 0.7/0.9 likely +/-2% | answer-drift (sampling; greedy sha gate) | spec/cap: same rule as row 3; keep conf 0.8 unless 0.7/0.9 show >=4% decode with sha parity | measured 2026-11-04: spec8 -2.9% L-live decode (more tok/window but slower windows), answers drift on P2/P27; `--spec 6 --draft-conf 0.8` kept; conf 0.5/0.65 closed 2026-11-04 - underpowered (base spread 6.4%), answers changed, 0.8 stays (`/data/ab38-*`) |
 | 5 | k8v4 long-context | `--kv int8` (deployed) vs `--kv k8v4` | P1/P2/P27 + 26k/38k decode | 3+3 | +0-8% decode at 22-38k; int8 1,056 vs k8v4 816 B/cell (-23% KV bytes) and more slots; prior 0.1.49.2 screen was +6% on one short cell, 0.1.52/router within noise | answer-drift (V becomes rotated Q4_0; KL/top-1 gate + eval80 + needle 3/3) | adopt only if decode +>=2% on >=2 cells or hit +>=1 pt, eval80 not >8 worse; else keep int8 | measured 2026-11-04: L-live -10.7% decode, P27 read +10.5%, long-context +2.6% (below the 3% gate); int8 kept |
 | 6 | tail-skip | `STRATA_ROUTE_TAIL_SKIP=8`, then `9` (deployed 7; 96.6% of missed entries are already skipped at rank 7) | P1/P2/P27 | 2-3 bracketed, promote to 3+ if >=2% | 0-3% decode | answer-drift (KL rises from the adopted 0.0058 baseline; acceptance can fall at high cache %) | adopt only if decode >=2% on >=2 cells with eval80 not >8 worse and needle 3/3 | measured 2026-11-04: skip8 -5.3/-4.6/-10.7/-7.3% and skip9 -4.9/-10.4/-13.5/-4.7% on P1/P2/L-live/P27d; 0/3 decision cells >=+2%; **closed, 7 stays** |
@@ -898,6 +899,54 @@ for 32 ms on the 26k park) and `--prefill 28160` kept (the 56320/22528 screen wa
 Full record and numbers: `../VALIDATION.md` §"Generation 114"; artifacts
 `/data/bump/gen114/` + `/data/bump/window5b.log`.
 
+### Round 17: DFlash2 copy-heavy lookup screen (2026-11-23)
+
+The last untested acceptance lever was prompt lookup on copy-heavy text: `--lookup-max-t` defaults
+to 0 with DFlash2 (`lookup_default.hpp`), so the deployed lane runs only the 8-row
+DFlash2/suffix window, and the one DFlash2 lookup measurement was prose (round 10: 12 rows,
+-1.4 %). A copy cell was the only remaining place where a wider lookup window could plausibly pay.
+
+Harness: new `/data/ab53.py` (the ab25 flow) on the isolated port-8099 engine, 0.1.63 root,
+`/data/ab53-base.json` = the deployed config with the conversation spill tier off. Three cells from
+`/data/real-corpus.txt`, greedy, two reps: **copy** 11,538-token prompt + 512 generated
+(`ignore_eos`), **edit** 5,748 + 384 (markdown -> plain text), **prose** 4,252 + 256. Arms base /
+`--lookup-max-t 12` / `--lookup-max-t 9`, counterbalanced base, lk12, lk9, lk9, lk12, base.
+Window 09:29:39-09:36:41, production restored by the trap and healthy at 09:37:25 (46 s engine
+start).
+
+| arm | copy | edit | prose |
+|---|---|---|---|
+| base | 97.5 % (436/447), 111.0 / 123.9 tok/s | 96.6 / 94.6 %, 113.7 / 117.5 | 86.5-89.7 %, 63.8-71.3 |
+| lk12 | `native ERR dflash2: draft rows out of range` (HTTP 400) | not reached | not reached |
+| lk9 | same error | not reached | not reached |
+
+Prose ends at EOS (82-83 generated), so its tok/s is a short-answer figure, not a steady-state
+one; the copy and edit cells run to the fixed token count. The two base arms are byte-identical
+on copy and edit (sha `b112adf5...`, `de586710...`); prose drifts by one token between arms
+(sha `88ea782a...` / `efb58dca...`, 64-71 tok/s), which is the harness's spread on that cell, not
+an arm effect.
+
+The wide arms are **not slower - they do not run**. The engine starts, logs
+`--lookup-max-t 12: MTP windows up to 6 tokens, window sizes 1,2,3,4,5,6,7,8,12`, captures the
+12-token window (27.3 ms, 565 MiB free), and then the first copy request ends the draft path with
+the error above; serve returns 400 and the driver stops the arm. Same at 9. The DFlash2 block is
+8 rows (anchor + 7 masks); a longer window would have to combine that block with lookup drafts in
+one verify pass, and the draft call ends with the error above before any such split happens - so
+**9+ row windows are unsupported with DFlash2**, not expensive. `--lookup-max-t 8`
+is a no-op (the window is already 8). The 0.1.56 "12 rows = -1.4 %" line therefore is not a
+DFlash2 result and should not be cited as one.
+
+What the copy cell already shows is the important part: at the 8-row cap the drafter is in its
+near-perfect regime, **97.5 % acceptance and 123.9 tok/s warm** - about +12 % over the 85.3 %/111
+chat cell - with the copied text byte-identical between reps (sha `b112adf5...`). There is no
+acceptance left to buy at this window width: 99 % would be ~+2 % over copy and ~+14 % over chat,
+which is the round-12 bound restated.
+
+**Verdict: no config change, production not touched, the lookup-window family is closed for this
+lane** - the 8-row cap is structural. The refit side is scoped in
+`dflash2-refit-scope.md`. Artifacts: `/data/ab53-window.log`, `/data/ab53-{base,lk12,lk9}.log`,
+`/data/ab53-metrics-*.json`, harness `/data/ab53.py` + `/data/ab53-base.json`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -1167,6 +1216,7 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
 - **2026-11-05, round 12 / DFlash2 refit bound**: drafting-off (fallback-only) L-live decode 62.3
   vs 113.85 tok/s with DFlash2 = the drafter already buys 1.83x; perfect-acceptance ceiling
   ~+15 % decode (mean) and no prefill gain, so no refit. See round-12 section.
+- **2026-11-23, round 17 / copy-heavy lookup screen (0.1.63)**: the last acceptance lever closed. `--lookup-max-t` 9/12 with DFlash2 starts and captures the wide window, but the first copy request ends the draft (`native ERR dflash2: draft rows out of range`, HTTP 400): the 8-row block cannot feed a longer window, so 9+ rows are unsupported, not slow. The copy cell at the 8-row cap already measures 97.5 % acceptance (436/447) and 123.9 tok/s warm against 85.3 %/111 on chat - the near-perfect regime, worth ~+12 %, i.e. the round-12 +15 % bound as measured. No deploy. Refit scoping in `dflash2-refit-scope.md`: 600 M drafter, 51.2 KB/token tap capture through `STRATA_TAP_FILE`, 1 M tokens = 51 GB / 2.5 h, upstream ~800 K samples; a real 10-50 M-token attempt is 3-6 weeks for ~+3-8 pp, so not recommended now.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
