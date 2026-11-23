@@ -1838,6 +1838,53 @@ Packaging and unit traps this deployment paid for, worth not repeating:
   vhost gate, the unit timeout, and the deployed bind/port/LLM wiring against
   `nixosConfigurations.pius`.
 
+### Engine pin screen: v0.2.20 / 0.1.66 vs the deployed 0.1.63 (2026-11-23, isolated 8099)
+
+The first run of `tools/strata-knob-screen/` (round 18 of `strata-tuning-next.md`). Production
+`tiberius-strata` was stopped for the window (12:43-13:02 UTC, 19.4 min) and restored by the
+harness's exit trap; the service came back `active` and healthy on 8080. The screen starts its
+own server + engine per (arm, rep) on 127.0.0.1:8099, retargets the deployed config's
+`--conversation-park-dir` / `--conversation-spill-dir` and engine `log` into its workdir, and
+carries the deployed 22 `env` knobs from config `89ic7xvn...`.
+
+Arms, 5 counterbalanced reps, cells p1 (4,299 tokens) and llive (26,482), 128 generated tokens,
+temperature 0. `prev_build` is the deployed 0.1.63 binary with the new serve layer and the same
+config; `verify_device_hits` is `STRATA_VERIFY_DEVICE_HITS=1`. 30/30 cell records, no failures,
+`reused` 0 on every cell, prompt sizes identical across arms.
+
+| arm | cell | decode tok/s | read tok/s | prompt ms | acceptance |
+|---|---|---|---|---|---|
+| control (0.1.66) | p1 | 63.5 | 616 | 6,980 | 0.895 |
+| control (0.1.66) | llive | 70.2 | 1,379 | 19,211 | 0.917 |
+| prev_build (0.1.63) | p1 | 60.5 | 613 | 7,015 | 0.904 |
+| prev_build (0.1.63) | llive | 65.8 | 1,380 | 19,195 | 0.949 |
+| verify_device_hits | p1 | 63.4 | 616 | 6,984 | 0.895 |
+| verify_device_hits | llive | 70.2 | 1,373 | 19,294 | 0.917 |
+
+Paired deltas (arm minus control of the same rep, mean [min-max] over 5):
+
+- **The pin is a decode win: 0.1.66 is +4.7 % at p1 (-4.7 % [-5.0, -4.3], 5/5 reps) and
+  +6.2 % at llive (-6.2 % [-8.2, -4.3], 5/5), with the prompt read unchanged (-0.5 % / +0.1 %).**
+  Answers differ across builds (two shas per cell: control and verify share one, 0.1.63 has the
+  other), expected for an engine bump. The gain is not draft acceptance: 0.1.63 accepted more
+  (0.904/0.949 against 0.895/0.917) and still decoded slower.
+- **`STRATA_VERIFY_DEVICE_HITS=1` is NO-WIN**: -0.2 % at p1 [-0.5, +0.3] (2/5 up) and +0.1 % at
+  llive [-0.8, +1.2] (2/5), read within 0.4 %. The mechanism agrees: its "pool + plan" per
+  verify window is 30.1-30.9 ms against control's 28.7-29.7 ms (+1.4-1.5 ms per window, 11
+  windows), and the GPU wait is unchanged. Not adopted; it stays off in the module.
+- The owner's 2026-11-23 policy applies: no +4 % magnitude bar; adoption is reproducibility
+  (5/5 same sign). The pin clears it on both cells, so it is a deploy candidate.
+
+Not attributed yet: how much of the pin gain is 0.2.20's default-on dense INT8 tensor cores
+(CC >= 75). The `dense_i8_off` arm answers that and was not in this window; the remaining arms
+(`l3_pf` / `pool_static`, `pin_frac`, `q8_inplace`, `dense_i8_off`, persist/restart, `renorm`
+quality) are pending.
+
+Not deployed: this screen did not switch the host. The package is built natively on tiberius
+(`kwx3qn9q...`, engine 0.1.66) and verified by 30 isolated engine starts. Evidence:
+`/data/knob-screen-20261123-1245/` (manifest.json, results.json, summary.md, per-run engine
+logs; results copied to `/tmp/knob-results/`, local only).
+
 ## Deploy and rebuild commands
 
 Deploy/rebuild commands are intentionally not part of default validation. Run them only when you intend to mutate a host:

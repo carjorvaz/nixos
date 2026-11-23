@@ -24,76 +24,72 @@
 let
   c = cudaPackages;
 
-  # 028e6826: v0.2.17 (2026-11-20), the current release, engine 0.1.63 - the
-  # tag and its engine agree at this pin (the 0.2.15 tag shipped 0.1.60 binaries
-  # while declaring 0.1.61; 0.1.63 is both the tree's PROJECT_VERSION and the
-  # released engine).  Two structural things to know before reading the rest of
-  # this file:
-  #   * the repository was restructured: the engine tree (src, include, cmake,
-  #     third_party, sycl, tests) moved from the root into engine/, and the
-  #     Python side the service runs (serve/, strata_control/, tools/, data/)
-  #     moved into terminal/.  app/ is the desktop app and is not built here.
+  # a34979fc: v0.2.20 (2026-11-22), the current release, engine 0.1.66 - the
+  # tag and its engine agree at this pin (0.1.66 is both the tree's
+  # PROJECT_VERSION and the released engine).  Two structural things to know
+  # before reading the rest of this file:
+  #   * the repository layout is the one 0.2.16 introduced: the engine tree
+  #     (src, include, cmake, third_party, sycl, tests) lives in engine/ and the
+  #     Python side the service runs (serve/, strata_control/, tools/, data/) in
+  #     terminal/; app/ is the desktop app and is not built here.
   #     This derivation keeps the repository root as sourceRoot, configures cmake
   #     with cmakeDir = ../engine, installs the serve layer from terminal/serve,
   #     and all three patches carry the a/engine/... and a/terminal/... paths.
   #     The installed layout is unchanged - $out/share/strata/{serve,
   #     strata_control,tools,data} - which is what the module's ExecStart and the
   #     engine's runtime paths expect.
-  #   * llama.cpp's MMQ prompt kernels are GONE from the tree (engine/CMakeLists
-  #     .txt: "MMQ comparison builds come from the v0.2.15 tag"): every CUDA and
-  #     HIP build compiles Strata's own prompt kernels (strata_pf_own) and the
-  #     FP16 path, so there is no -DSTRATA_MMQ option left to set.  The deployed
-  #     0.1.61 build ran with it OFF already, so this lane keeps the prompt
-  #     kernels it had; the flag is dropped from cmakeFlags below.
-  # Since the last pin (c7757280 = v0.2.15 / engine 0.1.61) the changes this lane
+  #   * 0.2.18/0.2.19 added the two SHAPE engines - strata-hy4 (Tencent
+  #     Hy4-Flash) under engine/src/hy4flash and strata-inkling
+  #     (Inkling-2-Mini) under engine/src/inkling2 - as their own binaries.  0.2.20
+  #     builds strata-inkling by DEFAULT (engine/CMakeLists.txt's
+  #     STRATA_BUILD_INKLING and _INKLING2 are ON), so cmakeFlags turns it off:
+  #     this derivation builds the Qwen engine only.  strata-hy4 is OFF upstream
+  #     and pinned OFF here too.
+  # llama.cpp's MMQ prompt kernels stay gone from the tree (engine/CMakeLists
+  # .txt: "MMQ comparison builds come from the v0.2.15 tag"): every CUDA and
+  # HIP build compiles Strata's own prompt kernels (strata_pf_own) and the
+  # FP16 path, so there is no -DSTRATA_MMQ option left to set.
+  # Since the last pin (028e6826 = v0.2.17 / engine 0.1.63) the changes this lane
   # can see are:
-  #   * the build: a release engine links NO ggml at all.  With
-  #     -DSTRATA_BUILD_TESTS=OFF and -DSTRATA_OWN_CPU_QUANT=ON,
-  #     engine/CMakeLists.txt skips strata_ggml_configure_root() ("Strata: no
-  #     ggml in this build (own CPU pool, no MMQ, tests off)").  The vendored
-  #     engine/third_party/strata-ggml is still carried and its llama.cpp pin is
-  #     still asserted in postPatch (a tests-on build uses it as the oracle), but
-  #     nothing from it is compiled into the service binary - which retires the
-  #     build-host hazard class documented at the build block: the 262 AVX-512
-  #     VBMI / AVX512-BF16 instructions a builder-built 0.1.41 carried in ggml's
-  #     -march=native generic kernels cannot exist at this pin.
-  #   * session SAVE / RESTORE / capture take a NULLABLE draft (generate.cpp's
-  #     session_draft, const QsaState* in the conversation API): upstream now
-  #     supports the no-MTP lane natively, which superseded this package's own
-  #     draft-optional overloads (patch history below) - they are dropped, and
-  #     the deployed DFlash2 lane's session files still hold the QSA layers only.
-  #   * serve layer: the conversation cache grew an SSD tier
-  #     (conversation_spill.hpp: a park the RAM tier evicts, or a capture the RAM
-  #     floor refuses, is written as a session file and read back on a later
-  #     request) with #6081's conversation-cache counters on /metrics/prometheus;
-  #     --conversation-cache-rewind-keep (skip the park when a request resumes the
-  #     conversation with few live tokens past the resume point); a
-  #     STRATA_SLOT_READ in-slot turn read; #6055 (a request arriving while the
-  #     engine closes is refused, not cut off - the cut-off fix this package used
-  #     to carry) and the RESUME reused-prefix line.  server.py was split into
-  #     serve/server_parts: this patch's DNS-rebinding host/origin helpers were
-  #     upstreamed into it, so only web_disabled() and the 404 gate remain this
-  #     package's.
-  #   * engine: 72 files under engine/src differ from v0.2.15's src/, and none of
-  #     them moved a default this package pins.  The gates below are unchanged in
-  #     0.2.16 and asserted in postPatch: the `o.pcie_frac_auto = ... && !pf_old`
-  #     start-up gate (with STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the
-  #     FP16 weight cache's batch-slots gate (o.batch >= 2), the --prefill
-  #     bare-auto ceiling (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ,
-  #     the Turing kernel series (sm75_series.hpp), the AVX-512 tier's
-  #     STRATA_VNNI_TIER opt-in, the parked pools' escapes
-  #     (STRATA_PARK_SEGPOOL_MIB / STRATA_CKPT_POOL_*) and vram_fit's kv_fixed
-  #     hook.  Every env var the module sets is still read by 0.1.62, and
-  #     -DSTRATA_OWN_CPU_QUANT is still an option (default ON).
-  #   * not this lane: the image/vision stack (strata-llama, the Qwen picture
-  #     reader; vendored under engine/third_party but not built here), every
-  #     AMD/HIP/SYCL/Metal change, and app/ (the desktop app).
+  #   * the conversation cache grew a HOST SWAP, opt-in and off here:
+  #     --conversation-cache-swap-block-mib (default 0,
+  #     conversation_cache_swap_default_block_mib) plus the
+  #     conversation_kv_swap_prepare/reserve/exchange/publish family in
+  #     conversation_snapshot.cpp.  With the default 0 the block is skipped, so
+  #     this lane's park path is the one the patches describe.  The swap block is
+  #     where the bump's main content decision landed (see the bump history
+  #     below).
+  #   * engine: 183 files under engine/src and engine/include differ from
+  #     0.2.17's (excluding the two shape engines), +33.5k/-1.6k.  None of the
+  #     gates below moved, and every one is still asserted in postPatch: the
+  #     `o.pcie_frac_auto = ... && !pf_old` start-up gate (with
+  #     STRATA_PCIE_AUTO_SPLIT / K_RULE / SHARE_MAX), the FP16 weight cache's
+  #     batch-slots gate (o.batch >= 2), the --prefill bare-auto ceiling
+  #     (prefill_auto_bare), nv_defaults.cpp's STRATA_MMQ_KQ, the Turing kernel
+  #     series (sm75_series.hpp), the AVX-512 tier's STRATA_VNNI_TIER opt-in, the
+  #     parked pools' escapes (STRATA_PARK_SEGPOOL_MIB / STRATA_CKPT_POOL_*),
+  #     vram_fit's kv_fixed hook and the vendored ggml pin.  The new knobs this
+  #     release adds to this engine default OFF (the swap block 0, --ssd-experts
+  #     false, --ram-experts-gb 0), so the module's --mmap-experts path is what
+  #     runs; the engine env vars and flags the module passes are all still read.
+  #   * 0.2.20's CPU cold-expert SIMD work is inside the files
+  #     avx512-bw-tier.patch edits (expert.cpp and the flag lists), so the
+  #     measured prefill/decode numbers will move at this pin; the patch's
+  #     added/removed lines are byte-identical to the 0.2.17 patch.
+  #   * serve layer: server.py imports four new Hy4/Inkling dialect modules
+  #     (serve/{hy4,inkling}_{kind,dialect}.py - stdlib only, so the module's
+  #     Python set needs no addition), and nothing new is imported at start.
+  #     The WSTAT audit still finds exactly four _parse_done sites and all four
+  #     parse WSTAT before DONE - 0.2.20 added no fifth finisher.
+  #   * not this lane: the two shape engines, the image/vision stack
+  #     (strata-llama; vendored under engine/third_party but not built here),
+  #     every AMD/HIP/SYCL/Metal change, and app/ (the desktop app).
   # The ggml tree stays vendored at engine/third_party/strata-ggml, llama.cpp
   # 3cf03257f219afbe7334045ff7c6a06ac68c627d (UPSTREAM.md; the same pin as
   # third_party/ggml/VERSION.txt), so the derivation fetches no llama.cpp:
   # cmake/strata_ggml.cmake resolves the vendored tree when STRATA_GGML_DIR is
   # unset.
-  revision = "028e6826bdb152be2d0579818c2ede6fe7da984c";
+  revision = "a34979fc94f3d126b9bb8210f4ad311345688b52";
 
   # nixpkgs splits the CUDA toolkit into many outputs and CMake's
   # find_package(CUDAToolkit) wants one root with nvcc, the CRT headers and the
@@ -119,7 +115,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "strata-engine";
-  version = "0.1.63";
+  version = "0.1.66";
 
   # The build host's CPU decides the codegen (NIX_ENFORCE_NO_NATIVE is cleared
   # below, and ggml compiles with -march=native).  tiberius's nix.conf lists
@@ -157,7 +153,7 @@ stdenv.mkDerivation {
     owner = "Niko1221";
     repo = "Strata";
     rev = revision;
-    hash = "sha256-P6V8EDElMtohpT60Ya94Hb2ebUz1ZjzJbb8O/L12ybE=";
+    hash = "sha256-ctXqRX9SrUXeib8OVNDSI5Iq8jdImoZsJvIDwRyZWqg=";
   };
 
   # carry-1283.patch is GONE since the v0.1.42 bump: upstream took PR #1283 (commit
@@ -305,6 +301,37 @@ stdenv.mkDerivation {
   # held - the rebase found no upstream change inside any region these patches own.
   # Engine 0.1.63: the expert cache at start is 9,156 slots (14.66 GiB, up from
   # 8,898) and the elastic K/V starts at 16,384 of 262,144 cells.
+  # The v0.2.20 bump (a34979fc) rebased all three patches in one pass.  It needed
+  # THREE resolutions, two of them "keep both" additions at an anchor both sides
+  # had claimed:
+  #   * conversation_snapshot.cpp: upstream added the host-swap block
+  #     (conversation_kv_swap_prepare/reserve/rollback/exchange/publish and the
+  #     swap_ranges_valid helpers) exactly where this patch adds the streamed
+  #     restore's conversation_kv_sink()/conversation_kv_sink_finish().  Both
+  #     kept, upstream's block first; the sink pair is still the only
+  #     SessionKvSink user (0.2.20 has no sink API of its own).
+  #   * generate.cpp, the arg parser: 0.2.20's
+  #     --conversation-cache-swap-block-mib beside this patch's
+  #     --conversation-park-mib/-slots/-min-free-mib/-dir - both kept.
+  #   * generate.cpp, the park condition: the patch's `|| file_restore` arm and
+  #     upstream's new `!swapped_parked` guard now sit in ONE condition.
+  #     swapped_parked is only ever true with --conversation-cache-swap-block-mib
+  #     (default 0 here), so this lane's park path is unchanged.
+  # no-web-ui.patch and avx512-bw-tier.patch applied cleanly, and their added/
+  # removed line sets are byte-identical to the 0.2.17 patches (only hunk offsets
+  # and index hashes moved); tiberius.patch's are too, apart from the merged
+  # condition above.  Every postPatch assertion still held, and the `strata`
+  # target builds for x86_64-linux (on the trajanus builder: bin/strata reports
+  # engine 0.1.66 and all the patched TUs compile - expert.cpp,
+  # conversation_snapshot.cpp and generate.cpp included).  The remote artifact
+  # is NOT deployable: host code carries that builder's -march, and tiberius
+  # must build the pin natively.  NOT probed or deployed on tiberius yet, so
+  # this bump is the rebase + build evidence, not a measured round - the
+  # cold-expert SIMD changes in 0.2.20 mean the perf numbers move, so a campaign
+  # (or at least a probe) is still owed.  The screen for this pin is
+  # tools/strata-knob-screen (tuning-plan round 18: prev-build, the
+  # VERIFY_DEVICE_HITS / L3_PF / CACHE_PIN_FRAC / Q8_INPLACE arms, the
+  # dense_i8_off control for the new default, and a spill-persist restart test).
   #
   # tiberius.patch is tiberius's local engine changes, in one patch because the
   # first two interleave in the same regions of expert_source.{hpp,cpp},
@@ -615,8 +642,13 @@ stdenv.mkDerivation {
       echo "tiberius.patch lost the transactional-park pre-check in park_source()" >&2
       exit 1
     }
-    grep -q 'evictable_bytes' engine/include/strata/core/conversation_cache.hpp || {
-      echo "tiberius.patch lost the ConversationCache::evictable_bytes() pre-check helper" >&2
+    # The transactional park's pre-check reads upstream's
+    # ConversationCache::evictable_bytes() (upstream's helper, not this patch's)
+    # with every evictable parked image added to the RAM sample.  `nothing
+    # evicted` above covers the refusal message; this pins the pre-check's own
+    # expression, the part a rebase can silently lose.
+    grep -q 'available + reclaimable' engine/src/program/generate.cpp || {
+      echo "tiberius.patch lost the transactional-park RAM pre-check (available + reclaimable)" >&2
       exit 1
     }
     # tiberius.patch's streamed session restore (round 5): the API name and the pass-1/pass-2 marker strings.  A
@@ -766,6 +798,24 @@ stdenv.mkDerivation {
       echo "the compiled-geometry default is no longer flash_next (this lane serves flash_next)" >&2
       exit 1
     }
+    # 0.2.20's engine/CMakeLists.txt builds the strata-inkling shape engine by
+    # default; cmakeFlags turns it off, and these option names are what make
+    # that flag take effect.  A renamed option would leave the shape engine
+    # building into this package silently, so fail here instead.
+    for v in STRATA_BUILD_INKLING STRATA_BUILD_INKLING2 STRATA_BUILD_HY4; do
+      grep -q "option($v " engine/CMakeLists.txt || {
+        echo "the $v option is gone from engine/CMakeLists.txt (the shape-engine flags in cmakeFlags would be ignored)" >&2
+        exit 1
+      }
+    done
+    # 0.2.20's conversation-cache host swap is OFF in this lane by its default
+    # block size (the module passes no --conversation-cache-swap-block-mib).  A
+    # later default flip would start moving parked K/V through host memory
+    # beside this package's park-file tier, so pin the default.
+    grep -q 'conversation_cache_swap_default_block_mib = 0' engine/include/strata/core/conversation_cache.hpp || {
+      echo "the conversation-cache host swap is no longer off by default (block 0)" >&2
+      exit 1
+    }
   '';
 
   nativeBuildInputs = [
@@ -812,6 +862,16 @@ stdenv.mkDerivation {
     "-DSTRATA_BUILD_TESTS=OFF"
     "-DCMAKE_CUDA_ARCHITECTURES=75"
     "-DCMAKE_CUDA_COMPILER=${cudaHome}/bin/nvcc"
+    # 0.2.18/0.2.19 added the shape engines as separate binaries, and 0.2.20's
+    # engine/CMakeLists.txt builds strata-inkling by DEFAULT (src/inkling2 is
+    # add_subdirectory'd when STRATA_BUILD_INKLING and _INKLING2 are on; both
+    # default ON).  This derivation builds the Qwen (flash_next) engine only, so
+    # the shape engine is turned off rather than compiled for sm_75 and left
+    # unused.  strata-hy4 is OFF upstream; named here so a default flip cannot
+    # pull it in either (postPatch asserts all three option names survive).
+    "-DSTRATA_BUILD_INKLING=OFF"
+    "-DSTRATA_BUILD_INKLING2=OFF"
+    "-DSTRATA_BUILD_HY4=OFF"
     # The build-level choice the gen-114 gate measured, named here so a later
     # upstream default flip cannot move this box silently: the CPU expert pool
     # stays on the Strata quant layer (the AVX-512 F/DQ/BW/VL+VNNI tier whose
@@ -819,6 +879,18 @@ stdenv.mkDerivation {
     # not set: the prompt kernels left the tree in 0.2.16 (see the pin comment).
     "-DSTRATA_OWN_CPU_QUANT=ON"
   ];
+
+  # Build only the engine binary this package installs.  The default target also
+  # builds upstream's tools and benchmark/parity executables (strata-plan,
+  # strata-device, strata-gguf, q8_gemv_bench...), none of which the service
+  # uses or installs - and 0.2.20's q8_gemv_bench does not compile on gcc 15
+  # (native_mmvq.hpp uses int8_t without including <cstdint>), an upstream
+  # bench-only defect this package would otherwise have to carry a patch for.
+  # Everything the `strata` target needs (strata_core, strata_kernels,
+  # strata_kernels_cpu, strata_quant, strata_pf_own...) is still built, so the
+  # patched engine TUs are all compiled here.  ninjaFlags is the knob the
+  # nixpkgs ninja hook reads (buildFlags is not used by it).
+  ninjaFlags = [ "strata" ];
 
   installPhase = ''
     runHook preInstall

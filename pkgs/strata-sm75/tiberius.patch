@@ -1,8 +1,8 @@
 diff --git a/engine/include/strata/core/conversation_cache.hpp b/engine/include/strata/core/conversation_cache.hpp
-index cd2ebaaf9..9c95c9338 100644
+index c9e1eb7..edb9e0c 100644
 --- a/engine/include/strata/core/conversation_cache.hpp
 +++ b/engine/include/strata/core/conversation_cache.hpp
-@@ -311,6 +311,16 @@ public:
+@@ -346,6 +346,16 @@ public:
          if (reuse_.unchanged_tokens <= 0) reuse_ = {};
      }
      ConversationKvReuse take_reuse() { return std::exchange(reuse_, {}); }
@@ -20,10 +20,10 @@ index cd2ebaaf9..9c95c9338 100644
      // from, and nothing when they share none.  Without this a park after a batch slot gave its conversation back to the
      // main session wrote the RESTORED conversation's K/V into the new one's image (#1503, a cross-conversation leak).
 diff --git a/engine/include/strata/core/conversation_file.hpp b/engine/include/strata/core/conversation_file.hpp
-index 069ca2423..dfb423681 100644
+index fd516fa..53a1492 100644
 --- a/engine/include/strata/core/conversation_file.hpp
 +++ b/engine/include/strata/core/conversation_file.hpp
-@@ -124,6 +124,9 @@ struct SessionStatus {
+@@ -134,6 +134,9 @@ struct SessionStatus {
      bool published = false;
      // write (POSIX): this filesystem cannot flush a folder (fsync EINVAL); the save succeeded without that flush
      bool dir_flush_unsupported = false;
@@ -33,7 +33,7 @@ index 069ca2423..dfb423681 100644
  };
  
  // Progress of a file transfer: (bytes done, bytes in the file).  A write reports once when its temporary file is
-@@ -174,6 +177,7 @@ struct SessionKvSource {
+@@ -184,6 +187,7 @@ struct SessionKvSource {
      std::function<bool(size_t part, size_t offset, void* dst, size_t n)> read;
      std::function<std::string()> error;
  };
@@ -41,7 +41,7 @@ index 069ca2423..dfb423681 100644
  // `meta` carries everything but the K/V (meta.kv must be empty); `kv` supplies the layers in order.
  bool session_file_write(const std::string& path, const SavedConversation& meta, const std::vector<SessionKvSource>& kv,
                          const SessionFileIdentity& id, size_t& bytes, std::string& error,
-@@ -219,8 +223,12 @@ struct SessionReadLimits {
+@@ -229,8 +233,12 @@ struct SessionReadLimits {
      // A layer past the end of the list is bounded by the payload only.
      std::vector<std::array<uint64_t, 5>> max_kv_bytes;
      // the RAM PREFLIGHT: asked once the header and identity match and before any payload allocation, with what the
@@ -55,7 +55,7 @@ index 069ca2423..dfb423681 100644
      SessionProgress progress;
  };
  // The largest file these limits admit (UINT64_MAX when one of them is open); session_file_read applies it.
-@@ -228,6 +236,56 @@ uint64_t session_read_max_file_bytes(const SessionReadLimits& limits);
+@@ -238,6 +246,56 @@ uint64_t session_read_max_file_bytes(const SessionReadLimits& limits);
  // What the RAM preflight is asked for a file of `file_bytes`: the parsed image (about the payload), the 16 MiB read
  // buffer, and the per-allocation overhead of its arrays (a page per 16 MiB segment plus the small vectors).
  uint64_t session_read_peak_bytes(uint64_t file_bytes);
@@ -114,7 +114,7 @@ index 069ca2423..dfb423681 100644
  // are made on the opened handle.  On failure `image` is unchanged and `status->error` says what kind of failure.
 diff --git a/engine/include/strata/core/conversation_park_file.hpp b/engine/include/strata/core/conversation_park_file.hpp
 new file mode 100644
-index 000000000..89a4e4008
+index 0000000..89a4e40
 --- /dev/null
 +++ b/engine/include/strata/core/conversation_park_file.hpp
 @@ -0,0 +1,249 @@
@@ -368,7 +368,7 @@ index 000000000..89a4e4008
 +
 +} // namespace strata::core
 diff --git a/engine/include/strata/core/conversation_snapshot.hpp b/engine/include/strata/core/conversation_snapshot.hpp
-index 26c3a70a3..aed2326a0 100644
+index a13b697..6ddf153 100644
 --- a/engine/include/strata/core/conversation_snapshot.hpp
 +++ b/engine/include/strata/core/conversation_snapshot.hpp
 @@ -49,6 +49,30 @@ bool conversation_kv_source(SessionKvSource& source, const QsaState& state, cons
@@ -403,7 +403,7 @@ index 26c3a70a3..aed2326a0 100644
  // min(max_tokens, its cells) tokens, `max_checkpoints` checkpoints, the exact running-state sizes and the K/V part
  // sizes at that many tokens - so session_file_read refuses an oversized or foreign file before it allocates.
 diff --git a/engine/include/strata/core/expert_source.hpp b/engine/include/strata/core/expert_source.hpp
-index b7093ff72..592c10862 100644
+index 66c13c7..6db8ab5 100644
 --- a/engine/include/strata/core/expert_source.hpp
 +++ b/engine/include/strata/core/expert_source.hpp
 @@ -51,6 +51,10 @@ struct ExpertLayout;
@@ -478,7 +478,7 @@ index b7093ff72..592c10862 100644
      /// Plan v0.3 P6: the DEVICE address of a pinned, mapped blob (the GPU can read it over PCIe), or null.
      virtual const uint8_t* device_alias(int64_t layer, int64_t expert) const { (void) layer; (void) expert; return nullptr; }
      /// A file-backed source: start reading this expert's pages now (it will be needed by the CPU); no-op elsewhere.
-@@ -762,6 +810,9 @@ public:
+@@ -766,6 +814,9 @@ public:
      bool open(const std::string& pack_dir, int64_t n_layers, int64_t n_expert, std::string& err);
      /// CS-T: the --native shard (native_experts.txt names the other files beside it); see `open`.
      void set_gguf(const std::string& native) { gguf_ = native; }
@@ -488,7 +488,7 @@ index b7093ff72..592c10862 100644
      /// STRATA_NUMA_SPLIT: files the engine read at start outside this source (the pack's dense.bin, the MTP head),
      /// whose cached pages the placement's drop gives back too.  Set BEFORE `pin_cache_complement`.
      void set_extra_drop_files(std::vector<std::string> paths) { extra_drop_files_ = std::move(paths); }
-@@ -964,8 +1015,15 @@ public:
+@@ -972,8 +1023,15 @@ public:
      /// VRAM. Never touches the resident complement or staging buffers. Disabled by default.
      uint64_t release(int64_t layer, int64_t expert) override;
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -504,7 +504,7 @@ index b7093ff72..592c10862 100644
      bool transient(int64_t layer, int64_t expert) const override;
      double cached_share(int64_t samples) const override;
      bool copy_blob(int64_t layer, int64_t expert, uint8_t* dst) override;
-@@ -1040,6 +1098,49 @@ public:
+@@ -1048,6 +1106,49 @@ public:
  private:
      const uint8_t* resident_blob(size_t index) const;
      const uint8_t* mapped_blob(int64_t layer, int64_t expert) const;
@@ -554,7 +554,7 @@ index b7093ff72..592c10862 100644
      /// The blob's bytes from the mapped file(s) - experts.bin, or the three GGUF role slices - into `dst`.
      bool copy_from_files(int64_t layer, int64_t expert, uint8_t* dst) const;
      bool open_gguf(std::string& err);
-@@ -1278,6 +1379,24 @@ private:
+@@ -1287,6 +1388,24 @@ private:
      bool complement_ready_ = false;
      uint64_t complement_locked_ = 0;          ///< bytes held in the working set (pin refused)
      int64_t complement_lent_slots_ = 0;
@@ -579,7 +579,7 @@ index b7093ff72..592c10862 100644
      std::vector<std::vector<std::pair<int32_t, int32_t>>> stage_lend_regions_;  ///< a split: each stage's lend region
      bool budget_automatic_ = false;           ///< budget_is_automatic
      std::vector<const uint8_t*> override_;   ///< staged exchanges: an evicted expert read from its exchange buffer
-@@ -1345,6 +1464,8 @@ public:
+@@ -1354,6 +1473,8 @@ public:
      const uint8_t* blob_at(int64_t layer, int64_t expert) const;
      int64_t reads() const { return reads_.load(std::memory_order_relaxed); }
      bool pinned(int64_t layer, int64_t expert) const override;
@@ -589,7 +589,7 @@ index b7093ff72..592c10862 100644
      /// Prefix pinning: the old rule (device_alias(layer, 0)); pin by need: at least one pinned range in the layer.
      bool pcie_layer(int64_t layer) const override;
 diff --git a/engine/include/strata/prefill/prefill.hpp b/engine/include/strata/prefill/prefill.hpp
-index c55d425ba..e8215e67e 100644
+index 7a110cd..6bcb642 100644
 --- a/engine/include/strata/prefill/prefill.hpp
 +++ b/engine/include/strata/prefill/prefill.hpp
 @@ -55,6 +55,12 @@ namespace strata::prefill {
@@ -606,7 +606,7 @@ index c55d425ba..e8215e67e 100644
  public:
      /// E-9: the draft layer's K/V for prompt cells [cell0, cell0 + n) from their final residual rows `R_rows`
 diff --git a/engine/src/core/conversation_file.cpp b/engine/src/core/conversation_file.cpp
-index 24291be55..4e238a7ca 100644
+index 2170fb9..5b057fb 100644
 --- a/engine/src/core/conversation_file.cpp
 +++ b/engine/src/core/conversation_file.cpp
 @@ -239,6 +239,13 @@ public:
@@ -696,7 +696,7 @@ index 24291be55..4e238a7ca 100644
  };
  
  bool get_checkpoint(In& in, ConversationCheckpoint& c) {
-@@ -1170,6 +1236,301 @@ bool session_file_write(const std::string& path, const SavedConversation& image,
+@@ -1227,6 +1293,301 @@ bool session_file_write(const std::string& path, const SavedConversation& image,
      return write_guarded(path, image, nullptr, id, bytes, error, options, status);
  }
  
@@ -998,7 +998,7 @@ index 24291be55..4e238a7ca 100644
  namespace {
  bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConversation& image,
                 size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus& st) {
-@@ -1236,8 +1597,29 @@ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConv
+@@ -1293,8 +1654,29 @@ bool read_impl(const std::string& path, const SessionFileIdentity& id, SavedConv
      st.error = SessionError::none;
      return true;
  }
@@ -1029,7 +1029,7 @@ index 24291be55..4e238a7ca 100644
                         size_t& bytes, std::string& error, const SessionReadLimits& limits, SessionStatus* status) {
      SessionStatus st;
 diff --git a/engine/src/core/conversation_file_test.cpp b/engine/src/core/conversation_file_test.cpp
-index fd85f2cab..f95bd7678 100644
+index f6ec477..0af12ab 100644
 --- a/engine/src/core/conversation_file_test.cpp
 +++ b/engine/src/core/conversation_file_test.cpp
 @@ -360,6 +360,195 @@ int main() {
@@ -1230,7 +1230,7 @@ index fd85f2cab..f95bd7678 100644
          SessionConfig c;
 diff --git a/engine/src/core/conversation_park_file_test.cpp b/engine/src/core/conversation_park_file_test.cpp
 new file mode 100644
-index 000000000..b8ea0563b
+index 0000000..b8ea056
 --- /dev/null
 +++ b/engine/src/core/conversation_park_file_test.cpp
 @@ -0,0 +1,145 @@
@@ -1380,11 +1380,11 @@ index 000000000..b8ea0563b
 +    return 0;
 +}
 diff --git a/engine/src/core/conversation_snapshot.cpp b/engine/src/core/conversation_snapshot.cpp
-index cb6e62338..cb9d44e23 100644
+index 090623a..088e321 100644
 --- a/engine/src/core/conversation_snapshot.cpp
 +++ b/engine/src/core/conversation_snapshot.cpp
-@@ -572,6 +572,43 @@ bool conversation_kv_part_sizes(const QsaState& st, const ModelGeometry& g, int6
-     return true;
+@@ -994,6 +994,43 @@ void conversation_kv_swap_publish(ConversationSwapPlan& plan, SavedConversation&
+     outgoing.kv = std::move(incoming.kv);
  }
  
 +bool conversation_kv_sink(SessionKvSink& sink, const QsaState& st, const ModelGeometry& g, int64_t upto,
@@ -1428,10 +1428,10 @@ index cb6e62338..cb9d44e23 100644
                              int64_t upto, bool index, std::string& error) {
      Layout l{};
 diff --git a/engine/src/core/conversation_state.cpp b/engine/src/core/conversation_state.cpp
-index 8c67dfe87..d73f39d00 100644
+index 3714f21..e7913c0 100644
 --- a/engine/src/core/conversation_state.cpp
 +++ b/engine/src/core/conversation_state.cpp
-@@ -726,7 +726,7 @@ bool conversation_session_read_limits(SessionReadLimits& limits, const SessionSt
+@@ -735,7 +735,7 @@ bool conversation_session_read_limits(SessionReadLimits& limits, const SessionSt
      size_t tails = 0, dead = 0, block_pos = 0;
      if (!product(tails, {layers, z.tail}) || !product(dead, {layers, z.dead}) ||
          !product(block_pos, {layers, z.block_pos})) return fail(error, "indexer byte count overflow");
@@ -1440,7 +1440,7 @@ index 8c67dfe87..d73f39d00 100644
      l.max_tokens = tokens;
      l.max_checkpoints = max_checkpoints;
      l.max_kv_layers = layers + (draft ? 1 : 0);
-@@ -765,6 +765,88 @@ bool conversation_snapshot_validate(const SavedConversation& image, const Sessio
+@@ -774,6 +774,88 @@ bool conversation_snapshot_validate(const SavedConversation& image, const Sessio
      return !draft || conversation_kv_validate(image.kv.back(), *draft, g, upto, false, error);
  }
  
@@ -1528,9 +1528,9 @@ index 8c67dfe87..d73f39d00 100644
 +
  bool conversation_copy_stream_ready(int device) { return conversation_detail::copy_stream_ready(device); }
  
- ConversationRestore conversation_snapshot_restore(const SavedConversation& image, SessionState& ss,
+ bool conversation_snapshot_swap_prepare(ConversationSwapPlan& plan, SavedConversation& incoming,
 diff --git a/engine/src/core/expert_source.cpp b/engine/src/core/expert_source.cpp
-index acf4af05d..2c6def358 100644
+index 91ee22d..783bfae 100644
 --- a/engine/src/core/expert_source.cpp
 +++ b/engine/src/core/expert_source.cpp
 @@ -107,6 +107,12 @@ static bool arena_pid_alive(uint64_t pid) {
@@ -1655,7 +1655,7 @@ index acf4af05d..2c6def358 100644
      if (complement_arena_ != nullptr) {
          if (complement_pinned_ && !complement_registered_) (void) cudaFreeHost(complement_arena_);
          else {
-@@ -4478,7 +4579,13 @@ bool FileExpertSource::pin_cache_complement(
+@@ -4639,7 +4740,13 @@ bool FileExpertSource::pin_cache_complement(
                  return;
              }
  #if !defined(_WIN32)
@@ -1670,7 +1670,7 @@ index acf4af05d..2c6def358 100644
              const uint64_t layer_offset = layer_offsets_[(size_t) layer];
              const uint64_t layer_bytes = blob_bytes * (uint64_t) n_expert_;
              const uint64_t layer_end = layer_offset + layer_bytes;
-@@ -4700,14 +4807,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
+@@ -4861,14 +4968,39 @@ uint8_t* FileExpertSource::exchange_buffer(int64_t q, int64_t layer) const {
  }
  
  bool FileExpertSource::stage_exchange(int64_t layer, int64_t in, int64_t out, int64_t q) {
@@ -1714,7 +1714,7 @@ index acf4af05d..2c6def358 100644
      override_[i_out] = exchange_buffer(q, layer);
      staged_.push_back({i_in, i_out, q, layer_blob_bytes_[(size_t) layer]});
      return true;
-@@ -5076,7 +5208,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
+@@ -5237,7 +5369,9 @@ const uint8_t* FileExpertSource::blob(int64_t layer, int64_t expert) {
      return result;
  }
  
@@ -1725,7 +1725,7 @@ index acf4af05d..2c6def358 100644
      if (!complement_ready_ || !complement_pinned_ || complement_host_ == nullptr || layer < 0 || expert < 0 ||
          layer >= n_layers_ || expert >= n_expert_) return false;
      const size_t index = (size_t) layer * (size_t) n_expert_ + (size_t) expert;
-@@ -5089,14 +5223,309 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -5250,14 +5384,309 @@ bool FileExpertSource::pinned(int64_t layer, int64_t expert) const {
             complement_offsets_[at_index] + layer_blob_bytes_[(size_t) layer] <= complement_pin_limit_;
  }
  
@@ -2042,7 +2042,7 @@ index acf4af05d..2c6def358 100644
  }
  
  bool FileExpertSource::pcie_layer(int64_t layer) const {
-@@ -6849,6 +7278,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
+@@ -7017,6 +7446,25 @@ bool ArenaExpertSource::pinned(int64_t layer, int64_t expert) const {
      return lay.blob_offset(layer, expert) + lay.blob_bytes(layer) <= pinned_bytes_;
  }
  
@@ -2069,10 +2069,10 @@ index acf4af05d..2c6def358 100644
      if (ranges_) {   // pin by need: the range's device base + the blob's offset inside it
          if (base_ == nullptr || layer < 0 || expert < 0 || expert >= n_expert_) return nullptr;
 diff --git a/engine/src/prefill/prefill.cpp b/engine/src/prefill/prefill.cpp
-index 8a137c4e3..dd8a715d1 100644
+index 20df480..60164a2 100644
 --- a/engine/src/prefill/prefill.cpp
 +++ b/engine/src/prefill/prefill.cpp
-@@ -3981,6 +3981,21 @@ struct PfTimer {
+@@ -4051,6 +4051,21 @@ struct PfTimer {
          for (cudaEvent_t e : ev) cudaEventDestroy(e);
      }
  };
@@ -2094,7 +2094,7 @@ index 8a137c4e3..dd8a715d1 100644
  // multi-GPU: the peer's own timeline (STRATA_PREFILL_TIMING): marks on the peer stream, folded with the primary's
  enum PePhase { kPeIdle, kPeMoeIn, kPeMoeGemm, kPeMoeOut, kPeCount };
  const char* const kPeNames[kPeCount] = {"idle", "moe in", "moe gemm", "moe out"};
-@@ -4557,6 +4572,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -4627,6 +4642,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
          // `used` event recorded), so the copy stream never waits on an event that is not queued yet
          const strata::kernels::cpu::ExpertLayout& lay0 = strata::kernels::cpu::expert_layout();
          const bool stream_all = m.ring > STAGE && T >= stream_all_min() && m.src != nullptr;
@@ -2105,7 +2105,7 @@ index 8a137c4e3..dd8a715d1 100644
          // the CPU share: this chunk takes the pool if no other stage of a layer split has it now (released at the end
          // of the chunk, after the last layer's CPU thread is joined)
          struct PoolHold {
-@@ -4639,7 +4658,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -4709,7 +4728,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                  continue;
                              }
                          }
@@ -2114,7 +2114,7 @@ index 8a137c4e3..dd8a715d1 100644
                              job = (int) js.size();
                              js.push_back({b, (size_t) lay0.blob_bytes(l)});
                          }
-@@ -4666,6 +4685,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -4736,6 +4755,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                  const size_t bytes = (size_t) lay0.blob_bytes(en.l);
                  if (m.stage_live[sl]) cudaStreamWaitEvent(m.copy, m.used[m.used_of[sl]], 0);
                  if (en.job < 0) {
@@ -2125,7 +2125,7 @@ index 8a137c4e3..dd8a715d1 100644
                      cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                      ++stats_.experts_dma;
                  } else {
-@@ -4828,6 +4851,9 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -4898,6 +4921,9 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                          prev_rel = -1;
                      }
                      if (en.job < 0) {
@@ -2135,7 +2135,7 @@ index 8a137c4e3..dd8a715d1 100644
                          cudaMemcpyAsync(m.stage_dev[sl], en.blob, bytes, cudaMemcpyHostToDevice, m.copy);
                          ++iss_dma;
                      } else {
-@@ -6865,6 +6891,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -7017,6 +7043,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                          // the unpinned ones are copied to pinned buffers by the stager's threads, in this order
                          std::vector<int> job_of(order.size(), -1);
                          if (!stream_all) {
@@ -2146,7 +2146,7 @@ index 8a137c4e3..dd8a715d1 100644
                              std::vector<Stager::Job> js;
                              for (size_t j = 0; j < order.size(); ++j) {
                                  const int32_t e = order[j];
-@@ -7813,6 +7843,13 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
+@@ -7984,6 +8014,13 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
              std::snprintf(b, sizeof b, " %s %.0f (%.1f%%)", kPfNames[i], pt.ms[i], total > 0 ? 100.0 * pt.ms[i] / total : 0.0);
              line += b;
          }
@@ -2160,7 +2160,7 @@ index 8a137c4e3..dd8a715d1 100644
          std::fprintf(stderr, "strata prefill timing: %lld tokens, GPU timeline %.0f ms, wall %.0f ms, host staging %.0f ms:%s\n",
                       (long long) n, total, ms_since(t_start), stats_.ms_experts_host, line.c_str());
          std::fprintf(stderr, "strata prefill timing: host: chunk setup (PLE rows, the expert stream plan) %.0f ms, "
-@@ -9547,3 +9584,16 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
+@@ -9727,3 +9764,16 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
  
  }  // namespace strata::prefill
  
@@ -2178,10 +2178,10 @@ index 8a137c4e3..dd8a715d1 100644
 +}
 +}  // namespace strata::prefill
 diff --git a/engine/src/program/generate.cpp b/engine/src/program/generate.cpp
-index 40aa44885..ebd3f9cbf 100644
+index 07f8ea3..d93b7f7 100644
 --- a/engine/src/program/generate.cpp
 +++ b/engine/src/program/generate.cpp
-@@ -45,8 +45,9 @@
+@@ -48,8 +48,9 @@
  #include "strata/core/expert_cache.hpp"
  #include "strata/core/expert_nibble.hpp"
  #include "strata/core/conversation_snapshot.hpp"
@@ -2192,7 +2192,7 @@ index 40aa44885..ebd3f9cbf 100644
  #include "strata/core/conversation_file.hpp"
  #include "strata/core/session_save_reclaim.hpp"
  #include "strata/core/conversation_memory.hpp"
-@@ -212,6 +213,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
+@@ -217,6 +218,7 @@ bool draft_vocab_whole_head();       // STRATA_METAL_DRAFT_VOCAB=full
  #include <condition_variable>
  #include <deque>
  #include <map>
@@ -2200,7 +2200,7 @@ index 40aa44885..ebd3f9cbf 100644
  #include <mutex>
  #include <optional>
  #include <new>
-@@ -679,6 +681,225 @@ static const char* pipe_dbg_env(const char* name) {
+@@ -684,6 +686,225 @@ static const char* pipe_dbg_env(const char* name) {
      return on ? std::getenv(name) : nullptr;
  }
  
@@ -2426,7 +2426,7 @@ index 40aa44885..ebd3f9cbf 100644
  // The resident RAM mode and the adaptive tier.  A swap copies `in` (held in RAM) into the slot of `out` (held only
  // by that slot).  Before the slot is overwritten, `out`'s bytes are copied back from it into an exchange buffer, so
  // the CPU computes `out` from RAM while the swap is in flight; when the swap has landed, `commit_exchanges` moves
-@@ -705,6 +926,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -710,6 +931,7 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
      std::vector<SwapHome> used;
      std::vector<Swap> kept;
      kept.reserve(swaps.size());
@@ -2434,7 +2434,7 @@ index 40aa44885..ebd3f9cbf 100644
      for (const Swap& s : swaps) {
          if (!src.has_resident(s.layer, s.in) || src.has_resident(s.layer, s.out)) { kept.push_back(s); continue; }
          const int64_t q = (int64_t) staged.size();
-@@ -717,8 +939,11 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -722,8 +944,11 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
          if (const cudaError_t e = cudaMemcpyAsync(src.exchange_buffer(q, s.layer), home.cache->device_slot(slot),
                              (size_t) strata::kernels::cpu::expert_layout().blob_bytes(s.layer), cudaMemcpyDeviceToHost,
                              home.stream); e != cudaSuccess) {
@@ -2448,7 +2448,7 @@ index 40aa44885..ebd3f9cbf 100644
              return false;
          }
          bool seen = false;
-@@ -737,10 +962,25 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
+@@ -742,10 +967,25 @@ bool resident_stage_swaps(strata::core::FileExpertSource& src, const std::vector
          }
          for (const Staged& x : staged)
              if (!src.stage_exchange(x.layer, x.in, x.out, x.q)) {
@@ -2477,7 +2477,7 @@ index 40aa44885..ebd3f9cbf 100644
      }
      swaps.swap(kept);
      return true;
-@@ -1091,6 +1331,12 @@ struct Options {
+@@ -1102,6 +1342,12 @@ struct Options {
      /// past the resume point - the client's stripped answer.  The park is a 6-8 GB copy on the follow-up's critical
      /// path (4.7-5.0 s at 460K); the suffix is re-read only if that branch is ever revisited.  0 = park, as before.
      int64_t conversation_cache_rewind_keep = 0;
@@ -2490,7 +2490,7 @@ index 40aa44885..ebd3f9cbf 100644
      /// --memory-limit-mib N / STRATA_MEMORY_LIMIT_MIB: the total RAM this engine's container or cgroup may use, for a
      /// container that cannot see its real limit (0 or unset = none; the flag wins over the variable)
      int64_t memory_limit_mib = -1;
-@@ -1292,6 +1538,11 @@ void usage() {
+@@ -1309,6 +1555,11 @@ void usage() {
                   "                       if that branch is revisited)\n"
                   "  --session-min-free-mib N  --serve: disk space a SAVE must leave free (default 4096; 0 = no check)\n"
                   "  --session-save-reclaim  --serve: reclaim unpinned host caches if SAVE needs RAM (opt-in)\n"
@@ -2502,10 +2502,10 @@ index 40aa44885..ebd3f9cbf 100644
                   "  --vram-elastic       --serve (#533, opt-in, NVIDIA): the expert cache in segments (--vram-segment-mib,\n"
                   "                       default 512), so the command `VRAM <reserve_mib>` (the server's POST /v1/vram) can\n"
                   "                       give VRAM back to other programs between requests and take it back later\n"
-@@ -3991,6 +4242,21 @@ int main(int argc, char** argv) {
-         else if (a == "--vision") o.vision = true;
-         else if (a == "--session-save-reclaim") o.session_save_reclaim = true;
-         else if (a == "--prompt-cache") o.prompt_cache = std::max(0, std::atoi(next("--prompt-cache")));
+@@ -4076,6 +4327,21 @@ int main(int argc, char** argv) {
+                 return 2;
+             }
+         }
 +        else if (a == "--conversation-park-mib" || a == "--conversation-park-slots" ||
 +                 a == "--conversation-park-min-free-mib") {
 +            const std::string value = next(a.c_str());
@@ -2524,7 +2524,7 @@ index 40aa44885..ebd3f9cbf 100644
          else if (a == "--conversation-cache-mib" || a == "--conversation-cache-slots" ||
                   a == "--conversation-cache-min-free-mib" || a == "--conversation-cache-min-tokens" ||
                   a == "--conversation-cache-park-gain" || a == "--conversation-spill-mib" ||
-@@ -10649,7 +10915,11 @@ int main(int argc, char** argv) {
+@@ -11046,7 +11312,11 @@ int main(int argc, char** argv) {
              for (int64_t e = 0; e < g.n_expert; ++e) {
                  const uint64_t b = lay.blob_bytes(l);
                  total += b;
@@ -2537,7 +2537,7 @@ index 40aa44885..ebd3f9cbf 100644
              }
          double share = total ? (double) pinned / (double) total : 1.0;
          if (const char* t = std::getenv("STRATA_TEST_PINNED_SHARE")) share = std::atof(t);   // tests: the Windows-like ring rule
-@@ -13390,6 +13660,10 @@ int main(int argc, char** argv) {
+@@ -13876,6 +14146,10 @@ int main(int argc, char** argv) {
                           segpool != nullptr ? segpool->capacity() >> 20 : (size_t) 0, ckpt_pool.on() ? "on" : "off", ckpt_pool_ready_env(),
                           ckpt_pool.cap(), park_ckpt_bytes >> 20, cache_mib_now, stages.size());
          segpool_kick();
@@ -2548,7 +2548,7 @@ index 40aa44885..ebd3f9cbf 100644
          // Disk sessions: what a session file is bound to.  The model fingerprint samples every model input this
          // engine loaded, by role (conversation_file.hpp), once; the config fingerprint covers the RESOLVED settings
          // that change what the saved bytes mean - the rope (K is cached post-RoPE), the loaded control vector, the
-@@ -13603,6 +13877,27 @@ int main(int argc, char** argv) {
+@@ -14104,6 +14378,27 @@ int main(int argc, char** argv) {
              }
              return n + spill.clear();
          };
@@ -2576,7 +2576,7 @@ index 40aa44885..ebd3f9cbf 100644
          // What a park captures: the main session's conversation (park_current) or an idle batch slot's (park_slot:
          // the reply it decoded, before an admission overwrites it).  One budget / admission / snapshot path for both.
          struct ParkSource {
-@@ -13668,6 +13963,175 @@ int main(int argc, char** argv) {
+@@ -14169,6 +14464,175 @@ int main(int argc, char** argv) {
              });
          };
          pool_topup();   // the first request's checkpoints find the pool full
@@ -2752,7 +2752,7 @@ index 40aa44885..ebd3f9cbf 100644
          auto park_source = [&](const ParkSource& src, size_t held) -> bool {
              // #2049: parking copies the outgoing conversation's running checkpoints and K/V into host memory, which
              // is a silent stretch of the "request" stage; when the OS has paged that memory out it takes minutes.
-@@ -13763,6 +14227,38 @@ int main(int argc, char** argv) {
+@@ -14264,6 +14728,38 @@ int main(int argc, char** argv) {
                  err.clear();
              }
              estimate += stage_estimate;
@@ -2791,7 +2791,7 @@ index 40aa44885..ebd3f9cbf 100644
              // A park carrying its own retained K/V replaces memory the cache
              // already held, so capacity is make_room's call - it runs next either
              // way, and put()'s accounting still bounds the budget. The with-reuse
-@@ -13772,24 +14268,26 @@ int main(int argc, char** argv) {
+@@ -14273,24 +14769,26 @@ int main(int argc, char** argv) {
              if (!conversations.make_room(estimate, held)) {
                  std::fprintf(stderr, "strata serve: conversation cache: skip parking (snapshot %zu MiB exceeds available budget)\n",
                               estimate >> 20);
@@ -2827,7 +2827,7 @@ index 40aa44885..ebd3f9cbf 100644
                  size_t evicted = 0;
                  std::optional<strata::core::HostMemoryReading> mem;
                  auto admit = [&] {
-@@ -13841,6 +14339,8 @@ int main(int argc, char** argv) {
+@@ -14342,6 +14840,8 @@ int main(int argc, char** argv) {
                                   evicted, conversations.size(),
                                   no_progress ? "; the last eviction gave no memory back, so the rest stay parked" : "",
                                   cannot_help_note.c_str());
@@ -2836,7 +2836,7 @@ index 40aa44885..ebd3f9cbf 100644
                      return true;
                  }
                  if (evicted)
-@@ -14451,6 +14951,23 @@ int main(int argc, char** argv) {
+@@ -15013,6 +15513,23 @@ int main(int argc, char** argv) {
          std::vector<void*> pin_live;   // the swaps' locked arena pages (pin_blob), unlocked once they have landed
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
@@ -2860,7 +2860,7 @@ index 40aa44885..ebd3f9cbf 100644
          // 0.1.43 STRATA_ADAPT_OVERLAP=1 (adapt_overlap above): the single-GPU, plain-RAM-arena decode loop only
          strata::core::AdaptGate agate;
          bool aflipped = false;   // the pending swaps are in the tables and their copies may still be landing
-@@ -14547,7 +15064,10 @@ int main(int argc, char** argv) {
+@@ -15109,7 +15626,10 @@ int main(int argc, char** argv) {
                  return;
              }
              if (wait) cudaEventSynchronize(adapt_ev);
@@ -2872,7 +2872,7 @@ index 40aa44885..ebd3f9cbf 100644
              for (auto& st : stages)
                  if (st->adapt_live) {
                      if (wait) cudaEventSynchronize(st->adapt_ev);
-@@ -14555,6 +15075,7 @@ int main(int argc, char** argv) {
+@@ -15117,6 +15637,7 @@ int main(int argc, char** argv) {
                  }
              for (auto& st : stages) st->adapt_live = false;
              unpin_blobs(pin_live);
@@ -2880,7 +2880,7 @@ index 40aa44885..ebd3f9cbf 100644
              src.commit_exchanges();   // the resident RAM mode: the evicted experts take their places in RAM
              for (const auto& [i, slot] : pending) {
                  host_res[(size_t) i] = slot;
-@@ -14756,11 +15277,25 @@ int main(int argc, char** argv) {
+@@ -15326,11 +15847,25 @@ int main(int argc, char** argv) {
                  adapt_fence();
              }
              bool main_live = false;
@@ -2906,7 +2906,7 @@ index 40aa44885..ebd3f9cbf 100644
              for (size_t si = 0; si < swaps.size(); ++si) {
                  const Swap& s = swaps[si];
                  if (aov && (si == 0 || swaps[si - 1].layer != s.layer)) {
-@@ -14776,49 +15311,192 @@ int main(int argc, char** argv) {
+@@ -15346,49 +15881,192 @@ int main(int argc, char** argv) {
                  nib::guard_raw(s.layer, "the adaptive tier's copy in");
                  const int stn = multi_gpu ? stage_of(s.layer) : 0;   // the swap stays in the layer's own cache
                  GpuStage* gs = stn > 0 ? stages[(size_t) stn - 1].get() : nullptr;
@@ -3125,7 +3125,7 @@ index 40aa44885..ebd3f9cbf 100644
              if (!cp_dst.empty() && strata::core::copy_blobs(cp_dst.data(), cp_src.data(), cp_bytes.data(), cp_dst.size(),
                                                              adapt_stream, dma_mode) != cudaSuccess) {
                  std::fprintf(stderr, "strata serve: adaptive swap copy failed (batched): %s\n",
-@@ -15290,6 +15968,66 @@ int main(int argc, char** argv) {
+@@ -15855,6 +16533,66 @@ int main(int argc, char** argv) {
              a_pl_idle = nullptr;
              a_res_dirty = false;
          };
@@ -3192,7 +3192,7 @@ index 40aa44885..ebd3f9cbf 100644
          // #477: write the learned profile (between requests and at QUIT: a prompt's lent slots are back by then).
          // A swap still in flight counts as done - its expert is resident once the copy lands.  `why`: for the log.
          auto save_profile = [&](const char* why) {
-@@ -17893,14 +18631,17 @@ int main(int argc, char** argv) {
+@@ -18615,14 +19353,17 @@ int main(int argc, char** argv) {
                                   path.c_str(), ms(), capture_ms);
                      std::printf("SAVED %zu %zu %.1f\n", live.size(), bytes, ms());
                  } else {
@@ -3212,7 +3212,7 @@ index 40aa44885..ebd3f9cbf 100644
                          const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
                          pools_budget.shrink((size_t) -1);   // (the park pools' idle memory goes back before the RAM checks of a session load)
                          limits.admit = [floor, &o](uint64_t need, std::string& why) {
-@@ -17913,64 +18654,98 @@ int main(int argc, char** argv) {
+@@ -18635,64 +19376,98 @@ int main(int argc, char** argv) {
                              return false;
                          };
                          if (!strata::core::conversation_session_read_limits(
@@ -3357,7 +3357,7 @@ index 40aa44885..ebd3f9cbf 100644
                  }
                  std::fflush(stdout);
                  continue;
-@@ -18418,6 +19193,7 @@ int main(int argc, char** argv) {
+@@ -19146,6 +19921,7 @@ int main(int argc, char** argv) {
                  checks.clear();
                  tail_ckpt_len = -1;
                  const size_t n_parked = conversations.clear() + spill_clear();   // (the SSD tier's and the writer's too)
@@ -3365,7 +3365,7 @@ index 40aa44885..ebd3f9cbf 100644
                  size_t n_slots = 0, n_running = 0;
                  for (BSlot& sl : bs)
                      if (sl.active) {   // a running slot finishes its reply, but is not kept as a cache after it
-@@ -18437,10 +19213,11 @@ int main(int argc, char** argv) {
+@@ -19165,10 +19941,11 @@ int main(int argc, char** argv) {
                          ++n_slots;
                      }
                  std::fprintf(stderr, "strata serve: after non-finite logits (#879): dropped the live session, %zu "
@@ -3381,7 +3381,7 @@ index 40aa44885..ebd3f9cbf 100644
              }
              int64_t resume = 0;
              bool from_live = false;
-@@ -18672,6 +19449,35 @@ int main(int argc, char** argv) {
+@@ -19400,6 +20177,35 @@ int main(int argc, char** argv) {
                      continue;
                  }
              }
@@ -3417,7 +3417,7 @@ index 40aa44885..ebd3f9cbf 100644
              std::optional<strata::core::SavedConversation> incoming;
              // A checkpoint inside ANOTHER parked conversation (a sibling subagent's system prompt and tools, say) is
              // borrowed: its K/V up to there and the checkpoint come over, and that conversation stays parked for its
-@@ -18760,11 +19566,11 @@ int main(int argc, char** argv) {
+@@ -19488,11 +20294,11 @@ int main(int argc, char** argv) {
                      }
                  }
              }
@@ -3432,7 +3432,7 @@ index 40aa44885..ebd3f9cbf 100644
              // Reject the entire image before parking/overwriting the outgoing
              // state. Invalid entries can safely fall back to its existing prefix.
              if (incoming && incoming->stage_images.size() != stages.size()) {
-@@ -18847,8 +19653,8 @@ int main(int argc, char** argv) {
+@@ -19575,8 +20381,8 @@ int main(int argc, char** argv) {
              // dozen tokens, cheaper to read than the prefix's whole K/V is to copy to the host - so it is not parked:
              // N queries keep one prefix.  A request without pin=, or one that resumes anywhere else, parks as before.
              bool pin_sibling = false;
@@ -3443,7 +3443,7 @@ index 40aa44885..ebd3f9cbf 100644
                  for (const ConvCheckpoint& c : checks)
                      if ((int64_t) c.ids.size() == resume && c.pinned) pin_sibling = true;
              // The live branch past this request's resume point is only the reply this prompt replaces: the request resumes from
-@@ -18911,7 +19717,8 @@ int main(int argc, char** argv) {
+@@ -19639,7 +20445,8 @@ int main(int argc, char** argv) {
                  ~ParkDrops() { f = nullptr; }
              } park_drops_reset{park_drops};
              if (park_async_env()) {
@@ -3453,17 +3453,19 @@ index 40aa44885..ebd3f9cbf 100644
                  park_drops = [&, drops_all](const ConvCheckpoint& c) {
                      return drops_all || (int64_t) c.ids.size() > resume || !starts_with(c.ids, c.imgs);
                  };
-@@ -18938,7 +19745,8 @@ int main(int argc, char** argv) {
+@@ -19747,8 +20554,9 @@ int main(int argc, char** argv) {
                          return 1;
                      }
                  }
 -            } else if ((!from_live || incoming || slot_source >= 0) && !keep_branch && !reply_replaced && park_worth &&
-+            } else if ((!from_live || incoming || file_restore || slot_source >= 0) && !keep_branch && !reply_replaced &&
-+                       park_worth &&
-                        !park_current(incoming ? incoming->bytes() : 0)) {
+-                       !swapped_parked && !park_current(incoming ? incoming->bytes() : 0)) {
++            } else if ((!from_live || incoming || file_restore || slot_source >= 0) && !keep_branch &&
++                       !reply_replaced && park_worth && !swapped_parked &&
++                       !park_current(incoming ? incoming->bytes() : 0)) {
                  std::printf("ERR %s\n", err.c_str());
                  return 1;
-@@ -19032,6 +19840,45 @@ int main(int argc, char** argv) {
+             }
+@@ -19841,6 +20649,45 @@ int main(int argc, char** argv) {
                                   std::chrono::duration<double, std::milli>(Clock::now() - t0).count());
                  }
              }
@@ -3509,7 +3511,7 @@ index 40aa44885..ebd3f9cbf 100644
              // the elastic K/V: a parked conversation is restored whole, and it may be longer than this prompt
              // (STRATA_PARK_VRAM_MIB: the parked K/V copies in VRAM go first, then one more try)
              if (incoming && !kvg_ensure((int64_t) incoming->live.ids.size() + 256, kv_quiesce) &&
-@@ -20861,10 +21708,24 @@ int main(int argc, char** argv) {
+@@ -21679,10 +22526,24 @@ int main(int argc, char** argv) {
                                 drive.d.pcie_experts};
              };
              const DecSnap ds0 = dec_snap();
@@ -3534,7 +3536,7 @@ index 40aa44885..ebd3f9cbf 100644
              const int64_t decode_hits0 = drive.d.cache_hits;
              // CS-T: the RAM and file tiers of this request (the mmap source; 0 with the arena)
              const int64_t ram0 = src.ram_reads(), files0 = src.file_reads();
-@@ -21450,12 +22311,15 @@ int main(int argc, char** argv) {
+@@ -22269,12 +23130,15 @@ int main(int argc, char** argv) {
                      chain_kind = 0;
                      int a = 0;
                      while (a < A.T - 1 && A.tok[a + 1] == outp[(size_t) a]) ++a;
@@ -3551,7 +3553,7 @@ index 40aa44885..ebd3f9cbf 100644
                      // STOP arrived while A was in flight: A is dropped whole (serve_skip_stopped_window), not committed on any stage and not
                      // printed.  A front stage that B ran on has A committed speculatively (A.com): it goes back to the snapshot taken before
                      // A, with no replay (undo_keep 0); a stage B never reached never committed A.
-@@ -21479,6 +22343,7 @@ int main(int argc, char** argv) {
+@@ -22298,6 +23162,7 @@ int main(int argc, char** argv) {
                      for (int i = 0; i <= a; ++i) consumed.push_back(A.tok[i]);
                      draft_offered += A.T - 1;
                      draft_accepted += a;
@@ -3559,7 +3561,7 @@ index 40aa44885..ebd3f9cbf 100644
                      ++rounds;
                      if (drive.d.fs) drive.d.fs->completed.fetch_add(1, std::memory_order_release);
                      ++dec_windows;
-@@ -22028,6 +22893,7 @@ int main(int argc, char** argv) {
+@@ -22847,6 +23712,7 @@ int main(int argc, char** argv) {
                          if (file_left > 0) { --file_left; src.replace_resident(x.layer, x.in, x.out); }
                      }
                  }
@@ -3567,7 +3569,7 @@ index 40aa44885..ebd3f9cbf 100644
                  if (!adapt_tick(false)) {   // --adapt-async: the round in flight moves on a step when it can
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -22114,12 +22980,16 @@ int main(int argc, char** argv) {
+@@ -22933,12 +23799,16 @@ int main(int argc, char** argv) {
                  }
                  // A merged window contains prompt rows: every one must still be committed.
                  // Otherwise do not cache accepted rows whose outputs this request cannot emit.
@@ -3585,7 +3587,7 @@ index 40aa44885..ebd3f9cbf 100644
                  if (from_sfx) { ++sfx_windows; sfx_drafts += T - 1; sfx_ok += a; }
                  if (chain_n > 0) { ++chain_windows; chain_drafts += chain_n; chain_ok += std::max(0, a - (T_mtp - 1)); }
                  if (!from_sfx && !first_window)
-@@ -22226,7 +23096,9 @@ int main(int argc, char** argv) {
+@@ -23047,7 +23917,9 @@ int main(int argc, char** argv) {
                      const double asw_join = std::chrono::duration<double, std::milli>(Clock::now() - taj0).count();
                      dt_adapt_join += asw_join;
                      asw_wait_ms += asw_join;
@@ -3595,7 +3597,7 @@ index 40aa44885..ebd3f9cbf 100644
                  if (!adapt_ok) {
                      std::printf("ERR an adaptive refill failed\n");
                      return 1;
-@@ -22295,6 +23167,17 @@ int main(int argc, char** argv) {
+@@ -23116,6 +23988,17 @@ int main(int argc, char** argv) {
              // (a --batch admission is a GEN of one token whose hold may be that one token: the slot must not start then)
              if (hold_on && std::strcmp(finish, "length") == 0 && produced_n >= req_hold_n && (produced_n < max_new || admit_slot >= 0)) finish = "hold";
              if (!keep_sync()) { std::printf("ERR %s\n", err.c_str()); return 1; }
@@ -3613,7 +3615,7 @@ index 40aa44885..ebd3f9cbf 100644
              const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
              dc_last_end = Clock::now();   // the busy run goes on when the next request starts within CostLearner::kIdleS of this
              if (use_df2 && o.draft_auto && bandit_key != 0 && produced_n >= 48 && decode_ms > 0.0) {
-@@ -22461,6 +23344,7 @@ int main(int argc, char** argv) {
+@@ -23282,6 +24165,7 @@ int main(int argc, char** argv) {
                  }
              }
              if (drive.d.fs) std::fprintf(stderr, "strata serve: %s\n", drive.d.fs->report().c_str());
@@ -3621,7 +3623,7 @@ index 40aa44885..ebd3f9cbf 100644
              if (!cancelled) {
                  // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                  // (the checkpoints taken while reading it are still good)
-@@ -22644,6 +23528,31 @@ int main(int argc, char** argv) {
+@@ -23465,6 +24349,31 @@ int main(int argc, char** argv) {
                  std::fprintf(stderr, "strata follow: %lld rows on the forced text, %lld of their picks were the forced token (%.2f%%)\n",
                               (long long) fol_rows, (long long) fol_same, 100.0 * (double) fol_same / (double) fol_rows);
              if (yielded_at >= 0) std::printf("YIELDED %d %lld\n", yielded_slot, (long long) yielded_at);
@@ -3653,7 +3655,7 @@ index 40aa44885..ebd3f9cbf 100644
              std::printf("DONE %lld %lld %.1f %.1f %s %lld %lld %lld %lld %lld %lld %lld %.1f %lld %lld%s chunk=%lld "
                          "experts_streamed=%lld\n",
                          (long long) produced_n,
-@@ -23669,17 +24578,33 @@ int main(int argc, char** argv) {
+@@ -24559,17 +25468,33 @@ int main(int argc, char** argv) {
          cudaEvent_t adapt_ev = nullptr;
          cudaEventCreateWithFlags(&adapt_ev, cudaEventDisableTiming);
          int64_t adapt_rounds = 0;   // counted here: `rounds` is declared below the adapt lambda
@@ -3687,7 +3689,7 @@ index 40aa44885..ebd3f9cbf 100644
              if (trace_pending)
                  std::fprintf(stderr, "strata: PENDING landed, %zu experts become resident\n", pending.size());
              unpin_blobs(pin_live);
-@@ -23764,29 +24689,164 @@ int main(int argc, char** argv) {
+@@ -24654,29 +25579,164 @@ int main(int argc, char** argv) {
              std::vector<void*> cp_dst;
              std::vector<const void*> cp_src;
              std::vector<size_t> cp_bytes;
@@ -3864,7 +3866,7 @@ index 40aa44885..ebd3f9cbf 100644
              }
              if (drive.d.evict_sync && !swaps.empty()) {   // the evicted ones are misses now (see the pre-launch hook)
                  for (const Swap& s : swaps) drive.d.res_dirty_idx.push_back((int32_t) (s.layer * g.n_expert + s.out));
-@@ -24125,6 +25185,7 @@ int main(int argc, char** argv) {
+@@ -25014,6 +26074,7 @@ int main(int argc, char** argv) {
                      std::fprintf(stderr, "strata: fetch verify: %lld admitted slots read back, %lld differ\n",
                                   (long long) checked, (long long) bad);
              }
@@ -3872,7 +3874,7 @@ index 40aa44885..ebd3f9cbf 100644
              if (gated_proposal) ver.set_spec_proposal(proposal.n_q ? proposal.mu.data() : nullptr, proposal.n_q);
              // the MTP's q lists judge only candidates the MTP drew: DFlash2's are a deterministic pick (exact-match path)
              else if (strata::spec::mtp_q_applies(use_mtp, spec_uses_df2, use_mtp && mtp.prob(), from_sfx, first_window, T_mtp) && o.spec_corrupt <= 0)
-@@ -24218,7 +25279,11 @@ int main(int argc, char** argv) {
+@@ -25110,7 +26171,11 @@ int main(int argc, char** argv) {
              generation = {};
              const GatedDraftLimit draft_limit(mtp, gated_proposal, S_mtp, p + a + 1, o.max_context);
              const bool drafted = !draft_on || (int64_t) produced.size() >= max_new || draft_next(T, a);
@@ -3885,7 +3887,7 @@ index 40aa44885..ebd3f9cbf 100644
              if (!adapt_ok) return 1;
              if (!drafted) {
                  std::fprintf(stderr, "strata generate: %s\n", err.c_str());
-@@ -24321,6 +25386,7 @@ int main(int argc, char** argv) {
+@@ -25213,6 +26278,7 @@ int main(int argc, char** argv) {
              std::printf("%-24s %lld windows, %lld with mismatches (%lld entries), %lld layer-windows with CPU experts and "
                          "no activation published\n", "residency check", (long long) res_windows,
                          (long long) res_bad_windows, (long long) res_bad, (long long) drive.d.stale_x);
@@ -3894,7 +3896,7 @@ index 40aa44885..ebd3f9cbf 100644
              std::printf("%-24s %.2f GiB of experts in RAM, %lld exchanged with the VRAM tier, %lld blob reads from "
                          "the file\n", "resident RAM", (double) src.resident_bytes() / 1073741824.0,
 diff --git a/terminal/serve/prometheus.py b/terminal/serve/prometheus.py
-index 7c09192c9..793d088d5 100644
+index 7c09192..793d088 100644
 --- a/terminal/serve/prometheus.py
 +++ b/terminal/serve/prometheus.py
 @@ -10,6 +10,13 @@ import threading
@@ -4005,10 +4007,10 @@ index 7c09192c9..793d088d5 100644
             last.get("decode_tok_s"))
      gpus = hw.get("gpus") or ([{"index": 0, "util": hw.get("gpu_util"), "mem_used": hw.get("gpu_mem_used"),
 diff --git a/terminal/serve/server.py b/terminal/serve/server.py
-index 670177167..b51d20e4f 100644
+index 814f034..31af7ff 100644
 --- a/terminal/serve/server.py
 +++ b/terminal/serve/server.py
-@@ -767,6 +767,9 @@ class StrataEngine:
+@@ -774,6 +774,9 @@ class StrataEngine:
          self.can_hold = False            # the engine takes GEN hold=N:ID (READY <ctx> ... hold)
          self.can_hold_batch = False      # ... and its --batch slots end at the hold too, BDONE hold (READY ... holdb)
          self.last = {}
@@ -4018,7 +4020,7 @@ index 670177167..b51d20e4f 100644
          self.info = {}                   # INFO key=value facts (engine 0.1.8+): kv, expert slots, ... (Monitor tab)
          self.terminal_stages: list[dict] = []  # final layer ranges from this engine start's bounded stderr log
          self.terminal_batch_sample: dict | None = None
-@@ -1196,6 +1199,9 @@ class StrataEngine:
+@@ -1249,6 +1252,9 @@ class StrataEngine:
                      self.last[key] = int(value)
                  except ValueError:
                      pass
@@ -4028,7 +4030,7 @@ index 670177167..b51d20e4f 100644
  
      @contextlib.contextmanager
      def _exclusive_control(self):
-@@ -1478,6 +1484,8 @@ class StrataEngine:
+@@ -1558,6 +1564,8 @@ class StrataEngine:
                      self.reused = int(line.split()[1])
                  except (IndexError, ValueError):
                      pass
@@ -4037,7 +4039,7 @@ index 670177167..b51d20e4f 100644
              elif line.startswith("DONE"):
                  self._parse_done(line)
                  self._last_done = line
-@@ -1506,6 +1514,22 @@ class StrataEngine:
+@@ -1586,6 +1594,22 @@ class StrataEngine:
          if finish == "cancel" and getattr(self, "closing", False) and not cancel.is_set():
              raise EngineClosing("this instance is draining; retry against the next instance")
  
@@ -4060,7 +4062,7 @@ index 670177167..b51d20e4f 100644
      def _done_finish(self) -> str | None:
          """The finish field of the DONE line the control lines read last (None: none since it was cleared)."""
          f = (getattr(self, "_last_done", None) or "").split()
-@@ -1533,6 +1557,8 @@ class StrataEngine:
+@@ -1613,6 +1637,8 @@ class StrataEngine:
              if line is None:
                  return None
              end = time.monotonic() + wait_s                  # any line is progress
@@ -4069,7 +4071,7 @@ index 670177167..b51d20e4f 100644
              if line.startswith("DONE"):
                  self._parse_done(line)
              if line.startswith(until) or line.startswith("ERR"):
-@@ -1906,6 +1932,7 @@ class StrataEngine:
+@@ -1986,6 +2012,7 @@ class StrataEngine:
          admission to its BADM, a slot is BSTOPped and freed at its BDONE."""
          if not self.alive():
              raise EngineDied("the engine is unavailable; this request was not sent")
@@ -4077,7 +4079,7 @@ index 670177167..b51d20e4f 100644
          self.progress, self.progress_ms, self.reused = None, 0, 0
          born = self.gen                                 # the engine process this request is sent to
          hold = (sampling or {}).get(HOLD_KEY)           # the thinking budget's hold (P2b): the reasoning tokens left when this pass starts, and </think>'s id
-@@ -2443,6 +2470,7 @@ class StrataEngine:
+@@ -2534,6 +2561,7 @@ class StrataEngine:
          has gone.  A consumer that stops early (or `cancel`) makes the engine STOP, so it does not run to max_new."""
          if not self.alive():
              raise EngineDied("the engine is unavailable; this request was not sent")
@@ -4085,7 +4087,7 @@ index 670177167..b51d20e4f 100644
          bias_api.validate_request(sampling or {}, self, None)
          refuse_for_split(self, sampling or {})
          if getattr(self, "batch", 0):
-@@ -2518,6 +2546,8 @@ class StrataEngine:
+@@ -2609,6 +2637,8 @@ class StrataEngine:
                  beat = heard
                  if stall_state:
                      stall_state.clear()
@@ -4094,7 +4096,7 @@ index 670177167..b51d20e4f 100644
                  if line.startswith("T "):
                      allow = silence
                      if cancel.is_set():
-@@ -2552,6 +2582,8 @@ class StrataEngine:
+@@ -2643,6 +2673,8 @@ class StrataEngine:
                          read_to = self.reused = int(line.split()[1])
                      except (IndexError, ValueError):
                          pass
@@ -4103,7 +4105,7 @@ index 670177167..b51d20e4f 100644
                  elif line.startswith("DONE"):
                      self._parse_done(line)
                      done = True
-@@ -2596,6 +2628,9 @@ class StrataEngine:
+@@ -2687,6 +2719,9 @@ class StrataEngine:
                                             f"within {allow:.0f} s") from None
                      if line is None or line.startswith("ERR"):
                          break
@@ -4113,7 +4115,7 @@ index 670177167..b51d20e4f 100644
                      if line.startswith("DONE"):
                          self._parse_done(line)
                          break
-@@ -4863,6 +4898,23 @@ class Service:
+@@ -5104,6 +5139,23 @@ class Service:
              ("strata:tool_args_repaired_total", "counter", "Tool call arguments (a JSON array or object) that were damaged and read as written",
               t.get("tool_args_repaired", 0)),
              ("strata:model_loaded", "gauge", "1 while the model is loaded", int(self.loaded())),
@@ -4137,7 +4139,7 @@ index 670177167..b51d20e4f 100644
          ]
          # #6081: the conversation cache from the engine's log: parks, restores, evictions and the refused parks by reason
          cc = self.conv_log.poll(getattr(self.engine, "log_path", None), getattr(self.engine, "log_start", None))
-@@ -4873,9 +4925,35 @@ class Service:
+@@ -5114,9 +5166,35 @@ class Service:
              ("strata:conversation_cache_evictions_total", "counter", "Parked conversations evicted", cc["evictions"]),
          ]
          refused = "strata:conversation_cache_refused_total"
@@ -4176,7 +4178,7 @@ index 670177167..b51d20e4f 100644
  
      def v1_status(self) -> dict:
          """GET /v1/status: what this server is and does, for a client that would rather ask than guess (a front-end
-@@ -5822,6 +5900,19 @@ class Service:
+@@ -6111,6 +6189,19 @@ class Service:
                                  t["decode_ms"] += last.get("decode_ms") or 0.0
                                  t["drafts_offered"] += last.get("drafts_offered") or 0
                                  t["drafts_accepted"] += last.get("drafts_accepted") or 0
@@ -4198,7 +4200,7 @@ index 670177167..b51d20e4f 100644
                                                         (last.get("decode_ms") or 0.0) / 1000, time.time() - started)
 diff --git a/terminal/serve/test_wstat.py b/terminal/serve/test_wstat.py
 new file mode 100644
-index 000000000..62a093cfe
+index 0000000..62a093c
 --- /dev/null
 +++ b/terminal/serve/test_wstat.py
 @@ -0,0 +1,69 @@

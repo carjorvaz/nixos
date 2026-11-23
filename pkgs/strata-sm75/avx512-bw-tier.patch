@@ -1,8 +1,8 @@
 diff --git a/engine/cmake/backends/cpu.cmake b/engine/cmake/backends/cpu.cmake
-index cc69de7d8..9724f40a6 100644
+index f0c8eb5..61229d4 100644
 --- a/engine/cmake/backends/cpu.cmake
 +++ b/engine/cmake/backends/cpu.cmake
-@@ -213,14 +213,23 @@ if(STRATA_CPU_X86 AND NOT STRATA_NATIVE_EXPERTS)
+@@ -254,14 +254,23 @@ if(STRATA_CPU_X86 AND NOT STRATA_NATIVE_EXPERTS)
    endif()
  endif()
  # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
@@ -29,7 +29,7 @@ index cc69de7d8..9724f40a6 100644
    set_source_files_properties(src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
  endif()
  # AVX-VNNI (Alder Lake, Sapphire Rapids and later): the AVX-2 expert kernels' vpdpwssd / vpdpbusd copies (q2_avx2.cpp,
-@@ -288,14 +297,19 @@ macro(strata_cpu_native_experts)
+@@ -329,14 +338,19 @@ macro(strata_cpu_native_experts)
      # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
      set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
    else()
@@ -52,7 +52,7 @@ index cc69de7d8..9724f40a6 100644
      set_source_files_properties(src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS
                                  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512vnni;-mavx512vbmi;-mavx2;-mfma;-mf16c")
 diff --git a/engine/src/kernels/cpu/expert.cpp b/engine/src/kernels/cpu/expert.cpp
-index 4bd62890e..a4d59ae18 100644
+index 4bd6289..a4d59ae 100644
 --- a/engine/src/kernels/cpu/expert.cpp
 +++ b/engine/src/kernels/cpu/expert.cpp
 @@ -111,21 +111,37 @@ void quantize_oracle_q8_0(const float* x, int n, ActQ& a) {
@@ -190,7 +190,7 @@ index 4bd62890e..a4d59ae18 100644
  inline void scales8(const uint8_t* wscales, const ActQ& a, int b0, int nb, __m512& p, __m512& dd) {
      const __mmask8 m8 = nb >= 8 ? (__mmask8) 0xFF : (__mmask8) ((1u << nb) - 1u);
 diff --git a/engine/sycl/CMakeLists.txt b/engine/sycl/CMakeLists.txt
-index 7c4418cf5..b7960a8f4 100644
+index c410faa..1a08b37 100644
 --- a/engine/sycl/CMakeLists.txt
 +++ b/engine/sycl/CMakeLists.txt
 @@ -174,8 +174,10 @@ target_link_libraries(strata_spec PUBLIC strata_includes)

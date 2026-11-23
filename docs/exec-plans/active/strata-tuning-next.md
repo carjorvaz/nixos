@@ -1007,6 +1007,83 @@ turing-unlock firmware's NVIDIA 610.43.03 package; dropping that module (same ge
 `hosts/tiberius.nix`) unblocked the build.
 Artifacts: `/data/ab53-sample.log`, `/data/ab53-{base3,skip3a,skip3b,base3b}.log`.
 
+### Round 18: the v0.2.20 pin and its new knobs (2026-11-23, planned)
+
+Status: **partially measured (2026-11-23).** The pin is rebased and built natively on tiberius
+(engine 0.1.66, `kwx3qn9q...`), and the focused screen ran on the isolated 8099 engine: the pin
+is a 5/5 decode win (+4.7 % at p1, +6.2 % at llive, read flat) and `STRATA_VERIFY_DEVICE_HITS`
+is NO-WIN (-0.2 %/+0.1 %, 2/5) and stays off. The remaining arms are pending; nothing is
+deployed. The screen is `tools/strata-knob-screen/` (README has the command). It loads the
+deployed `STRATA_*` knobs from the config's `env` (and the library path from the unit via
+`--unit-env`), retargets `--conversation-park-dir`/`--conversation-spill-dir` and the engine
+`log` into its own workdir (so a second engine cannot touch the production tier or log), and
+adds a `prev_build` arm for the pin's own delta.
+
+v0.2.20 = `a34979fc`, engine 0.1.66, from `028e6826` / 0.1.63. What moved on its own for this
+lane:
+
+* **Dense INT8 tensor cores are ON by default for CC >= 75** (`dense_i8_tc_supported()`), decode
+  and chunked prefill. It only selects for eligible dense types (Q8_0, Q2_K-Q6_K, IQ3_XXS/
+  IQ3_S/IQ4_XS/IQ4_NL), so whether it fires depends on the pack's dense/drafter types; the
+  engine prints no line for it. `STRATA_DENSE_I8_TC=0 STRATA_PREFILL_DENSE_I8_TC=0` is the
+  control arm (`dense_i8_off`).
+* **The low-VRAM auto rules do not apply**: they are gated at <= 13 GiB and < 25 % resident;
+  this card is 22 GiB and holds ~37 % of experts. No auto reserve change, no `--adapt-swaps`
+  damping, no auto `STRATA_L3_PF`, no profile pinning.
+* **No sm_75 defaults table**: the 0.2.19/0.2.20 "zero environment variables" sets are
+  sm_70/80/86/89/120. Turing keeps the `STRATA_SM75_PERF=1` series and exp_mode 4.
+* New opt-ins default off: conversation-cache host swap (block 0), `--ssd-experts`,
+  `--ram-experts-gb`, `--conversation-spill-persist`.
+
+The screen's arms (only knobs that reach sm_75; arch/shape-specific ones excluded):
+
+| arm | knob | hypothesis | risk |
+|---|---|---|---|
+| `control` | none | paired baseline | - |
+| `prev_build` | previous `bin/strata` | the pin's own delta, same serve layer/config | protocol drift old engine <- new serve |
+| `verify_device_hits` | `STRATA_VERIFY_DEVICE_HITS=1` | plans verify-window resident hits on-device; targets the 4.4-6.8 ms host `pool + plan` per window | bitwise exact; upstream default above 16 GiB on sm_86/89/120 |
+| `l3_pf` | `STRATA_L3_PF=1` | next-layer expert prefetch into L3 during the GPU wait; the lane is 63 % host experts and GPU-wait bound | outside upstream's <= 13 GiB envelope; changes pool scheduling |
+| `pool_static` | `STRATA_POOL_STATIC=1` | isolates the static slices from the prefetch | same scheduling change |
+| `pin_frac` | `STRATA_CACHE_PIN_FRAC=0.25` | pins the profile head, damping adapt-swap churn | pins slots the refill could use |
+| `q8_inplace` | `STRATA_Q8_INPLACE=1` | in-place Q8 packing returns VRAM to the expert cache | no-op if no eligible dense type |
+| `dense_i8_off` | the two `=0` above | turns the new default off: a negative delta means the default is a win | none (control) |
+| `renorm` | `STRATA_ROUTE_TAIL_RENORM=1` | quality-side partner of the deployed `ROUTE_TAIL_SKIP=7` | answer-changing; **quality gate only** |
+
+Gates: 5 counterbalanced runs (3 minimum), mean with [min-max], answer sha per cell, and
+**no magnitude bar** - the same sign in every paired run adopts a +0.8 % win as readily as a
++8 % one; 4/5 is a candidate for the owner. The read delta is reported and called out when it is
+worse than -1.5 %, not treated as a veto. `renorm` goes to the quality gate (eval320 not > 8
+worse, needle 3/3, repetition probe), never to this table. `--conversation-spill-persist` is a
+robustness test (restart, reused > 0), not a throughput arm. The +4 % bar is retired (owner,
+2026-11-23).
+
+**Measured 2026-11-23 (focused screen: control, prev_build, verify_device_hits; 5 reps;
+p1 4,299 / llive 26,482 tokens; 30/30 records, `reused` 0, temperature 0):**
+
+| arm / cell | decode tok/s | read tok/s | paired delta vs control |
+|---|---|---|---|
+| control / p1 | 63.5 | 616 | - |
+| control / llive | 70.2 | 1,379 | - |
+| prev_build 0.1.63 / p1 | 60.5 | 613 | -4.7 % [-5.0, -4.3], 0/5 up -> **pin +4.7 %** |
+| prev_build 0.1.63 / llive | 65.8 | 1,380 | -6.2 % [-8.2, -4.3], 0/5 up -> **pin +6.2 %** |
+| verify_device_hits / p1 | 63.4 | 616 | -0.2 % [-0.5, +0.3], 2/5 up -> NO-WIN |
+| verify_device_hits / llive | 70.2 | 1,373 | +0.1 % [-0.8, +1.2], 2/5 up -> NO-WIN |
+
+The pin's gain is not acceptance (0.1.63 accepted 0.904/0.949 against 0.895/0.917) and its
+answers differ (expected). `verify_device_hits` also costs 1.4-1.5 ms per verify window in
+"pool + plan" (30.1-30.9 vs 28.7-29.7 ms), so the NO-WIN is not noise. Evidence
+`/data/knob-screen-20261123-1245/`; the full table is in `docs/VALIDATION.md`.
+
+Not worth a campaign on this card: `STRATA_VHEAD_BITPLANE` and `STRATA_HC_Q8_TC` (sm_80+),
+`STRATA_DF2_ATTN_TC`/`DF2_GEMM_TC` (major >= 8), `STRATA_MEGAKERNEL` (RDNA3/4), MXFP8/FP4,
+`STRATA_PF_P1A_*` (gfx), `Q8_V70`/`SM70_PERF` (Volta), `NUMA_ARENA` (Windows branch),
+`CPUEXP_*`/`HY4_*`/`INK_*` (shape engines), `Q36_*` (different model), `BATCH_*` (batch engine).
+`--ram-experts-gb` is `--resident-budget-gib`, already measured and rejected (hostTierGib 0).
+
+Evidence: `/data/knob-screen-<stamp>/` (manifest, results.json, summary.md, per-run logs); the
+adopted arm is recorded here and in `docs/VALIDATION.md`, and only then in
+`profiles/nixos/strata.nix`.
+
 ## Source-level patch roadmap
 
 Each item has a mechanism, the file/function the reports point at, a risk, and one validation probe.
@@ -1133,15 +1210,18 @@ comment - the Lead owns the switch.
 
 ## Acceptance criteria
 
-- Every adopted arm meets its decision rule with 3 counterbalanced runs, per-run values and
-  [min-max]; answer sha for all cells; answer-changing arms also pass eval80 not >8 worse, needle
-  3/3 and a clean repetition probe.
-- Env-only arms that cannot change the affected cells' text (byte-identical text checked) and
-  whose mechanism is measured may be adopted on a reproducible positive effect - the same sign in
-  2+ paired runs with the base spread quoted - even below the +4 % decode bar. The bar stays for
-  answer-changing or risk-adding arms. Owner call 2026-11-23: small wins compound (the British
-  cycling argument), so the +4 % gate is a default, not a veto. `STRATA_DF2_LOOKUP_SKIP=8` is the
-  first case (rounds 17b/17c).
+- Every adopted arm meets its decision rule with counterbalanced runs (5 by default; 3 is the
+  minimum), per-run values and [min-max], and the answer sha for all cells. Answer-changing arms
+  also pass eval80 not >8 worse, needle 3/3 and a clean repetition probe.
+- **There is no magnitude bar.** A reproducible positive effect is adoptable however small,
+  because +1 % wins compound. What replaced the old +4 % decode gate is reproducibility: the
+  same sign in every paired run at 5 reps (ADOPT), or 4/5 as a CANDIDATE (owner call), with the
+  per-rep spread quoted and the answer text identical for exact arms. 3 reps cannot resolve
+  <2-3 % on decode, so small-effect arms get 5. The +4 % bar is retired (owner, 2026-11-23) and
+  is not to be reintroduced as a default. `STRATA_DF2_LOOKUP_SKIP=8` (rounds 17b/17c, +1.6-1.8 %)
+  is the case that motivated it.
+- The read delta is reported, not a veto: a decode win that costs prompt reads (worse than
+  -1.5 % is called out) is an owner call on the whole workload, not an automatic reject.
 - The prompt-path campaign reports the fitted intercept and marginal rate before/after
   (`read_ms = a + b x fresh_tokens`); a flag removing <3 s is not adopted, and engine-internal phase
   numbers become the patch item.
@@ -1286,6 +1366,20 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
 - **2026-11-23, round 17 / copy-heavy lookup screen (0.1.63)**: the last acceptance lever closed. `--lookup-max-t` 9/12 with DFlash2 starts and captures the wide window, but the first copy request ends the draft (`native ERR dflash2: draft rows out of range`, HTTP 400): the 8-row block cannot feed a longer window, so 9+ rows are unsupported, not slow. The copy cell at the 8-row cap already measures 97.5 % acceptance (436/447) and 123.9 tok/s warm against 85.3 %/111 on chat - the near-perfect regime, worth ~+12 %, i.e. the round-12 +15 % bound as measured. No deploy. Refit scoping in `dflash2-refit-scope.md`: 600 M drafter, 51.2 KB/token tap capture through `STRATA_TAP_FILE`, 1 M tokens = 51 GB / 2.5 h, upstream ~800 K samples; a real 10-50 M-token attempt is 3-6 weeks for ~+3-8 pp, so not recommended now.
 - **2026-11-23, round 17b / draft-skip knob**: `STRATA_DF2_LOOKUP_SKIP=8` (skip the DFlash2 draft when a suffix match of 8+ tokens exists, take the lookup window directly) is real but small: copy 111.15 -> 113.05 cold / 123.4 -> 125.5 warm (+1.7 % both), same 76-77 rounds and ~1 ms/round less decode (4,603 -> 4,527 ms cold), copy text byte-identical; edit inconclusive in a 7 % spread; prose inert by design. Below the +4 % gate, not deployed; safe to carry in the next generation if one happens for another reason. Artifacts `/data/ab53-skip.log`.
 - **2026-11-23, round 17c / sampled A/B**: the skip knob under the served card sampling (0.7 / 0.8 / 20 / presence 1.5), copy+edit, 3 reps x 2 engines per arm. Copy cold 111.2 -> 112.95, warm 123.3 -> 125.55 (+1.6 / +1.8 %), acceptance identical (436/447 cold) and the copy text byte-identical; the sampled copy cell is effectively greedy under top_p 0.8. Edit sampled and noisy (99-121 tok/s both arms), no harm signal. Owner-approved 2026-11-23 under the cumulative-wins policy and live since generation 121 (10:45); the first attempt was blocked by the turing-unlock NVIDIA 610.43.03 URL rot, and dropping that module unblocked the build. Artifacts `/data/ab53-sample.log`.
+- **2026-11-23, round 18 / v0.2.20 pin + knob screen (measured, focused)**: rebased the three local patches
+  onto `a34979fc` (v0.2.20, engine 0.1.66) with three resolutions (upstream's conversation-cache
+  host-swap block and CLI option are "keep both" beside the park-file tier; the park condition
+  carries upstream's `!swapped_parked` with this patch's `file_restore`). The package builds for
+  x86_64-linux on trajanus with the `strata` target only (0.2.20 builds the strata-inkling shape
+  engine by default - now off - and its bench-only `q8_gemv_bench` does not compile on gcc 15:
+  `native_mmvq.hpp` is missing `<cstdint>`). The knob screen is written
+  (`tools/strata-knob-screen/`): prev-build comparison, `VERIFY_DEVICE_HITS`, `L3_PF`/
+  `POOL_STATIC`, `CACHE_PIN_FRAC`, `Q8_INPLACE`, the `dense_i8_off` control for the new default,
+  plus a persist/restart mode; `renorm` is left to the quality gate. The focused screen ran on
+  tiberius (isolated 8099, 12:43-13:02 UTC, production restored): **0.1.66 decodes +4.7 % at p1
+  and +6.2 % at llive (5/5 reps each, read flat), and `STRATA_VERIFY_DEVICE_HITS` is NO-WIN
+  (-0.2 %/+0.1 %, 2/5; its pool + plan is 1.4-1.5 ms/window worse)**, so the pin is a deploy
+  candidate and the knob stays off. Not deployed.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
