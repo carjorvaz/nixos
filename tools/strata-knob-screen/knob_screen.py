@@ -218,6 +218,18 @@ ARMS = {
         "args": [], "answer_changing": False, "invert": False,
         "why": "aux threads off the engine's cores (the 5.6% host-thread wait; expected <=1-2%)",
     },
+    # Queue window 3.
+    "park_ram": {
+        "env": {"STRATA_DF2_LOG_MIB": "64"},
+        "args": ["--prompt-cache", "3"],
+        "answer_changing": False, "invert": False,
+        "why": "host RAM: 3 prompt checkpoints (not 6) + 64 MiB DFlash2 stash -> park admission",
+    },
+    "tail_skip8": {
+        "env": {"STRATA_ROUTE_TAIL_SKIP": "8"},
+        "args": [], "answer_changing": True, "invert": False,
+        "why": "skip rank-8 missed experts too (deployed is 7); quality-gated, answer-changing",
+    },
     "renorm": {
         "env": {"STRATA_ROUTE_TAIL_RENORM": "1"},
         "args": [],
@@ -893,6 +905,134 @@ def run_persist(engine_args, cfg: dict, workdir: Path, reps: int, cells, results
             wait_port_free(engine_args.host, engine_args.port, engine_args.stop_timeout)
 
 
+# ------------------------------------------------------------------------------------- park/eval
+
+
+def run_park(engine_args, cfg: dict, workdir: Path, arms: list, reps: int, cells, results: list,
+             failures: list, flush) -> None:
+    """Does the host-RAM arm turn a refused park into an admitted one and reuse on the repeat?"""
+    a_prompt = ("Summarize the following passage in one paragraph.\n\n"
+                + synthetic_text(engine_args.park_tokens, 707, engine_args.chars_per_token))
+    b_prompt = ("Summarize the following passage in one paragraph.\n\n"
+                + synthetic_text(engine_args.park_foreign, 808, engine_args.chars_per_token))
+    for rep in range(reps):
+        for arm in arms:
+            engine = Engine(cfg, engine_args, arm, rep, workdir)
+            try:
+                engine.start()
+                time.sleep(engine_args.settle)
+                a1 = run_cell(engine, "A1", a_prompt, 32)
+                b = run_cell(engine, "B", b_prompt, 16)     # B's start parks A (or refuses)
+                a2 = run_cell(engine, "A2", a_prompt, 32)   # restores A's prefix if it was parked
+                log = engine.engine_log_path.read_text(errors="replace") if engine.engine_log_path.exists() else ""
+                park_lines = []
+                for line in log.splitlines():
+                    low = line.lower()
+                    if "park" in low and any(k in low for k in ("skip parking", "parked", "restor", "admission")):
+                        if line.strip() not in park_lines:
+                            park_lines.append(line.strip()[:300])
+                results.append({**a2, "arm": arm, "rep": rep, "phase": "A2",
+                                "a1_prompt_tokens": a1.get("prompt_tokens"),
+                                "a1_prompt_ms": a1.get("prompt_ms"), "a1_reused": a1.get("reused"),
+                                "b_reused": b.get("reused"),
+                                "a2_reused": a2.get("reused"), "park_lines": park_lines[-8:]})
+                flush()
+            except Exception as exc:
+                failures.append({"arm": arm, "rep": rep, "error": f"{type(exc).__name__}: {exc}"})
+                print(f"    FAILED {arm} rep {rep}: {exc}", file=sys.stderr, flush=True)
+                flush()
+            finally:
+                engine.stop()
+            wait_port_free(engine_args.host, engine_args.port, engine_args.stop_timeout)
+
+
+def run_eval(engine_args, cfg: dict, workdir: Path, arms: list, reps: int, cells, results: list,
+             failures: list, flush) -> None:
+    """Start the isolated engine per arm and run the eval script against it (quality gate)."""
+    script = engine_args.eval_script
+    items = engine_args.eval_items
+    if not Path(script).is_file():
+        raise SystemExit(f"--eval-script is not a file: {script}")
+    if not Path(items).is_file():
+        raise SystemExit(f"--eval-items is not a file: {items}")
+    for arm in arms:
+        engine = Engine(cfg, engine_args, arm, 0, workdir)
+        try:
+            engine.start()
+            cmd = [engine_args.python, script, arm, "--url",
+                   f"http://{engine_args.host}:{engine_args.port}", "--items", items,
+                   "--max-tokens", str(engine_args.eval_max_tokens)]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=engine_args.request_timeout)
+            score = None
+            for line in proc.stdout.splitlines():
+                if line.startswith("SCORE "):
+                    score = json.loads(line[6:])
+            if score is None:
+                raise RuntimeError(f"eval produced no SCORE (rc={proc.returncode}); stderr: {proc.stderr[-300:]}")
+            results.append({"arm": arm, "rep": 0, "eval": score,
+                            "engine_start_line": engine.engine_start_line()})
+            print(f"    {arm}: {score.get('ok')}/{score.get('of')} in {score.get('wall_s')}s", flush=True)
+            flush()
+        except Exception as exc:
+            failures.append({"arm": arm, "rep": 0, "error": f"{type(exc).__name__}: {exc}"})
+            print(f"    FAILED {arm}: {exc}", file=sys.stderr, flush=True)
+            flush()
+        finally:
+            engine.stop()
+        wait_port_free(engine_args.host, engine_args.port, engine_args.stop_timeout)
+
+
+def summarize_park(results: list) -> str:
+    lines = ["# Host-RAM / park admission test", ""]
+    lines.append("| arm | rep | A tokens | A read ms | B reused | A repeat reused | A repeat read ms | park lines |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for r in results:
+        admitted = any("skip parking" not in x.lower() for x in r.get("park_lines") or [])
+        lines.append(
+            f"| {r['arm']} | {r['rep']} | {r.get('a1_prompt_tokens')} | {r.get('a1_prompt_ms')} | "
+            f"{r.get('b_reused')} | **{r.get('a2_reused')}** | {r.get('prompt_ms')} | "
+            f"{'parked' if admitted else 'refused/unknown'} |"
+        )
+    lines.append("")
+    by = {}
+    for r in results:
+        by.setdefault(r["arm"], []).append(r)
+    lines.append("## Verdict")
+    lines.append("")
+    lines.append("The win is A's repeat: with a successful park it reuses A's prefix (~all its tokens)")
+    lines.append("and the read collapses; refused, it reads A again from token 0.  A 'skip parking' line")
+    lines.append("without a later 'parked' one is a refusal.")
+    for arm, rs in by.items():
+        reused = [r.get("a2_reused") or 0 for r in rs]
+        toks = [r.get("a1_prompt_tokens") or 0 for r in rs]
+        lines.append(f"- {arm}: repeat reused {reused} of {toks}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def summarize_eval(results: list) -> str:
+    lines = ["# Quality gate (eval script)", ""]
+    lines.append("| arm | ok | of | % | wall s | by category |")
+    lines.append("|---|---|---|---|---|---|")
+    for r in results:
+        e = r.get("eval") or {}
+        ok, of = e.get("ok"), e.get("of") or 0
+        pct = (ok / of * 100) if of else 0
+        lines.append(f"| {r['arm']} | {ok} | {of} | {pct:.1f} | {e.get('wall_s')} | "
+                     + ", ".join(f"{k}={v}" for k, v in (e.get("by_cat") or {}).items()) + " |")
+    lines.append("")
+    base = next((r for r in results if r["arm"] == "control"), None)
+    if base:
+        b = (base.get("eval") or {}).get("ok") or 0
+        for r in results:
+            if r is base:
+                continue
+            o = (r.get("eval") or {}).get("ok") or 0
+            lines.append(f"- {r['arm']}: {o} vs control {b} ({o - b:+d} items; gate is not >8 worse)")
+    lines.append("")
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------------------------ self-test
 
 
@@ -1012,8 +1152,13 @@ def main(argv=None) -> int:
     ap.add_argument("--cells", default="p1,p2,llive", help="comma list of p1,p2,llive")
     ap.add_argument("--max-tokens", type=int, default=128)
     ap.add_argument("--chars-per-token", type=float, default=4.3)
-    ap.add_argument("--mode", choices=["throughput", "persist"], default="throughput")
+    ap.add_argument("--mode", choices=["throughput", "persist", "park", "eval"], default="throughput")
     ap.add_argument("--persist-fill", type=int, default=6, help="conversations to fill before the restart")
+    ap.add_argument("--park-tokens", type=int, default=48000, help="park test: A's prompt tokens")
+    ap.add_argument("--park-foreign", type=int, default=6000, help="park test: B's prompt tokens")
+    ap.add_argument("--eval-script", default="/tmp/evalrun-ud.py", help="eval runner (temperature 0)")
+    ap.add_argument("--eval-items", default="/data/eval320.json", help="eval item set")
+    ap.add_argument("--eval-max-tokens", type=int, default=96)
     ap.add_argument("--api-key", default="")
     ap.add_argument("--start-timeout", type=float, default=300)
     ap.add_argument("--stop-timeout", type=float, default=30)
@@ -1051,6 +1196,10 @@ def main(argv=None) -> int:
         arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     elif args.mode == "persist":
         arms = ["control", "persist"]
+    elif args.mode == "park":
+        arms = ["control", "park_ram"]
+    elif args.mode == "eval":
+        arms = [a.strip() for a in (args.arms or "control").split(",") if a.strip()]
     else:
         arms = [a for a in ARMS if a not in ("renorm", "persist", "prev_build")]
         if args.compare_bin:
@@ -1081,8 +1230,12 @@ def main(argv=None) -> int:
             runs = args.reps * len(arms)
             print(f"requests: {runs * len(cells)} (+1 warm-up per engine)")
             print(f"runs: {runs}; estimate ~{runs * 1.5:.0f} min wall (engine load is the bulk; split --arms to shorten the window)")
-        else:
+        elif args.mode == "persist":
             print(f"persist: {args.reps} reps x {len(arms)} arms x ({args.persist_fill} fill + 1 repeat + restart)")
+        elif args.mode == "park":
+            print(f"park: {args.reps} reps x {len(arms)} arms x (A {args.park_tokens} tok -> B {args.park_foreign} tok -> A repeat)")
+        else:
+            print(f"eval: {len(arms)} arms x {args.eval_items} via {args.eval_script}")
         return 0
 
     if not Path(args.server_py).is_file():
@@ -1157,8 +1310,12 @@ def main(argv=None) -> int:
 
     if args.mode == "throughput":
         run_throughput(args, cfg, workdir, arms, args.reps, cells, results, failures, flush)
-    else:
+    elif args.mode == "persist":
         run_persist(args, cfg, workdir, args.reps, cells, results, failures, flush)
+    elif args.mode == "park":
+        run_park(args, cfg, workdir, arms, args.reps, cells, results, failures, flush)
+    else:
+        run_eval(args, cfg, workdir, arms, args.reps, cells, results, failures, flush)
 
     flush()
     engine_version = next((r.get("engine_version") for r in results if r.get("engine_version")), "unknown")
@@ -1168,8 +1325,12 @@ def main(argv=None) -> int:
             "reps": args.reps, "cells": cells, "expected": expected}
     if args.mode == "throughput":
         summary = summarize(results, arms, meta)
-    else:
+    elif args.mode == "persist":
         summary = summarize_persist(results)
+    elif args.mode == "park":
+        summary = summarize_park(results)
+    else:
+        summary = summarize_eval(results)
     (workdir / "summary.md").write_text(summary + "\n")
     print("\n" + summary)
     print(f"\nwrote {workdir / 'results.json'} and {workdir / 'summary.md'} in {time.time() - started:.0f}s")

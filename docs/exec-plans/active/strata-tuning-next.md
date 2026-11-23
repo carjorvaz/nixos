@@ -1108,7 +1108,12 @@ prompt-cache/DF2_LOG_MIB RAM, AUX_CPUS, and the quality-gated route/KV arms) is 
 five of them - the drafter-GEMM variants (`DF2_GEMM=0` -0.4 %), suffix-draft widths 2/4 (~0),
 draft-stream priority (`DF2_PRIO=0` -0.4 %) and aux-CPU placement (`AUX_CPUS=auto`: decode ~0
 but read -4.9/-3.4 %) - none wins, defaults stay. The host-RAM/parking arms and the
-quality-gated route/KV arms remain queued.
+quality-gated route/KV arms remain queued. A third window (16:28-16:52) closed two more: the
+host-RAM arm (`--prompt-cache 3` + `DF2_LOG_MIB=64`) is **inconclusive in isolation** - control
+parked too at 48,638 tokens (repeat reused 48,633 in 0.44 s against 31 s for the read), because
+the isolated engine has ~4 GiB free where production has ~1.1 GiB; and `STRATA_ROUTE_TAIL_SKIP=8`
+**passes the quality gate** (eval320 196/320 vs 194) but decodes -2.7 %/-3.0 %, so it is not
+adopted. The remaining queue is the KV-precision arm and the routing/intervention knobs.
 
 **Quality gate for the pin (paired eval320, temperature 0, same 320 items):** 0.1.66 scores
 194/320 (60.6 %) against 0.1.63's 191/320 (59.7 %) - +3 items, inside the eval320 binomial

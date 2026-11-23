@@ -1929,6 +1929,22 @@ Evidence: `/data/knob-screen-20261123-1450/`, `/data/knob-screen-20261123-adapt/
 `/data/eval320-live066.log`, `/tmp/eval-old/score.log`; the engine logs carry the `#4870` line in
 0.1.66 and lack it in 0.1.63.
 
+#### Third window: host RAM and the tail-skip quality gate (2026-11-23, 16:28-16:52)
+
+- **Host-RAM arm (`--prompt-cache 3` + `STRATA_DF2_LOG_MIB=64`): inconclusive, not adopted.** The
+  test parks a 48,638-token conversation and repeats it: both control and the arm parked (the
+  repeat reused 48,633 tokens in 0.44-0.55 s against 31 s for the read). The isolated engine has
+  ~4 GiB free where production runs at ~1.1 GiB, so the live refusal cannot be reproduced without
+  the production RAM pressure. The knobs are not adopted; the park mechanism itself measured
+  well (48.6k restored in 0.44 s vs 31.2 s reread).
+- **`STRATA_ROUTE_TAIL_SKIP=8`: quality gate passes, speed fails.** eval320 196/320 (61.3 %)
+  against 194/320 at rank 7 (+2 items, inside noise), but the paired throughput is **-2.7 % p1
+  and -3.0 % llive** (1/5 reps up each; acceptance is higher at 8 - 0.891/0.942 against
+  0.877/0.921 - and decode is still slower). Not adopted; the deployed rank stays 7. The needle
+  and repetition probes were not run because the speed verdict already rejects the arm.
+
+Evidence `/data/knob-screen-20261123-park/`, `-tailskip-eval/`, `-tailskip/`.
+
 ### Generation 123 (2026-11-23): Strata engine v0.2.20 (0.1.66)
 
 Build host: tiberius (`--build-host root@tiberius`); the closure diff against generation 122 is

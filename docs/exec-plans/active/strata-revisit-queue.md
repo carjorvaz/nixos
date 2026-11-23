@@ -42,19 +42,19 @@ gain; the dense INT8 TC default and the two DFlash2 toggles are neutral. Evidenc
 
 None adopted; the defaults stay. Evidence `/data/knob-screen-20261123-1545/`.
 
+## Tested 2026-11-23, third window (16:28-16:52)
+
+| arm | knob | result |
+|---|---|---|
+| `park_ram` | `--prompt-cache 3` + `STRATA_DF2_LOG_MIB=64` | **inconclusive in isolation**: control parked too at 48,638 tokens (the repeat reused 48,633 tokens in 0.44-0.55 s against 31 s for the read), because the isolated engine has ~4 GiB free where production runs at ~1.1 GiB. The live park refusal needs the production RAM pressure; the RAM knobs are **not adopted** on this evidence (the tier works, the isolation cannot reproduce the failure). |
+| `tail_skip8` | `STRATA_ROUTE_TAIL_SKIP=8` | quality gate **passes** (eval320 196/320 vs 194 for 7, +2 items, inside noise), but decode is **-2.7 % p1 / -3.0 % llive** (1/5 up each) -> not adopted. Skipping rank 8 is slower, not faster, on this stack. |
+
+Evidence `/data/knob-screen-20261123-park/`, `-tailskip-eval/`, `-tailskip/`.
+
 ## Queued (not yet in a window)
 
 Ordered by expected value per window, not by size of the claim.
 
-4. **`--prompt-cache 3` + `STRATA_DF2_LOG_MIB=64`** — host RAM, not speed: ~700 MiB of prompt
-   checkpoints (6 x ~118 MB) and up to 256 MiB of DFlash2 lineage stash; the live log has park
-   refusals at 994 MiB against a 384 MiB floor. Re-test parking admission, not tok/s. The plan's
-   prompt-cache family was "conclusive null for this shape" as a *speed* knob; this is the RAM
-   half that was never measured.
-6. **`STRATA_ROUTE_TAIL_SKIP=8` / `9`** — 0-3 % decode, but answer-drifting: run it through the
-   quality gate (eval320 not > 8 worse, needle 3/3, repetition probe), not the throughput table.
-   The deployed rank is 7; only 0 vs 7 was ever tested (the 2026-11-17 quality-gate initiative is
-   already examining the deployed lossy defaults).
 7. **`--kv k8v4` at 22-38k** — -23 % KV bytes, +0-8 % decode expected at long context, quality
    gate needed (V becomes rotated Q4_0; not bitwise). Last screened at 0.1.49 on <= 27.5k, "within
    noise"; the 0.1.66 decode is more KV-byte-sensitive. A 26k/38k decode window + KL/top-1 gate.
