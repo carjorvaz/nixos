@@ -417,11 +417,22 @@ let
       # 4 GiB of parks.  The pmem park tier below is unchanged: it catches the
       # refusals (3 in the same two days), this tier catches the evictions.
       # Rollback is the one flag: --conversation-spill-mib 0.
+      # --conversation-spill-persist (measured 2026-11-23, round 18): the tier's
+      # folder becomes <dataDir>/conversation-spill/fp-<model fingerprint> and its
+      # entries survive an engine restart (and a reboot).  Isolated-engine test
+      # (port 8099, six 26k fills, engine restart, repeat of one): 26,271 tokens
+      # reused after the restart with the flag, 0 without it, on identical
+      # prompts.  Without the flag the folder is per-process, so a restart loses
+      # the chain.  The default root is under the pack's data dir (Optane) and
+      # the 8 GiB cap above bounds it; at start the engine drops another
+      # fingerprint's entries.  This is the boot re-admission the pmem park tier
+      # below does not have (the ExecStartPre sweep still deletes only *.park).
       user_args = [
         "--kv-resident"
         "0"
         "--conversation-spill-mib"
         "8192"
+        "--conversation-spill-persist"
       ];
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";

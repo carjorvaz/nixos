@@ -1009,11 +1009,13 @@ Artifacts: `/data/ab53-sample.log`, `/data/ab53-{base3,skip3a,skip3b,base3b}.log
 
 ### Round 18: the v0.2.20 pin and its new knobs (2026-11-23, planned)
 
-Status: **partially measured (2026-11-23).** The pin is rebased and built natively on tiberius
-(engine 0.1.66, `kwx3qn9q...`), and the focused screen ran on the isolated 8099 engine: the pin
-is a 5/5 decode win (+4.7 % at p1, +6.2 % at llive, read flat) and `STRATA_VERIFY_DEVICE_HITS`
-is NO-WIN (-0.2 %/+0.1 %, 2/5) and stays off. The remaining arms are pending; nothing is
-deployed. The screen is `tools/strata-knob-screen/` (README has the command). It loads the
+Status: **measured and deployed (2026-11-23, generations 123/124).** The pin is rebased and
+built natively on tiberius (engine 0.1.66, `kwx3qn9q...`): a 5/5 decode win (+4.7 % at p1,
++6.2 % at llive, read flat) against the deployed 0.1.63 binary, so generation 123 is the pin.
+Of the new knobs, only `--conversation-spill-persist` was adopted (generation 124: 26,271 tokens
+reused after a restart against 0); `VERIFY_DEVICE_HITS`, `L3_PF`, `POOL_STATIC`, `PIN_FRAC`,
+`Q8_INPLACE` and `RENORM` all measured neutral-to-negative and stay off. The screen is
+`tools/strata-knob-screen/` (README has the command). It loads the
 deployed `STRATA_*` knobs from the config's `env` (and the library path from the unit via
 `--unit-env`), retargets `--conversation-park-dir`/`--conversation-spill-dir` and the engine
 `log` into its own workdir (so a second engine cannot touch the production tier or log), and
@@ -1073,6 +1075,20 @@ The pin's gain is not acceptance (0.1.63 accepted 0.904/0.949 against 0.895/0.91
 answers differ (expected). `verify_device_hits` also costs 1.4-1.5 ms per verify window in
 "pool + plan" (30.1-30.9 vs 28.7-29.7 ms), so the NO-WIN is not noise. Evidence
 `/data/knob-screen-20261123-1245/`; the full table is in `docs/VALIDATION.md`.
+
+**Remaining arms, same protocol (5 reps, 70/70 records, control p1 63.3 / llive 70.1):**
+
+| arm | p1 | llive | verdict |
+|---|---|---|---|
+| `dense_i8_off` | +0.4 % (3/5) | +0.1 % (2/5) | neutral - the pin win is **not** the dense INT8 TC default |
+| `l3_pf` | -0.7 % (1/5) | -0.5 % (1/5) | likely regression (the static-slices line was in the log) |
+| `pool_static` | +0.4 % (3/5) | +0.1 % (2/5) | no-win |
+| `pin_frac` | -1.5 % (0/5) | -7.9 % (0/5) | reject (answers differ too) |
+| `q8_inplace` | +2.4 % (5/5) | -9.1 % (0/5) | not adopted: p1 answers identical, llive answers differ (acceptance 0.911 -> 0.882); the long-context loss swamps the short win |
+| `renorm` | -5.6 % (0/5) | -12.4 % (0/5) | reject: slower and answer-changing |
+| persist | - | - | **adopted**: 26,271 tokens reused after a restart vs 0 |
+
+Evidence `/data/knob-screen-20261123-1315{,-persist}/`; generations in `docs/VALIDATION.md`.
 
 Not worth a campaign on this card: `STRATA_VHEAD_BITPLANE` and `STRATA_HC_Q8_TC` (sm_80+),
 `STRATA_DF2_ATTN_TC`/`DF2_GEMM_TC` (major >= 8), `STRATA_MEGAKERNEL` (RDNA3/4), MXFP8/FP4,
@@ -1379,7 +1395,10 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   tiberius (isolated 8099, 12:43-13:02 UTC, production restored): **0.1.66 decodes +4.7 % at p1
   and +6.2 % at llive (5/5 reps each, read flat), and `STRATA_VERIFY_DEVICE_HITS` is NO-WIN
   (-0.2 %/+0.1 %, 2/5; its pool + plan is 1.4-1.5 ms/window worse)**, so the pin is a deploy
-  candidate and the knob stays off. Not deployed.
+  candidate and the knob stays off. Deployed as generation 123 (pin) and 124 (spill-persist; the
+  restart test reused 26,271 tokens against 0). The other arms were neutral-to-negative
+  (`dense_i8_off` neutral, `l3_pf`/`pool_static` flat-to-worse, `pin_frac`/`q8_inplace`/`renorm`
+  negative; `q8_inplace`'s p1 +2.4 % loses 9.1 % at llive and changes its answers).
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,

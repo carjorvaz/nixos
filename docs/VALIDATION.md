@@ -1875,15 +1875,61 @@ Paired deltas (arm minus control of the same rep, mean [min-max] over 5):
 - The owner's 2026-11-23 policy applies: no +4 % magnitude bar; adoption is reproducibility
   (5/5 same sign). The pin clears it on both cells, so it is a deploy candidate.
 
-Not attributed yet: how much of the pin gain is 0.2.20's default-on dense INT8 tensor cores
-(CC >= 75). The `dense_i8_off` arm answers that and was not in this window; the remaining arms
-(`l3_pf` / `pool_static`, `pin_frac`, `q8_inplace`, `dense_i8_off`, persist/restart, `renorm`
-quality) are pending.
+#### Remaining arms (2026-11-23, 13:15-13:58, 5 reps, 70/70 records)
 
-Not deployed: this screen did not switch the host. The package is built natively on tiberius
-(`kwx3qn9q...`, engine 0.1.66) and verified by 30 isolated engine starts. Evidence:
-`/data/knob-screen-20261123-1245/` (manifest.json, results.json, summary.md, per-run engine
-logs; results copied to `/tmp/knob-results/`, local only).
+Control p1 63.3 / llive 70.1 tok/s. Paired deltas, same protocol as above (5 reps each):
+
+| arm | p1 decode | llive decode | verdict |
+|---|---|---|---|
+| `dense_i8_off` | +0.4 % (3/5) | +0.1 % (2/5) | neutral: the pin win is **not** the new dense INT8 TC default |
+| `l3_pf` | -0.7 % (1/5) | -0.5 % (1/5) | likely regression (its "static row slices on" line was in the log, so it ran) |
+| `pool_static` | +0.4 % (3/5) | +0.1 % (2/5) | no-win |
+| `pin_frac` | -1.5 % (0/5) | -7.9 % (0/5) | reject (answers also differ) |
+| `q8_inplace` | +2.4 % (5/5) | -9.1 % (0/5) | **not adopted**: answers identical on p1 but not on llive (acceptance 0.911 -> 0.882; the knob changes the decode path, not just its layout); the short-cell win is swamped by the long-context loss |
+| `renorm` | -5.6 % (0/5) | -12.4 % (0/5) | reject: slower and answer-changing (the quality gate is moot) |
+
+The persist/restart test (six 26k fills, engine restart, repeat of one) reused **26,271 tokens
+after the restart with `--conversation-spill-persist`, 0 without it**, on identical prompts; that
+knob was adopted (generation 124 below). Evidence `/data/knob-screen-20261123-1315/` and
+`/data/knob-screen-20261123-1315-persist/` (manifest, results, summary, per-run engine logs).
+
+The package is built natively on tiberius (`kwx3qn9q...`, engine 0.1.66) and verified by 30
+isolated engine starts in the first window plus 70 more in this one. Both screens ran with
+production stopped and restored the unit on exit; no failures, `reused` 0 on every cell.
+
+### Generation 123 (2026-11-23): Strata engine v0.2.20 (0.1.66)
+
+Build host: tiberius (`--build-host root@tiberius`); the closure diff against generation 122 is
+`strata-engine: 0.1.63 -> 0.1.66` (6.8 MiB) plus a 108.7 KiB source path - no kernel, NVIDIA or
+module change. The pin is `a34979fc` (v0.2.20); the three local patches were rebased (three
+resolutions, see `pkgs/strata-sm75/default.nix`), and the served config and env are unchanged.
+
+Measured on the isolated 8099 engine before the switch (5 counterbalanced reps, p1 4,299 / llive
+26,482 tokens): **+4.7 % / +6.2 % decode** against the deployed 0.1.63 binary with the same serve
+layer and config (5/5 reps each, read flat). 0.1.63 accepted slightly more drafts
+(0.904/0.949 vs 0.895/0.917) and still decoded slower. The gain is not 0.2.20's default-on
+dense INT8 tensor cores (`dense_i8_off` was neutral, +0.4 %/+0.1 %).
+
+Deployed as generation 123 (2026-11-23 13:11): system
+`/nix/store/kr8z3bg9m0fwppf7w89k28qx73ajp98g-nixos-system-tiberius-26.05.20260927.cf5e765`.
+Verified after the switch: health 200 on 8080/8081, engine 0.1.66, 9,062 expert slots, 262,144
+context, the unit's config pointing at the 0.1.66 package, GPU 21,266 / 22,528 MiB, 42 C, no Xid.
+Rollback: `nixos-rebuild switch --rollback` (generation 122).
+
+### Generation 124 (2026-11-23): the conversation spill tier survives restarts
+
+`--conversation-spill-persist` added to the served config's `user_args`
+(`profiles/nixos/strata.nix`), on the isolated restart test above: six 26k fills, engine restart,
+repeat of one - 26,271 tokens reused with the flag, 0 without it, identical prompts. The tier's
+root resolves to `/optane/strata-data/conversation-spill/fp-<model fingerprint>` (persistent); the
+8 GiB cap stays and the engine removes another fingerprint's entries at start. This is the boot
+re-admission the pmem park tier does not have (the ExecStartPre sweep still deletes only `*.park`).
+
+Deployed as generation 124 (14:08:54); verified: the config `20zmmya...` carries the flag and the
+engine log says `SSD tier in /optane/strata-data/conversation-spill/fp-557621f8758fd836, up to
+8192 MiB, 1 folder of other models or ended engines removed, kept across restarts: 0
+conversations adopted from the last run, 0 MiB` (the first persistent run, nothing spilled yet).
+Rollback: drop the flag (the tier stays, per-process) or `nixos-rebuild switch --rollback`.
 
 ## Deploy and rebuild commands
 
