@@ -37,6 +37,11 @@ the media/backups trees are on `zsafe` datasets mounted under `/persist`.
 | `/var/lib/docker` | 2.0 GiB (74,920 entries) | `data-root = /persist/var/lib/docker`; migrated with docker.socket/service + containerd stopped, rsync `-aHAX --delete`, counts match. The old `/var/lib/docker` is left in place as a fallback. The container's own data already lives on `/persist` (calibre-web). |
 | `/root/.ssh` | 8 KiB | added to `environment.persistence."/persist".directories`; copied to `/persist/root/.ssh` and diffed. The deployed keys are in `/etc/ssh/authorized_keys.d/root` (Nix-managed); this preserves the manual key and `known_hosts`. |
 
+Verified after the switch (2026-11-23 11:16): `docker info` reports
+`Docker Root Dir: /persist/var/lib/docker`, the calibre-web container is healthy, and
+`findmnt /root/.ssh` shows `zsafe/persist[/root/.ssh]` (the persistence bind starts on
+`nixos-rebuild switch`, not only at boot). 0 failed units; the media services stayed up.
+
 ### Deliberately ephemeral (lost on a root rollback)
 
 | path | size | why it is acceptable |
@@ -63,7 +68,7 @@ the next boot or is a cache.
    `zroot/local/root`; pius's pool is `zlocal`, so this is the corresponding value).
 4. Rebuild + reboot. Verify the binds (`mount | grep zsafe/persist`), that docker starts on
    `/persist/var/lib/docker` (`docker info | grep "Docker Root Dir"`), the calibre-web
-   container is healthy, and services such as postgresql, jellyfin, nextcloud, etc. come up.
+   container is healthy, and services such as postgresql, jellyfin, the *arr units, transmission, hindsight and home-assistant come up.
 5. After the first rolled-back boot, check `/root/.ssh` is the persisted copy and the
    archive is not expected there (it is on `/persist`).
 
