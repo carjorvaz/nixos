@@ -1785,8 +1785,11 @@ on tiberius (`http://tiberius:8080/v1`, thinking disabled, concurrency pinned to
 1; the 27B vLLM lane stays installed as the parked fast/interactive lane). The
 model is `qwen3.8-flash-next-unsloth-ud-iq2_xs`: the repository renamed it from
 `qwen3.8-flash-next-iq3_s` on 2026-11-19 (generation 116 on tiberius), and pius
-adopted the name in generation 838 (2026-11-23) - a 3.87 KiB closure diff that
-restarted only `hindsight` (and `polkit`). The reflect wall clock is raised to
+adopted the name in generation 838 (2026-11-23; built from a clean export of
+`9054132`) - a 3.87 KiB closure diff that
+restarted only `hindsight` (and `polkit`); the switch also re-set a stale
+`LoaderEntryDefault` EFI variable that still named the long-removed generation
+721 (now 838). The reflect wall clock is raised to
 1800 s: a mental-model refresh runs the reflect pipeline (tool-call iterations
 over a 9.5-28K-token prompt) and the 300 s default killed every refresh since
 2026-07-03 - on both engines. With it raised, both engines complete the job in
