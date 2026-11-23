@@ -104,6 +104,9 @@ let
       # installer carries the same bytes.
       bash ${nvidiaRun} --extract-only --target run --no-questions
       install -m644 run/firmware/gsp_tu10x.bin assets/gsp_tu10x.bin
+      # The licence the CachyOS package used to carry; the installer ships the same
+      # NVIDIA licence text at its root.
+      install -m644 run/LICENSE assets/NVIDIA-LICENSE
       # v67: pure constants, no package input.
       python3 -c 'import sys; sys.path.insert(0, "firmware"); import generate_v67; open("assets/v67-tu102-610.43.03.bin", "wb").write(generate_v67.build_payload())'
       # The four boot assets from the kernel source.
