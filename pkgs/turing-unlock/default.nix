@@ -57,20 +57,20 @@ let
     hash = "sha256-70oNbxh0uEDFhUWe/nx9nYG1k2jZ1T7X3FZoYevW/F8=";
   };
 
-  # The two NVIDIA inputs the upstream firmware generator extracts from; the
-  # hashes are the ones pinned in the upstream manifest.
+  # The two NVIDIA inputs the firmware generator extracts from. The second used
+  # to be the CachyOS nvidia-utils package, whose archive URL began serving a
+  # 988-byte landing page on 2026-11-23; NVIDIA's own installer carries the same
+  # gsp_tu10x.bin, and the v67 payload is pure constants, so the whole set comes
+  # from NVIDIA now. Hashes are checked against the deployed generations in the
+  # build; see regenerate-firmware.sh and
+  # docs/exec-plans/active/turing-unlock-assessment.md.
   nvidiaSource = fetchurl {
     url = "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/NVIDIA-kernel-module-source-${nvVersion}.tar.xz";
     hash = "sha256-fhGJI8eiPtw2EU1jJzpG4+BOmvmGlaQiA+esLf6fwdw=";
   };
-  # 2026-11-23: this URL is dead (it serves a 988-byte landing page). The one file
-  # it supplied, gsp_tu10x.bin, is in NVIDIA's .run with the same hash; the boot
-  # assets and the v67 payload regenerate from the other pinned inputs. See
-  # regenerate-firmware.sh beside this file and
-  # docs/exec-plans/active/turing-unlock-assessment.md.
-  nvidiaUtils = fetchurl {
-    url = "https://archive.cachyos.org/archive/cachyos-v3/nvidia-utils-${nvVersion}-1-x86_64_v3.pkg.tar.zst";
-    hash = "sha256-4X58ku7/oXiw/h9A6xekcJX4/Dzkp3vxFc9b1aTfhuk=";
+  nvidiaRun = fetchurl {
+    url = "https://us.download.nvidia.com/XFree86/Linux-x86_64/${nvVersion}/NVIDIA-Linux-x86_64-${nvVersion}.run";
+    hash = "sha256-ReLUwTSiPDXlDyU6SqY+fl6NF+PRhdSgfIpY6WEu05I=";
   };
 
   firmwareFiles = [
@@ -82,8 +82,9 @@ let
     "v67-tu102-610.43.03.bin"
   ];
 
-  # Upstream's two generators: generate_v67.py checks the pinned package and
-  # payload hashes, extract_boot_assets.py checks the source archive's assets.
+  # gsp_tu10x.bin comes from NVIDIA's installer, v67 from upstream's pure payload
+  # builder, and the four boot assets from the kernel source; the six are then
+  # checked against the set the deployed generations ran.
   firmware = stdenv.mkDerivation {
     pname = "turing-unlock-firmware";
     inherit version;
@@ -92,19 +93,30 @@ let
     nativeBuildInputs = [
       python3
       zstd
+      pkgs.which
+      pkgs.gawk
     ];
 
     buildPhase = ''
       runHook preBuild
-      mkdir -p assets inputs
-      ln -s ${nvidiaSource} inputs/NVIDIA-kernel-module-source-${nvVersion}.tar.xz
-      ln -s ${nvidiaUtils} inputs/nvidia-utils-${nvVersion}-1-x86_64_v3.pkg.tar.zst
-      mkdir -p source
+      mkdir -p assets source
+      # gsp_tu10x.bin: the one file the CachyOS package used to supply; NVIDIA's
+      # installer carries the same bytes.
+      bash ${nvidiaRun} --extract-only --target run --no-questions
+      install -m644 run/firmware/gsp_tu10x.bin assets/gsp_tu10x.bin
+      # v67: pure constants, no package input.
+      python3 -c 'import sys; sys.path.insert(0, "firmware"); import generate_v67; open("assets/v67-tu102-610.43.03.bin", "wb").write(generate_v67.build_payload())'
+      # The four boot assets from the kernel source.
       tar -xf ${nvidiaSource} -C source
-      python3 firmware/generate_v67.py \
-        "$(realpath inputs/nvidia-utils-${nvVersion}-1-x86_64_v3.pkg.tar.zst)" assets
       python3 firmware/extract_boot_assets.py \
         source/NVIDIA-kernel-module-source-${nvVersion} assets
+      # Refuse anything but the set the deployed generations ran.
+      echo "51507de61777cf46f3703a084cdfa896c21f6bc0c8af8f245bd09b2e9c49bf54  assets/booter_load_tu102.bin" | sha256sum -c -
+      echo "9e7cca2cfdc5ce601b0adba39967850046108df6c2d23fff95578ca3f0ccbe01  assets/gsp_boot_desc_tu102.bin" | sha256sum -c -
+      echo "8765694cd38beaa4e2b8b1b83a31fb7aee6cb9d8b7c6bc7a86e6d931a3a056c2  assets/gsp_boot_tu102.bin" | sha256sum -c -
+      echo "73065619db9ec921d19fc4e519dd04d91a9199b525eaca9b257b89fb8c5ec52c  assets/gsp_tu10x.bin" | sha256sum -c -
+      echo "f21f1cfbb8fffa8067685314367fc4c50f3f84dd99eda7c19db4292d9269b9d9  assets/sec2_bl_tu102.bin" | sha256sum -c -
+      echo "b0ec90294d1de3c67e024631c0a11000f281470d76eed806fc24c66b7fd1ef41  assets/v67-tu102-610.43.03.bin" | sha256sum -c -
       runHook postBuild
     '';
 

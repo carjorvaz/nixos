@@ -207,6 +207,10 @@ in
     # Persist the lane's /metrics counters (15 s scraper) and warn on drift;
     # the module owns the timer and the /persist/strata/metrics directory.
     "${self}/profiles/nixos/strata-telemetry.nix"
+    # Volatile TU102 full-rate tensor-core unlock at boot. Its firmware is built
+    # from NVIDIA's own 610.43.03 installer since 2026-11-23 (the CachyOS package
+    # URL rotted); see pkgs/turing-unlock and the assessment doc.
+    "${self}/profiles/nixos/turing-unlock.nix"
   ];
 
   boot = {
@@ -944,19 +948,15 @@ in
     tiberius-strata-telemetry.enable = true;
   };
 
-  # The volatile TU102 tensor-core unlock is OFF since 2026-11-23. The kernel
-  # here was already the stock nixpkgs one (the CachyOS kernel arms went after
-  # round 7 measured <=0.6 %), so the only CachyOS dependency on this host was
-  # the unlock's firmware derivation: it fetched nvidia-utils-610.43.03-1 from
-  # archive.cachyos.org, and that URL now returns a 988-byte landing page, so no
-  # from-scratch build can produce the firmware (the assessment predicted this
-  # rot). Cost of dropping it: prefill read -5.7 % at 26,134 tokens / -2.0 % at
-  # 8,268 / -1.1 % at 4,252 was the measured gain, decode unchanged, on
-  # single-boot evidence with a power/thermal risk. The six images are kept at
-  # /data/turing-unlock-firmware-610.43.03 on the host; re-enable after
-  # re-sourcing them from NVIDIA's .run installer (see
-  # docs/exec-plans/active/turing-unlock-assessment.md and
-  # profiles/nixos/turing-unlock.nix).
+  # Volatile TU102 tensor-core unlock at boot, back on since 2026-11-23 after
+  # the CachyOS firmware URL rotted: pkgs/turing-unlock now takes gsp_tu10x.bin
+  # from NVIDIA's own 610.43.03 installer, builds v67 from upstream's pure
+  # payload constants, and checks all six images against the set the earlier
+  # generations ran. Measured on this box 2026-11-05: prefill read -5.7 % at
+  # 26,134 tokens, -2.0 % at 8,268, -1.1 % at 4,252, decode unchanged, on
+  # single-boot evidence with a power/thermal risk; the unlock is volatile, a
+  # power cycle re-locks, and a refused unlock logs and continues locked.
+  hardware.turingUnlock.enable = true;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
