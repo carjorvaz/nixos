@@ -201,7 +201,22 @@ in
     };
   };
 
-  environment.persistence."/persist".directories = [ "/var/lib/iwd" ];
+  environment.persistence."/persist".directories = [
+    "/var/lib/iwd"
+    # Root's own authorized_keys/known_hosts: a root rollback would drop them
+    # otherwise (the deployed keys are in /etc/ssh/authorized_keys.d, but the
+    # manual one and known_hosts are not).
+    "/root/.ssh"
+  ];
+
+  # Docker's data (images/overlays; the containers' own data is on /persist
+  # already) goes to /persist directly rather than through a bind, so the
+  # daemon always writes the persistent copy - a bind would go stale between
+  # reboots. Migrated 2026-11-23 with the daemon stopped; the old
+  # /var/lib/docker is left in place as a fallback.
+  virtualisation.docker.daemon.settings = {
+    data-root = "/persist/var/lib/docker";
+  };
 
   environment.shellAliases = {
     wakeNerva = "${pkgs.wol}/bin/wol 38:2c:4a:e7:e0:8c";
