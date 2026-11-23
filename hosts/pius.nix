@@ -201,13 +201,7 @@ in
     };
   };
 
-  environment.persistence."/persist".directories = [
-    "/var/lib/iwd"
-    # Root's own authorized_keys/known_hosts: a root rollback would drop them
-    # otherwise (the deployed keys are in /etc/ssh/authorized_keys.d, but the
-    # manual one and known_hosts are not).
-    "/root/.ssh"
-  ];
+  environment.persistence."/persist".directories = [ "/var/lib/iwd" ];
 
   # Docker's data (images/overlays; the containers' own data is on /persist
   # already) goes to /persist directly rather than through a bind, so the
