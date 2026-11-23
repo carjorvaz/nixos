@@ -973,9 +973,36 @@ length drifts.
 greedy (temperature 0) like every campaign cell, while the lane serves the model card's sampling
 by default (0.7 / 0.8 / 20 / presence 1.5): there the verifier samples and a deterministic lookup
 proposal is accepted with its target probability rather than min(1, p/q), so the lookup's
-acceptance is not the greedy number and the skip's sign is unmeasured. A sampled copy/edit A/B is
+acceptance is not the greedy number and the skip's sign was unmeasured then (round 17c measured
+it: the same sign and size). A sampled copy/edit A/B is
 therefore the precondition for carrying it. It stays a cheap passenger - env-only, copy/edit text
 unchanged, and inert on short-match text - but not worth a generation on this evidence alone. Artifacts: `/data/ab53-skip.log`, `/data/ab53-{base2,skip8a,skip8b,base2b}.log`.
+
+### Round 17c: the sampled A/B (2026-11-23, same day)
+
+The gap round 17b left: its arms ran greedy, while the lane serves the model card's sampling by
+default. Same harness with `AB_SAMPLE=1`, which sends exactly that set (0.7 / 0.8 / 20 /
+presence 1.5), cells copy+edit (fixed counts), 3 reps per cell per engine, arms base3 / skip3
+counterbalanced base, skip, skip, base. Window 10:03:39-10:09:37, production restored by the
+trap and healthy at 10:10:44.
+
+| arm | copy cold / warm tok/s | edit tok/s (6 runs) |
+|---|---|---|
+| base3 (6 copy runs) | 111.5, 110.9 / 124.3, 123.5, 123.2, 122.2 | 111.5, 105.7, 120.8, 103.3, 103.2, 117.3 |
+| skip3 (6 copy runs) | 112.9, 113.0 / 125.2, 126.2, 124.9, 125.9 | 106.2, 119.9, 108.8, 118.3, 117.5, 99.6 |
+
+Means: copy cold 111.2 -> 112.95 (**+1.6 %**), warm 123.3 -> 125.55 (**+1.8 %**), acceptance
+unchanged on the cold reps (436/447 both arms) and the copy text still byte-identical (sha
+`b112adf5...`). The sampled copy cell is effectively greedy because `top_p 0.8` cuts the nucleus
+to the copied token, so it exercises the knob under the served request parameters without
+sampling drift. Edit is genuinely sampled (six different answers per arm) and its 99-121 tok/s
+spread leaves the mean (110.3 vs 111.7) uninformative - no harm signal, no evidence either.
+
+**Verdict: the sign and size hold under the served sampling (+1.6-1.8 %, matching greedy's
++1.7 %), so the knob is validated for this lane - and still below the +4 % gate.** Not deployed:
+carrying it needs a system generation for ~1.6 % on one workload, which is what the gate exists
+to prevent; it stays a passenger for the next generation that happens for another reason.
+Artifacts: `/data/ab53-sample.log`, `/data/ab53-{base3,skip3a,skip3b,base3b}.log`.
 
 ## Source-level patch roadmap
 
@@ -1150,7 +1177,7 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   cores/YaRN 1M/`--resident-budget-gib` (not applicable); CPU governor/pool/ISA and prompt-cache
   root/tail/spread families (conclusive null for this shape); `--lookup-max-t` > 8 with DFlash2
   (`native ERR dflash2: draft rows out of range`, round 17); `STRATA_DF2_LOOKUP_SKIP=8` (+1.7 %
-  copy-only, ~1 ms/round, below the gate, round 17b).
+  copy-only, ~1 ms/round, below the gate, rounds 17b/17c - the sampled A/B holds at +1.6-1.8 %).
 - **Harness/quality (landed 2026-11-04)**: eval320 + paired McNemar + PPL + test-retest are in
   `/data/eval320/`; answer-changing arms can now be ranked (5.9% same-stack variance floor, ~2.8 pp
   detectable net edge). Still open: per-window counters on `/metrics` and tuning the telemetry
@@ -1250,6 +1277,7 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   ~+15 % decode (mean) and no prefill gain, so no refit. See round-12 section.
 - **2026-11-23, round 17 / copy-heavy lookup screen (0.1.63)**: the last acceptance lever closed. `--lookup-max-t` 9/12 with DFlash2 starts and captures the wide window, but the first copy request ends the draft (`native ERR dflash2: draft rows out of range`, HTTP 400): the 8-row block cannot feed a longer window, so 9+ rows are unsupported, not slow. The copy cell at the 8-row cap already measures 97.5 % acceptance (436/447) and 123.9 tok/s warm against 85.3 %/111 on chat - the near-perfect regime, worth ~+12 %, i.e. the round-12 +15 % bound as measured. No deploy. Refit scoping in `dflash2-refit-scope.md`: 600 M drafter, 51.2 KB/token tap capture through `STRATA_TAP_FILE`, 1 M tokens = 51 GB / 2.5 h, upstream ~800 K samples; a real 10-50 M-token attempt is 3-6 weeks for ~+3-8 pp, so not recommended now.
 - **2026-11-23, round 17b / draft-skip knob**: `STRATA_DF2_LOOKUP_SKIP=8` (skip the DFlash2 draft when a suffix match of 8+ tokens exists, take the lookup window directly) is real but small: copy 111.15 -> 113.05 cold / 123.4 -> 125.5 warm (+1.7 % both), same 76-77 rounds and ~1 ms/round less decode (4,603 -> 4,527 ms cold), copy text byte-identical; edit inconclusive in a 7 % spread; prose inert by design. Below the +4 % gate, not deployed; safe to carry in the next generation if one happens for another reason. Artifacts `/data/ab53-skip.log`.
+- **2026-11-23, round 17c / sampled A/B**: the skip knob under the served card sampling (0.7 / 0.8 / 20 / presence 1.5), copy+edit, 3 reps x 2 engines per arm. Copy cold 111.2 -> 112.95, warm 123.3 -> 125.55 (+1.6 / +1.8 %), acceptance identical (436/447 cold) and the copy text byte-identical; the sampled copy cell is effectively greedy under top_p 0.8. Edit sampled and noisy (99-121 tok/s both arms), no harm signal. The knob is validated for this lane and still below the +4 % gate: not deployed, stays a passenger for the next generation. Artifacts `/data/ab53-sample.log`.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
