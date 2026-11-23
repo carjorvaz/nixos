@@ -969,10 +969,13 @@ per round** - the DFlash2 draft call. Edit is inconclusive inside that cell's 7 
 (means +0.3 % cold, +1.5 % warm); prose is inert here (no 8+ token match fires) and its answer
 length drifts.
 
-**Verdict: real but small, and below the +4 % gate - not deployed.** It is env-only, leaves
-the copy/edit text unchanged and cannot fire on short-match text, so it is safe to carry in
-the next generation if one happens for another reason; it is not worth a generation on its
-own. Artifacts: `/data/ab53-skip.log`, `/data/ab53-{base2,skip8a,skip8b,base2b}.log`.
+**Verdict: real but small, greedy-only, and below the +4 % gate - not deployed.** The arms ran
+greedy (temperature 0) like every campaign cell, while the lane serves the model card's sampling
+by default (0.7 / 0.8 / 20 / presence 1.5): there the verifier samples and a deterministic lookup
+proposal is accepted with its target probability rather than min(1, p/q), so the lookup's
+acceptance is not the greedy number and the skip's sign is unmeasured. A sampled copy/edit A/B is
+therefore the precondition for carrying it. It stays a cheap passenger - env-only, copy/edit text
+unchanged, and inert on short-match text - but not worth a generation on this evidence alone. Artifacts: `/data/ab53-skip.log`, `/data/ab53-{base2,skip8a,skip8b,base2b}.log`.
 
 ## Source-level patch roadmap
 
