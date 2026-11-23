@@ -1210,6 +1210,33 @@ Rollback: `nixos-rebuild switch --rollback` on tiberius (generation 120), or rev
 (skip) / `cf2be56` (unlock) and rebuild. Artifacts: `/tmp/deploy-120.log` (local, not committed);
 the campaign data in `/data/ab53-*.log`.
 
+### Generation 122 (2026-11-23): TU102 unlock re-enabled from NVIDIA's installer
+
+The unlock came back the same day it was dropped, with a durable source.
+`pkgs/turing-unlock` now fetches NVIDIA's own `NVIDIA-Linux-x86_64-610.43.03.run`
+(sha256 `45e2d4c1...`), takes `gsp_tu10x.bin` from it (same hash the CachyOS package
+supplied), builds `v67` with upstream's pure `generate_v67.build_payload()`, and keeps the
+kernel-module-source step for the four boot assets; the derivation checks all six outputs
+against the hashes the earlier generations ran and fails on any drift. The host import and
+`hardware.turingUnlock.enable = true;` are restored in `hosts/tiberius.nix`. The archive
+(tiberius `/data/archive/`, pius `/persist/archive/` and `/root/archive/`) and
+`pkgs/turing-unlock/regenerate-firmware.sh` remain the fallback if NVIDIA's URLs move;
+all six regenerate from NVIDIA alone (cold-tested 2026-11-23).
+
+Deployed as generation 122 (2026-11-23 11:05): system
+`/nix/store/mylas9im2g5gqp34vjc6kfpf8vrpcwyx-nixos-system-tiberius-26.05.20260927.cf5e765`,
+built on tiberius (`--build-host`). Booted one-shot into 122 with generation 121 as the
+fallback, then set 122 as the default. Verified after the reboot: `turing_unlock` loaded
+(kernel tainted out-of-tree), all six firmware assets requested and read with `error=0`
+(`booter_load_tu102.bin` 59,224 B, `v67` 64,000 B, `gsp_tu10x.bin` 29,352,832 B, and the
+rest), the module logged `TU102 FEAT UNLOCKED` (`ss0=0x88888888 ss1=0x8`, `unlock result`
+matches), 9,156 expert slots / 21,408 MiB, `STRATA_DF2_LOOKUP_SKIP=8` still in the engine's
+environment, health 200, no Xid.
+
+Rollback: boot generation 121 (the fallback entry until this boot; 122 is now the default),
+or set `hardware.turingUnlock.enable = false;` and rebuild (the unlock is volatile and a
+power cycle re-locks either way).
+
 ### DeepSeek-V4.1-Flash IQ1_M: not runnable on this fleet (checked 2026-10-24)
 
 The smallest official set (`ist-das-1.75bpw`, ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF)
