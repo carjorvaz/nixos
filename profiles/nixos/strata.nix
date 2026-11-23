@@ -673,6 +673,20 @@ let
         # documented escape hatch (with STRATA_PREFILL_CPU_SHARE=0 it is the
         # exact 0.1.41 recipe).
         STRATA_ROUTE_TAIL_SKIP = "7";
+        # STRATA_DF2_LOOKUP_SKIP=8: when the suffix finds a match of 8 or more
+        # tokens, the round skips the DFlash2 draft and lets the draft policy
+        # take the prompt-lookup window directly; the draft is deferred to the
+        # next round, not thrown away.  Measured 2026-11-23 on the isolated
+        # 8099 engine, base against =8, copy/edit/prose cells, greedy and with
+        # the served card sampling: copy 111.2 -> 112.95 tok/s cold and
+        # 123.3 -> 125.55 warm (+1.6 / +1.8 %), ~1 ms less per decode round
+        # (4,603 -> 4,527 ms for 512 tokens at the same 76-77 rounds), the
+        # copied text byte-identical (sha b112adf5...); edit inconclusive
+        # inside that cell's spread, prose inert (no 8+ token match fires).
+        # Adopted under the owner's cumulative-wins policy (2026-11-23)
+        # instead of the old +4 % bar: env-only, output-preserving on the
+        # affected cells, and off again with =0 (upstream's default).
+        STRATA_DF2_LOOKUP_SKIP = "8";
         # STRATA_PCIE_FRAC_DEFAULT=old: v0.1.42 replaces the start-up link
         # probe that sets the missed-expert split with a rule that times the
         # CPU pool (~10 s, steps of 0.05 between 0.10 and 0.60, at most three
