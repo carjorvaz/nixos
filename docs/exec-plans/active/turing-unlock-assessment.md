@@ -1,9 +1,9 @@
-# Turing-unlock on tiberius: tested, adopted
+# Turing-unlock on tiberius: tested, adopted, then disabled on 2026-11-23
 
-Status: **tested on tiberius 2026-11-05 and adopted at boot** (see
-`profiles/nixos/turing-unlock.nix` / `pkgs/turing-unlock`). This record covers the two
-upstream projects that motivated it, the measured effect, the safety evidence and the
-conditions under which it should be disabled or reverted.
+Status: **tested on tiberius 2026-11-05, adopted at boot, and disabled 2026-11-23**
+(`profiles/nixos/turing-unlock.nix` / `pkgs/turing-unlock` stay in the tree, unused).
+This record covers the two upstream projects that motivated it, the measured effect, the
+safety evidence, and why the build dependency, not the measurement, ended it.
 
 ## What was evaluated
 
@@ -99,6 +99,21 @@ Disable with `hardware.turingUnlock.enable = false;` + rebuild + reboot (the vol
 unlock disappears on the next boot either way). If a future NVIDIA driver or kernel
 change breaks the module, the boot continues locked and disabling the option removes it
 from the initramfs.
+
+**Disabled on tiberius 2026-11-23.** The rot above happened: the pinned
+`nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst` on `archive.cachyos.org` now returns a
+988-byte HTML landing page (fetch hash `sha256-LUOVBOes...` against the pinned
+`sha256-4X58ku7/...`), so the firmware derivation cannot be built and every tiberius
+rebuild failed at it. The host already boots the stock nixpkgs kernel - the CachyOS
+kernel arms went after round 7 measured <=0.6 % - so the unlock was the only CachyOS
+dependency, and it is off (`hosts/tiberius.nix`) rather than re-sourced. Measured cost:
+prefill read -5.7 % at 26,134 tokens / -2.0 % at 8,268 / -1.1 % at 4,252 was the gain,
+decode unchanged, on single-boot evidence with a power/thermal risk. The six generated
+images are kept on the host at `/data/turing-unlock-firmware-610.43.03/` (`.zst`, 7 MB)
+from the last generation that had them. To re-enable: source the same images from
+NVIDIA's `NVIDIA-Linux-x86_64-610.43.03.run` (or another live mirror), check their
+hashes against that copy, replace the CachyOS `fetchurl` in `pkgs/turing-unlock/default.nix`,
+then restore the profile import and `hardware.turingUnlock.enable = true;`.
 
 ## Residual risks and revisit conditions
 

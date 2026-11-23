@@ -207,10 +207,6 @@ in
     # Persist the lane's /metrics counters (15 s scraper) and warn on drift;
     # the module owns the timer and the /persist/strata/metrics directory.
     "${self}/profiles/nixos/strata-telemetry.nix"
-    # Volatile TU102 full-rate tensor-core unlock at boot (see
-    # profiles/nixos/turing-unlock.nix and docs/exec-plans/active/
-    # turing-unlock-assessment.md; no VBIOS flash, undo by disabling + reboot).
-    "${self}/profiles/nixos/turing-unlock.nix"
   ];
 
   boot = {
@@ -948,14 +944,19 @@ in
     tiberius-strata-telemetry.enable = true;
   };
 
-  # Volatile TU102 tensor-core unlock at boot. Measured on this box 2026-11-05:
-  # prefill read -5.7 % at 26,134 tokens, -2.0 % at 8,268, -1.1 % at 4,252 (same
-  # at the production 280 W cap), decode unchanged, answer shas identical; the
-  # gain sits in the dense/projection FP16 MMA phases. No VBIOS or persistent
-  # firmware is touched and a power cycle restores the locked state; if the
-  # module refuses or fails, the boot continues locked. Enable/disable takes
-  # effect on the next boot.
-  hardware.turingUnlock.enable = true;
+  # The volatile TU102 tensor-core unlock is OFF since 2026-11-23. The kernel
+  # here was already the stock nixpkgs one (the CachyOS kernel arms went after
+  # round 7 measured <=0.6 %), so the only CachyOS dependency on this host was
+  # the unlock's firmware derivation: it fetched nvidia-utils-610.43.03-1 from
+  # archive.cachyos.org, and that URL now returns a 988-byte landing page, so no
+  # from-scratch build can produce the firmware (the assessment predicted this
+  # rot). Cost of dropping it: prefill read -5.7 % at 26,134 tokens / -2.0 % at
+  # 8,268 / -1.1 % at 4,252 was the measured gain, decode unchanged, on
+  # single-boot evidence with a power/thermal risk. The six images are kept at
+  # /data/turing-unlock-firmware-610.43.03 on the host; re-enable after
+  # re-sourcing them from NVIDIA's .run installer (see
+  # docs/exec-plans/active/turing-unlock-assessment.md and
+  # profiles/nixos/turing-unlock.nix).
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
