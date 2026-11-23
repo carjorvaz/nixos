@@ -30,27 +30,27 @@ coverage, sets adapt every 4 -> 2, swaps 96 -> 192, decay 0.70 -> 0.92. That is 
 gain; the dense INT8 TC default and the two DFlash2 toggles are neutral. Evidence:
 `/data/knob-screen-20261123-1450/` and `-adapt/`; `docs/VALIDATION.md`, plan round 18.
 
+## Tested 2026-11-23, second window (15:36-16:15, 5 reps, control p1 63.6 / llive 70.3)
+
+| arm | knob | result |
+|---|---|---|
+| `df2_gemm_off` | `STRATA_DF2_GEMM=0` | -0.4 % p1 (0/5) / -0.1 % llive -> the default layout (1) is better; keep it |
+| `suffix_draft2` | `--suffix-draft 2` | -0.1 % / +0.0 %, read -1.8/-1.0 % -> keep 3 |
+| `suffix_draft4` | `--suffix-draft 4` | -0.1 % p1 / +0.5 % llive (3/5), answers differ -> no win; keep 3 |
+| `df2_prio_off` | `STRATA_DF2_PRIO=0` | -0.4 % p1 (1/5) / -0.2 % llive -> keep the high-priority draft stream |
+| `aux_cpus` | `STRATA_AUX_CPUS=auto` | decode ~0, but read **-4.9 % / -3.4 %** -> the aux-thread move does not pay on this box |
+
+None adopted; the defaults stay. Evidence `/data/knob-screen-20261123-1545/`.
+
 ## Queued (not yet in a window)
 
 Ordered by expected value per window, not by size of the claim.
 
-1. **`STRATA_DF2_GEMM=0`** — DFlash2 Q4/Q4_0 GEMM variant; the source says the two variants are
-   bitwise identical (`0` = 8 rows a warp, `1` = rows by matrix size, the default). The drafter
-   GEMM is ~1-2 ms/round; a decode screen with `=0` (and `STRATA_DF2_GEMM4=1`, 8 rows a warp on
-   every matrix) is cheap and exact. Session: "untested here".
-2. **`STRATA_DF2_PRIO=0`** — the draft stream's priority vs verify/commit (CUDA high-prio stream,
-   default on). Untested A/B; a priority inversion would show as decode noise, not text.
-3. **`--suffix-draft 2` / `4` / `6`** — prompt-lookup drafting off an earlier repeat; only the
-   default 3 has ever run (`suffix drafts` lines in the live log: 78 windows, 246/288 accepted at
-   3). The `--lookup-max-t` axis is closed (9+ rows unsupported with DFlash2), but the suffix
-   width itself was never swept. CLI arm through `user_args`.
 4. **`--prompt-cache 3` + `STRATA_DF2_LOG_MIB=64`** — host RAM, not speed: ~700 MiB of prompt
    checkpoints (6 x ~118 MB) and up to 256 MiB of DFlash2 lineage stash; the live log has park
    refusals at 994 MiB against a 384 MiB floor. Re-test parking admission, not tok/s. The plan's
    prompt-cache family was "conclusive null for this shape" as a *speed* knob; this is the RAM
    half that was never measured.
-5. **`STRATA_AUX_CPUS=1`** — moves aux threads to CPU12; the latency doc bounds the host-thread
-   wait at 5.6 % and expects ≤1-2 %, "possibly 0". Never measured. Environment-only, one window.
 6. **`STRATA_ROUTE_TAIL_SKIP=8` / `9`** — 0-3 % decode, but answer-drifting: run it through the
    quality gate (eval320 not > 8 worse, needle 3/3, repetition probe), not the throughput table.
    The deployed rank is 7; only 0 vs 7 was ever tested (the 2026-11-17 quality-gate initiative is

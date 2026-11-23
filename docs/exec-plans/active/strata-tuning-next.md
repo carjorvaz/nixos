@@ -1104,7 +1104,11 @@ differ; no win); `STRATA_PF_GROUP_SCRATCH=1` + `STRATA_PF_HC_REGION=1` raised th
 but cost -1.0 % p1 and **-10.7 % llive** decode (reject - the freed prompt buffers do not pay at
 long context). The rest of the session sweep (DF2_GEMM variants, DF2_PRIO, suffix-draft widths,
 prompt-cache/DF2_LOG_MIB RAM, AUX_CPUS, and the quality-gated route/KV arms) is queued in
-`strata-revisit-queue.md`, with its evidence and gates.
+`strata-revisit-queue.md`, with its evidence and gates. A second window (15:36-16:15) closed
+five of them - the drafter-GEMM variants (`DF2_GEMM=0` -0.4 %), suffix-draft widths 2/4 (~0),
+draft-stream priority (`DF2_PRIO=0` -0.4 %) and aux-CPU placement (`AUX_CPUS=auto`: decode ~0
+but read -4.9/-3.4 %) - none wins, defaults stay. The host-RAM/parking arms and the
+quality-gated route/KV arms remain queued.
 
 **Quality gate for the pin (paired eval320, temperature 0, same 320 items):** 0.1.66 scores
 194/320 (60.6 %) against 0.1.63's 191/320 (59.7 %) - +3 items, inside the eval320 binomial

@@ -190,6 +190,34 @@ ARMS = {
         "answer_changing": False, "invert": False,
         "why": "bisect: pin the old adaptive defaults (disables #4870 mid-coverage)",
     },
+    # Queue window 2 (docs/exec-plans/active/strata-revisit-queue.md): the
+    # bitwise drafter-GEMM variants, the suffix-draft widths, the draft stream's
+    # priority and the aux-thread placement.
+    "df2_gemm_off": {
+        "env": {"STRATA_DF2_GEMM": "0"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "bitwise drafter GEMM: 0 = 8 rows a warp (the old layout), 1 = rows by size",
+    },
+    "suffix_draft2": {
+        "env": {}, "args": ["--suffix-draft", "2"],
+        "answer_changing": False, "invert": False,
+        "why": "prompt-lookup suffix threshold 2 (default 3; 2/4/6 never swept)",
+    },
+    "suffix_draft4": {
+        "env": {}, "args": ["--suffix-draft", "4"],
+        "answer_changing": False, "invert": False,
+        "why": "prompt-lookup suffix threshold 4 (default 3)",
+    },
+    "df2_prio_off": {
+        "env": {"STRATA_DF2_PRIO": "0"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "draft stream priority off (CUDA high-priority stream is the default)",
+    },
+    "aux_cpus": {
+        "env": {"STRATA_AUX_CPUS": "auto"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "aux threads off the engine's cores (the 5.6% host-thread wait; expected <=1-2%)",
+    },
     "renorm": {
         "env": {"STRATA_ROUTE_TAIL_RENORM": "1"},
         "args": [],
