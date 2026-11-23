@@ -99,6 +99,19 @@ held.
 | `dense_i8_off` | `STRATA_DENSE_I8_TC=0` + `STRATA_PREFILL_DENSE_I8_TC=0` | disables 0.2.20's default dense INT8 TC (CC>=75) |
 | `renorm` | `STRATA_ROUTE_TAIL_RENORM=1` | answer-changing; quality gate, not throughput |
 
+### Revisit / bisect arms (2026-11-23 session sweep)
+
+Added after sweeping the DSH session history for small or untested knobs the old +4 % gate left
+behind (`docs/exec-plans/active/strata-revisit-queue.md`):
+
+| arm | knob | measured (5 reps) |
+|---|---|---|
+| `df2_ctx_batch_off` | `STRATA_DF2_CTX_BATCH=0` | neutral (+0.4 %/+0.1 %) |
+| `df2_fork_off` | `STRATA_DF2_FORK=0` | neutral (+0.2 %/-0.0 %) |
+| `side_mixer` | `STRATA_SIDE_MIXER=2` | no win (+0.2 %/+0.0 %), answers differ |
+| `pf_group_scratch` | `STRATA_PF_GROUP_SCRATCH=1` + `STRATA_PF_HC_REGION=1` | read +1.7/+2.9 % but decode -1.0 %/-10.7 % -> reject |
+| `adapt_old_defaults` | `--adapt-every 4 --adapt-swaps 96 --adapt-decay 0.70` | -5.7 %/-5.9 % -> the pin's gain is #4870 |
+
 `dense_i8_off` is a control, not a candidate: a **negative** delta means 0.2.20's default is a
 win. If the pack has no eligible dense type the arm is a no-op, and that is the answer (nothing
 to measure).

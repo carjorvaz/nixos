@@ -155,6 +155,41 @@ ARMS = {
         "invert": False,
         "why": "restart test only: --conversation-spill-persist + a persistent spill dir (injected per run)",
     },
+    # Revisit/bisect arms from the 2026-11-23 session sweep (the old +4% gate's
+    # left-behinds and the untested DFlash2 toggles).  The bisect arms ask which
+    # 0.2.20 default explains the pin's +4.7/+6.2% decode; the revisit arms were
+    # once seen at +1.3-1.6% inside a one-run spread.
+    "df2_ctx_batch_off": {
+        "env": {"STRATA_DF2_CTX_BATCH": "0"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "bisect: 0.2.20's default-on DFlash2 context batching off",
+    },
+    "df2_fork_off": {
+        "env": {"STRATA_DF2_FORK": "0"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "bisect: DFlash2 context update / block front on one stream",
+    },
+    "side_mixer": {
+        "env": {"STRATA_SIDE_MIXER": "2"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "revisit: window graph branches (bitwise), +1.4/+1.3% once, -3.1% at 26k",
+    },
+    "pf_group_scratch": {
+        "env": {"STRATA_PF_GROUP_SCRATCH": "1", "STRATA_PF_HC_REGION": "1"},
+        "args": [], "answer_changing": False, "invert": False,
+        "why": "revisit: frees 0.3-0.5 GiB of borrowed prompt buffers (same bits), more expert slots",
+    },
+    "adapt_old_defaults": {
+        # Pin the pre-0.2.20 adaptive defaults explicitly, which stops #4870's
+        # mid-coverage rule (every 4 -> 2, swaps 96 -> 192, decay 0.70 -> 0.92 at
+        # 15-65% coverage) from overriding them.  This is the direct bisect of the
+        # pin's decode gain: the deployed config sets none of the three, so the
+        # rule is what changed at this lane's 36.9%.
+        "env": {},
+        "args": ["--adapt-every", "4", "--adapt-swaps", "96", "--adapt-decay", "0.70"],
+        "answer_changing": False, "invert": False,
+        "why": "bisect: pin the old adaptive defaults (disables #4870 mid-coverage)",
+    },
     "renorm": {
         "env": {"STRATA_ROUTE_TAIL_RENORM": "1"},
         "args": [],

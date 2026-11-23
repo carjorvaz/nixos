@@ -1897,6 +1897,38 @@ The package is built natively on tiberius (`kwx3qn9q...`, engine 0.1.66) and ver
 isolated engine starts in the first window plus 70 more in this one. Both screens ran with
 production stopped and restored the unit on exit; no failures, `reused` 0 on every cell.
 
+#### Pin attribution, revisit arms, and the paired quality gate (2026-11-23, 15:05-15:29)
+
+Two more isolated windows after generation 124 (production restored each time; health 200 after).
+5 paired reps, p1 4,299 / llive 26,482 tokens.
+
+- **The pin's decode gain is 0.2.20's `#4870` mid-coverage adaptive defaults.** Passing the old
+  values explicitly (`--adapt-every 4 --adapt-swaps 96 --adapt-decay 0.70`, which also stops
+  `#4870` from overriding them) costs **-5.7 % at p1 (0/5)** and **-5.9 % at llive (0/5)**:
+  59.7/66.1 tok/s against control 63.4/70.3, i.e. the 0.1.63 numbers. The rule is new after
+  v0.2.17 (0.1.63 never logs it); at this lane's 36.9 % coverage it sets adapt every 4 -> 2,
+  swaps 96 -> 192, decay 0.70 -> 0.92. Answers differ (different resident experts), as expected.
+- The DFlash2 toggles are neutral: `STRATA_DF2_CTX_BATCH=0` +0.4 % p1 (3/5) / +0.1 % llive (2/5);
+  `STRATA_DF2_FORK=0` +0.2 % p1 (1/5) / -0.0 % llive (2/5). Together with the earlier neutral
+  `dense_i8_off`, the pin win is the adaptive-defaults rule, not the dense INT8 TC or the drafter
+  toggles.
+- Revisit arms: `STRATA_SIDE_MIXER=2` +0.2 % p1 (4/5, -3.0..+1.4) / +0.0 % llive (4/5,
+  -6.6..+3.0), read +1.5/+0.5 %, answers differ -> no win. `STRATA_PF_GROUP_SCRATCH=1` +
+  `STRATA_PF_HC_REGION=1` read +1.7/+2.9 % but decode -1.0 % p1 / **-10.7 % llive** (0/5) ->
+  reject.
+- **Quality gate (paired eval320, temperature 0, the same 320 items): 0.1.66 194/320 (60.6 %)
+  vs 0.1.63 191/320 (59.7 %)** - +3 items, inside the eval320 binomial sigma (~5.4 tasks) and
+  far from the "not >8 worse" gate: the pin is quality-neutral, nominally better. The 0.1.63
+  run used the deployed config minus `--conversation-spill-persist` (0.1.63 predates the flag)
+  on the isolated 8099 engine; the 0.1.66 run was the live service.
+- Session sweep: the revisit queue (DF2_GEMM variants, DF2_PRIO, suffix-draft widths,
+  prompt-cache/DF2_LOG_MIB RAM, AUX_CPUS, and the quality-gated route/KV arms) is
+  `docs/exec-plans/active/strata-revisit-queue.md`.
+
+Evidence: `/data/knob-screen-20261123-1450/`, `/data/knob-screen-20261123-adapt/`,
+`/data/eval320-live066.log`, `/tmp/eval-old/score.log`; the engine logs carry the `#4870` line in
+0.1.66 and lack it in 0.1.63.
+
 ### Generation 123 (2026-11-23): Strata engine v0.2.20 (0.1.66)
 
 Build host: tiberius (`--build-host root@tiberius`); the closure diff against generation 122 is

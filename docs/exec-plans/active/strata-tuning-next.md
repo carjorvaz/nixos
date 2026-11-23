@@ -1090,6 +1090,26 @@ answers differ (expected). `verify_device_hits` also costs 1.4-1.5 ms per verify
 
 Evidence `/data/knob-screen-20261123-1315{,-persist}/`; generations in `docs/VALIDATION.md`.
 
+**Pin attribution (2026-11-23, 5 reps): the pin's decode gain is 0.2.20's #4870 mid-coverage
+adaptive defaults.** Pinning the pre-0.2.20 values explicitly (`--adapt-every 4 --adapt-swaps 96
+--adapt-decay 0.70`, which also stops #4870 from overriding them) costs **-5.7 % at p1 and
+-5.9 % at llive** (0/5 reps each; 59.7/66.1 tok/s against control 63.4/70.3) - i.e. it
+reproduces the 0.1.63 numbers. The rule is new after v0.2.17 (0.1.63 never logs it) and at this
+lane's 36.9 % coverage sets adapt every 4 -> 2, swaps 96 -> 192, decay 0.70 -> 0.92. The
+DFlash2 toggles are neutral (`STRATA_DF2_CTX_BATCH=0` +0.4 %/+0.1 %, `STRATA_DF2_FORK=0`
++0.2 %/-0.0 %), and the dense INT8 TC default was already neutral.
+
+**Revisit screen (same day, 5 reps):** `STRATA_SIDE_MIXER=2` measured +0.2 %/+0.0 % (answers
+differ; no win); `STRATA_PF_GROUP_SCRATCH=1` + `STRATA_PF_HC_REGION=1` raised the read +1.7/+2.9 %
+but cost -1.0 % p1 and **-10.7 % llive** decode (reject - the freed prompt buffers do not pay at
+long context). The rest of the session sweep (DF2_GEMM variants, DF2_PRIO, suffix-draft widths,
+prompt-cache/DF2_LOG_MIB RAM, AUX_CPUS, and the quality-gated route/KV arms) is queued in
+`strata-revisit-queue.md`, with its evidence and gates.
+
+**Quality gate for the pin (paired eval320, temperature 0, same 320 items):** 0.1.66 scores
+194/320 (60.6 %) against 0.1.63's 191/320 (59.7 %) - +3 items, inside the eval320 binomial
+sigma (~5.4 tasks) and far from "not >8 worse". The pin is quality-neutral, nominally better.
+
 Not worth a campaign on this card: `STRATA_VHEAD_BITPLANE` and `STRATA_HC_Q8_TC` (sm_80+),
 `STRATA_DF2_ATTN_TC`/`DF2_GEMM_TC` (major >= 8), `STRATA_MEGAKERNEL` (RDNA3/4), MXFP8/FP4,
 `STRATA_PF_P1A_*` (gfx), `Q8_V70`/`SM70_PERF` (Volta), `NUMA_ARENA` (Windows branch),
