@@ -267,6 +267,40 @@ ARMS = {
         "answer_changing": False, "invert": False,
         "why": "router lookahead depth 6 (default 10); less host work per layer",
     },
+    # #4870 parameter sweep: the new default is 2 / 192 / 0.92 at 15-65%
+    # coverage.  Explicit flags set the *_given switches and stop the rule from
+    # overriding them, so control (no flags, rule) vs these arms isolates the
+    # cadence/swap/decay surface the pin proved sensitive.
+    "adapt_1_192_92": {
+        "env": {}, "args": ["--adapt-every", "1", "--adapt-swaps", "192", "--adapt-decay", "0.92"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep: adapt every token",
+    },
+    "adapt_2_288_92": {
+        "env": {}, "args": ["--adapt-every", "2", "--adapt-swaps", "288", "--adapt-decay", "0.92"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep: 50% more swaps per plan",
+    },
+    "adapt_2_192_95": {
+        "env": {}, "args": ["--adapt-every", "2", "--adapt-swaps", "192", "--adapt-decay", "0.95"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep: slower credit decay (keep hot experts longer)",
+    },
+    "adapt_3_160_88": {
+        "env": {}, "args": ["--adapt-every", "3", "--adapt-swaps", "160", "--adapt-decay", "0.88"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep: lighter cadence, fewer swaps, faster decay",
+    },
+    "adapt_1_192_95": {
+        "env": {}, "args": ["--adapt-every", "1", "--adapt-decay", "0.95"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep 2: every-token cadence + slower decay (the two winners combined)",
+    },
+    "adapt_1_160_95": {
+        "env": {}, "args": ["--adapt-every", "1", "--adapt-swaps", "160", "--adapt-decay", "0.95"],
+        "answer_changing": False, "invert": False,
+        "why": "#4870 sweep 2: every-token cadence, fewer swaps, slower decay",
+    },
     "tail_skip8": {
         "env": {"STRATA_ROUTE_TAIL_SKIP": "8"},
         "args": [], "answer_changing": True, "invert": False,

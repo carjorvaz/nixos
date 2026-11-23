@@ -1962,6 +1962,35 @@ Evidence `/data/knob-screen-20261123-park/`, `-tailskip-eval/`, `-tailskip/`.
 - No adoption; the deployed configuration (generation 124) is unchanged. Evidence
   `/data/knob-screen-20261123-quality/`, `-longctx/`, `-final/`, `-ymm/`.
 
+### Generation 125 (2026-11-23): `--adapt-every 1`; +11 % decode at 26k
+
+The v0.2.20 pin's +4.7 %/+6.2 % decode is the `#4870` mid-coverage rule (2 / 192 / 0.92 at this
+lane's 36.9 % coverage). That made the rule itself the next lever, so its three parameters were
+swept in two isolated windows (5 paired reps, llive 26,134 tokens, answers compared):
+
+| arm | decode tok/s | vs control | answers |
+|---|---|---|---|
+| control (rule 2 / 192 / 0.92) | 61.1 | - | - |
+| `--adapt-every 1` (rule supplies 192/0.92) | **67.8** | **+11.0 % [ +10.1 .. +12.2 ], 5/5** | identical |
+| `--adapt-every 1 --adapt-decay 0.95` | 66.8 | +9.4 %, 5/5 | identical |
+| `--adapt-every 1 --adapt-swaps 160 --adapt-decay 0.95` | 66.9 | +9.5 %, 5/5 | identical |
+| `--adapt-every 2 --adapt-decay 0.95` (first window) | 62.6 | +2.4 %, 5/5 | identical |
+| `--adapt-every 2 --adapt-swaps 288` | 60.5 | -0.9 %, 0/5 | - |
+| `--adapt-every 3 --adapt-swaps 160 --adapt-decay 0.88` | 60.8 | -0.4 %, 1/5 | differ |
+
+**The cadence is the lever, and nothing compounds with it**: every 1 is +11.0 % (read +0.4 %),
+while decay 0.95 (+2.4 % on its own) and fewer swaps are worse on top of it. Swaps 288 and the
+lighter 3/160/0.88 are regressions. Quality: **eval320 195/320** against 194 (+1, inside the
+~5.4-task binomial noise); the fixed-corpus PPL probe's own repeat spread on this cache-policy
+arm was 0.06 nats, so eval320 is the gate that counts. The llive-only control reads 61.1 tok/s
+where the earlier p1+llive windows read 70.3 - a cold adaptive cache at the first cell; the
+paired deltas are within-window and unaffected.
+
+Deployed as generation 125 (2026-11-23 19:15:46): config `06c5hn2f...` carries
+`--adapt-every 1` in `user_args`, and the engine log confirms `adaptive defaults every 1 -> 1,
+swaps 96 -> 192, decay 0.70 -> 0.92`. Health 200, engine 0.1.66, 9,062 slots, GPU 21.3/22.5 GiB,
+44 C. Rollback: `nixos-rebuild switch --rollback` (generation 124).
+
 ### Generation 123 (2026-11-23): Strata engine v0.2.20 (0.1.66)
 
 Build host: tiberius (`--build-host root@tiberius`); the closure diff against generation 122 is

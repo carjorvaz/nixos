@@ -433,6 +433,14 @@ let
         "--conversation-spill-mib"
         "8192"
         "--conversation-spill-persist"
+        # --adapt-every 1 (2026-11-23, the #4870 sweep).  The 0.2.20 mid-coverage
+        # rule already runs this lane at 2 / 192 / 0.92 - that rule is the
+        # v0.2.20 pin's +4.7 %/+6.2 % decode.  Sweeping the three on the 26k cell:
+        # every 1 is **+11.0 %** (5/5 paired reps, answers identical, read +0.4 %);
+        # decay 0.95 and swaps 160/288 measured worse on top (-0.9 to +2.4 %).
+        # Only adapt_every is given here, so the rule still supplies 192 / 0.92.
+        "--adapt-every"
+        "1"
       ];
       cwd = "${cfg.package}/share/strata";
       tokenizer = "${cfg.dataDir}/packs/${lane.pack}/tokenizer";
