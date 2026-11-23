@@ -1009,7 +1009,7 @@ Artifacts: `/data/ab53-sample.log`, `/data/ab53-{base3,skip3a,skip3b,base3b}.log
 
 ### Round 18: the v0.2.20 pin and its new knobs (2026-11-23, planned)
 
-Status: **measured and deployed (2026-11-23, generations 123/124).** The pin is rebased and
+Status: **measured and deployed (2026-11-23, generations 123/124/125).** The pin is rebased and
 built natively on tiberius (engine 0.1.66, `kwx3qn9q...`): a 5/5 decode win (+4.7 % at p1,
 +6.2 % at llive, read flat) against the deployed 0.1.63 binary, so generation 123 is the pin.
 Of the new knobs, only `--conversation-spill-persist` was adopted (generation 124: 26,271 tokens
@@ -1122,7 +1122,11 @@ rejects them: `kv k8v4` is **+6.1 % at 26k (5/5, answers identical) yet -9.7 % a
 answers differ), with the prompt read -10 %**; `prior 1.15` is -5.2 %/-3.0 %. The last low-value
 sweep (KV-grow quantum, prefill-equal, pool spin, lookahead, CPU 256-bit rows) found nothing
 reproducible (`cpu_ymm` showed +0.6 % at 3 reps but +0.1 % at 5). **The revisit queue is empty;
-no further engine knob is deployed today.**
+no further engine knob was queued.** Then the #4870 surface was swept, and it paid: the pin's
+gain came from the mid-coverage rule, so its parameters were next. `--adapt-every 1` (the rule
+still supplies 192/0.92) is **+11.0 % at 26k** (5/5 reps, answers identical, read +0.4 %);
+decay 0.95 (+2.4 % alone) and fewer swaps are worse on top, so the cadence is the lever.
+Quality: eval320 195/320 (+1). Adopted as generation 125.
 
 **Quality gate for the pin (paired eval320, temperature 0, same 320 items):** 0.1.66 scores
 194/320 (60.6 %) against 0.1.63's 191/320 (59.7 %) - +3 items, inside the eval320 binomial

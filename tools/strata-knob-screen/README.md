@@ -123,6 +123,10 @@ low-value sweep:
 | `prior_1_15`, `prior_1_25` | `STRATA_ROUTE_PRIOR` | 1.15 -5.2 %/-3.0 % -> reject |
 | `kv_grow_step`, `prefill_equal`, `cpu_ymm`, `pool_spin_off`, `lookahead_6` | low-value sweep | nothing reproducible (`cpu_ymm` +0.6 % at 3 reps, +0.1 % at 5) |
 
+The `#4870` sweep arms (`adapt_1_192_92`, `adapt_1_192_95`, `adapt_1_160_95`,
+`adapt_2_288_92`, `adapt_2_192_95`, `adapt_3_160_88`) measure the adaptive cadence/swap/decay
+surface; `--adapt-every 1` won and is deployed (generation 125).
+
 `dense_i8_off` is a control, not a candidate: a **negative** delta means 0.2.20's default is a
 win. If the pack has no eligible dense type the arm is a no-op, and that is the answer (nothing
 to measure).

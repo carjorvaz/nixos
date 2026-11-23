@@ -87,6 +87,15 @@ Low-value sweep (3 reps, p1; any sign to be confirmed at 5):
 arm is deployed; the engine's defaults stay. The one-arm-at-a-time production windows all
 restored the unit (health 200 after each).
 
+## Follow-on: the `#4870` surface (2026-11-23, after the pin attribution)
+
+The pin's decode gain turned out to be the mid-coverage adaptive rule, which made the rule's own
+parameters the highest-value knob left. Swept in two isolated windows (5 paired reps, llive):
+`--adapt-every 1` (rule supplies 192/0.92) is **+11.0 %** (5/5, answers identical, read +0.4 %);
+`--adapt-decay 0.95` (+2.4 % alone) and fewer swaps are worse on top; swaps 288 and
+3/160/0.88 regress. Quality: eval320 195/320 (+1). **Adopted: generation 125**
+(`--adapt-every 1`). Any future sweep starts from 1/192/0.92.
+
 ## Checked and NOT worth a window
 
 - `STRATA_HC_UPMIX=1` — a *prefill* fusion (gr_upmix); the old one-run +1.6/+1.5/-0.4 % was a
