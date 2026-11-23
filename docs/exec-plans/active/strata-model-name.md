@@ -1,7 +1,7 @@
 # Strata served-model name: `iq3_s` -> the pack the lane actually loads
 
-Status: **code changed 2026-11-19; deploy pending** (tiberius, pius, and the Mac
-Hermes app's saved default).
+Status: **tiberius deployed in generation 116 (2026-11-20); pius and the Mac
+Hermes app still name the old id** (verified 2026-11-23).
 
 ## Why
 
@@ -37,32 +37,35 @@ exist only to keep saying `iq3_s`.
 
 ## Behaviour to verify on deploy
 
-- The drafting set becomes `unsloth-ud-iq2_xs`, which has no `SET_DEFAULTS` or
-  `CLASS_DEFAULTS` entry (the old `iq3_s` set had one: CUDA, tuned pack,
-  `where = "resident"`). The tuned file is upstream's `strata1` pack; the module
-  records the locally converted pack (`4a42b98...`) in `dflash2`, and the tuned
-  file would have to have been downloaded separately. It was released after that
-  conversion, so check whether it is there before assuming the old entry was
-  inert. Check the startup drafting line and `/metrics` on the box, then the
-  L-live decode cell against its 113.85 tok/s baseline. If the tuned file was in
-  use, the rename ends an inheritance that was measured on IQ3_S, not on this
-  pack; that is a decision to take again on measurement, not a reason to keep
-  the old name.
-- `GET /v1/models` lists only the new id; `GET /props?model=<old>` 404s. Chat
-  completions still serve a request that names the old id.
+- Resolved: the old `iq3_s` set's CUDA tuned-pack entry went with the name, and
+  generation 118 measured upstream's `strata1` tuned drafter directly rather
+  than inheriting it: acceptance 78.2 / 77.3 % against the stock pack's 85.3 %,
+  decode 104.7 / 104.2 against 111.0 tok/s (-5.7 / -6.1 %), so it is rejected
+  and the file stays unused at `/optane/strata-data/dflash2/`
+  (`docs/VALIDATION.md`, generation 118). Nothing was lost by dropping the
+  entry.
+- Generation 116 verified the rename on tiberius: both doors healthy, model
+  `qwen3.8-flash-next-unsloth-ud-iq2_xs` loaded, 9,156 expert slots, warm
+  completion, no Xid (`docs/VALIDATION.md`, generation 116). `GET /v1/models`
+  now lists that id only; `GET /props?model=<old>` 404s, and chat completions
+  still serve a request that names the old id.
 - The Mac Hermes app still has the old id in `~/.hermes/config.yaml`
-  (`model.default`, `providers.tiberius-strata.default_model`), and in
-  `provider_models_cache.json` / `ui-preferences.json`; repoint it with the app
-  closed (the files are app-managed, not Nix-managed).
+  (`model.default`, `providers.tiberius-strata.default_model`) and in
+  `~/.hermes/ui-preferences.json`; repoint it in the app or with the app closed
+  (the files are app-managed, not Nix-managed).
 
 ## Deploy / rollback
 
-tiberius: `nixos-rebuild switch` - the generated config/log names become
-`strata-general.*`; watch the journal for the startup drafting line. pius:
-deploy; the Hindsight check asserts the new `llmModel`. Then record the
-generation in `docs/VALIDATION.md` and update its "Hindsight runtime (pius)"
-section, which still names the old id as the current one.
+tiberius: done as generation 116 (2026-11-20); the generated config/log names
+are `strata-general.*`.
 
-Rollback: revert the commit and switch back. Nothing on disk was renamed - the
-pack stayed `ud-iq2_xs`, and `/persist/strata/strata-iq3-s.log` is history, not
-a path anything new reads.
+pius: not deployed as of 2026-11-23 - `systemctl show hindsight` still reports
+`HINDSIGHT_API_LLM_MODEL=qwen3.8-flash-next-iq3_s`, and the reflect model with
+it. Requests still work (the serve layer answers the old name), so this is a
+naming lag, not an outage. When pius is next switched, update the "Hindsight
+runtime (pius)" section of `docs/VALIDATION.md`, which still describes the
+running old id accurately.
+
+Rollback: switch tiberius to a generation from before 116 (or revert the commit
+and switch). Nothing on disk was renamed - the pack stayed `ud-iq2_xs`, and
+`/persist/strata/strata-iq3-s.log` is history, not a path anything new reads.
