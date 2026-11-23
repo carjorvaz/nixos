@@ -454,6 +454,12 @@ let
       lib_dirs = [ "${config.hardware.nvidia.package}/lib" ];
       env = {
         STRATA_SPLIT_TIMING = "1";
+        # The bundled web app (its pages, assets and /settings) is off: this
+        # lane is an API for Hermes and the measurement probes, nothing here
+        # opens a browser.  no-web-ui.patch reads this in the GET and POST
+        # routers; /v1/..., /v1/messages and /health are untouched, and an
+        # unset or "0" value restores the page.
+        STRATA_NO_WEB = "1";
         # 0.2.7's residency-biased router (upstream's STRATA_ROUTE_PRIOR): after
         # the router, the top-k is picked again with a logit bonus for experts
         # already on the card, which trades a little routing fidelity for far
