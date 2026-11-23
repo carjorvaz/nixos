@@ -2,8 +2,11 @@
 
 Status: **tested on tiberius 2026-11-05, adopted at boot, and disabled 2026-11-23**
 (`profiles/nixos/turing-unlock.nix` / `pkgs/turing-unlock` stay in the tree, unused).
-This record covers the two upstream projects that motivated it, the measured effect, the
-safety evidence, and why the build dependency, not the measurement, ended it.
+The images and sources are archived on the host and on pius, and all six firmware files
+regenerate from NVIDIA's own artifacts (the CachyOS package is no longer needed); see
+"Archive" below. This record covers the two upstream projects that motivated it, the
+measured effect, the safety evidence, and why the build dependency, not the measurement,
+ended it.
 
 ## What was evaluated
 
@@ -115,6 +118,28 @@ from the last generation that had them. To re-enable: source the same images fro
 NVIDIA's `NVIDIA-Linux-x86_64-610.43.03.run` (or another live mirror), check their
 hashes against that copy, replace the CachyOS `fetchurl` in `pkgs/turing-unlock/default.nix`,
 then restore the profile import and `hardware.turingUnlock.enable = true;`.
+
+### Archive (2026-11-23)
+
+The images, sources and a reproducer are archived on tiberius at
+`/data/archive/turing-unlock-610.43.03/` (482 MB: the six `.bin`, their `.zst`, the NVIDIA
+610.43.03 `.run`, the kernel-module-source tarball, the nlzy source at the pinned rev,
+`regenerate-firmware.sh`, `SHA256SUMS`, `README.md`) and packed as
+`/data/archive/turing-unlock-610.43.03.tar.zst` (494 MB, sha256
+`859a8a466435e1fd2307091ed91632cde61266d5aedc60d1939d1bc2cfc0d7db`). A second copy of the
+tarball and its `SHA256SUMS` is on pius at `/root/archive/` with the same hash.
+
+The archive is reproducible from NVIDIA alone: the CachyOS package supplied exactly one
+file, `gsp_tu10x.bin` (`7306…`), which NVIDIA's `.run` carries with the same hash; the four
+boot assets come from the kernel-module-source tarball; and the `v67` image is pure
+constants (`generate_v67.build_payload()`, `b0ec…`). A cold-cache run of the script on
+2026-11-23 downloaded the `.run` (440 MiB), the kernel source (25 MiB) and the nlzy source,
+and reproduced all six hashes exactly. So the unlock can be re-enabled without CachyOS:
+point `pkgs/turing-unlock/default.nix` at the `.run` for `gsp_tu10x` (or at the archived
+`firmware/` tarball with a pinned hash), keep the kernel-source step, generate `v67` with
+`build_payload()`, restore the host import and `hardware.turingUnlock.enable = true;`,
+rebuild and reboot. The archive's `README.md` has the step-by-step; the script is also
+committed here as `pkgs/turing-unlock/regenerate-firmware.sh`.
 
 ## Residual risks and revisit conditions
 

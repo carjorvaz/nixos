@@ -63,6 +63,11 @@ let
     url = "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/NVIDIA-kernel-module-source-${nvVersion}.tar.xz";
     hash = "sha256-fhGJI8eiPtw2EU1jJzpG4+BOmvmGlaQiA+esLf6fwdw=";
   };
+  # 2026-11-23: this URL is dead (it serves a 988-byte landing page). The one file
+  # it supplied, gsp_tu10x.bin, is in NVIDIA's .run with the same hash; the boot
+  # assets and the v67 payload regenerate from the other pinned inputs. See
+  # regenerate-firmware.sh beside this file and
+  # docs/exec-plans/active/turing-unlock-assessment.md.
   nvidiaUtils = fetchurl {
     url = "https://archive.cachyos.org/archive/cachyos-v3/nvidia-utils-${nvVersion}-1-x86_64_v3.pkg.tar.zst";
     hash = "sha256-4X58ku7/oXiw/h9A6xekcJX4/Dzkp3vxFc9b1aTfhuk=";
