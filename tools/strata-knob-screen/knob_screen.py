@@ -225,6 +225,48 @@ ARMS = {
         "answer_changing": False, "invert": False,
         "why": "host RAM: 3 prompt checkpoints (not 6) + 64 MiB DFlash2 stash -> park admission",
     },
+    "kv_k8v4": {
+        "env": {}, "args": ["--kv", "k8v4"],
+        "answer_changing": True, "invert": False,
+        "why": "KV precision: K int8 + V rotated Q4_0 (-23% KV bytes); quality-gated",
+    },
+    "prior_1_15": {
+        "env": {"STRATA_ROUTE_PRIOR": "1.15"},
+        "args": [], "answer_changing": True, "invert": False,
+        "why": "routing intervention strength 1.15 (deployed 1.2); quality-gated",
+    },
+    "prior_1_25": {
+        "env": {"STRATA_ROUTE_PRIOR": "1.25"},
+        "args": [], "answer_changing": True, "invert": False,
+        "why": "routing intervention strength 1.25 (deployed 1.2); quality-gated",
+    },
+    # Last, low-expected-value sweep (revisit-queue items 9-11).  A 3-rep screen:
+    # any sign needs a 5-rep confirmation before it is believed.
+    "kv_grow_step": {
+        "env": {"STRATA_KV_GROW_STEP": "16384"}, "args": [],
+        "answer_changing": False, "invert": False,
+        "why": "KV grow quantum doubled (default 8192); fewer, larger grows",
+    },
+    "prefill_equal": {
+        "env": {"STRATA_PREFILL_EQUAL": "1"}, "args": [],
+        "answer_changing": True, "invert": False,
+        "why": "older equal-cut prompt rule (changes rounding)",
+    },
+    "cpu_ymm": {
+        "env": {"STRATA_CPU_YMM": "1"}, "args": [],
+        "answer_changing": True, "invert": False,
+        "why": "256-bit CPU expert rows instead of the 512-bit tier (last-bit differences)",
+    },
+    "pool_spin_off": {
+        "env": {"STRATA_POOL_SPIN_US": "0"}, "args": [],
+        "answer_changing": False, "invert": False,
+        "why": "CPU pool spin disabled (test knob; wake latency)",
+    },
+    "lookahead_6": {
+        "env": {"STRATA_LOOKAHEAD_K": "6"}, "args": [],
+        "answer_changing": False, "invert": False,
+        "why": "router lookahead depth 6 (default 10); less host work per layer",
+    },
     "tail_skip8": {
         "env": {"STRATA_ROUTE_TAIL_SKIP": "8"},
         "args": [], "answer_changing": True, "invert": False,
@@ -241,7 +283,7 @@ ARMS = {
 
 # Cell name -> prompt size in tokens (chars are derived with --chars-per-token).  Distinct
 # prompts per cell: no cell may reuse another's prefix, and `reused` is recorded as evidence.
-CELLS = [("p1", 4252), ("p2", 3477), ("llive", 26134)]
+CELLS = [("p1", 4252), ("p2", 3477), ("llive", 26134), ("xlive", 38000)]
 
 WORDS = (
     "harbor ledger quartz meadow lantern copper river silently narrow winter fabric marble "
@@ -970,6 +1012,7 @@ def run_eval(engine_args, cfg: dict, workdir: Path, arms: list, reps: int, cells
             if score is None:
                 raise RuntimeError(f"eval produced no SCORE (rc={proc.returncode}); stderr: {proc.stderr[-300:]}")
             results.append({"arm": arm, "rep": 0, "eval": score,
+                            "eval_log": proc.stdout[-4000:],
                             "engine_start_line": engine.engine_start_line()})
             print(f"    {arm}: {score.get('ok')}/{score.get('of')} in {score.get('wall_s')}s", flush=True)
             flush()

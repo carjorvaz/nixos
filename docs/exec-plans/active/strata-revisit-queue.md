@@ -51,22 +51,41 @@ None adopted; the defaults stay. Evidence `/data/knob-screen-20261123-1545/`.
 
 Evidence `/data/knob-screen-20261123-park/`, `-tailskip-eval/`, `-tailskip/`.
 
-## Queued (not yet in a window)
+## Tested 2026-11-23, fourth window (the rest of the queue)
 
-Ordered by expected value per window, not by size of the claim.
+Quality first (isolated engine, eval320 + the repo's fixed-corpus PPL, temperature 0):
 
-7. **`--kv k8v4` at 22-38k** — -23 % KV bytes, +0-8 % decode expected at long context, quality
-   gate needed (V becomes rotated Q4_0; not bitwise). Last screened at 0.1.49 on <= 27.5k, "within
-   noise"; the 0.1.66 decode is more KV-byte-sensitive. A 26k/38k decode window + KL/top-1 gate.
-8. **`STRATA_ROUTE_PRIOR=1.15` / `1.25`** — only 0 / 1.2 / 1.5 tested; routing-intervention
-   strength, answer-changing → quality gate.
-9. **`STRATA_KV_GROW_STEP` / `_INIT` / `_FLOOR`** — never swept for production; marked "tests" in
-   the source. Low priority: a bad quantum perturbs the elastic K/V and the expert cache at once.
-10. **`STRATA_PREFILL_EQUAL=1`** — equal prompt chunks (changes rounding); with the current
-    `--prefill 16384` the old 28,160-token rationale no longer applies. Low.
-11. **`STRATA_POOL_SPIN_US`, `STRATA_CPU_YMM`, `STRATA_LOOKAHEAD_K`** — present in the binary,
-    untested. The latency doc says barriers are nil and the window sd 0.08 %, so the expected win
-    is 0; keep at the bottom.
+| arm | eval320 | PPL (repeat spread) |
+|---|---|---|
+| `kv_k8v4` | 191/320 (-3 vs the 194 control) | 1.178 (0.007 nats) |
+| `prior_1_15` | 196/320 (+2) | 1.197 (0.012 nats) |
+| `prior_1_25` | 194/320 (0) | 1.171 (0.022 nats) |
+
+All three pass the task gate; the PPL arm-to-arm deltas sit inside the probe's own repeat
+spreads (0.007-0.022 nats), so none shows a measurable likelihood cost. (The plan originally
+asked for KL/top-1; the repo's continuous gate is the fixed-corpus PPL probe built 2026-11-04,
+and it was used instead.)
+
+Throughput, long cells (5 reps; llive 26,134 / xlive 38,000):
+
+| arm | llive | xlive | verdict |
+|---|---|---|---|
+| `kv_k8v4` | **+6.1 %** (5/5, answers identical), **read -10.0 %** | **-9.7 %** (0/5, answers differ), read -9.6 % | reject: the win does not survive 38k and the prompt read pays 10 % |
+| `prior_1_15` | -5.2 % (0/5) | -3.0 % (0/5) | reject |
+
+Low-value sweep (3 reps, p1; any sign to be confirmed at 5):
+
+| arm | knob | result |
+|---|---|---|
+| `kv_grow_step` | `STRATA_KV_GROW_STEP=16384` | -0.6 % (0/3) |
+| `prefill_equal` | `STRATA_PREFILL_EQUAL=1` | -0.2 % (0/3) |
+| `pool_spin_off` | `STRATA_POOL_SPIN_US=0` | -3.1 % (0/3), read -3.2 % |
+| `lookahead_6` | `STRATA_LOOKAHEAD_K=6` | +0.2 % (2/3), read -4.3 % |
+| `cpu_ymm` | `STRATA_CPU_YMM=1` | +0.6 % (3/3) at 3 reps, but **+0.1 % (3/5)** at 5 reps -> not reproducible; no adoption |
+
+**The queue is empty.** Beyond the pin (generation 123) and spill-persist (generation 124), no
+arm is deployed; the engine's defaults stay. The one-arm-at-a-time production windows all
+restored the unit (health 200 after each).
 
 ## Checked and NOT worth a window
 

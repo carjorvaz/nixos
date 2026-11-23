@@ -112,6 +112,17 @@ behind (`docs/exec-plans/active/strata-revisit-queue.md`):
 | `pf_group_scratch` | `STRATA_PF_GROUP_SCRATCH=1` + `STRATA_PF_HC_REGION=1` | read +1.7/+2.9 % but decode -1.0 %/-10.7 % -> reject |
 | `adapt_old_defaults` | `--adapt-every 4 --adapt-swaps 96 --adapt-decay 0.70` | -5.7 %/-5.9 % -> the pin's gain is #4870 |
 
+The third and fourth windows added the host-RAM/parking test, the quality-gated arms and the
+low-value sweep:
+
+| arm / mode | knob | measured |
+|---|---|---|
+| `--mode park` | `park_ram` (`--prompt-cache 3` + `STRATA_DF2_LOG_MIB=64`) | inconclusive in isolation: both arms park a 48,638-token conversation (48,633 reused in 0.44 s vs 31 s read); production's RAM pressure is not reproducible |
+| `--mode eval` | runs an eval script (eval320/PPL) against the isolated engine | `tail_skip8` 196/320, `kv_k8v4` 191, `prior 1.15` 196, `prior 1.25` 194 vs the 194 control |
+| `kv_k8v4` | `--kv k8v4` | +6.1 % at 26k but -9.7 % at 38k and read -10 % -> reject |
+| `prior_1_15`, `prior_1_25` | `STRATA_ROUTE_PRIOR` | 1.15 -5.2 %/-3.0 % -> reject |
+| `kv_grow_step`, `prefill_equal`, `cpu_ymm`, `pool_spin_off`, `lookahead_6` | low-value sweep | nothing reproducible (`cpu_ymm` +0.6 % at 3 reps, +0.1 % at 5) |
+
 `dense_i8_off` is a control, not a candidate: a **negative** delta means 0.2.20's default is a
 win. If the pack has no eligible dense type the arm is a no-op, and that is the answer (nothing
 to measure).

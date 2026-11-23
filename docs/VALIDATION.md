@@ -1945,6 +1945,23 @@ Evidence: `/data/knob-screen-20261123-1450/`, `/data/knob-screen-20261123-adapt/
 
 Evidence `/data/knob-screen-20261123-park/`, `-tailskip-eval/`, `-tailskip/`.
 
+#### Queue close: KV precision, routing prior, and the low-value knobs (2026-11-23, 17:10-18:08)
+
+- **`--kv k8v4`**: quality gate passes (eval320 191/320 vs 194; PPL 1.178, its repeat spread
+  0.007 nats), and at 26k it decodes **+6.1 % (5/5, answers identical)** - but the prompt read
+  costs **-10.0 %**, and at 38k it collapses to **-9.7 % (0/5, answers differ**, read -9.6 %).
+  Not adopted: the win is smaller than the prompt cost and does not survive the long context the
+  KV tier was meant for.
+- **`STRATA_ROUTE_PRIOR=1.15` / `1.25`**: both pass the task gate (196/194 of 320; PPL inside
+  the repeat spread), but 1.15 decodes -5.2 % at 26k and -3.0 % at 38k -> not adopted; the
+  deployed 1.2 stays (1.25 was not carried to throughput).
+- **Low-value sweep** (3 reps, p1): `STRATA_KV_GROW_STEP=16384` -0.6 %, `STRATA_PREFILL_EQUAL=1`
+  -0.2 %, `STRATA_POOL_SPIN_US=0` -3.1 % (read -3.2 %), `STRATA_LOOKAHEAD_K=6` +0.2 % (read
+  -4.3 %). `STRATA_CPU_YMM=1` looked +0.6 % (3/3) at 3 reps but measured **+0.1 % (3/5)** at 5
+  reps - the 3-rep sign did not reproduce, so the 5-rep rule did its job.
+- No adoption; the deployed configuration (generation 124) is unchanged. Evidence
+  `/data/knob-screen-20261123-quality/`, `-longctx/`, `-final/`, `-ymm/`.
+
 ### Generation 123 (2026-11-23): Strata engine v0.2.20 (0.1.66)
 
 Build host: tiberius (`--build-host root@tiberius`); the closure diff against generation 122 is

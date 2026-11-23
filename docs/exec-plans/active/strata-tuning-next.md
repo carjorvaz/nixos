@@ -1115,6 +1115,15 @@ the isolated engine has ~4 GiB free where production has ~1.1 GiB; and `STRATA_R
 **passes the quality gate** (eval320 196/320 vs 194) but decodes -2.7 %/-3.0 %, so it is not
 adopted. The remaining queue is the KV-precision arm and the routing/intervention knobs.
 
+The fourth window (17:10-18:08) closed them. Quality gates passed for all three arms
+(eval320: `kv k8v4` 191/320, `prior 1.15` 196, `prior 1.25` 194 against the 194 control; PPL
+deltas inside the probe's own 0.007-0.022-nat repeat spread), but the long-context throughput
+rejects them: `kv k8v4` is **+6.1 % at 26k (5/5, answers identical) yet -9.7 % at 38k (0/5,
+answers differ), with the prompt read -10 %**; `prior 1.15` is -5.2 %/-3.0 %. The last low-value
+sweep (KV-grow quantum, prefill-equal, pool spin, lookahead, CPU 256-bit rows) found nothing
+reproducible (`cpu_ymm` showed +0.6 % at 3 reps but +0.1 % at 5). **The revisit queue is empty;
+no further engine knob is deployed today.**
+
 **Quality gate for the pin (paired eval320, temperature 0, same 320 items):** 0.1.66 scores
 194/320 (60.6 %) against 0.1.63's 191/320 (59.7 %) - +3 items, inside the eval320 binomial
 sigma (~5.4 tasks) and far from "not >8 worse". The pin is quality-neutral, nominally better.
