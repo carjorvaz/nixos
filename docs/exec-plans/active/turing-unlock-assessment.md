@@ -100,7 +100,8 @@ unlock disappears on the next boot either way). If a future NVIDIA driver or ker
 change breaks the module, the boot continues locked and disabling the option removes it
 from the initramfs.
 
-**Disabled on tiberius 2026-11-23.** The rot above happened: the pinned
+**Disabled on tiberius 2026-11-23, deployed off in generation 121 (10:45).** The rot above
+happened: the pinned
 `nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst` on `archive.cachyos.org` now returns a
 988-byte HTML landing page (fetch hash `sha256-LUOVBOes...` against the pinned
 `sha256-4X58ku7/...`), so the firmware derivation cannot be built and every tiberius

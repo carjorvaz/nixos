@@ -1171,6 +1171,45 @@ Rollback: `nixos-rebuild switch --rollback` on tiberius (generation 117), or set
 `--conversation-spill-mib 0` in `profiles/nixos/strata.nix` and rebuild.  The tuned pack stays at
 `/optane/strata-data/dflash2/*.strata1.*.pack` (unused; 340 MB) for a future re-test.
 
+### Generation 121 (2026-11-23): DFlash2 draft-skip live; TU102 unlock dropped
+
+Two config changes from generation 120; the engine build (0.1.63) and the model are untouched.
+Build host: tiberius (`--build-host root@tiberius`); the Mac's store was at 832 MB free, so
+nothing was built locally.
+
+- **`STRATA_DF2_LOOKUP_SKIP=8` is live** (`profiles/nixos/strata.nix`). The flag skips the DFlash2
+  draft round when the suffix finds a match of 8+ tokens and lets the draft policy take the
+  prompt-lookup window directly; the draft is deferred to the next round, not lost. Measured on the
+  isolated 8099 engine (rounds 17b/17c): copy 111.2 -> 112.95 tok/s cold and 123.3 -> 125.55 warm
+  (+1.6 / +1.8 %), ~1 ms less per decode round (4,603 -> 4,527 ms for 512 tokens at the same 76-77
+  rounds), copy text byte-identical (sha `b112adf5...`); edit inconclusive inside its spread, prose
+  inert (no 8+ match fires). Adopted under the owner's 2026-11-23 cumulative-wins policy: the +4 %
+  bar is a default, not a veto, for env-only arms that leave the affected text byte-identical.
+- **The TU102 unlock is removed from tiberius** (`hosts/tiberius.nix`; the profile and
+  `pkgs/turing-unlock` stay in the tree, unused). Its firmware derivation fetched
+  `nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst` from `archive.cachyos.org`, and that URL now
+  returns a 988-byte landing page (pinned `sha256-4X58ku7...`, the page hashes to
+  `sha256-LUOVBOes...`), so no from-scratch build could produce it - this was the blocker for the
+  skip deploy. The kernel was already stock nixpkgs (the CachyOS kernel arms were removed after
+  <=0.6 %), so the unlock was the host's only CachyOS dependency; with the URL rot, the
+  single-boot evidence and the power/thermal risk, it is dropped rather than re-sourced. Cost: the
+  measured gain was prefill read -5.7 % at 26,134 tokens / -2.0 % at 8,268 / -1.1 % at 4,252,
+  decode unchanged. The six generated images are kept on the host at
+  `/data/turing-unlock-firmware-610.43.03/` (7 MB) for a future re-source from NVIDIA's `.run`.
+
+Deployed as generation 121 (2026-11-23 10:45): system
+`/nix/store/vaxiv0mynv2cgjvbdl2l1b3nsa7ssm1b-nixos-system-tiberius-26.05.20260927.cf5e765`;
+config JSON `89ic7xvn...` carries the flag. Verified after the switch: health 200 on 8080/8081,
+engine 0.1.63 with DFlash2 alone (`--spec 6 --draft-conf 0.8`), 9,156 expert slots, the engine's
+`/proc/<pid>/environ` carries `STRATA_DF2_LOOKUP_SKIP=8`, `/run/current-system/kernel-params` has
+no `turing_unlock` line, `/run/current-system/firmware/turing-unlock` is gone, no Xid, GPU 21,408
+MiB / 36 C. The running kernel and its cmdline are the pre-switch ones until the next reboot (the
+loaded unlock module goes with that reboot); the new boot entry carries neither.
+
+Rollback: `nixos-rebuild switch --rollback` on tiberius (generation 120), or revert `a3a9968`
+(skip) / `cf2be56` (unlock) and rebuild. Artifacts: `/tmp/deploy-120.log` (local, not committed);
+the campaign data in `/data/ab53-*.log`.
+
 ### DeepSeek-V4.1-Flash IQ1_M: not runnable on this fleet (checked 2026-10-24)
 
 The smallest official set (`ist-das-1.75bpw`, ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF)

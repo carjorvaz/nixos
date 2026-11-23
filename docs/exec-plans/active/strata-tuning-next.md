@@ -1000,12 +1000,11 @@ spread leaves the mean (110.3 vs 111.7) uninformative - no harm signal, no evide
 
 **Verdict: the sign and size hold under the served sampling (+1.6-1.8 %, matching greedy's
 +1.7 %), so the knob is validated for this lane.** Owner-approved on 2026-11-23 under the
-cumulative-wins policy (env-only, output-preserving arms no longer wait for +4 %). The deploy is
-queued, not done: the generation-119 build failed before any switch on an unrelated fixed-output
-hash mismatch in the turing-unlock firmware's NVIDIA 610.43.03 package
-(`pkgs/turing-unlock/default.nix`; the URL now serves a file with a different sha256), so the
-running system is unchanged. The flag is in `profiles/nixos/strata.nix` for the next successful
-switch; the deployment record follows that switch.
+cumulative-wins policy (env-only, output-preserving arms no longer wait for +4 %), and live since
+generation 121 (10:45): the engine's process env carries `STRATA_DF2_LOOKUP_SKIP=8` (config JSON
+`89ic7xvn...`). The first attempt was blocked by an unrelated fixed-output hash mismatch in the
+turing-unlock firmware's NVIDIA 610.43.03 package; dropping that module (same generation,
+`hosts/tiberius.nix`) unblocked the build.
 Artifacts: `/data/ab53-sample.log`, `/data/ab53-{base3,skip3a,skip3b,base3b}.log`.
 
 ## Source-level patch roadmap
@@ -1286,7 +1285,7 @@ are involved; deploy/SSH stays out of default validation and public CI (`docs/PU
   ~+15 % decode (mean) and no prefill gain, so no refit. See round-12 section.
 - **2026-11-23, round 17 / copy-heavy lookup screen (0.1.63)**: the last acceptance lever closed. `--lookup-max-t` 9/12 with DFlash2 starts and captures the wide window, but the first copy request ends the draft (`native ERR dflash2: draft rows out of range`, HTTP 400): the 8-row block cannot feed a longer window, so 9+ rows are unsupported, not slow. The copy cell at the 8-row cap already measures 97.5 % acceptance (436/447) and 123.9 tok/s warm against 85.3 %/111 on chat - the near-perfect regime, worth ~+12 %, i.e. the round-12 +15 % bound as measured. No deploy. Refit scoping in `dflash2-refit-scope.md`: 600 M drafter, 51.2 KB/token tap capture through `STRATA_TAP_FILE`, 1 M tokens = 51 GB / 2.5 h, upstream ~800 K samples; a real 10-50 M-token attempt is 3-6 weeks for ~+3-8 pp, so not recommended now.
 - **2026-11-23, round 17b / draft-skip knob**: `STRATA_DF2_LOOKUP_SKIP=8` (skip the DFlash2 draft when a suffix match of 8+ tokens exists, take the lookup window directly) is real but small: copy 111.15 -> 113.05 cold / 123.4 -> 125.5 warm (+1.7 % both), same 76-77 rounds and ~1 ms/round less decode (4,603 -> 4,527 ms cold), copy text byte-identical; edit inconclusive in a 7 % spread; prose inert by design. Below the +4 % gate, not deployed; safe to carry in the next generation if one happens for another reason. Artifacts `/data/ab53-skip.log`.
-- **2026-11-23, round 17c / sampled A/B**: the skip knob under the served card sampling (0.7 / 0.8 / 20 / presence 1.5), copy+edit, 3 reps x 2 engines per arm. Copy cold 111.2 -> 112.95, warm 123.3 -> 125.55 (+1.6 / +1.8 %), acceptance identical (436/447 cold) and the copy text byte-identical; the sampled copy cell is effectively greedy under top_p 0.8. Edit sampled and noisy (99-121 tok/s both arms), no harm signal. Owner-approved 2026-11-23 under the cumulative-wins policy; the deploy is queued because the generation-119 build failed before the switch on the turing-unlock NVIDIA 610.43.03 hash mismatch. The flag is in the module for the next successful switch. Artifacts `/data/ab53-sample.log`.
+- **2026-11-23, round 17c / sampled A/B**: the skip knob under the served card sampling (0.7 / 0.8 / 20 / presence 1.5), copy+edit, 3 reps x 2 engines per arm. Copy cold 111.2 -> 112.95, warm 123.3 -> 125.55 (+1.6 / +1.8 %), acceptance identical (436/447 cold) and the copy text byte-identical; the sampled copy cell is effectively greedy under top_p 0.8. Edit sampled and noisy (99-121 tok/s both arms), no harm signal. Owner-approved 2026-11-23 under the cumulative-wins policy and live since generation 121 (10:45); the first attempt was blocked by the turing-unlock NVIDIA 610.43.03 URL rot, and dropping that module unblocked the build. Artifacts `/data/ab53-sample.log`.
 - Evidence (local, not committed): `/data/campaign-2026-11-04/`, `/data/dax-ab/`,
   `/data/eval320/`, `/data/round4/`, `/tmp/strata-tune/` (incl. `stream-restore-design.md`,
   `stream-restore-results.md`, `hygiene-round6.md`, `pmem-park-design.md`,
