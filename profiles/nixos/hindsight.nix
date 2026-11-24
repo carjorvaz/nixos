@@ -64,7 +64,12 @@ in
       environment = {
         HINDSIGHT_API_WORKER_ID = "pius-hindsight";
         HINDSIGHT_API_LLM_TRACE_ENABLED = "false";
-        HINDSIGHT_API_STORE_DOCUMENT_TEXT = "false";
+        # True: the Hermes memory plugin retains with update_mode='append' on
+        # session-scoped document ids (server >= 0.5.0); with document text storage
+        # off every append after a document's first dies asynchronously as a
+        # failed retain task (silent per-session memory loss). Was the slim-pack
+        # default, not a deliberate choice. Cost: raw turn text in Postgres (~GBs).
+        HINDSIGHT_API_STORE_DOCUMENT_TEXT = "true";
         HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID = "intfloat/multilingual-e5-small";
         HINDSIGHT_API_EMBEDDINGS_ONNX_DIMENSIONS = "384";
         HINDSIGHT_API_RERANKER_PROVIDER = "flashrank";
