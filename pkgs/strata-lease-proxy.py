@@ -16,7 +16,10 @@ So the public surface is split in two doors:
   * the background door is machine traffic.  While the lease is active a
     request here is held - never forwarded - until the lease expires or
     HOLD_CAP_SECONDS pass.  A hold that outlives the cap ends in 503 with
-    Retry-After, which every sane HTTP client retries.
+    Retry-After, which every sane HTTP client retries.  The 502s that answer
+    an unreachable or closed engine carry Retry-After too: hindsight turns
+    any 5xx with Retry-After into a durable operation defer, and a bare 502
+    would burn its retry budget while strata cold-boots from the Optane pack.
 
 Classification is by source as well as by door.  Moving a background job to
 port 8090 would mean editing the tailnet policy, which lives in the Tailscale
@@ -560,8 +563,16 @@ class LeaseProxy:
                 asyncio.open_connection(host, port, limit=READ_LIMIT), CONNECT_TIMEOUT
             )
         except (OSError, asyncio.TimeoutError):
+            # Retry-After turns this into a durable operation defer on the
+            # hindsight side; without it a strata cold boot (Optane pack
+            # load) exhausts the operation's retry budget while the engine
+            # is merely not listening yet.
             await self.fail(
-                writer, 502, "Bad Gateway", f"the strata engine is not reachable at {host}:{port}"
+                writer,
+                502,
+                "Bad Gateway",
+                f"the strata engine is not reachable at {host}:{port}",
+                retry_after=30,
             )
             await self.discard_body(reader, headers)
             return "502"
@@ -578,12 +589,12 @@ class LeaseProxy:
             )
             if not await flush(upstream_writer):
                 upstream_writer.close()
-                await self.fail(writer, 502, "Bad Gateway", "the strata engine closed the connection")
+                await self.fail(writer, 502, "Bad Gateway", "the strata engine closed the connection", retry_after=30)
                 await self.discard_body(reader, headers)
                 return "502"
         except (ConnectionError, OSError):
             upstream_writer.close()
-            await self.fail(writer, 502, "Bad Gateway", "the strata engine closed the connection")
+            await self.fail(writer, 502, "Bad Gateway", "the strata engine closed the connection", retry_after=30)
             await self.discard_body(reader, headers)
             return "502"
 

@@ -174,6 +174,33 @@ ps.buildPythonApplication rec {
             raise RuntimeError(f"missing expected source text: {old!r}")
         text = text.replace(old, new, 1)
     config.write_text(text)
+
+    # The strata lease front-end (pkgs/strata-lease-proxy.py) answers 503 +
+    # Retry-After while an interactive conversation holds the single-slot
+    # engine, and 502 + Retry-After when the engine is not listening at all.
+    # Upstream's durable-defer classifier is 429-only, so lease backpressure
+    # burns the in-call retry loop and eventually fails the operation
+    # outright. Extending the accepted statuses converts those responses into
+    # ProviderRateLimitResetError, which memory_engine turns into
+    # DeferOperation and poller._defer_operation resets to pending at
+    # next_retry_at without bumping retry_count; the wall-clock ceiling is
+    # per claimed execution, so a deferred retain is durable until the lane
+    # frees. The Retry-After parsing and the defer plumbing already exist in
+    # 0.10.2; this only widens the gate. Asserted in installCheck below.
+    provider = Path("hindsight_api/engine/providers/openai_compatible_llm.py")
+    text = provider.read_text()
+    provider_replacements = {
+        '    if e.status_code != 429:\n        return\n    retry_at = _rate_limit_retry_at(e)\n':
+            '    if e.status_code not in (429, 502, 503, 504):\n'
+            '        return\n    retry_at = _rate_limit_retry_at(e)\n',
+        'f"Provider quota exhausted ({provider}/{model}, scope={scope}); retry at {retry_at.isoformat()}: {summary}"':
+            'f"Provider backpressure (HTTP {e.status_code}; {provider}/{model}, scope={scope}); retry at {retry_at.isoformat()}: {summary}"',
+    }
+    for old, new in provider_replacements.items():
+        if old not in text:
+            raise RuntimeError(f"missing expected source text: {old!r}")
+        text = text.replace(old, new, 1)
+    provider.write_text(text)
     entrypoints = {
         Path("hindsight_api/main.py"): (
             '    DEFAULT_ACCESS_LOG,\n'
@@ -405,6 +432,42 @@ ps.buildPythonApplication rec {
     }
     for module in scripts.values():
         __import__(module)
+
+    # Lease-backpressure postPatch (see above): a 503 + Retry-After from the
+    # strata lease front-end must convert into the durable defer path —
+    # ProviderRateLimitResetError, which memory_engine turns into a
+    # DeferOperation that does not consume retry_count — while a 5xx without
+    # Retry-After keeps upstream's in-call retry semantics.
+    import httpx
+    from datetime import UTC, datetime, timedelta
+
+    from openai._exceptions import InternalServerError
+
+    from hindsight_api.engine.llm_interface import ProviderRateLimitResetError
+    from hindsight_api.engine.providers.openai_compatible_llm import (
+        _raise_provider_quota_defer,
+    )
+
+    request = httpx.Request("POST", "http://tiberius.invalid/v1/chat/completions")
+    err503 = InternalServerError(
+        "lease held",
+        response=httpx.Response(503, headers={"Retry-After": "120"}, request=request),
+        body=None,
+    )
+    try:
+        _raise_provider_quota_defer(
+            err503, provider="openai", model="m", scope="s", max_backoff=60.0
+        )
+    except ProviderRateLimitResetError as e:
+        now = datetime.now(UTC)
+        assert now + timedelta(seconds=110) < e.retry_at < now + timedelta(seconds=135), e.retry_at
+    else:
+        raise AssertionError("503 + Retry-After did not raise ProviderRateLimitResetError")
+
+    err500 = InternalServerError("boom", response=httpx.Response(500, request=request), body=None)
+    assert _raise_provider_quota_defer(
+        err500, provider="openai", model="m", scope="s", max_backoff=60.0
+    ) is None
 
     alembic = resources.files("hindsight_api") / "alembic"
     versions = alembic / "versions"
